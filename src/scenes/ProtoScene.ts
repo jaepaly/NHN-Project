@@ -12,6 +12,11 @@ import {
   SPELL_DAMAGE_CONFIG,
   spellDamageFromPower,
 } from '../combat/combatConfig';
+import {
+  WAVE_CONFIG,
+  WaveManager,
+} from '../waves/waveManager';
+import type { WaveDefinition } from '../waves/waveManager';
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;
@@ -36,6 +41,8 @@ export class ProtoScene extends Phaser.Scene {
   private worldBounds = new Phaser.Geom.Rectangle();
   private enemies: ChaserEnemy[] = [];
   private statusText!: Phaser.GameObjects.Text;
+  private waveText!: Phaser.GameObjects.Text;
+  private waveManager = new WaveManager();
   private incantWrap!: HTMLElement;
   private incantBar!: HTMLInputElement;
   private incanting = false;
@@ -43,7 +50,6 @@ export class ProtoScene extends Phaser.Scene {
   private timeScale = 1;
   private basicAttackCooldownRemaining = 0;
   private basicMissiles: BasicMissile[] = [];
-  private testCleared = false;
 
   constructor() {
     super('proto');
@@ -78,10 +84,6 @@ export class ProtoScene extends Phaser.Scene {
       left: Phaser.Input.Keyboard.KeyCodes.A,
       right: Phaser.Input.Keyboard.KeyCodes.D,
     }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
-    for (let i = 0; i < CHASER_CONFIG.testSpawnCount; i++) {
-      this.spawnChaser(i, CHASER_CONFIG.testSpawnCount);
-    }
-
     this.add.text(16, 14,
       '[기술검증 프로토] Enter: 영창  ·  예: "얼음 감옥", "번개를 품은 해일", "어둠의 폭발"',
       { fontSize: '14px', color: '#6b7bd6' })
@@ -91,6 +93,11 @@ export class ProtoScene extends Phaser.Scene {
       fontSize: '15px',
       color: '#b8c2ff',
     }).setScrollFactor(0).setDepth(100);
+    this.waveText = this.add.text(16, 62, '', {
+      fontSize: '15px',
+      color: '#72f1b8',
+    }).setScrollFactor(0).setDepth(100);
+    this.spawnWave(this.waveManager.start());
     this.updateStatusText();
 
     this.setupIncantBar();
@@ -108,6 +115,7 @@ export class ProtoScene extends Phaser.Scene {
     this.updateEnemies(d);
     this.updateBasicAttack();
     this.updateBasicMissiles(d);
+    this.updateWaveFlow(d);
     this.updateStatusText();
   }
 
@@ -158,19 +166,34 @@ export class ProtoScene extends Phaser.Scene {
     });
   }
 
+  private spawnWave(definition: WaveDefinition): void {
+    for (let i = 0; i < definition.chaserCount; i++) {
+      this.spawnChaser(i, definition.chaserCount);
+    }
+    this.announceSystemMessage(`웨이브 ${this.waveManager.currentWaveNumber}`);
+  }
+
   private spawnChaser(index: number, total: number): void {
-    const angle = -Math.PI / 2 + (Math.PI * 2 * index) / total;
+    const angleOffset = this.waveManager.currentWaveNumber * (Math.PI / 7);
+    const angle = angleOffset - Math.PI / 2 + (Math.PI * 2 * index) / total;
     const x = Phaser.Math.Clamp(
-      this.player.x + Math.cos(angle) * CHASER_CONFIG.testSpawnDistance,
+      this.player.x + Math.cos(angle) * WAVE_CONFIG.spawnDistance,
       this.worldBounds.left + 80,
       this.worldBounds.right - 80,
     );
     const y = Phaser.Math.Clamp(
-      this.player.y + Math.sin(angle) * CHASER_CONFIG.testSpawnDistance,
+      this.player.y + Math.sin(angle) * WAVE_CONFIG.spawnDistance,
       this.worldBounds.top + 80,
       this.worldBounds.bottom - 80,
     );
     this.enemies.push(new ChaserEnemy(this, x, y));
+  }
+
+  private updateWaveFlow(deltaSeconds: number): void {
+    if (!this.playerState.alive) return;
+
+    const nextWave = this.waveManager.update(deltaSeconds);
+    if (nextWave) this.spawnWave(nextWave);
   }
 
   private updateEnemies(deltaSeconds: number): void {
@@ -342,7 +365,7 @@ export class ProtoScene extends Phaser.Scene {
     const mana = Math.floor(this.playerState.mana);
     let actionState = 'READY';
     if (!this.playerState.alive) actionState = 'DEAD';
-    else if (this.testCleared) actionState = 'TEST CLEAR';
+    else if (this.waveManager.phase === 'room-clear') actionState = 'ROOM CLEAR';
     else if (this.casting) actionState = 'JUDGING';
     else if (this.incanting) actionState = 'INCANTING';
     else if (this.playerState.cooldownRemaining > 0) {
@@ -354,6 +377,19 @@ export class ProtoScene extends Phaser.Scene {
       + `  ·  MANA ${mana}/${this.playerState.maxMana}`
       + `  ·  ${actionState}`,
     );
+
+    if (this.waveManager.phase === 'room-clear') {
+      this.waveText.setText('ROOM CLEAR');
+    } else if (this.waveManager.phase === 'waiting') {
+      this.waveText.setText(
+        `NEXT WAVE ${this.waveManager.delayRemaining.toFixed(1)}s`,
+      );
+    } else {
+      this.waveText.setText(
+        `WAVE ${this.waveManager.currentWaveNumber}/${this.waveManager.totalWaves}`
+        + `  ·  ENEMIES ${this.enemies.length}`,
+      );
+    }
   }
 
   private announceSystemMessage(message: string): void {
@@ -412,9 +448,14 @@ export class ProtoScene extends Phaser.Scene {
 
     enemy.destroy();
     this.enemies = this.enemies.filter((candidate) => candidate !== enemy);
-    if (this.enemies.length === 0 && !this.testCleared) {
-      this.testCleared = true;
-      this.announceSystemMessage('테스트 전투 완료');
+    if (this.enemies.length > 0) return;
+
+    const completedWave = this.waveManager.currentWaveNumber;
+    this.waveManager.notifyEnemiesCleared();
+    if (this.waveManager.phase === 'room-clear') {
+      this.announceSystemMessage('방 클리어');
+    } else {
+      this.announceSystemMessage(`웨이브 ${completedWave} 완료`);
     }
   }
 

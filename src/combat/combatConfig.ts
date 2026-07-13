@@ -4,8 +4,6 @@ export const CHASER_CONFIG = {
   contactDamage: 10,
   contactDistance: 28,
   contactDamageCooldownSeconds: 1,
-  testSpawnCount: 3,
-  testSpawnDistance: 300,
 } as const;
 
 export const BASIC_ATTACK_CONFIG = {
