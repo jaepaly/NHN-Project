@@ -1,5 +1,7 @@
 export interface WaveDefinition {
   chaserCount: number;
+  shooterCount: number;
+  splitterCount: number;
 }
 
 export const WAVE_CONFIG = {
@@ -8,9 +10,9 @@ export const WAVE_CONFIG = {
 } as const;
 
 export const WAVE_DEFINITIONS: readonly WaveDefinition[] = [
-  { chaserCount: 3 },
-  { chaserCount: 4 },
-  { chaserCount: 5 },
+  { chaserCount: 3, shooterCount: 0, splitterCount: 0 },
+  { chaserCount: 2, shooterCount: 2, splitterCount: 0 },
+  { chaserCount: 2, shooterCount: 2, splitterCount: 1 },
 ];
 
 export type WavePhase = 'active' | 'waiting' | 'room-clear';

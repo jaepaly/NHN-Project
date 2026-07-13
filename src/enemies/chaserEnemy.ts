@@ -1,9 +1,13 @@
 import Phaser from 'phaser';
 import { CHASER_CONFIG } from '../combat/combatConfig';
+import type { CombatEnemy, EnemyShotRequest } from './combatEnemy';
 
-export class ChaserEnemy {
+export class ChaserEnemy implements CombatEnemy {
+  readonly kind = 'chaser' as const;
   readonly view: Phaser.GameObjects.Container;
   readonly maxHp: number = CHASER_CONFIG.maxHp;
+  readonly contactDamage: number = CHASER_CONFIG.contactDamage;
+  readonly contactDistance: number = CHASER_CONFIG.contactDistance;
 
   hp: number = this.maxHp;
   alive = true;
@@ -33,8 +37,8 @@ export class ChaserEnemy {
     return this.view.y;
   }
 
-  update(deltaSeconds: number, targetX: number, targetY: number): void {
-    if (!this.alive) return;
+  update(deltaSeconds: number, targetX: number, targetY: number): EnemyShotRequest[] {
+    if (!this.alive) return [];
 
     this.contactDamageCooldownRemaining = Math.max(
       0,
@@ -42,12 +46,13 @@ export class ChaserEnemy {
     );
 
     const direction = new Phaser.Math.Vector2(targetX - this.x, targetY - this.y);
-    if (direction.lengthSq() === 0) return;
+    if (direction.lengthSq() === 0) return [];
 
     direction.normalize();
     this.view.x += direction.x * CHASER_CONFIG.speed * deltaSeconds;
     this.view.y += direction.y * CHASER_CONFIG.speed * deltaSeconds;
     this.body.rotation = direction.angle() + Math.PI / 2;
+    return [];
   }
 
   get canDealContactDamage(): boolean {

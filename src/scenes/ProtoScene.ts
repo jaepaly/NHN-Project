@@ -6,9 +6,17 @@ import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
 import { ELEMENT_PALETTES } from '../render/palette';
 import { PlayerCombatState } from '../player/playerCombatState';
 import { ChaserEnemy } from '../enemies/chaserEnemy';
+import { ShooterEnemy } from '../enemies/shooterEnemy';
+import { SplitterEnemy } from '../enemies/splitterEnemy';
+import type {
+  CombatEnemy,
+  EnemyKind,
+  EnemyShotRequest,
+} from '../enemies/combatEnemy';
 import {
   BASIC_ATTACK_CONFIG,
-  CHASER_CONFIG,
+  SHOOTER_CONFIG,
+  SPLITTER_CONFIG,
   SPELL_DAMAGE_CONFIG,
   spellDamageFromPower,
 } from '../combat/combatConfig';
@@ -24,7 +32,14 @@ const WORLD_SIZE_MULTIPLIER = 2;
 interface BasicMissile {
   body: Phaser.GameObjects.Arc;
   halo: Phaser.GameObjects.Arc;
-  target: ChaserEnemy;
+  target: CombatEnemy;
+}
+
+interface EnemyProjectile {
+  body: Phaser.GameObjects.Arc;
+  halo: Phaser.GameObjects.Arc;
+  velocity: Phaser.Math.Vector2;
+  lifetimeRemaining: number;
 }
 
 /**
@@ -39,7 +54,8 @@ export class ProtoScene extends Phaser.Scene {
   private playerState = new PlayerCombatState();
   private moveKeys!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private worldBounds = new Phaser.Geom.Rectangle();
-  private enemies: ChaserEnemy[] = [];
+  private enemies: CombatEnemy[] = [];
+  private enemyProjectiles: EnemyProjectile[] = [];
   private statusText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
   private waveManager = new WaveManager();
@@ -113,6 +129,7 @@ export class ProtoScene extends Phaser.Scene {
     this.basicAttackCooldownRemaining = Math.max(0, this.basicAttackCooldownRemaining - d);
     this.updatePlayerMovement(delta / 1000);
     this.updateEnemies(d);
+    this.updateEnemyProjectiles(d);
     this.updateBasicAttack();
     this.updateBasicMissiles(d);
     this.updateWaveFlow(d);
@@ -167,13 +184,19 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private spawnWave(definition: WaveDefinition): void {
-    for (let i = 0; i < definition.chaserCount; i++) {
-      this.spawnChaser(i, definition.chaserCount);
-    }
+    const sequence: EnemyKind[] = [
+      ...Array<EnemyKind>(definition.chaserCount).fill('chaser'),
+      ...Array<EnemyKind>(definition.shooterCount).fill('shooter'),
+      ...Array<EnemyKind>(definition.splitterCount).fill('splitter'),
+    ];
+    sequence.forEach((kind, index) => {
+      const position = this.waveSpawnPosition(index, sequence.length);
+      this.spawnEnemy(kind, position.x, position.y);
+    });
     this.announceSystemMessage(`웨이브 ${this.waveManager.currentWaveNumber}`);
   }
 
-  private spawnChaser(index: number, total: number): void {
+  private waveSpawnPosition(index: number, total: number): Phaser.Math.Vector2 {
     const angleOffset = this.waveManager.currentWaveNumber * (Math.PI / 7);
     const angle = angleOffset - Math.PI / 2 + (Math.PI * 2 * index) / total;
     const x = Phaser.Math.Clamp(
@@ -186,7 +209,25 @@ export class ProtoScene extends Phaser.Scene {
       this.worldBounds.top + 80,
       this.worldBounds.bottom - 80,
     );
-    this.enemies.push(new ChaserEnemy(this, x, y));
+    return new Phaser.Math.Vector2(x, y);
+  }
+
+  private spawnEnemy(kind: EnemyKind, x: number, y: number): void {
+    switch (kind) {
+      case 'shooter':
+        this.enemies.push(new ShooterEnemy(this, x, y));
+        break;
+      case 'splitter':
+        this.enemies.push(new SplitterEnemy(this, x, y));
+        break;
+      case 'small-splitter':
+        this.enemies.push(new SplitterEnemy(this, x, y, true));
+        break;
+      case 'chaser':
+      default:
+        this.enemies.push(new ChaserEnemy(this, x, y));
+        break;
+    }
   }
 
   private updateWaveFlow(deltaSeconds: number): void {
@@ -200,7 +241,18 @@ export class ProtoScene extends Phaser.Scene {
     if (!this.playerState.alive) return;
 
     for (const enemy of this.enemies) {
-      enemy.update(deltaSeconds, this.player.x, this.player.y);
+      const shots = enemy.update(deltaSeconds, this.player.x, this.player.y);
+      enemy.view.x = Phaser.Math.Clamp(
+        enemy.view.x,
+        this.worldBounds.left + 22,
+        this.worldBounds.right - 22,
+      );
+      enemy.view.y = Phaser.Math.Clamp(
+        enemy.view.y,
+        this.worldBounds.top + 22,
+        this.worldBounds.bottom - 22,
+      );
+      for (const shot of shots) this.spawnEnemyProjectile(shot);
     }
 
     let totalDamage = 0;
@@ -210,12 +262,12 @@ export class ProtoScene extends Phaser.Scene {
         enemy.y,
         this.player.x,
         this.player.y,
-      ) <= CHASER_CONFIG.contactDistance;
+      ) <= enemy.contactDistance;
       if (!touching || !enemy.canDealContactDamage) continue;
 
-      this.playerState.takeDamage(CHASER_CONFIG.contactDamage);
+      this.playerState.takeDamage(enemy.contactDamage);
       enemy.startContactDamageCooldown();
-      totalDamage += CHASER_CONFIG.contactDamage;
+      totalDamage += enemy.contactDamage;
       if (!this.playerState.alive) break;
     }
     if (totalDamage === 0) return;
@@ -228,6 +280,85 @@ export class ProtoScene extends Phaser.Scene {
     }
   }
 
+  private spawnEnemyProjectile(request: EnemyShotRequest): void {
+    const body = this.add.circle(request.x, request.y, 5, 0xff6b4a)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const halo = this.add.circle(request.x, request.y, 9, 0xff9a62, 0.28)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const velocity = new Phaser.Math.Vector2(
+      Math.cos(request.angle),
+      Math.sin(request.angle),
+    ).scale(SHOOTER_CONFIG.bulletSpeed);
+
+    this.enemyProjectiles.push({
+      body,
+      halo,
+      velocity,
+      lifetimeRemaining: SHOOTER_CONFIG.bulletLifetimeSeconds,
+    });
+  }
+
+  private updateEnemyProjectiles(deltaSeconds: number): void {
+    const active: EnemyProjectile[] = [];
+    let totalDamage = 0;
+
+    for (const projectile of this.enemyProjectiles) {
+      if (!this.playerState.alive) {
+        this.destroyEnemyProjectile(projectile);
+        continue;
+      }
+
+      projectile.lifetimeRemaining -= deltaSeconds;
+      projectile.body.x += projectile.velocity.x * deltaSeconds;
+      projectile.body.y += projectile.velocity.y * deltaSeconds;
+      projectile.halo.setPosition(projectile.body.x, projectile.body.y);
+
+      const expired = projectile.lifetimeRemaining <= 0;
+      const outsideWorld = !this.worldBounds.contains(projectile.body.x, projectile.body.y);
+      if (expired || outsideWorld) {
+        this.destroyEnemyProjectile(projectile);
+        continue;
+      }
+
+      const hitPlayer = Phaser.Math.Distance.Between(
+        projectile.body.x,
+        projectile.body.y,
+        this.player.x,
+        this.player.y,
+      ) <= SHOOTER_CONFIG.bulletHitDistance;
+      if (hitPlayer) {
+        this.playerState.takeDamage(SHOOTER_CONFIG.bulletDamage);
+        totalDamage += SHOOTER_CONFIG.bulletDamage;
+        this.destroyEnemyProjectile(projectile);
+        continue;
+      }
+
+      active.push(projectile);
+    }
+
+    this.enemyProjectiles = active;
+    if (totalDamage === 0) return;
+
+    this.announceSystemMessage(`-${totalDamage} HP`);
+    if (!this.playerState.alive) {
+      if (this.incanting) this.closeIncant();
+      this.clearEnemyProjectiles();
+      this.announceSystemMessage('사망');
+    }
+  }
+
+  private destroyEnemyProjectile(projectile: EnemyProjectile): void {
+    projectile.body.destroy();
+    projectile.halo.destroy();
+  }
+
+  private clearEnemyProjectiles(): void {
+    for (const projectile of this.enemyProjectiles) {
+      this.destroyEnemyProjectile(projectile);
+    }
+    this.enemyProjectiles = [];
+  }
+
   private updateBasicAttack(): void {
     if (!this.playerState.alive || this.basicAttackCooldownRemaining > 0) return;
 
@@ -238,7 +369,7 @@ export class ProtoScene extends Phaser.Scene {
     this.fireBasicMissile(target);
   }
 
-  private fireBasicMissile(target: ChaserEnemy): void {
+  private fireBasicMissile(target: CombatEnemy): void {
     const fromX = this.player.x;
     const fromY = this.player.y - 14;
     const body = this.add.circle(fromX, fromY, 5, 0xc8d3ff)
@@ -412,8 +543,8 @@ export class ProtoScene extends Phaser.Scene {
     });
   }
 
-  private nearestEnemy(maxDistance = Number.POSITIVE_INFINITY): ChaserEnemy | null {
-    let best: ChaserEnemy | null = null;
+  private nearestEnemy(maxDistance = Number.POSITIVE_INFINITY): CombatEnemy | null {
+    let best: CombatEnemy | null = null;
     let bestD = Number.POSITIVE_INFINITY;
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
@@ -427,7 +558,7 @@ export class ProtoScene extends Phaser.Scene {
     x: number,
     y: number,
     spec: SpellSpec,
-    lockedTarget: ChaserEnemy | null,
+    lockedTarget: CombatEnemy | null,
   ): void {
     const damage = spellDamageFromPower(spec.power);
     if (spec.form === 'nova') {
@@ -443,13 +574,33 @@ export class ProtoScene extends Phaser.Scene {
     if (lockedTarget?.alive) this.damageEnemy(lockedTarget, damage);
   }
 
-  private damageEnemy(enemy: ChaserEnemy, damage: number): void {
+  private damageEnemy(enemy: CombatEnemy, damage: number): void {
     if (!enemy.takeDamage(damage)) return;
 
+    const splitX = enemy.x;
+    const splitY = enemy.y;
+    const shouldSplit = enemy instanceof SplitterEnemy && enemy.canSplit;
     enemy.destroy();
     this.enemies = this.enemies.filter((candidate) => candidate !== enemy);
+    if (shouldSplit) {
+      for (let i = 0; i < SPLITTER_CONFIG.splitCount; i++) {
+        const angle = (Math.PI * 2 * i) / SPLITTER_CONFIG.splitCount;
+        const x = Phaser.Math.Clamp(
+          splitX + Math.cos(angle) * SPLITTER_CONFIG.splitOffset,
+          this.worldBounds.left + 22,
+          this.worldBounds.right - 22,
+        );
+        const y = Phaser.Math.Clamp(
+          splitY + Math.sin(angle) * SPLITTER_CONFIG.splitOffset,
+          this.worldBounds.top + 22,
+          this.worldBounds.bottom - 22,
+        );
+        this.spawnEnemy('small-splitter', x, y);
+      }
+    }
     if (this.enemies.length > 0) return;
 
+    this.clearEnemyProjectiles();
     const completedWave = this.waveManager.currentWaveNumber;
     this.waveManager.notifyEnemiesCleared();
     if (this.waveManager.phase === 'room-clear') {
