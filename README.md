@@ -41,9 +41,8 @@ TypeScript · Vite · Phaser 3 · Gemini Flash (Cloudflare Workers 프록시) ·
 |---|---|---|
 | **이도원** | R1 게임 코어 | Phaser 씬·전투·적 AI·파츠 조합 이펙트 엔진·성능 |
 | **임재윤** | R2 AI 시스템 | 판정 프롬프트·프록시 인프라·캐싱/폴백·보스 기억 + 제출물 ④ |
-| **총괄 (@jaepaly)** | R3 + 총괄 | UI/UX·콘텐츠·제출물 ②③⑤ + **작업 취합·검토·다음 페이즈 제시** |
 
-상세 역할 정의: [docs/ROLES.md](docs/ROLES.md)
+작업 취합·검토·머지와 다음 페이즈 제시는 총괄(@jaepaly)이 담당한다.
 
 ### 페이즈 진행 사이클
 
@@ -95,10 +94,4 @@ TypeScript · Vite · Phaser 3 · Gemini Flash (Cloudflare Workers 프록시) ·
 - **완료 기준**: 데모 페이지에서 실제 Gemini 판정으로 주문 발동 + 프록시 강제 다운 시 폴백 동작 확인 영상을 PR에 첨부
 - 참고: [src/spell/judge.ts](src/spell/judge.ts) (인터페이스), [src/spell/mockJudge.ts](src/spell/mockJudge.ts), [src/spell/validate.ts](src/spell/validate.ts)
 
-### 🎨 총괄 (R3 + 취합)
-
-- [ ] HUD 1차: HP/마나 바, 영창 쿨다운 표시
-- [ ] 영창 UX: 판정 대기 중 영창 이펙트(파티클 모임), 캐시 히트 시 즉발
-- [ ] 원소 팔레트 톤 검수 ([src/render/palette.ts](src/render/palette.ts))
-- [ ] 게임명 투표 주관 → GDD §1.1 확정, §11 미결정 사항 정리
-- [ ] 두 사람 PR 리뷰·머지 → 7/20 취합 후 Phase 2 게시
+> 작업 중 궁금한 점·블로커는 총괄에게 바로 공유. 7/20에 취합·검토 후 Phase 2가 게시된다.
