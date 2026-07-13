@@ -1,5 +1,5 @@
 export const CHASER_CONFIG = {
-  maxHp: 100,
+  maxHp: 30,
   speed: 100,
   contactDamage: 10,
   contactDistance: 28,
@@ -7,7 +7,7 @@ export const CHASER_CONFIG = {
 } as const;
 
 export const SHOOTER_CONFIG = {
-  maxHp: 70,
+  maxHp: 20,
   speed: 75,
   contactDamage: 6,
   contactDistance: 24,
@@ -26,14 +26,14 @@ export const SHOOTER_CONFIG = {
 
 export const SPLITTER_CONFIG = {
   large: {
-    maxHp: 120,
+    maxHp: 40,
     speed: 80,
     contactDamage: 12,
     contactDistance: 30,
     radius: 18,
   },
   small: {
-    maxHp: 40,
+    maxHp: 10,
     speed: 130,
     contactDamage: 6,
     contactDistance: 20,
@@ -45,8 +45,7 @@ export const SPLITTER_CONFIG = {
 } as const;
 
 export const BASIC_ATTACK_CONFIG = {
-  // 임시 테스트값: 혼합 웨이브 3개를 약 1분 안에 검증하기 위한 수치.
-  damage: 30,
+  damage: 10,
   intervalSeconds: 1,
   range: 400,
   projectileSpeed: 600,
@@ -55,6 +54,11 @@ export const BASIC_ATTACK_CONFIG = {
 
 export const SPELL_DAMAGE_CONFIG = {
   novaBaseRadius: 60,
+  beamRange: 650,
+  beamBaseWidth: 24,
+  waveRange: 500,
+  waveBaseWidth: 120,
+  waveHitDepth: 36,
 } as const;
 
 /** 1차 공식: 밸런스보다 power가 실제 피해로 연결되는 구조를 우선 검증한다. */

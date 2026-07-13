@@ -3,6 +3,7 @@ import type { SpellJudge } from '../spell/judge';
 import { MockJudge } from '../spell/mockJudge';
 import type { SpellSpec } from '../spell/types';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
+import type { SpellImpact } from '../render/spellRenderer';
 import { ELEMENT_PALETTES } from '../render/palette';
 import { PlayerCombatState } from '../player/playerCombatState';
 import { ChaserEnemy } from '../enemies/chaserEnemy';
@@ -17,7 +18,6 @@ import {
   BASIC_ATTACK_CONFIG,
   SHOOTER_CONFIG,
   SPLITTER_CONFIG,
-  SPELL_DAMAGE_CONFIG,
   spellDamageFromPower,
 } from '../combat/combatConfig';
 import {
@@ -480,11 +480,12 @@ export class ProtoScene extends Phaser.Scene {
       const from = new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
       const target = this.nearestEnemy();
       const to = target ? new Phaser.Math.Vector2(target.x, target.y) : undefined;
+      const hitEnemies = new Set<CombatEnemy>();
       castSpell({
         scene: this,
         from,
         to,
-        onHit: (x, y) => this.onSpellHit(x, y, spec, target),
+        onHit: (impact) => this.onSpellHit(impact, spec, target, hitEnemies),
       }, spec);
     } finally {
       this.casting = false;
@@ -555,23 +556,61 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private onSpellHit(
-    x: number,
-    y: number,
+    impact: SpellImpact,
     spec: SpellSpec,
     lockedTarget: CombatEnemy | null,
+    hitEnemies: Set<CombatEnemy>,
   ): void {
     const damage = spellDamageFromPower(spec.power);
-    if (spec.form === 'nova') {
-      const radius = SPELL_DAMAGE_CONFIG.novaBaseRadius + spec.power;
-      for (const enemy of [...this.enemies]) {
-        if (Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y) <= radius) {
-          this.damageEnemy(enemy, damage);
-        }
-      }
+    if (impact.kind === 'point') {
+      if (lockedTarget?.alive) this.damageEnemy(lockedTarget, damage);
       return;
     }
 
-    if (lockedTarget?.alive) this.damageEnemy(lockedTarget, damage);
+    for (const enemy of [...this.enemies]) {
+      if (!enemy.alive || hitEnemies.has(enemy)) continue;
+
+      const isHit = impact.kind === 'circle'
+        ? Phaser.Math.Distance.Between(impact.x, impact.y, enemy.x, enemy.y)
+          <= impact.radius
+        : this.pointToSegmentDistance(
+          enemy.x,
+          enemy.y,
+          impact.fromX,
+          impact.fromY,
+          impact.toX,
+          impact.toY,
+        ) <= impact.width / 2;
+      if (!isHit) continue;
+
+      hitEnemies.add(enemy);
+      this.damageEnemy(enemy, damage);
+    }
+  }
+
+  private pointToSegmentDistance(
+    pointX: number,
+    pointY: number,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+  ): number {
+    const segmentX = endX - startX;
+    const segmentY = endY - startY;
+    const lengthSquared = segmentX * segmentX + segmentY * segmentY;
+    if (lengthSquared === 0) {
+      return Phaser.Math.Distance.Between(pointX, pointY, startX, startY);
+    }
+
+    const projection = Phaser.Math.Clamp(
+      ((pointX - startX) * segmentX + (pointY - startY) * segmentY) / lengthSquared,
+      0,
+      1,
+    );
+    const nearestX = startX + projection * segmentX;
+    const nearestY = startY + projection * segmentY;
+    return Phaser.Math.Distance.Between(pointX, pointY, nearestX, nearestY);
   }
 
   private damageEnemy(enemy: CombatEnemy, damage: number): void {
@@ -622,10 +661,12 @@ export class ProtoScene extends Phaser.Scene {
       color: colorHex,
       stroke: '#05060f',
       strokeThickness: 6,
+      align: 'center',
+      wordWrap: { width: width - 80, useAdvancedWrap: true },
     }).setOrigin(0.5).setAlpha(0).setScrollFactor(0).setDepth(100)
       .setBlendMode(Phaser.BlendModes.ADD);
 
-    const meta = this.add.text(width / 2, height * 0.32 + 36,
+    const meta = this.add.text(width / 2, label.y + label.height / 2 + 20,
       `${spec.element_primary}${spec.element_secondary ? '+' + spec.element_secondary : ''}`
       + ` · ${spec.form} · power ${spec.power}`,
       { fontSize: '14px', color: '#8fa4ff' },
