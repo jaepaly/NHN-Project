@@ -4,6 +4,7 @@ import { MockJudge } from '../spell/mockJudge';
 import type { SpellSpec } from '../spell/types';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
 import { ELEMENT_PALETTES } from '../render/palette';
+import { PlayerCombatState } from '../player/playerCombatState';
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;
@@ -17,9 +18,11 @@ const WORLD_SIZE_MULTIPLIER = 2;
 export class ProtoScene extends Phaser.Scene {
   private judge: SpellJudge = new MockJudge();
   private player!: Phaser.GameObjects.Container;
+  private playerState = new PlayerCombatState();
   private moveKeys!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private worldBounds = new Phaser.Geom.Rectangle();
   private targets: Phaser.GameObjects.Triangle[] = [];
+  private statusText!: Phaser.GameObjects.Text;
   private incantWrap!: HTMLElement;
   private incantBar!: HTMLInputElement;
   private incanting = false;
@@ -66,16 +69,23 @@ export class ProtoScene extends Phaser.Scene {
       { fontSize: '14px', color: '#6b7bd6' })
       .setScrollFactor(0)
       .setDepth(100);
+    this.statusText = this.add.text(16, 38, '', {
+      fontSize: '15px',
+      color: '#b8c2ff',
+    }).setScrollFactor(0).setDepth(100);
+    this.updateStatusText();
 
     this.setupIncantBar();
     this.input.keyboard!.on('keydown-ENTER', () => {
-      if (!this.incanting && !this.casting) this.openIncant();
+      if (!this.incanting && !this.casting) this.tryOpenIncant();
     });
   }
 
   override update(_time: number, delta: number): void {
     // 슬로모션: timeScale을 개체 이동에 직접 곱한다 (프로토 방식)
     const d = (delta / 1000) * this.timeScale;
+    this.playerState.update(d);
+    this.updateStatusText();
     this.updatePlayerMovement(delta / 1000);
     for (const t of this.targets) {
       const v = t.getData('vel') as Phaser.Math.Vector2;
@@ -88,7 +98,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private updatePlayerMovement(deltaSeconds: number): void {
-    if (this.incanting) return;
+    if (this.incanting || !this.playerState.alive) return;
 
     const direction = new Phaser.Math.Vector2(
       Number(this.moveKeys.right.isDown) - Number(this.moveKeys.left.isDown),
@@ -171,6 +181,20 @@ export class ProtoScene extends Phaser.Scene {
     });
   }
 
+  private tryOpenIncant(): void {
+    if (!this.playerState.alive) {
+      this.announceSystemMessage('행동 불가');
+      return;
+    }
+    if (this.playerState.cooldownRemaining > 0) {
+      this.announceSystemMessage(
+        `쿨다운 ${this.playerState.cooldownRemaining.toFixed(1)}초`,
+      );
+      return;
+    }
+    this.openIncant();
+  }
+
   private openIncant(): void {
     this.incanting = true;
     this.timeScale = 0.1; // 슬로모션
@@ -189,18 +213,65 @@ export class ProtoScene extends Phaser.Scene {
   // ── 판정 → 렌더링 사이클 ────────────────────────────────────
   private async castFromText(text: string): Promise<void> {
     this.casting = true;
-    const spec = await this.judge.judge(text);
-    this.announceSpell(spec);
+    try {
+      const spec = await this.judge.judge(text);
+      if (!this.playerState.trySpendMana(spec.cost)) {
+        this.announceSystemMessage('마나 부족');
+        return;
+      }
 
-    const from = new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
-    const to = this.nearestTargetPos();
-    castSpell({
-      scene: this,
-      from,
-      to,
-      onHit: (x, y) => this.onSpellHit(x, y, spec),
-    }, spec);
-    this.casting = false;
+      this.playerState.startGlobalCooldown();
+      this.announceSpell(spec);
+
+      const from = new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
+      const to = this.nearestTargetPos();
+      castSpell({
+        scene: this,
+        from,
+        to,
+        onHit: (x, y) => this.onSpellHit(x, y, spec),
+      }, spec);
+    } finally {
+      this.casting = false;
+    }
+  }
+
+  private updateStatusText(): void {
+    const hp = Math.ceil(this.playerState.hp);
+    const mana = Math.floor(this.playerState.mana);
+    let actionState = 'READY';
+    if (!this.playerState.alive) actionState = 'DEAD';
+    else if (this.casting) actionState = 'JUDGING';
+    else if (this.incanting) actionState = 'INCANTING';
+    else if (this.playerState.cooldownRemaining > 0) {
+      actionState = `COOLDOWN ${this.playerState.cooldownRemaining.toFixed(1)}s`;
+    }
+
+    this.statusText.setText(
+      `HP ${hp}/${this.playerState.maxHp}`
+      + `  ·  MANA ${mana}/${this.playerState.maxMana}`
+      + `  ·  ${actionState}`,
+    );
+  }
+
+  private announceSystemMessage(message: string): void {
+    const { width, height } = this.scale;
+    const label = this.add.text(width / 2, height * 0.42, message, {
+      fontSize: '24px',
+      fontStyle: 'bold',
+      color: '#ff8fa3',
+      stroke: '#05060f',
+      strokeThickness: 4,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(100);
+
+    this.tweens.add({
+      targets: label,
+      alpha: 0,
+      y: label.y - 18,
+      duration: 700,
+      ease: 'Cubic.easeOut',
+      onComplete: () => label.destroy(),
+    });
   }
 
   private nearestTargetPos(): Phaser.Math.Vector2 | undefined {
