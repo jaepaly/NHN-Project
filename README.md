@@ -8,7 +8,7 @@
 
 ## 🎮 플레이
 
-- **데모**: (GitHub Pages 링크 — 배포 후 갱신)
+- **데모**: https://jaepaly.github.io/NHN-Project/ (기술검증 프로토타입)
 - **조작**: WASD 이동 / **Enter** 영창 모드(슬로모션) → 아무 문장이나 입력 → 그것이 주문이 된다
 
 ## 🛠 로컬 실행
