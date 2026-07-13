@@ -5,6 +5,9 @@ import type { SpellSpec } from '../spell/types';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
 import { ELEMENT_PALETTES } from '../render/palette';
 
+// 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
+const WORLD_SIZE_MULTIPLIER = 2;
+
 /**
  * 기술검증 프로토타입 씬 — W1 목표 (SUBMISSION_PLAN W1)
  * 검증 대상: 입력 → 판정(SpellJudge) → JSON → 파츠 조합 렌더링 1사이클
@@ -14,6 +17,8 @@ import { ELEMENT_PALETTES } from '../render/palette';
 export class ProtoScene extends Phaser.Scene {
   private judge: SpellJudge = new MockJudge();
   private player!: Phaser.GameObjects.Container;
+  private moveKeys!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
+  private worldBounds = new Phaser.Geom.Rectangle();
   private targets: Phaser.GameObjects.Triangle[] = [];
   private incantWrap!: HTMLElement;
   private incantBar!: HTMLInputElement;
@@ -27,15 +32,40 @@ export class ProtoScene extends Phaser.Scene {
 
   create(): void {
     const { width, height } = this.scale;
+    this.worldBounds.setTo(
+      0,
+      0,
+      width * WORLD_SIZE_MULTIPLIER,
+      height * WORLD_SIZE_MULTIPLIER,
+    );
+    const startX = this.worldBounds.centerX;
+    const startY = this.worldBounds.centerY;
     ensureParticleTexture(this);
 
-    this.drawBackdrop(width, height);
-    this.createPlayer(width / 2, height * 0.72);
+    this.drawBackdrop(this.worldBounds.width, this.worldBounds.height);
+    this.createPlayer(startX, startY);
+    this.cameras.main
+      .setBounds(
+        this.worldBounds.x,
+        this.worldBounds.y,
+        this.worldBounds.width,
+        this.worldBounds.height,
+      )
+      .startFollow(this.player, true, 0.12, 0.12);
+    this.cameras.main.centerOn(startX, startY);
+    this.moveKeys = this.input.keyboard!.addKeys({
+      up: Phaser.Input.Keyboard.KeyCodes.W,
+      down: Phaser.Input.Keyboard.KeyCodes.S,
+      left: Phaser.Input.Keyboard.KeyCodes.A,
+      right: Phaser.Input.Keyboard.KeyCodes.D,
+    }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
     for (let i = 0; i < 3; i++) this.spawnTarget();
 
     this.add.text(16, 14,
       '[기술검증 프로토] Enter: 영창  ·  예: "얼음 감옥", "번개를 품은 해일", "어둠의 폭발"',
-      { fontSize: '14px', color: '#6b7bd6' });
+      { fontSize: '14px', color: '#6b7bd6' })
+      .setScrollFactor(0)
+      .setDepth(100);
 
     this.setupIncantBar();
     this.input.keyboard!.on('keydown-ENTER', () => {
@@ -46,15 +76,38 @@ export class ProtoScene extends Phaser.Scene {
   override update(_time: number, delta: number): void {
     // 슬로모션: timeScale을 개체 이동에 직접 곱한다 (프로토 방식)
     const d = (delta / 1000) * this.timeScale;
+    this.updatePlayerMovement(delta / 1000);
     for (const t of this.targets) {
       const v = t.getData('vel') as Phaser.Math.Vector2;
       t.x += v.x * d;
       t.y += v.y * d;
       t.rotation += 0.8 * d;
-      const { width, height } = this.scale;
-      if (t.x < 40 || t.x > width - 40) v.x *= -1;
-      if (t.y < 40 || t.y > height * 0.55) v.y *= -1;
+      if (t.x < this.worldBounds.left + 40 || t.x > this.worldBounds.right - 40) v.x *= -1;
+      if (t.y < this.worldBounds.top + 40 || t.y > this.worldBounds.bottom - 40) v.y *= -1;
     }
+  }
+
+  private updatePlayerMovement(deltaSeconds: number): void {
+    if (this.incanting) return;
+
+    const direction = new Phaser.Math.Vector2(
+      Number(this.moveKeys.right.isDown) - Number(this.moveKeys.left.isDown),
+      Number(this.moveKeys.down.isDown) - Number(this.moveKeys.up.isDown),
+    );
+    if (direction.lengthSq() === 0) return;
+
+    const speed = 220;
+    direction.normalize().scale(speed * deltaSeconds);
+    this.player.x = Phaser.Math.Clamp(
+      this.player.x + direction.x,
+      this.worldBounds.left + 22,
+      this.worldBounds.right - 22,
+    );
+    this.player.y = Phaser.Math.Clamp(
+      this.player.y + direction.y,
+      this.worldBounds.top + 22,
+      this.worldBounds.bottom - 22,
+    );
   }
 
   // ── 배경: 네온 그리드 + 마법진 ───────────────────────────────
@@ -63,18 +116,18 @@ export class ProtoScene extends Phaser.Scene {
     g.lineStyle(1, 0x1a2350, 0.5);
     for (let x = 0; x <= width; x += 48) g.lineBetween(x, 0, x, height);
     for (let y = 0; y <= height; y += 48) g.lineBetween(0, y, width, y);
-    // 시전자 발밑 마법진
-    g.lineStyle(2, 0x4c66ff, 0.25);
-    g.strokeCircle(width / 2, height * 0.72, 60);
-    g.strokeCircle(width / 2, height * 0.72, 44);
   }
 
   private createPlayer(x: number, y: number): void {
+    const magicCircle = this.add.graphics();
+    magicCircle.lineStyle(2, 0x4c66ff, 0.25);
+    magicCircle.strokeCircle(0, 0, 60);
+    magicCircle.strokeCircle(0, 0, 44);
     const body = this.add.circle(0, 0, 14, 0x8fa4ff)
       .setBlendMode(Phaser.BlendModes.ADD);
     const halo = this.add.circle(0, 0, 22, 0x4c66ff, 0.25)
       .setBlendMode(Phaser.BlendModes.ADD);
-    this.player = this.add.container(x, y, [halo, body]);
+    this.player = this.add.container(x, y, [magicCircle, halo, body]);
     this.tweens.add({
       targets: halo, scale: { from: 1, to: 1.25 },
       yoyo: true, repeat: -1, duration: 900, ease: 'Sine.easeInOut',
@@ -83,8 +136,16 @@ export class ProtoScene extends Phaser.Scene {
 
   private spawnTarget(): void {
     const { width, height } = this.scale;
-    const x = Phaser.Math.Between(80, width - 80);
-    const y = Phaser.Math.Between(80, height * 0.45);
+    const x = Phaser.Math.Clamp(
+      this.player.x + Phaser.Math.Between(-width * 0.4, width * 0.4),
+      this.worldBounds.left + 80,
+      this.worldBounds.right - 80,
+    );
+    const y = Phaser.Math.Clamp(
+      this.player.y + Phaser.Math.Between(-height * 0.35, height * 0.1),
+      this.worldBounds.top + 80,
+      this.worldBounds.bottom - 80,
+    );
     const tri = this.add.triangle(x, y, 0, 24, 12, 0, 24, 24, 0xff4d6d)
       .setStrokeStyle(2, 0xff8fa3, 0.9);
     tri.setData('vel', new Phaser.Math.Vector2(
@@ -177,13 +238,14 @@ export class ProtoScene extends Phaser.Scene {
       color: colorHex,
       stroke: '#05060f',
       strokeThickness: 6,
-    }).setOrigin(0.5).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD);
+    }).setOrigin(0.5).setAlpha(0).setScrollFactor(0).setDepth(100)
+      .setBlendMode(Phaser.BlendModes.ADD);
 
     const meta = this.add.text(width / 2, height * 0.32 + 36,
       `${spec.element_primary}${spec.element_secondary ? '+' + spec.element_secondary : ''}`
       + ` · ${spec.form} · power ${spec.power}`,
       { fontSize: '14px', color: '#8fa4ff' },
-    ).setOrigin(0.5).setAlpha(0);
+    ).setOrigin(0.5).setAlpha(0).setScrollFactor(0).setDepth(100);
 
     this.tweens.add({
       targets: [label, meta],
