@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>INCANT — 말이 곧 마법이 되는 로그라이크</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #05060f;
+        height: 100%;
+        overflow: hidden;
+        font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+      }
+      #game-root {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100%;
+      }
+      /* 영창 입력 바 — 캔버스 위 DOM 오버레이 */
+      #incant-wrap {
+        position: fixed;
+        left: 50%;
+        bottom: 18%;
+        transform: translateX(-50%);
+        width: min(560px, 80vw);
+        display: none;
+      }
+      #incant-wrap.active { display: block; }
+      #incant-bar {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 14px 20px;
+        font-size: 20px;
+        color: #dfe8ff;
+        background: rgba(10, 14, 34, 0.92);
+        border: 1px solid #4c66ff;
+        border-radius: 10px;
+        outline: none;
+        box-shadow: 0 0 24px rgba(76, 102, 255, 0.55), inset 0 0 12px rgba(76, 102, 255, 0.15);
+        caret-color: #8fa4ff;
+      }
+      #incant-hint {
+        margin-top: 8px;
+        text-align: center;
+        font-size: 13px;
+        color: #6b7bd6;
+        text-shadow: 0 0 8px rgba(76, 102, 255, 0.6);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game-root"></div>
+    <div id="incant-wrap">
+      <input id="incant-bar" type="text" autocomplete="off" maxlength="60"
+             placeholder="주문을 영창하라… (예: 번개를 품은 해일)" />
+      <div id="incant-hint">Enter 발동 · Esc 취소</div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
