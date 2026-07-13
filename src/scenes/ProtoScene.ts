@@ -5,9 +5,22 @@ import type { SpellSpec } from '../spell/types';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
 import { ELEMENT_PALETTES } from '../render/palette';
 import { PlayerCombatState } from '../player/playerCombatState';
+import { ChaserEnemy } from '../enemies/chaserEnemy';
+import {
+  BASIC_ATTACK_CONFIG,
+  CHASER_CONFIG,
+  SPELL_DAMAGE_CONFIG,
+  spellDamageFromPower,
+} from '../combat/combatConfig';
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;
+
+interface BasicMissile {
+  body: Phaser.GameObjects.Arc;
+  halo: Phaser.GameObjects.Arc;
+  target: ChaserEnemy;
+}
 
 /**
  * 기술검증 프로토타입 씬 — W1 목표 (SUBMISSION_PLAN W1)
@@ -21,13 +34,16 @@ export class ProtoScene extends Phaser.Scene {
   private playerState = new PlayerCombatState();
   private moveKeys!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private worldBounds = new Phaser.Geom.Rectangle();
-  private targets: Phaser.GameObjects.Triangle[] = [];
+  private enemies: ChaserEnemy[] = [];
   private statusText!: Phaser.GameObjects.Text;
   private incantWrap!: HTMLElement;
   private incantBar!: HTMLInputElement;
   private incanting = false;
   private casting = false;
   private timeScale = 1;
+  private basicAttackCooldownRemaining = 0;
+  private basicMissiles: BasicMissile[] = [];
+  private testCleared = false;
 
   constructor() {
     super('proto');
@@ -62,7 +78,9 @@ export class ProtoScene extends Phaser.Scene {
       left: Phaser.Input.Keyboard.KeyCodes.A,
       right: Phaser.Input.Keyboard.KeyCodes.D,
     }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
-    for (let i = 0; i < 3; i++) this.spawnTarget();
+    for (let i = 0; i < CHASER_CONFIG.testSpawnCount; i++) {
+      this.spawnChaser(i, CHASER_CONFIG.testSpawnCount);
+    }
 
     this.add.text(16, 14,
       '[기술검증 프로토] Enter: 영창  ·  예: "얼음 감옥", "번개를 품은 해일", "어둠의 폭발"',
@@ -85,16 +103,12 @@ export class ProtoScene extends Phaser.Scene {
     // 슬로모션: timeScale을 개체 이동에 직접 곱한다 (프로토 방식)
     const d = (delta / 1000) * this.timeScale;
     this.playerState.update(d);
-    this.updateStatusText();
+    this.basicAttackCooldownRemaining = Math.max(0, this.basicAttackCooldownRemaining - d);
     this.updatePlayerMovement(delta / 1000);
-    for (const t of this.targets) {
-      const v = t.getData('vel') as Phaser.Math.Vector2;
-      t.x += v.x * d;
-      t.y += v.y * d;
-      t.rotation += 0.8 * d;
-      if (t.x < this.worldBounds.left + 40 || t.x > this.worldBounds.right - 40) v.x *= -1;
-      if (t.y < this.worldBounds.top + 40 || t.y > this.worldBounds.bottom - 40) v.y *= -1;
-    }
+    this.updateEnemies(d);
+    this.updateBasicAttack();
+    this.updateBasicMissiles(d);
+    this.updateStatusText();
   }
 
   private updatePlayerMovement(deltaSeconds: number): void {
@@ -144,24 +158,106 @@ export class ProtoScene extends Phaser.Scene {
     });
   }
 
-  private spawnTarget(): void {
-    const { width, height } = this.scale;
+  private spawnChaser(index: number, total: number): void {
+    const angle = -Math.PI / 2 + (Math.PI * 2 * index) / total;
     const x = Phaser.Math.Clamp(
-      this.player.x + Phaser.Math.Between(-width * 0.4, width * 0.4),
+      this.player.x + Math.cos(angle) * CHASER_CONFIG.testSpawnDistance,
       this.worldBounds.left + 80,
       this.worldBounds.right - 80,
     );
     const y = Phaser.Math.Clamp(
-      this.player.y + Phaser.Math.Between(-height * 0.35, height * 0.1),
+      this.player.y + Math.sin(angle) * CHASER_CONFIG.testSpawnDistance,
       this.worldBounds.top + 80,
       this.worldBounds.bottom - 80,
     );
-    const tri = this.add.triangle(x, y, 0, 24, 12, 0, 24, 24, 0xff4d6d)
-      .setStrokeStyle(2, 0xff8fa3, 0.9);
-    tri.setData('vel', new Phaser.Math.Vector2(
-      Phaser.Math.Between(-60, 60), Phaser.Math.Between(-40, 40),
-    ));
-    this.targets.push(tri);
+    this.enemies.push(new ChaserEnemy(this, x, y));
+  }
+
+  private updateEnemies(deltaSeconds: number): void {
+    if (!this.playerState.alive) return;
+
+    for (const enemy of this.enemies) {
+      enemy.update(deltaSeconds, this.player.x, this.player.y);
+    }
+
+    let totalDamage = 0;
+    for (const enemy of this.enemies) {
+      const touching = Phaser.Math.Distance.Between(
+        enemy.x,
+        enemy.y,
+        this.player.x,
+        this.player.y,
+      ) <= CHASER_CONFIG.contactDistance;
+      if (!touching || !enemy.canDealContactDamage) continue;
+
+      this.playerState.takeDamage(CHASER_CONFIG.contactDamage);
+      enemy.startContactDamageCooldown();
+      totalDamage += CHASER_CONFIG.contactDamage;
+      if (!this.playerState.alive) break;
+    }
+    if (totalDamage === 0) return;
+
+    this.announceSystemMessage(`-${totalDamage} HP`);
+
+    if (!this.playerState.alive) {
+      if (this.incanting) this.closeIncant();
+      this.announceSystemMessage('사망');
+    }
+  }
+
+  private updateBasicAttack(): void {
+    if (!this.playerState.alive || this.basicAttackCooldownRemaining > 0) return;
+
+    const target = this.nearestEnemy(BASIC_ATTACK_CONFIG.range);
+    if (!target) return;
+
+    this.basicAttackCooldownRemaining = BASIC_ATTACK_CONFIG.intervalSeconds;
+    this.fireBasicMissile(target);
+  }
+
+  private fireBasicMissile(target: ChaserEnemy): void {
+    const fromX = this.player.x;
+    const fromY = this.player.y - 14;
+    const body = this.add.circle(fromX, fromY, 5, 0xc8d3ff)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const halo = this.add.circle(fromX, fromY, 10, 0x6b7cff, 0.3)
+      .setBlendMode(Phaser.BlendModes.ADD);
+
+    this.basicMissiles.push({ body, halo, target });
+  }
+
+  private updateBasicMissiles(deltaSeconds: number): void {
+    const active: BasicMissile[] = [];
+    for (const missile of this.basicMissiles) {
+      if (!this.playerState.alive || !missile.target.alive) {
+        this.destroyBasicMissile(missile);
+        continue;
+      }
+
+      const direction = new Phaser.Math.Vector2(
+        missile.target.x - missile.body.x,
+        missile.target.y - missile.body.y,
+      );
+      const distance = direction.length();
+      const travelDistance = BASIC_ATTACK_CONFIG.projectileSpeed * deltaSeconds;
+      if (distance <= BASIC_ATTACK_CONFIG.hitDistance + travelDistance) {
+        this.destroyBasicMissile(missile);
+        this.damageEnemy(missile.target, BASIC_ATTACK_CONFIG.damage);
+        continue;
+      }
+
+      direction.normalize().scale(travelDistance);
+      missile.body.x += direction.x;
+      missile.body.y += direction.y;
+      missile.halo.setPosition(missile.body.x, missile.body.y);
+      active.push(missile);
+    }
+    this.basicMissiles = active;
+  }
+
+  private destroyBasicMissile(missile: BasicMissile): void {
+    missile.body.destroy();
+    missile.halo.destroy();
   }
 
   // ── 영창 모드 (DOM 입력 바 + 슬로모션) ───────────────────────
@@ -215,6 +311,10 @@ export class ProtoScene extends Phaser.Scene {
     this.casting = true;
     try {
       const spec = await this.judge.judge(text);
+      if (!this.playerState.alive) {
+        this.announceSystemMessage('행동 불가');
+        return;
+      }
       if (!this.playerState.trySpendMana(spec.cost)) {
         this.announceSystemMessage('마나 부족');
         return;
@@ -224,12 +324,13 @@ export class ProtoScene extends Phaser.Scene {
       this.announceSpell(spec);
 
       const from = new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
-      const to = this.nearestTargetPos();
+      const target = this.nearestEnemy();
+      const to = target ? new Phaser.Math.Vector2(target.x, target.y) : undefined;
       castSpell({
         scene: this,
         from,
         to,
-        onHit: (x, y) => this.onSpellHit(x, y, spec),
+        onHit: (x, y) => this.onSpellHit(x, y, spec, target),
       }, spec);
     } finally {
       this.casting = false;
@@ -241,6 +342,7 @@ export class ProtoScene extends Phaser.Scene {
     const mana = Math.floor(this.playerState.mana);
     let actionState = 'READY';
     if (!this.playerState.alive) actionState = 'DEAD';
+    else if (this.testCleared) actionState = 'TEST CLEAR';
     else if (this.casting) actionState = 'JUDGING';
     else if (this.incanting) actionState = 'INCANTING';
     else if (this.playerState.cooldownRemaining > 0) {
@@ -274,27 +376,46 @@ export class ProtoScene extends Phaser.Scene {
     });
   }
 
-  private nearestTargetPos(): Phaser.Math.Vector2 | undefined {
-    let best: Phaser.GameObjects.Triangle | null = null;
+  private nearestEnemy(maxDistance = Number.POSITIVE_INFINITY): ChaserEnemy | null {
+    let best: ChaserEnemy | null = null;
     let bestD = Number.POSITIVE_INFINITY;
-    for (const t of this.targets) {
-      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, t.x, t.y);
-      if (d < bestD) { bestD = d; best = t; }
+    for (const enemy of this.enemies) {
+      if (!enemy.alive) continue;
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
+      if (d < bestD) { bestD = d; best = enemy; }
     }
-    return best ? new Phaser.Math.Vector2(best.x, best.y) : undefined;
+    return bestD <= maxDistance ? best : null;
   }
 
-  private onSpellHit(x: number, y: number, spec: SpellSpec): void {
-    // 프로토: 반경 내 타겟 제거 → 리스폰 (전투 로직은 W2)
-    const radius = 60 + spec.power;
-    this.targets = this.targets.filter((t) => {
-      if (Phaser.Math.Distance.Between(x, y, t.x, t.y) <= radius) {
-        t.destroy();
-        return false;
+  private onSpellHit(
+    x: number,
+    y: number,
+    spec: SpellSpec,
+    lockedTarget: ChaserEnemy | null,
+  ): void {
+    const damage = spellDamageFromPower(spec.power);
+    if (spec.form === 'nova') {
+      const radius = SPELL_DAMAGE_CONFIG.novaBaseRadius + spec.power;
+      for (const enemy of [...this.enemies]) {
+        if (Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y) <= radius) {
+          this.damageEnemy(enemy, damage);
+        }
       }
-      return true;
-    });
-    while (this.targets.length < 3) this.spawnTarget();
+      return;
+    }
+
+    if (lockedTarget?.alive) this.damageEnemy(lockedTarget, damage);
+  }
+
+  private damageEnemy(enemy: ChaserEnemy, damage: number): void {
+    if (!enemy.takeDamage(damage)) return;
+
+    enemy.destroy();
+    this.enemies = this.enemies.filter((candidate) => candidate !== enemy);
+    if (this.enemies.length === 0 && !this.testCleared) {
+      this.testCleared = true;
+      this.announceSystemMessage('테스트 전투 완료');
+    }
   }
 
   /** 주문명 각인 연출 — "내 문장이 게임이 됐다"는 순간 (GDD §3.1) */
