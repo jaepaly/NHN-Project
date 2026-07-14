@@ -1,3 +1,4 @@
+/** R1 전투 코어의 플레이어 HP·마나·쿨다운 상태. */
 export const PLAYER_COMBAT_CONFIG = {
   maxHp: 100,
   maxMana: 100,

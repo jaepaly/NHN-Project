@@ -1,3 +1,4 @@
+/** R1 전투 코어: 처치 시 소형으로 분열하는 적. */
 import Phaser from 'phaser';
 import { SPLITTER_CONFIG } from '../combat/combatConfig';
 import type { CombatEnemy, EnemyShotRequest } from './combatEnemy';

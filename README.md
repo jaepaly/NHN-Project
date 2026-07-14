@@ -78,9 +78,9 @@ TypeScript · Vite · Phaser 3 · Gemini Flash (Cloudflare Workers 프록시) ·
 - [ ] 적 3종 구현 (GDD §5): 추격자(삼각형·직선 추격), 사수(사각형·원거리 탄막), 분열체(육각형·처치 시 분열)
 - [ ] 웨이브 스포너: 웨이브 2~3회 격퇴 → 방 클리어 판정
 - [ ] 주문 적중 → 피해/처치 판정 (power 기반 데미지 공식 1차 — 밸런스는 나중, 공식 구조만)
-- [ ] 파츠 렌더러 폼 추가: `beam`, `wave` ([src/render/spellRenderer.ts](src/render/spellRenderer.ts) — 현재 bolt/nova 구현됨, 패턴 참고)
+- [ ] 파츠 렌더러 폼 추가: `beam`, `wave` ([src/combat-core/render/spellRenderer.ts](src/combat-core/render/spellRenderer.ts) — 현재 bolt/nova 구현됨, 패턴 참고)
 - **완료 기준**: 영창으로 적을 잡아 웨이브를 클리어하는 영상 1개를 PR에 첨부
-- 참고: [src/scenes/ProtoScene.ts](src/scenes/ProtoScene.ts), [src/spell/types.ts](src/spell/types.ts) (SpellSpec 스키마 = R2와의 계약, 임의 변경 금지)
+- 참고: [src/combat-core/scenes/ProtoScene.ts](src/combat-core/scenes/ProtoScene.ts), [src/spell/types.ts](src/spell/types.ts) (SpellSpec 스키마 = R2와의 계약, 임의 변경 금지)
 
 ### 🤖 임재윤 (R2 AI 시스템)
 

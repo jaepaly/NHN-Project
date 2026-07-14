@@ -1,3 +1,4 @@
+/** R1 전투 코어의 웨이브 구성과 진행 상태. */
 export interface WaveDefinition {
   chaserCount: number;
   shooterCount: number;

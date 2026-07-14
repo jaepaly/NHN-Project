@@ -63,6 +63,7 @@
 - `beam`, `wave` 주문 렌더링과 다중 적 적중 판정
 - 전투 테스트를 위한 기본 공격 사거리와 적 HP 조정
 - 주문명 절단 및 긴 이름 표시 문제 수정
+- R1 전투 코어 모듈을 `src/combat-core/` 아래로 묶어 R2의 `src/spell/` 영역과 소스 소유 경계를 분리
 
 #### R2 협업 경계 — AI 시스템: 임재윤
 
@@ -96,6 +97,12 @@
 | 6 | `[R1]` | `feat/spell-renderer-forms` | `ef1cfdc` | `beam`·`wave` 렌더링과 다중 적 피해, 전투 수치·주문명 표시 보정 |
 
 ### 주요 구현 결과
+
+#### 소스 구조와 역할 경계
+
+- R1 영역은 `src/combat-core/` 아래의 `combat`, `enemies`, `player`, `render`, `scenes`, `waves`로 구성한다.
+- R2 계약 영역인 `src/spell/`과 공용 진입점 `src/main.ts`는 기존 최상위 위치를 유지한다.
+- `ProtoScene`과 주문 렌더러는 `SpellSpec`을 참조하되 R2 스키마 구조를 변경하지 않는다.
 
 #### 플레이어와 카메라
 

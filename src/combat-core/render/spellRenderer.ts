@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { SpellSpec } from '../spell/types';
+import type { SpellSpec } from '../../spell/types';
 import { SPELL_DAMAGE_CONFIG } from '../combat/combatConfig';
 import { ELEMENT_PALETTES, SIZE_SCALE } from './palette';
 

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import type { SpellJudge } from '../spell/judge';
-import { MockJudge } from '../spell/mockJudge';
-import type { SpellSpec } from '../spell/types';
+import type { SpellJudge } from '../../spell/judge';
+import { MockJudge } from '../../spell/mockJudge';
+import type { SpellSpec } from '../../spell/types';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
 import type { SpellImpact } from '../render/spellRenderer';
 import { ELEMENT_PALETTES } from '../render/palette';

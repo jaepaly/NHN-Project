@@ -1,3 +1,4 @@
+/** R1 전투 코어의 전투·밸런스 설정. */
 export const CHASER_CONFIG = {
   maxHp: 30,
   speed: 100,

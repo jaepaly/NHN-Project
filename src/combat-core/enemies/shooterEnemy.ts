@@ -1,3 +1,4 @@
+/** R1 전투 코어: 거리 유지형 원거리 적. */
 import Phaser from 'phaser';
 import { SHOOTER_CONFIG } from '../combat/combatConfig';
 import type { CombatEnemy, EnemyShotRequest } from './combatEnemy';
