@@ -179,9 +179,11 @@ export class ProtoScene extends Phaser.Scene {
       strokeThickness: 6,
     }).setOrigin(0.5).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD);
 
+    // [디버그] 판정 출처: GeminiJudge면 gemini/cache/fallback, 없으면 판정기 이름
+    const source = this.judge.lastSource ?? this.judge.name;
     const meta = this.add.text(width / 2, height * 0.32 + 36,
       `${spec.element_primary}${spec.element_secondary ? '+' + spec.element_secondary : ''}`
-      + ` · ${spec.form} · power ${spec.power}`,
+      + ` · ${spec.form} · power ${spec.power} · [${source}]`,
       { fontSize: '14px', color: '#8fa4ff' },
     ).setOrigin(0.5).setAlpha(0);
 

@@ -9,4 +9,6 @@ export interface SpellJudge {
   judge(text: string): Promise<SpellSpec>;
   /** 판정기 이름 (AI 문서·디버그 HUD 표기용) */
   readonly name: string;
+  /** [디버그] 직전 judge() 호출의 실제 출처 (예: gemini/cache/fallback). HUD 표기용, 선택적. */
+  readonly lastSource?: string;
 }

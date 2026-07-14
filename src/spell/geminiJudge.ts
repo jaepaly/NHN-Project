@@ -21,6 +21,8 @@ const TIMEOUT_MS = 2500;
 
 export class GeminiJudge implements SpellJudge {
   readonly name = 'GeminiJudge(gemini-via-proxy)';
+  /** [디버그] 직전 판정 출처 — HUD 표기용 (⑤ 폴백 빈도 관찰) */
+  lastSource: 'gemini' | 'cache' | 'fallback' = 'gemini';
   private readonly fallback: SpellJudge;
 
   constructor(
@@ -32,11 +34,17 @@ export class GeminiJudge implements SpellJudge {
 
   async judge(text: string): Promise<SpellSpec> {
     const key = text.trim();
-    if (key.length === 0) return this.fallback.judge(text);
+    if (key.length === 0) {
+      this.lastSource = 'fallback';
+      return this.fallback.judge(text);
+    }
 
     // 1) 캐시 히트 시 즉시 반환 (프록시 호출 없음)
     const cached = this.readCache(key);
-    if (cached) return cached;
+    if (cached) {
+      this.lastSource = 'cache';
+      return cached;
+    }
 
     // 2~3) 프록시 요청 + 스키마 재검증
     try {
@@ -44,6 +52,7 @@ export class GeminiJudge implements SpellJudge {
       const spec = validateSpec(raw);
       if (spec) {
         this.writeCache(key, spec); // 성공 판정만 캐시 (폴백은 캐시하지 않음)
+        this.lastSource = 'gemini';
         return spec;
       }
     } catch {
@@ -51,6 +60,7 @@ export class GeminiJudge implements SpellJudge {
     }
 
     // 4) 폴백 — 무중단 보장
+    this.lastSource = 'fallback';
     return this.fallback.judge(text);
   }
 
