@@ -1,30 +1,30 @@
 import Phaser from 'phaser';
-import type { SpellJudge } from '../../spell/judge';
-import { MockJudge } from '../../spell/mockJudge';
-import type { SpellSpec } from '../../spell/types';
+import type { SpellJudge } from '../spell/judge';
+import { MockJudge } from '../spell/mockJudge';
+import type { SpellSpec } from '../spell/types';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
 import type { SpellImpact } from '../render/spellRenderer';
 import { ELEMENT_PALETTES } from '../render/palette';
-import { PlayerCombatState } from '../player/playerCombatState';
-import { ChaserEnemy } from '../enemies/chaserEnemy';
-import { ShooterEnemy } from '../enemies/shooterEnemy';
-import { SplitterEnemy } from '../enemies/splitterEnemy';
+import { PlayerCombatState } from '../combat-core/player/playerCombatState';
+import { ChaserEnemy } from '../combat-core/enemies/chaserEnemy';
+import { ShooterEnemy } from '../combat-core/enemies/shooterEnemy';
+import { SplitterEnemy } from '../combat-core/enemies/splitterEnemy';
 import type {
   CombatEnemy,
   EnemyKind,
   EnemyShotRequest,
-} from '../enemies/combatEnemy';
+} from '../combat-core/enemies/combatEnemy';
 import {
   BASIC_ATTACK_CONFIG,
   SHOOTER_CONFIG,
   SPLITTER_CONFIG,
   spellDamageFromPower,
-} from '../combat/combatConfig';
+} from '../combat-core/combat/combatConfig';
 import {
   WAVE_CONFIG,
   WaveManager,
-} from '../waves/waveManager';
-import type { WaveDefinition } from '../waves/waveManager';
+} from '../combat-core/waves/waveManager';
+import type { WaveDefinition } from '../combat-core/waves/waveManager';
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;

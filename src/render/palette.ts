@@ -1,4 +1,4 @@
-import type { SpellElement, SpellSize } from '../../spell/types';
+import type { SpellElement, SpellSize } from '../spell/types';
 
 /**
  * 원소별 네온 팔레트 — GDD §7 아트 디렉션
