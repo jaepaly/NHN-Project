@@ -1,22 +1,35 @@
 import Phaser from 'phaser';
 import type { SpellSpec } from '../spell/types';
+import { SPELL_DAMAGE_CONFIG } from '../combat-core/combat/combatConfig';
 import { ELEMENT_PALETTES, SIZE_SCALE } from './palette';
+
+export type SpellImpact =
+  | { kind: 'point'; x: number; y: number }
+  | { kind: 'circle'; x: number; y: number; radius: number }
+  | {
+    kind: 'line';
+    fromX: number;
+    fromY: number;
+    toX: number;
+    toY: number;
+    width: number;
+  };
 
 /**
  * 파츠 조합 이펙트 엔진 (프로토타입) — GDD §6
  * form(궤적) × element(팔레트) × size(스케일) 레이어를 조립한다.
  *
- * 프로토 구현 범위: bolt / nova 2개 폼 × 8원소 전체.
+ * 프로토 구현 범위: bolt / beam / wave / nova 4개 폼 × 8원소 전체.
  * 폼별 로직만 유한하고, 원소·크기는 데이터(팔레트·스케일)라서 공짜로 전 조합 지원.
  */
 
 export interface CastContext {
   scene: Phaser.Scene;
   from: Phaser.Math.Vector2;
-  /** bolt 계열의 목표점 (없으면 위쪽으로 발사) */
+  /** 방향성 폼의 목표점 (없으면 위쪽으로 발사) */
   to?: Phaser.Math.Vector2;
-  /** 적중 판정 콜백 (프로토에서는 이펙트 데모용) */
-  onHit?: (x: number, y: number, spec: SpellSpec) => void;
+  /** 렌더러가 만든 실제 형상의 적중 영역을 전투 씬에 전달 */
+  onHit?: (impact: SpellImpact, spec: SpellSpec) => void;
 }
 
 /** 파티클용 원형 글로우 텍스처를 1회 생성 */
@@ -36,6 +49,12 @@ export function ensureParticleTexture(scene: Phaser.Scene): void {
 export function castSpell(ctx: CastContext, spec: SpellSpec): void {
   ensureParticleTexture(ctx.scene);
   switch (spec.form) {
+    case 'beam':
+      castBeam(ctx, spec);
+      break;
+    case 'wave':
+      castWave(ctx, spec);
+      break;
     case 'nova':
       castNova(ctx, spec);
       break;
@@ -98,7 +117,7 @@ function castBolt(ctx: CastContext, spec: SpellSpec): void {
     ease: 'Linear',
     onComplete: () => {
       impactBurst(scene, to.x, to.y, spec);
-      ctx.onHit?.(to.x, to.y, spec);
+      ctx.onHit?.({ kind: 'point', x: to.x, y: to.y }, spec);
       trail.stop();
       subTrail?.stop();
       scene.time.delayedCall(400, () => {
@@ -106,6 +125,124 @@ function castBolt(ctx: CastContext, spec: SpellSpec): void {
       });
     },
   });
+}
+
+/** beam — 목표 방향의 모든 적을 관통하는 순간 직선 광선 */
+function castBeam(ctx: CastContext, spec: SpellSpec): void {
+  const { scene, from } = ctx;
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const scale = SIZE_SCALE[spec.size];
+  const end = endpointInDirection(from, ctx.to, SPELL_DAMAGE_CONFIG.beamRange);
+  const width = SPELL_DAMAGE_CONFIG.beamBaseWidth * scale;
+  const durationMs = spec.speed === 'fast' ? 140 : spec.speed === 'slow' ? 300 : 210;
+
+  const beam = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+  beam.lineStyle(width * 2.4, pal.glow, 0.18);
+  beam.lineBetween(from.x, from.y, end.x, end.y);
+  beam.lineStyle(width, pal.core, 0.75);
+  beam.lineBetween(from.x, from.y, end.x, end.y);
+  beam.lineStyle(Math.max(2, width * 0.22), pal.accent, 1);
+  beam.lineBetween(from.x, from.y, end.x, end.y);
+
+  if (spec.element_secondary) {
+    const sub = ELEMENT_PALETTES[spec.element_secondary];
+    beam.lineStyle(Math.max(1, width * 0.1), sub.accent, 0.9);
+    beam.lineBetween(from.x, from.y, end.x, end.y);
+  }
+
+  ctx.onHit?.({
+    kind: 'line',
+    fromX: from.x,
+    fromY: from.y,
+    toX: end.x,
+    toY: end.y,
+    width,
+  }, spec);
+  impactBurst(scene, end.x, end.y, spec);
+  scene.cameras.main.shake(100, 0.0025 * scale);
+  scene.tweens.add({
+    targets: beam,
+    alpha: 0,
+    duration: durationMs,
+    ease: 'Cubic.easeOut',
+    onComplete: () => beam.destroy(),
+  });
+}
+
+/** wave — 넓은 파면이 전진하며 닿은 적을 각각 한 번 타격 */
+function castWave(ctx: CastContext, spec: SpellSpec): void {
+  const { scene, from } = ctx;
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const scale = SIZE_SCALE[spec.size];
+  const end = endpointInDirection(from, ctx.to, SPELL_DAMAGE_CONFIG.waveRange);
+  const angle = Phaser.Math.Angle.Between(from.x, from.y, end.x, end.y);
+  const width = SPELL_DAMAGE_CONFIG.waveBaseWidth * scale;
+  const depth = SPELL_DAMAGE_CONFIG.waveHitDepth * scale;
+  const speed = spec.speed === 'fast' ? 460 : spec.speed === 'slow' ? 220 : 320;
+  const durationMs = (SPELL_DAMAGE_CONFIG.waveRange / speed) * 1000;
+  const accent = spec.element_secondary
+    ? ELEMENT_PALETTES[spec.element_secondary].accent
+    : pal.accent;
+
+  const glow = scene.add.rectangle(from.x, from.y, width, depth * 2.2, pal.glow, 0.18)
+    .setRotation(angle + Math.PI / 2)
+    .setBlendMode(Phaser.BlendModes.ADD);
+  const crest = scene.add.rectangle(from.x, from.y, width, depth, pal.core, 0.55)
+    .setStrokeStyle(Math.max(2, 3 * scale), accent, 0.9)
+    .setRotation(angle + Math.PI / 2)
+    .setBlendMode(Phaser.BlendModes.ADD);
+  const trail = scene.add.particles(0, 0, 'particle', {
+    speed: { min: 20, max: 90 },
+    scale: { start: 0.5 * scale, end: 0 },
+    lifespan: 420,
+    quantity: Math.max(1, Math.round(2 * scale)),
+    tint: [pal.core, pal.glow, accent],
+    blendMode: Phaser.BlendModes.ADD,
+    follow: crest,
+  });
+
+  const emitWaveImpact = (): void => {
+    const perpendicularX = Math.cos(angle + Math.PI / 2) * width / 2;
+    const perpendicularY = Math.sin(angle + Math.PI / 2) * width / 2;
+    ctx.onHit?.({
+      kind: 'line',
+      fromX: crest.x - perpendicularX,
+      fromY: crest.y - perpendicularY,
+      toX: crest.x + perpendicularX,
+      toY: crest.y + perpendicularY,
+      width: depth,
+    }, spec);
+  };
+  emitWaveImpact();
+
+  scene.tweens.add({
+    targets: [crest, glow],
+    x: end.x,
+    y: end.y,
+    duration: durationMs,
+    ease: 'Linear',
+    onUpdate: emitWaveImpact,
+    onComplete: () => {
+      trail.stop();
+      scene.time.delayedCall(450, () => {
+        crest.destroy();
+        glow.destroy();
+        trail.destroy();
+      });
+    },
+  });
+}
+
+function endpointInDirection(
+  from: Phaser.Math.Vector2,
+  toward: Phaser.Math.Vector2 | undefined,
+  range: number,
+): Phaser.Math.Vector2 {
+  const direction = toward
+    ? toward.clone().subtract(from)
+    : new Phaser.Math.Vector2(0, -1);
+  if (direction.lengthSq() === 0) direction.set(0, -1);
+  return from.clone().add(direction.normalize().scale(range));
 }
 
 /** nova — 시전자 중심 360° 방사 폭발 */
@@ -156,7 +293,12 @@ function castNova(ctx: CastContext, spec: SpellSpec): void {
     ctx.scene.time.delayedCall(600, () => subBurst.destroy());
   }
 
-  ctx.onHit?.(from.x, from.y, spec);
+  ctx.onHit?.({
+    kind: 'circle',
+    x: from.x,
+    y: from.y,
+    radius: SPELL_DAMAGE_CONFIG.novaBaseRadius + spec.power,
+  }, spec);
   scene.cameras.main.shake(200, 0.004 * scale);
   scene.time.delayedCall(700, () => burst.destroy());
 }

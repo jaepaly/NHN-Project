@@ -4,6 +4,8 @@ import {
 } from './types';
 import type { SpellSpec, SpellStatus } from './types';
 
+const MAX_SPELL_NAME_LENGTH = 30;
+
 function isOneOf<T extends readonly string[]>(list: T, v: unknown): v is T[number] {
   return typeof v === 'string' && (list as readonly string[]).includes(v);
 }
@@ -45,7 +47,7 @@ export function validateSpec(raw: unknown, powerCap = 100): SpellSpec | null {
 
   const name =
     typeof o.name === 'string' && o.name.trim().length > 0
-      ? o.name.trim().slice(0, 20)
+      ? o.name.trim().slice(0, MAX_SPELL_NAME_LENGTH)
       : FALLBACK_SPELL.name;
 
   return {

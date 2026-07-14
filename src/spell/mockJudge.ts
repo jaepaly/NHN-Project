@@ -106,7 +106,8 @@ export class MockJudge implements SpellJudge {
     const size = power > 75 ? 'huge' : power > 55 ? 'large' : power > 35 ? 'medium' : 'small';
 
     const spec = validateSpec({
-      name: text.trim().slice(0, 12),
+      // 이름 길이 제한은 모든 판정 결과가 거치는 validateSpec에서 일관되게 적용한다.
+      name: text.trim(),
       element_primary: primary,
       element_secondary: secondary === primary ? null : secondary,
       form,
