@@ -72,6 +72,9 @@
 
 - `.env.example` — `VITE_JUDGE_PROXY_URL` 견본.
 - `README.md` — 판정기 설정(기본 MockJudge / .env로 GeminiJudge 전환) 실행 문서 갱신.
+- `.github/workflows/deploy.yml` — **데모(GitHub Pages) 빌드에 프록시 URL 주입** → 배포판이 실제 Gemini 사용.
+  (`.env`는 gitignore라 각자 로컬에만 존재 → 데모 빌드는 이 주입으로 동작. 로컬 dev 기본값은 MockJudge = 전투 개발 편의.)
+  ※ PR #4 머지 후 발견: main deploy.yml에 URL 미주입이라 데모가 MockJudge만 나왔음 → 별도 PR로 보강.
 
 ## ⑤ 판정 품질 — 데모 우선으로 재조정 (2026-07-14 회의)
 

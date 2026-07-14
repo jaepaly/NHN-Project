@@ -25,6 +25,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+        env:
+          # 데모(GitHub Pages) 빌드에 판정 프록시 URL 주입 → 배포판이 실제 Gemini 사용.
+          # (프록시 URL은 비밀 아님. 실제 API 키는 Cloudflare secret에만 존재)
+          VITE_JUDGE_PROXY_URL: https://incant-judge-proxy.diawodbsdot.workers.dev
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
