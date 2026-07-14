@@ -72,9 +72,11 @@
 
 - `.env.example` — `VITE_JUDGE_PROXY_URL` 견본.
 - `README.md` — 판정기 설정(기본 MockJudge / .env로 GeminiJudge 전환) 실행 문서 갱신.
-- `.github/workflows/deploy.yml` — **데모(GitHub Pages) 빌드에 프록시 URL 주입** → 배포판이 실제 Gemini 사용.
-  (`.env`는 gitignore라 각자 로컬에만 존재 → 데모 빌드는 이 주입으로 동작. 로컬 dev 기본값은 MockJudge = 전투 개발 편의.)
-  ※ PR #4 머지 후 발견: main deploy.yml에 URL 미주입이라 데모가 MockJudge만 나왔음 → 별도 PR로 보강.
+- **판정기 기본값을 GeminiJudge로** (`createJudge.ts`) — 팀 공용 프록시 URL을 코드 기본값으로 두어
+  로컬·데모 어디서나 별도 `.env` 없이 실제 Gemini 판정이 동작. (`.env`는 gitignore라 공유 안 됨 → 하드코딩 기본값으로 해결)
+  - 배경: PR #4 머지 후 팀원 로컬·데모가 모두 MockJudge만 나옴. 원인은 `.env`(프록시 URL)가 각자에게 없어서.
+  - 프록시 URL은 비밀 아님(키는 Cloudflare secret). 모두 이 프록시=임재윤 할당량(3.1-flash-lite RPD 500) 공유.
+  - 탈출구: `VITE_JUDGE_MOCK=1` → MockJudge 강제(오프라인·할당량 절약). `VITE_JUDGE_PROXY_URL` → 다른 프록시.
 
 ## ⑤ 판정 품질 — 데모 우선으로 재조정 (2026-07-14 회의)
 
