@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { SpellJudge } from '../spell/judge';
-import { MockJudge } from '../spell/mockJudge';
+import { createJudge } from '../spell/createJudge';
 import type { SpellSpec } from '../spell/types';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
 import { ELEMENT_PALETTES } from '../render/palette';
@@ -12,7 +12,7 @@ import { ELEMENT_PALETTES } from '../render/palette';
  * - 더미 타겟(삼각형)이 떠다니며, bolt는 가장 가까운 타겟으로 발사
  */
 export class ProtoScene extends Phaser.Scene {
-  private judge: SpellJudge = new MockJudge();
+  private judge: SpellJudge = createJudge();
   private player!: Phaser.GameObjects.Container;
   private targets: Phaser.GameObjects.Triangle[] = [];
   private incantWrap!: HTMLElement;
