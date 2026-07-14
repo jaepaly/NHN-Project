@@ -19,8 +19,17 @@ npm run dev     # http://localhost:5173
 npm run build   # 프로덕션 빌드 (dist/)
 ```
 
-LLM 판정은 기본적으로 로컬 MockJudge(키워드 판정)로 동작하므로 API 키 없이 실행 가능.
-실제 LLM 판정을 쓰려면 [proxy/README.md](proxy/README.md)를 따라 프록시를 배포하고 `.env`에 URL 설정.
+### 판정기 설정
+
+- **기본값: MockJudge**(키워드 판정) — API 키·설정 없이 바로 실행된다.
+- **실제 LLM 판정(GeminiJudge)** 을 쓰려면:
+  1. [proxy/README.md](proxy/README.md)를 따라 Cloudflare 프록시를 배포해 `workers.dev` URL을 얻는다.
+  2. `.env.example`을 `.env`로 복사하고 URL을 채운다:
+     ```
+     VITE_JUDGE_PROXY_URL=https://incant-judge-proxy.<subdomain>.workers.dev
+     ```
+  3. `npm run dev`를 재시작하면 자동으로 GeminiJudge를 사용한다.
+     (프록시 실패·2.5초 타임아웃 시 MockJudge로 폴백하므로 게임은 멈추지 않는다.)
 
 ## 📚 문서
 

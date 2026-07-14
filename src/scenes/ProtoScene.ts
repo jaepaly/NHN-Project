@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { SpellJudge } from '../spell/judge';
-import { MockJudge } from '../spell/mockJudge';
+import { createJudge } from '../spell/createJudge';
 import type { SpellSpec } from '../spell/types';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
 import type { SpellImpact } from '../render/spellRenderer';
@@ -49,7 +49,7 @@ interface EnemyProjectile {
  * - 더미 타겟(삼각형)이 떠다니며, bolt는 가장 가까운 타겟으로 발사
  */
 export class ProtoScene extends Phaser.Scene {
-  private judge: SpellJudge = new MockJudge();
+  private judge: SpellJudge = createJudge();
   private player!: Phaser.GameObjects.Container;
   private playerState = new PlayerCombatState();
   private moveKeys!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
@@ -666,9 +666,12 @@ export class ProtoScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0).setScrollFactor(0).setDepth(100)
       .setBlendMode(Phaser.BlendModes.ADD);
 
+    // [디버그] 판정 출처: GeminiJudge면 gemini/cache/fallback, 없으면 판정기 이름
+    const source = this.judge.lastSource ?? this.judge.name;
+    const meta = this.add.text(width / 2, height * 0.32 + 36,
     const meta = this.add.text(width / 2, label.y + label.height / 2 + 20,
       `${spec.element_primary}${spec.element_secondary ? '+' + spec.element_secondary : ''}`
-      + ` · ${spec.form} · power ${spec.power}`,
+      + ` · ${spec.form} · power ${spec.power} · [${source}]`,
       { fontSize: '14px', color: '#8fa4ff' },
     ).setOrigin(0.5).setAlpha(0).setScrollFactor(0).setDepth(100);
 
