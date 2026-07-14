@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ProtoScene } from './scenes/ProtoScene';
+import { ProtoScene } from './combat-core/scenes/ProtoScene';
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
