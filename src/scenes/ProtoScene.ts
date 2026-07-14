@@ -668,7 +668,6 @@ export class ProtoScene extends Phaser.Scene {
 
     // [디버그] 판정 출처: GeminiJudge면 gemini/cache/fallback, 없으면 판정기 이름
     const source = this.judge.lastSource ?? this.judge.name;
-    const meta = this.add.text(width / 2, height * 0.32 + 36,
     const meta = this.add.text(width / 2, label.y + label.height / 2 + 20,
       `${spec.element_primary}${spec.element_secondary ? '+' + spec.element_secondary : ''}`
       + ` · ${spec.form} · power ${spec.power} · [${source}]`,
