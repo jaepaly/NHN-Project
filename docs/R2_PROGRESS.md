@@ -10,21 +10,25 @@
 
 ---
 
-## Phase 2 진행 (2026-07-15~) — [PHASE_2.md](PHASE_2.md) §3 R2 기준
+## Phase 2 진행 체크리스트 — [PHASE_2.md](PHASE_2.md) §3 R2
 
-> P0 게이트(Spell Understanding v2 판정)는 총괄이 Codex로 선구현 → 임재윤이 배포·검토. 그 위에 히스토리 계층을 얹는다.
+| # | 작업 | 상태 |
+|---|---|---|
+| P0-a | 판정 v2 (SpellJudgement 타입·검증·프롬프트·캐시버전·MockJudge v2) | ✅ 총괄 Codex 선구현 → 임재윤 배포·검토 |
+| P0-b | 주문 히스토리 모듈 (`spellHistory.ts` — `record()`·조회 API) | ✅ 완료 (PR #13) |
+| P0-c | 반복 패널티 (동일 문장 power×0.8, floor 0.3, 로컬 강제) | ✅ 완료 (PR #13) |
+| P0-d | 회귀 테스트 (`node:assert`, `npm run test:history`) | ✅ 완료 (7군 통과) |
+| P0-e | R1 통합 — `record`/`repeatMultiplier`를 전투 흐름에 연결 | ⬜ 협업 (이도원 몫, 계약 전달) |
+| P1-a | 보스 기억 요약 (`BossMemoryProfile` 초안) | ✅ 완료 (PR #13) |
+| P1-b | **5티어 품질 스냅샷** (고정 코퍼스 실측 기록) | ⬜ **← 다음 할 일** |
 
-- [x] **주문 히스토리 모듈** (`src/spell/spellHistory.ts`) — 검증된 cast만 기록. R1이 발동 확정 시 호출할 `record()` + 조회 API(`recent`/`all`/`size`).
-- [x] **반복 패널티** — 동일 정규화 문장 반복 시 `repeatMultiplier`(처음 1.0, 재사용부터 ×0.8, floor 0.3). 로컬 코드가 강제, 엔진(R1)이 power에 곱해 적용.
-- [x] **BossMemoryProfile 초안** — 최다 원소/폼·최근 주문명 (Phase 3 계약용, 실제 보스 로직 미구현).
-- [x] **회귀 스크립트** (`scripts/spell-history-regression.ts`, `npm run test:history`) — 팀 컨벤션(node:assert) 준수, 7군 통과.
-- [ ] **R1 통합** — R1이 `record`/`repeatMultiplier`를 실제 전투 흐름에 연결 (계약 전달 필요, PR 본문에 R1↔R2 명시).
-- [ ] **5티어 품질 스냅샷** (P1) — 티어별 5개 입력 실측 기록.
+**▶ 현재 위치**: R2 Phase 2 코어(판정 v2 + 히스토리/패널티/요약)는 완료·검증. **PR #13** 리뷰 대기 중.
 
-**▶ 현재 위치**: R2 Phase 2 코어(판정 v2 + 히스토리/패널티/요약) 완료·검증. PR #13 리뷰 대기.
-**▶ 다음 할 일**:
-1. PR #13 머지 요청(총괄) + R1(이도원)에 `record`/`repeatMultiplier` 계약 전달 → 전투 통합. (협업)
-2. **5티어 품질 스냅샷**(P1) 작성 — R2가 지금 바로 할 수 있는 마지막 빌드 작업. 고정 코퍼스로 Gemini 실측(대량 연속 요청 금지, 캐시 활용), 결과 JSON·latency·source·티어 적합 기록.
+**▶ 지금 내가 할 일 (우선순위 순)**:
+1. **5티어 품질 스냅샷** (P1-b) — R2가 지금 바로 할 수 있는 마지막 빌드. 고정 코퍼스(걸작/평범/주제밖/불발/금칙 각 5개)를 실제 Gemini로 실측 → 결과 JSON·latency·source·티어 적합 여부 기록. **주의: 대량 연속 요청 금지, 같은 입력은 캐시.** (제출물 ④ 소재)
+2. **PR #13 머지 요청** (총괄) + **이도원에게 계약 전달**(record/repeatMultiplier 호출법) → 전투 통합. ← 협업, 내 코딩 아님.
+
+> 히스토리를 실제로 쓰려면(런 도중 기록·조회) R1이 `SpellHistory` 인스턴스를 런 상태에 두고 호출해야 함. R2는 클래스·API까지 제공 완료.
 
 ---
 
