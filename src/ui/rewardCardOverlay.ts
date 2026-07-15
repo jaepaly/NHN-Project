@@ -80,8 +80,8 @@ const CSS = `
 `;
 
 const KIND_LABELS: Record<RewardOption['kind'], string> = {
+  'max-hp': 'VITALITY',
   'max-mana': 'MANA',
-  heal: 'RESTORE',
   affinity: 'AFFINITY',
 };
 
@@ -109,7 +109,7 @@ function cardColors(option: RewardOption): { core: string; glow: string } {
     const pal = ELEMENT_PALETTES[option.element];
     return { core: paletteColorToCss(pal.core), glow: paletteColorToCss(pal.glow) };
   }
-  if (option.kind === 'heal') return { core: '#72f1a8', glow: '#1f9d5c' };
+  if (option.kind === 'max-hp') return { core: '#72f1a8', glow: '#1f9d5c' };
   return { core: '#8fa4ff', glow: '#4c66ff' };
 }
 
