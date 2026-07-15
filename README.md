@@ -37,6 +37,7 @@ npm run build   # 프로덕션 빌드 (dist/)
 | [docs/AI_USAGE_LOG.md](docs/AI_USAGE_LOG.md) | AI 활용 로그 (전원 기록 의무) |
 | [docs/PHASE_1_SUMMARY.md](docs/PHASE_1_SUMMARY.md) | Phase 1 완료 근거·검증 결과·이월 항목 |
 | [docs/PHASE_2.md](docs/PHASE_2.md) | Phase 2 담당자별 작업 지시·완료 기준 |
+| [docs/SPELL_UNDERSTANDING_V2.md](docs/SPELL_UNDERSTANDING_V2.md) | 자유 문장 의미 판정·비공격 효과·불발/금칙 설계 |
 
 ## 🏗 기술 스택
 
@@ -77,12 +78,13 @@ Phase 1 기술 목표는 2026-07-15에 조기 달성했다. 완료 근거와 라
 
 ### 이번 페이즈 핵심
 
-- **R1 이도원**: 2개 방 진행·3택 1 보상 적용·주문 폼 6종 완성
-- **R2 임재윤**: 런 주문 히스토리·반복 패널티·보스 기억용 요약 계약
-- **R3 jaepaly**: 보상 선택 UI·방 전환/HUD·통합 QA와 Pages 배포
+- **R1 이도원**: 2개 방 진행·3택 1 보상·회복/보호 효과 적용·주문 폼 6종
+- **R2 임재윤**: **Spell Understanding v2**·주문 히스토리·반복 패널티·보스 기억용 요약
+- **R3 jaepaly**: 보상 선택 UI·불발/금칙/회복 피드백·방 전환·통합 QA
 
 담당자별 구현 범위, 인터페이스 계약, 일정과 완료 기준은
 **[docs/PHASE_2.md](docs/PHASE_2.md)**를 기준으로 한다.
+의미 판정 v2 구현은 [Issue #10](https://github.com/jaepaly/NHN-Project/issues/10)에서 통합 추적한다.
 
 ### 공통 시작 절차
 
