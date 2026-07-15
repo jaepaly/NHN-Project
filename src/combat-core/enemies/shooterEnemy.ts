@@ -9,6 +9,7 @@ export class ShooterEnemy implements CombatEnemy {
   readonly maxHp: number = SHOOTER_CONFIG.maxHp;
   readonly contactDamage: number = SHOOTER_CONFIG.contactDamage;
   readonly contactDistance: number = SHOOTER_CONFIG.contactDistance;
+  readonly collisionRadius: number = SHOOTER_CONFIG.collisionRadius;
 
   hp: number = this.maxHp;
   alive = true;

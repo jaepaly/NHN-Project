@@ -9,6 +9,7 @@ export class ChaserEnemy implements CombatEnemy {
   readonly maxHp: number = CHASER_CONFIG.maxHp;
   readonly contactDamage: number = CHASER_CONFIG.contactDamage;
   readonly contactDistance: number = CHASER_CONFIG.contactDistance;
+  readonly collisionRadius: number = CHASER_CONFIG.collisionRadius;
 
   hp: number = this.maxHp;
   alive = true;

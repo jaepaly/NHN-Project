@@ -6,6 +6,7 @@
 
 | 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
 |---|---|---|---|---|---|---|
+| 2026-07-15 | 이도원 | Codex | 공용 bolt 실시간 충돌 판정 수정 | 최초 조준 좌표 도착 후 잠근 적에게 적용하던 판정을 투사체의 프레임별 이동 구간과 살아 있는 적의 현재 위치를 비교하는 최초 충돌 판정으로 교체 | `boltCollision.ts`, 적 충돌 반경 계약, `spellRenderer.ts`, `ProtoScene.ts`, `bolt-collision-regression.ts`, `test:bolt` | 경로상 첫 적 적중·이동 회피·빗나감·투사체 반경 포함 회귀 6군 및 전체 회귀·빌드 통과, 플레이 검증 대기 |
 | 2026-07-15 | 이도원 | Codex | R1 Phase 2 control·summon 효과 구현 | 미정인 상태이상 전체를 확장하지 않고 control을 직접 피해 없는 이동 둔화에 연결하고, summon을 제한 시간 동안 플레이어를 따라다니며 자동 공격하는 구체로 축소 구현 | `control/`, `summons/`, 적 공통 update 계약, 공용 아군 투사체, `ProtoScene.ts`, control·summon 회귀 테스트 | 둔화·소환 수치는 임시값, 회귀·빌드·control/summon 플레이 검증 완료, 전용 폼 렌더러는 후속 작업 |
 | 2026-07-15 | 이도원 | Codex | R1 Phase 2 런·보상 코어 및 전투 씬 연결 | PR #12 계약을 구현한 2개 방·결정론적 3택 보상과 최대 HP·마나 성장을 만들고, 전투 phase 정지·방 초기화·R2 주문 히스토리 반복 패널티·원소 친화를 실제 영창 흐름에 연결 | `PlayerCombatState`, `rewardConfig.ts`, `runController.ts`, `ProtoScene.ts`, `run-controller-regression.ts`, `test:run` | 런 회귀 6군·기존 주문/히스토리 회귀·프로덕션 빌드·로컬 브라우저 무오류 확인 |
 | 2026-07-15 | 임재윤 | Claude Code (Opus 4.8) | R2 Phase 2: 주문 히스토리·반복 패널티·보스 요약 | 검증된 cast 주문만 기록하는 런 단위 SpellHistory 모듈(기록/조회 API), 동일 정규화 문장 반복 시 power×0.8 로컬 패널티(floor 0.3), BossMemoryProfile 초안, node:assert 회귀 스크립트 | `src/spell/spellHistory.ts`, `scripts/spell-history-regression.ts`, `test:history` | 팀 재현스크립트 컨벤션 준수(Vitest 미도입), 7군 통과·tsc 통과 |
