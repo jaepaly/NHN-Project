@@ -6,6 +6,7 @@
 
 | 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
 |---|---|---|---|---|---|---|
+| 2026-07-15 | jaepaly | Claude Code | PR #11 검토 + R1↔R3 런 계약 제안 | v2 판정 계약·자원 미소모·회복/보호막을 코드와 브라우저 런타임(heal +21·shield +31·fizzle 자원 불변)으로 검증. R1 방/보상 계약 부재 확인 → 중복 구현 대신 인터페이스 계약 제안 | PR #11 검토 승인, `runContract.ts`, `R3_RUN_UI_CONTRACT.md` | 라이브 Gemini 미사용 (Mock·로컬 검증만) |
 | 2026-07-15 | jaepaly | Codex | Spell Understanding v2 수직 구현 | 의미 있는 비마법 문장을 효과 주문으로 번역하고 무의미·금칙 입력은 자원 소모 없이 거부하도록 판정 계약, Mock/Gemini, 엔진 효과와 HUD를 연결 | `SpellJudgement v2`, 의미 우선 Worker 프롬프트, 회복·보호막·고정 회귀 스크립트 | 공용 Gemini 호출 없이 Mock 10입력·빌드 검증 |
 | 2026-07-15 | jaepaly | Codex | Spell Understanding v2 설계 | 명시적 원소 키워드 의존과 공격 전용 스키마의 한계를 분석하고, 의미 우선 판정·회복/보호 효과·불발/금칙·캐시 버전·고정 회귀 코퍼스를 역할별 계약으로 설계 | GDD §3, `SPELL_UNDERSTANDING_V2.md`, `PHASE_2.md`, README | Phase 2 P0·절대 컷 금지로 승격 |
 | 2026-07-15 | jaepaly | Codex | Phase 1 취합 종료·Phase 2 지시 설계 | R1/R2/R3 병합 상태와 Pages·Gemini 라이브 검증을 근거로 Phase 1 완료를 기록하고, W2 코어 루프를 역할별 계약·완료 기준·일정으로 분해 | `PHASE_1_SUMMARY.md`, `PHASE_2.md`, README, SUBMISSION_PLAN | 라이브 Gemini 요청 1회, `[gemini]` 확인 |
