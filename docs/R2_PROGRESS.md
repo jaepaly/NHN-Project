@@ -5,8 +5,77 @@
 > (팀 공용 1줄 기록은 [AI_USAGE_LOG.md](AI_USAGE_LOG.md), 이 파일은 R2 상세 로그)
 
 - **담당**: 임재윤 (R2 — 판정 프롬프트·프록시 인프라·캐싱/폴백·보스 기억)
-- **최근 갱신**: 2026-07-14
-- **현재 페이즈**: Phase 1 (마감 7/20) — "방 하나를 실제 LLM 판정으로 처음부터 끝까지 플레이"
+- **최근 갱신**: 2026-07-15
+- **현재 페이즈**: **Phase 2 (마감 7/27)** — 코어 런 확장. (Phase 1 조기 달성)
+
+---
+
+## Phase 2 진행 체크리스트 — [PHASE_2.md](PHASE_2.md) §3 R2
+
+| # | 작업 | 상태 |
+|---|---|---|
+| P0-a | 판정 v2 (SpellJudgement 타입·검증·프롬프트·캐시버전·MockJudge v2) | ✅ 총괄 Codex 선구현 → 임재윤 배포·검토 |
+| P0-b | 주문 히스토리 모듈 (`spellHistory.ts` — `record()`·조회 API) | ✅ 완료 (PR #13) |
+| P0-c | 반복 패널티 (동일 문장 power×0.8, floor 0.3, 로컬 강제) | ✅ 완료 (PR #13) |
+| P0-d | 회귀 테스트 (`node:assert`, `npm run test:history`) | ✅ 완료 (7군 통과) |
+| P0-e | R1 통합 — `record`/`repeatMultiplier`를 전투 흐름에 연결 | ⬜ 협업 (이도원 몫, 계약 전달) |
+| P1-a | 보스 기억 요약 (`BossMemoryProfile` 초안) | ✅ 완료 (PR #13) |
+| P1-b | 5티어 품질 스냅샷 (고정 코퍼스 실측 기록) | ✅ 완료 (PR #13, [SPELL_QUALITY_SNAPSHOT.md](SPELL_QUALITY_SNAPSHOT.md)) |
+
+**▶ 현재 위치**: R2 Phase 2 **빌드 작업 전부 완료** (판정 v2 + 히스토리/패널티/요약 + 품질 스냅샷). **PR #13** 리뷰 대기.
+
+**▶ 다음 (협업/이월)**:
+1. **PR #13 머지 요청**(총괄) + **이도원에게 계약 전달**(`record`/`repeatMultiplier`) → 전투 통합(P0-e).
+2. 스냅샷에서 나온 프롬프트·밸런스 이슈(아래 P1-b 관찰)는 **총괄 방향대로 데모 후 튜닝**.
+
+> 히스토리를 실제로 쓰려면(런 도중 기록·조회) R1이 `SpellHistory` 인스턴스를 런 상태에 두고 호출해야 함. R2는 클래스·API까지 제공 완료.
+
+### P0-a · 판정 v2 — ✅ (총괄 Codex 선구현, 임재윤 배포·검토)
+
+- 판정 계약을 `SpellSpec v1` → `SpellJudgement v2`(구별 유니온)로 전환. `disposition: cast/fizzle/blocked`, cast만 `effect/target`과 전투 자원을 가짐.
+- worker.js 프롬프트를 **의미 우선**(의미→disposition→effect/target→element/form→power) 순서로 개편. 캐시 접두사에 스키마·프롬프트 버전 포함(v1 캐시 무시).
+- 임재윤이 라이브 프록시에 배포하고 "피곤해서 쉬고 싶다 → heal/self(휴식의 가호)" 실측 확인.
+
+### P0-b · 주문 히스토리 모듈 — ✅ (PR #13)
+
+- **파일**: `src/spell/spellHistory.ts`. 검증된 cast 주문만 런 단위(메모리)로 기록. 파일/네트워크 없음.
+- **기록 필드**: 원문·정규화키·주문명·effect·target·주/보조원소·폼·basePower·power(패널티 반영)·cost·source·castAt.
+- **API**: `record(input)` · `countOf` · `recent(n)` · `all` · `size` · `reset()`.
+- 시각(`castAt`)은 호출측 주입 → 모듈이 시간을 안 읽어 단위 테스트가 결정론적.
+
+### P0-c · 반복 패널티 — ✅ (PR #13)
+
+- `repeatMultiplier(text)` = 동일 정규화 문장의 기존 기록 수 기준 배수. **처음 1.0 → 재사용부터 ×0.8 누적, 하한(floor) 0.3.**
+- **로컬 코드가 강제**(프롬프트 아님). 엔진(R1)이 이 배수를 판정 power에 곱해 실제 효과 수치를 낸다.
+- 예: "화염구"(power 40) → 1번째 40, 2번째 32, 3번째 26 …
+
+### P0-d · 회귀 테스트 — ✅ (PR #13)
+
+- `scripts/spell-history-regression.ts` + `npm run test:history`. **팀 컨벤션(node:assert, esbuild+node, 의존성 0) 준수** (Vitest 미도입).
+- 검증 7군: 정규화 · 기록/size · 패널티 ×0.8/×0.64 · 정규화 반복 · floor 하한 · 보스 요약 · 리셋. **전부 통과.**
+
+### P0-e · R1 통합 — ⬜ (협업, 이도원 몫)
+
+- **계약(R1이 할 일)**: 판정이 `disposition==='cast'`이면 → 데미지 계산 전 `history.repeatMultiplier(text)`를 power에 곱함 → 마나 지불·발동 확정 후 `history.record({ rawText, spell, source, castAt })`.
+- `fizzle`/`blocked`는 기록·마나·쿨다운 소비하지 않음(호출측이 cast만 record).
+- R2는 클래스·API 제공 완료. R1이 `SpellHistory` 인스턴스를 런 상태에 두고 호출.
+
+### P1-a · 보스 기억 요약 초안 — ✅ (PR #13)
+
+- `bossMemory()` → `BossMemoryProfile { dominantElement, dominantForm, recentSpellNames, totalCasts }`.
+- **Phase 3 계약용 초안만.** 실제 보스 전투·대사는 구현하지 않음(스코프 밖).
+
+### P1-b · 5티어 품질 스냅샷 — ✅ (PR #13)
+
+- **산출**: `scripts/spell-quality-snapshot.ts` + `npm run snapshot:quality` → [SPELL_QUALITY_SNAPSHOT.md](SPELL_QUALITY_SNAPSHOT.md) (코퍼스 26개 실측). 페이싱 4.5s로 RPM 보호.
+- **결과**: 자동 적합 23/26, 평균 1462ms. 걸작 85~95 · 평범 35~45 · 주제밖 의미대로 heal/shield 판정 우수. 다국어 "숲의 분노=forest fury" 일치.
+
+**관찰·이슈 (총괄 검토용 — 튜닝은 데모 후)**:
+
+1. **"죽어버려" → cast(damage) 수용** (팀 확인). 게임 맥락상 공격 주문으로 봄. "씨발"은 blocked 정상.
+2. **한/영 power 불일치**: 라이트닝 스톰 50 vs lightning storm 85 (원소·폼 lightning/rain은 동일). **글자수 문제 아님** — Gemini는 길이 안 셈(그건 MockJudge 방식). 원인은 temperature 0.6 변동 + 언어별 해석 차. 완화: temperature↓ 또는 프롬프트에 "동일 의미 다국어는 같은 power" 명시.
+3. **"나를 지켜줘" power 65**: 주제밖 상한 40 초과(shield 자체는 맞음). 상한이 엔진 강제가 아니라 프롬프트 부탁이라 발생.
+4. **latency 스파이크**: 대부분 1.3초인데 일부 2.9~4.7초 → **2.5초 초과 시 게임에선 폴백.** 관찰만(모델·타임아웃 조정은 데모 후).
 
 ---
 
