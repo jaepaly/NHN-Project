@@ -35,6 +35,8 @@ npm run build   # 프로덕션 빌드 (dist/)
 | [docs/ROLES.md](docs/ROLES.md) | 팀원 역할 분담 |
 | [docs/SUBMISSION_PLAN.md](docs/SUBMISSION_PLAN.md) | 제출물 5종 계획 + 주차별 마일스톤 |
 | [docs/AI_USAGE_LOG.md](docs/AI_USAGE_LOG.md) | AI 활용 로그 (전원 기록 의무) |
+| [docs/PHASE_1_SUMMARY.md](docs/PHASE_1_SUMMARY.md) | Phase 1 완료 근거·검증 결과·이월 항목 |
+| [docs/PHASE_2.md](docs/PHASE_2.md) | Phase 2 담당자별 작업 지시·완료 기준 |
 
 ## 🏗 기술 스택
 
@@ -66,48 +68,27 @@ TypeScript · Vite · Phaser 3 · Gemini Flash (Cloudflare Workers 프록시) ·
 
 ---
 
-## 📌 현재 페이즈: Phase 1 (마감 7/20 일요일)
+## 📌 현재 페이즈: Phase 2 (마감 7/27)
 
-> 목표: **"방 하나를 실제 LLM 판정으로 처음부터 끝까지 플레이할 수 있다"**
+> 목표: **"방을 클리어하고 보상을 골라 다음 방으로 이어지는 한 런의 뼈대를 완성한다."**
 
-### 시작하기 (전원 공통, 첫날)
+Phase 1 기술 목표는 2026-07-15에 조기 달성했다. 완료 근거와 라이브 검증 결과는
+[Phase 1 완료 요약](docs/PHASE_1_SUMMARY.md)에 보관한다.
 
-1. 리포 clone → `npm install` → `npm run dev` → Enter 눌러 "번개를 품은 해일" 영창해보기
-2. [docs/GDD.md](docs/GDD.md) 정독 → 의견은 GitHub Issue로
-3. 게임명 투표: GDD §1.1 후보 3개 (INCANT / 아케인 신택스 / 영창) — [Issue #2](https://github.com/jaepaly/NHN-Project/issues/2)에 댓글
+### 이번 페이즈 핵심
 
-### 🎮 이도원 (R1 게임 코어)
+- **R1 이도원**: 2개 방 진행·3택 1 보상 적용·주문 폼 6종 완성
+- **R2 임재윤**: 런 주문 히스토리·반복 패널티·보스 기억용 요약 계약
+- **R3 jaepaly**: 보상 선택 UI·방 전환/HUD·통합 QA와 Pages 배포
 
-**이번 페이즈 목표: 웨이브 전투 코어 루프의 뼈대**
+담당자별 구현 범위, 인터페이스 계약, 일정과 완료 기준은
+**[docs/PHASE_2.md](docs/PHASE_2.md)**를 기준으로 한다.
 
-- [ ] `ProtoScene`을 전투 씬으로 발전: 플레이어 HP/마나 상태, WASD 이동 (현재 고정형)
-- [ ] 적 3종 구현 (GDD §5): 추격자(삼각형·직선 추격), 사수(사각형·원거리 탄막), 분열체(육각형·처치 시 분열)
-- [ ] 웨이브 스포너: 웨이브 2~3회 격퇴 → 방 클리어 판정
-- [ ] 주문 적중 → 피해/처치 판정 (power 기반 데미지 공식 1차 — 밸런스는 나중, 공식 구조만)
-- [ ] 파츠 렌더러 폼 추가: `beam`, `wave` ([src/render/spellRenderer.ts](src/render/spellRenderer.ts) — 현재 bolt/nova 구현됨, 패턴 참고)
-- **완료 기준**: 영창으로 적을 잡아 웨이브를 클리어하는 영상 1개를 PR에 첨부
-- 참고: [src/scenes/ProtoScene.ts](src/scenes/ProtoScene.ts), [src/spell/types.ts](src/spell/types.ts) (SpellSpec 스키마 = R2와의 계약, 임의 변경 금지)
+### 공통 시작 절차
 
-### 🤖 임재윤 (R2 AI 시스템)
+1. `git checkout main && git pull && npm ci`
+2. 반복 전투 개발은 `.env`에 `VITE_JUDGE_MOCK=1`을 사용한다.
+3. 역할별 feature 브랜치에서 작업하고 AI 활용 로그를 같은 PR에 포함한다.
+4. `SpellSpec` 스키마나 역할 간 이벤트 계약 변경은 구현 전에 공유한다.
 
-**이번 페이즈 목표: 실제 LLM 판정 연결 (MockJudge → Gemini)**
-
-- [ ] **[PR #1](https://github.com/jaepaly/NHN-Project/pull/1) 리뷰·머지** (5티어 판정 정책 — 본인 영역이므로 첫 리뷰 담당)
-- [ ] Cloudflare 계정 + Gemini API 키 발급 → 프록시 배포 ([proxy/README.md](proxy/README.md) 가이드, 5분 소요)
-- [ ] `GeminiJudge` 구현 (`src/spell/geminiJudge.ts`): fetch → `validateSpec` 재검증 → 2.5초 타임아웃/실패 시 MockJudge 폴백 → localStorage 캐시 (GDD §3.5 체인)
-- [ ] `.env.example` 추가 (`VITE_JUDGE_PROXY_URL`) + README 실행 문서 갱신
-- [ ] 판정 품질 1차 테스트: 5티어별 입력 10개씩 시트 작성 → 실제 판정 결과 기록 → 프롬프트 튜닝 (기록 자체가 제출물 ④ 소재)
-- **완료 기준**: 데모 페이지에서 실제 Gemini 판정으로 주문 발동 + 프록시 강제 다운 시 폴백 동작 확인 영상을 PR에 첨부
-- 참고: [src/spell/judge.ts](src/spell/judge.ts) (인터페이스), [src/spell/mockJudge.ts](src/spell/mockJudge.ts), [src/spell/validate.ts](src/spell/validate.ts)
-
-### ✦ jaepaly (R3 콘텐츠·UX·총괄)
-
-**이번 페이즈 목표: 영창의 손맛과 전투 정보 가독성 확보**
-
-- [x] 자유 텍스트 길이에 반응하는 영창 공명 게이지와 슬로모션 입력 오버레이
-- [x] 주문 판정 대기 중 해석 애니메이션과 이동 잠금·15% 슬로모션 유지
-- [x] HP·마나·글로벌 쿨다운을 한눈에 읽는 전투 HUD
-- [x] 주문 원소 팔레트와 최근 판정 소스(gemini/cache/fallback/mock)를 HUD에 연동
-- [ ] 7/20 전체 플레이 취합·최종 점검 후 Phase 2 지시 게시
-
-> 작업 중 궁금한 점·블로커는 총괄에게 바로 공유. 7/20에 취합·검토 후 Phase 2가 게시된다.
+> 게임명 투표 [Issue #2](https://github.com/jaepaly/NHN-Project/issues/2)는 7/20까지 유지하며, 결과는 기능 개발과 별도로 반영한다.
