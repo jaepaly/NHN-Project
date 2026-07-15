@@ -4,6 +4,7 @@ export const CHASER_CONFIG = {
   speed: 100,
   contactDamage: 10,
   contactDistance: 28,
+  collisionRadius: 12,
   contactDamageCooldownSeconds: 1,
 } as const;
 
@@ -12,6 +13,7 @@ export const SHOOTER_CONFIG = {
   speed: 75,
   contactDamage: 6,
   contactDistance: 24,
+  collisionRadius: 12,
   contactDamageCooldownSeconds: 1,
   preferredDistance: 320,
   distanceTolerance: 60,

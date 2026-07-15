@@ -15,6 +15,7 @@ export interface CombatEnemy {
   readonly maxHp: number;
   readonly contactDamage: number;
   readonly contactDistance: number;
+  readonly collisionRadius: number;
 
   hp: number;
   alive: boolean;

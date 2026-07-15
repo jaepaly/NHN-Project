@@ -34,6 +34,8 @@ import {
   spellPowerWithAffinity,
   spellShieldFromPower,
 } from '../combat-core/combat/combatConfig';
+import { firstBoltCollision } from '../combat-core/combat/boltCollision';
+import type { BoltCollision } from '../combat-core/combat/boltCollision';
 import {
   WAVE_CONFIG,
   WaveManager,
@@ -807,17 +809,29 @@ export class ProtoScene extends Phaser.Scene {
 
     const target = this.nearestEnemy();
     const to = target ? new Phaser.Math.Vector2(target.x, target.y) : undefined;
+    let boltTarget: CombatEnemy | null = null;
     const hitEnemies = new Set<CombatEnemy>();
     const castRoomIndex = this.combatRunController.state.roomIndex;
     castSpell({
       scene: this,
       from,
       to,
+      resolveBoltCollision: (fromX, fromY, toX, toY, projectileRadius) => {
+        const collision = this.findBoltCollision(
+          fromX,
+          fromY,
+          toX,
+          toY,
+          projectileRadius,
+        );
+        boltTarget = collision?.target ?? null;
+        return collision ? { x: collision.x, y: collision.y } : null;
+      },
       onHit: (impact) => {
         const currentRunState = this.combatRunController.state;
         if (currentRunState.phase !== 'combat'
           || currentRunState.roomIndex !== castRoomIndex) return;
-        this.onSpellHit(impact, spec, target, hitEnemies);
+        this.onSpellHit(impact, spec, boltTarget, hitEnemies);
       },
     }, spec);
   }
@@ -992,6 +1006,23 @@ export class ProtoScene extends Phaser.Scene {
     return bestD <= maxDistance ? best : null;
   }
 
+  private findBoltCollision(
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    projectileRadius: number,
+  ): BoltCollision<CombatEnemy> | null {
+    return firstBoltCollision(
+      fromX,
+      fromY,
+      toX,
+      toY,
+      projectileRadius,
+      this.enemies.filter((enemy) => enemy.alive),
+    );
+  }
+
   private onSpellHit(
     impact: SpellImpact,
     spec: SpellSpec,
@@ -1078,17 +1109,29 @@ export class ProtoScene extends Phaser.Scene {
   private castControlSpell(from: Phaser.Math.Vector2, spec: SpellSpec): void {
     const target = this.nearestEnemy();
     const to = target ? new Phaser.Math.Vector2(target.x, target.y) : undefined;
+    let boltTarget: CombatEnemy | null = null;
     const affectedEnemies = new Set<CombatEnemy>();
     const castRoomIndex = this.combatRunController.state.roomIndex;
     castSpell({
       scene: this,
       from,
       to,
+      resolveBoltCollision: (fromX, fromY, toX, toY, projectileRadius) => {
+        const collision = this.findBoltCollision(
+          fromX,
+          fromY,
+          toX,
+          toY,
+          projectileRadius,
+        );
+        boltTarget = collision?.target ?? null;
+        return collision ? { x: collision.x, y: collision.y } : null;
+      },
       onHit: (impact) => {
         const currentRunState = this.combatRunController.state;
         if (currentRunState.phase !== 'combat'
           || currentRunState.roomIndex !== castRoomIndex) return;
-        this.onControlHit(impact, spec, target, affectedEnemies);
+        this.onControlHit(impact, spec, boltTarget, affectedEnemies);
       },
     }, spec);
   }

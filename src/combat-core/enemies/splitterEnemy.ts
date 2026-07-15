@@ -8,6 +8,7 @@ export class SplitterEnemy implements CombatEnemy {
   readonly maxHp: number;
   readonly contactDamage: number;
   readonly contactDistance: number;
+  readonly collisionRadius: number;
   readonly small: boolean;
 
   hp: number;
@@ -26,6 +27,7 @@ export class SplitterEnemy implements CombatEnemy {
     this.speed = config.speed;
     this.contactDamage = config.contactDamage;
     this.contactDistance = config.contactDistance;
+    this.collisionRadius = config.radius;
 
     const points = Array.from({ length: 6 }, (_, index) => {
       const angle = -Math.PI / 2 + (Math.PI * 2 * index) / 6;

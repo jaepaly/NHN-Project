@@ -30,6 +30,14 @@ export interface CastContext {
   to?: Phaser.Math.Vector2;
   /** 렌더러가 만든 실제 형상의 적중 영역을 전투 씬에 전달 */
   onHit?: (impact: SpellImpact, spec: SpellSpec) => void;
+  /** Checks a bolt's latest movement segment against live combat targets. */
+  resolveBoltCollision?: (
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    projectileRadius: number,
+  ) => { x: number; y: number } | null;
 }
 
 /** 파티클용 원형 글로우 텍스처를 1회 생성 */
@@ -109,20 +117,52 @@ function castBolt(ctx: CastContext, spec: SpellSpec): void {
     });
   }
 
+  let previousX = from.x;
+  let previousY = from.y;
+  let finished = false;
+  const finish = (x: number, y: number, emitHit: boolean): void => {
+    if (finished) return;
+    finished = true;
+    body.setPosition(x, y);
+    halo.setPosition(x, y);
+    impactBurst(scene, x, y, spec);
+    if (emitHit) ctx.onHit?.({ kind: 'point', x, y }, spec);
+    trail.stop();
+    subTrail?.stop();
+    scene.time.delayedCall(400, () => {
+      body.destroy(); halo.destroy(); trail.destroy(); subTrail?.destroy();
+    });
+  };
+
+  const resolveCurrentSegment = (x: number, y: number): boolean => {
+    const collision = ctx.resolveBoltCollision?.(
+      previousX,
+      previousY,
+      x,
+      y,
+      8 * scale,
+    );
+    previousX = x;
+    previousY = y;
+    if (!collision) return false;
+    finish(collision.x, collision.y, true);
+    return true;
+  };
+
   scene.tweens.add({
     targets: [body, halo],
     x: to.x,
     y: to.y,
     duration: durationMs,
     ease: 'Linear',
+    onUpdate: (tween) => {
+      if (finished) return;
+      if (resolveCurrentSegment(body.x, body.y)) tween.stop();
+    },
     onComplete: () => {
-      impactBurst(scene, to.x, to.y, spec);
-      ctx.onHit?.({ kind: 'point', x: to.x, y: to.y }, spec);
-      trail.stop();
-      subTrail?.stop();
-      scene.time.delayedCall(400, () => {
-        body.destroy(); halo.destroy(); trail.destroy(); subTrail?.destroy();
-      });
+      if (finished) return;
+      if (ctx.resolveBoltCollision && resolveCurrentSegment(to.x, to.y)) return;
+      finish(to.x, to.y, !ctx.resolveBoltCollision);
     },
   });
 }
