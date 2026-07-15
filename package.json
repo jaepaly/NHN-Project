@@ -13,6 +13,7 @@
     "test:control": "esbuild scripts/control-effects-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-control-effects-regression.mjs && node node_modules/.cache/incant-control-effects-regression.mjs",
     "test:summon": "esbuild scripts/summon-effects-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-summon-effects-regression.mjs && node node_modules/.cache/incant-summon-effects-regression.mjs",
     "test:bolt": "esbuild scripts/bolt-collision-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-bolt-collision-regression.mjs && node node_modules/.cache/incant-bolt-collision-regression.mjs",
+    "test:forms": "esbuild scripts/area-forms-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-area-forms-regression.mjs && node node_modules/.cache/incant-area-forms-regression.mjs",
     "snapshot:quality": "esbuild scripts/spell-quality-snapshot.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-quality-snapshot.mjs && node node_modules/.cache/incant-spell-quality-snapshot.mjs",
     "preview": "vite preview"
   },

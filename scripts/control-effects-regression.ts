@@ -42,7 +42,16 @@ assert.equal(state.applySlow(target, 0), 5);
 assert.equal(state.applySlow(target, 100), 6);
 assert.equal(state.movementMultiplierFor(target), 0.5);
 
-// 5) 처치된 적과 방 정리는 상태를 남기지 않는다.
+// 5) 장판형 control은 power와 무관하게 짧은 override 수명을 사용한다.
+const zoneState = new EnemyControlState();
+const zoneTarget = enemy();
+assert.equal(zoneState.applySlow(zoneTarget, 100, 0.5), 0.5);
+zoneState.update(0.4);
+assert.ok(Math.abs(zoneState.remainingFor(zoneTarget) - 0.1) < Number.EPSILON);
+assert.equal(zoneState.applySlow(zoneTarget, 100, 0.5), 0.5);
+assert.deepEqual(zoneState.update(0.5), [zoneTarget]);
+
+// 6) 처치된 적과 방 정리는 상태를 남기지 않는다.
 const deadTarget = enemy(false);
 state.applySlow(deadTarget, 50);
 assert.deepEqual(state.update(0), [deadTarget]);
@@ -56,4 +65,4 @@ assert.deepEqual(new Set(state.clear()), new Set([a, b]));
 assert.equal(state.movementMultiplierFor(a), 1);
 assert.equal(state.movementMultiplierFor(b), 1);
 
-console.log('Control effects regression: 지속시간·둔화·만료·비중첩·정리 5군 통과');
+console.log('Control effects regression: 지속시간·둔화·만료·비중첩·override·정리 6군 통과');

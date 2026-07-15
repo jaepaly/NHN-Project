@@ -10,6 +10,7 @@ import type { RunController } from '../run/runContract';
 import {
   ELEMENT_LABELS,
   ELEMENT_PALETTES,
+  SIZE_SCALE,
   paletteColorToCss,
 } from '../render/palette';
 import {
@@ -26,16 +27,23 @@ import type {
 } from '../combat-core/enemies/combatEnemy';
 import {
   BASIC_ATTACK_CONFIG,
+  SPELL_DAMAGE_CONFIG,
   SHOOTER_CONFIG,
   SPLITTER_CONFIG,
   spellBuffManaFromPower,
-  spellDamageFromPower,
   spellHealFromPower,
+  spellImpactDamageFromPower,
   spellPowerWithAffinity,
   spellShieldFromPower,
 } from '../combat-core/combat/combatConfig';
 import { firstBoltCollision } from '../combat-core/combat/boltCollision';
 import type { BoltCollision } from '../combat-core/combat/boltCollision';
+import {
+  RAIN_CONFIG,
+  ZONE_CONFIG,
+  densestAreaTarget,
+  densestDirectionalTarget,
+} from '../combat-core/combat/areaSpellConfig';
 import {
   WAVE_CONFIG,
   WaveManager,
@@ -811,7 +819,7 @@ export class ProtoScene extends Phaser.Scene {
     }
 
     const target = this.nearestEnemy();
-    const to = target ? new Phaser.Math.Vector2(target.x, target.y) : undefined;
+    const to = this.spellTargetPoint(from, spec, target);
     let boltTarget: CombatEnemy | null = null;
     const hitEnemies = new Set<CombatEnemy>();
     const castRoomIndex = this.combatRunController.state.roomIndex;
@@ -1026,13 +1034,72 @@ export class ProtoScene extends Phaser.Scene {
     );
   }
 
+  private spellTargetPoint(
+    from: Phaser.Math.Vector2,
+    spec: SpellSpec,
+    nearestTarget: CombatEnemy | null,
+  ): Phaser.Math.Vector2 | undefined {
+    const scale = SIZE_SCALE[spec.size];
+    const areaConfig = spec.form === 'zone'
+      ? {
+        castRange: ZONE_CONFIG.castRange,
+        effectRadius: ZONE_CONFIG.baseRadius * scale,
+      }
+      : spec.form === 'rain'
+        ? {
+          castRange: RAIN_CONFIG.castRange,
+          effectRadius: RAIN_CONFIG.baseAreaRadius * scale,
+        }
+        : null;
+    if (areaConfig) {
+      const target = densestAreaTarget(
+        from.x,
+        from.y,
+        areaConfig.castRange,
+        areaConfig.effectRadius,
+        this.enemies.filter((enemy) => enemy.alive),
+      );
+      if (target) return new Phaser.Math.Vector2(target.x, target.y);
+    }
+
+    const directionalConfig = spec.form === 'beam'
+      ? {
+        range: SPELL_DAMAGE_CONFIG.beamRange,
+        halfWidth: SPELL_DAMAGE_CONFIG.beamBaseWidth * scale / 2,
+      }
+      : spec.form === 'wave'
+        ? {
+          range: SPELL_DAMAGE_CONFIG.waveRange,
+          halfWidth: SPELL_DAMAGE_CONFIG.waveBaseWidth * scale / 2,
+        }
+        : null;
+    if (directionalConfig) {
+      const target = densestDirectionalTarget(
+        from.x,
+        from.y,
+        directionalConfig.range,
+        directionalConfig.halfWidth,
+        this.enemies.filter((enemy) => enemy.alive),
+      );
+      if (target) return new Phaser.Math.Vector2(target.x, target.y);
+    }
+
+    return nearestTarget
+      ? new Phaser.Math.Vector2(nearestTarget.x, nearestTarget.y)
+      : undefined;
+  }
+
   private onSpellHit(
     impact: SpellImpact,
     spec: SpellSpec,
     lockedTarget: CombatEnemy | null,
     hitEnemies: Set<CombatEnemy>,
   ): void {
-    const damage = Math.max(1, spellDamageFromPower(spec.power));
+    if (impact.hitGroup !== undefined) hitEnemies.clear();
+    const damageMultiplier = Number.isFinite(impact.damageMultiplier)
+      ? Math.max(0, impact.damageMultiplier ?? 1)
+      : 1;
+    const damage = spellImpactDamageFromPower(spec.power, damageMultiplier);
     if (impact.kind === 'point') {
       if (lockedTarget?.alive) this.damageEnemy(lockedTarget, damage);
       return;
@@ -1111,7 +1178,7 @@ export class ProtoScene extends Phaser.Scene {
 
   private castControlSpell(from: Phaser.Math.Vector2, spec: SpellSpec): void {
     const target = this.nearestEnemy();
-    const to = target ? new Phaser.Math.Vector2(target.x, target.y) : undefined;
+    const to = this.spellTargetPoint(from, spec, target);
     let boltTarget: CombatEnemy | null = null;
     const affectedEnemies = new Set<CombatEnemy>();
     const castRoomIndex = this.combatRunController.state.roomIndex;
@@ -1145,8 +1212,11 @@ export class ProtoScene extends Phaser.Scene {
     lockedTarget: CombatEnemy | null,
     affectedEnemies: Set<CombatEnemy>,
   ): void {
+    if (impact.hitGroup !== undefined) affectedEnemies.clear();
     if (impact.kind === 'point') {
-      if (lockedTarget?.alive) this.applySlow(lockedTarget, spec.power);
+      if (lockedTarget?.alive) {
+        this.applySlow(lockedTarget, spec.power, impact.controlDurationSeconds);
+      }
       return;
     }
 
@@ -1166,12 +1236,20 @@ export class ProtoScene extends Phaser.Scene {
       if (!isHit) continue;
 
       affectedEnemies.add(enemy);
-      this.applySlow(enemy, spec.power);
+      this.applySlow(enemy, spec.power, impact.controlDurationSeconds);
     }
   }
 
-  private applySlow(enemy: CombatEnemy, power: number): void {
-    const remaining = this.enemyControlState.applySlow(enemy, power);
+  private applySlow(
+    enemy: CombatEnemy,
+    power: number,
+    durationOverrideSeconds?: number,
+  ): void {
+    const remaining = this.enemyControlState.applySlow(
+      enemy,
+      power,
+      durationOverrideSeconds,
+    );
     if (!this.controlIndicators.has(enemy)) {
       const indicator = this.add.circle(
         0,

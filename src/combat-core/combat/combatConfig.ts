@@ -69,6 +69,11 @@ export function spellDamageFromPower(power: number): number {
   return Math.max(0, Math.round(power));
 }
 
+export function spellImpactDamageFromPower(power: number, multiplier = 1): number {
+  const safeMultiplier = Number.isFinite(multiplier) ? Math.max(0, multiplier) : 1;
+  return Math.max(1, Math.round(spellDamageFromPower(power) * safeMultiplier));
+}
+
 /** 반복 패널티 반영 power에 런 원소 친화 보너스를 적용한다. */
 export function spellPowerWithAffinity(power: number, affinityBonus: number): number {
   const safePower = Number.isFinite(power) ? Math.max(0, power) : 0;
