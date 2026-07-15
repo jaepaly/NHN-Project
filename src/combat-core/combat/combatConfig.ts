@@ -4,6 +4,7 @@ export const CHASER_CONFIG = {
   speed: 100,
   contactDamage: 10,
   contactDistance: 28,
+  collisionRadius: 12,
   contactDamageCooldownSeconds: 1,
 } as const;
 
@@ -12,6 +13,7 @@ export const SHOOTER_CONFIG = {
   speed: 75,
   contactDamage: 6,
   contactDistance: 24,
+  collisionRadius: 12,
   contactDamageCooldownSeconds: 1,
   preferredDistance: 320,
   distanceTolerance: 60,
@@ -65,6 +67,13 @@ export const SPELL_DAMAGE_CONFIG = {
 /** 1차 공식: 밸런스보다 power가 실제 피해로 연결되는 구조를 우선 검증한다. */
 export function spellDamageFromPower(power: number): number {
   return Math.max(0, Math.round(power));
+}
+
+/** 반복 패널티 반영 power에 런 원소 친화 보너스를 적용한다. */
+export function spellPowerWithAffinity(power: number, affinityBonus: number): number {
+  const safePower = Number.isFinite(power) ? Math.max(0, power) : 0;
+  const safeBonus = Number.isFinite(affinityBonus) ? Math.max(0, affinityBonus) : 0;
+  return Math.round(safePower * (1 + safeBonus));
 }
 
 export function spellHealFromPower(power: number): number {

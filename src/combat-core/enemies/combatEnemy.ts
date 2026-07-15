@@ -15,6 +15,7 @@ export interface CombatEnemy {
   readonly maxHp: number;
   readonly contactDamage: number;
   readonly contactDistance: number;
+  readonly collisionRadius: number;
 
   hp: number;
   alive: boolean;
@@ -23,7 +24,12 @@ export interface CombatEnemy {
   readonly y: number;
   readonly canDealContactDamage: boolean;
 
-  update(deltaSeconds: number, targetX: number, targetY: number): EnemyShotRequest[];
+  update(
+    deltaSeconds: number,
+    targetX: number,
+    targetY: number,
+    movementMultiplier?: number,
+  ): EnemyShotRequest[];
   startContactDamageCooldown(): void;
   takeDamage(amount: number): boolean;
   destroy(): void;

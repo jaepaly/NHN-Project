@@ -9,6 +9,7 @@ export class ShooterEnemy implements CombatEnemy {
   readonly maxHp: number = SHOOTER_CONFIG.maxHp;
   readonly contactDamage: number = SHOOTER_CONFIG.contactDamage;
   readonly contactDistance: number = SHOOTER_CONFIG.contactDistance;
+  readonly collisionRadius: number = SHOOTER_CONFIG.collisionRadius;
 
   hp: number = this.maxHp;
   alive = true;
@@ -43,7 +44,12 @@ export class ShooterEnemy implements CombatEnemy {
     return this.alive && this.contactDamageCooldownRemaining <= 0;
   }
 
-  update(deltaSeconds: number, targetX: number, targetY: number): EnemyShotRequest[] {
+  update(
+    deltaSeconds: number,
+    targetX: number,
+    targetY: number,
+    movementMultiplier = 1,
+  ): EnemyShotRequest[] {
     if (!this.alive) return [];
 
     this.contactDamageCooldownRemaining = Math.max(
@@ -58,12 +64,13 @@ export class ShooterEnemy implements CombatEnemy {
     direction.normalize();
     const minimumDistance = SHOOTER_CONFIG.preferredDistance - SHOOTER_CONFIG.distanceTolerance;
     const maximumDistance = SHOOTER_CONFIG.preferredDistance + SHOOTER_CONFIG.distanceTolerance;
+    const moveScale = safeMovementMultiplier(movementMultiplier);
     if (distance > maximumDistance) {
-      this.view.x += direction.x * SHOOTER_CONFIG.speed * deltaSeconds;
-      this.view.y += direction.y * SHOOTER_CONFIG.speed * deltaSeconds;
+      this.view.x += direction.x * SHOOTER_CONFIG.speed * deltaSeconds * moveScale;
+      this.view.y += direction.y * SHOOTER_CONFIG.speed * deltaSeconds * moveScale;
     } else if (distance < minimumDistance) {
-      this.view.x -= direction.x * SHOOTER_CONFIG.speed * deltaSeconds;
-      this.view.y -= direction.y * SHOOTER_CONFIG.speed * deltaSeconds;
+      this.view.x -= direction.x * SHOOTER_CONFIG.speed * deltaSeconds * moveScale;
+      this.view.y -= direction.y * SHOOTER_CONFIG.speed * deltaSeconds * moveScale;
     }
     this.body.rotation = direction.angle();
 
@@ -102,4 +109,8 @@ export class ShooterEnemy implements CombatEnemy {
     this.alive = false;
     this.view.destroy(true);
   }
+}
+
+function safeMovementMultiplier(multiplier: number): number {
+  return Number.isFinite(multiplier) ? Math.max(0, multiplier) : 1;
 }

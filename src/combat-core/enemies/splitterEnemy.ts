@@ -8,6 +8,7 @@ export class SplitterEnemy implements CombatEnemy {
   readonly maxHp: number;
   readonly contactDamage: number;
   readonly contactDistance: number;
+  readonly collisionRadius: number;
   readonly small: boolean;
 
   hp: number;
@@ -26,6 +27,7 @@ export class SplitterEnemy implements CombatEnemy {
     this.speed = config.speed;
     this.contactDamage = config.contactDamage;
     this.contactDistance = config.contactDistance;
+    this.collisionRadius = config.radius;
 
     const points = Array.from({ length: 6 }, (_, index) => {
       const angle = -Math.PI / 2 + (Math.PI * 2 * index) / 6;
@@ -71,7 +73,12 @@ export class SplitterEnemy implements CombatEnemy {
     return this.alive && this.contactDamageCooldownRemaining <= 0;
   }
 
-  update(deltaSeconds: number, targetX: number, targetY: number): EnemyShotRequest[] {
+  update(
+    deltaSeconds: number,
+    targetX: number,
+    targetY: number,
+    movementMultiplier = 1,
+  ): EnemyShotRequest[] {
     if (!this.alive) return [];
 
     this.contactDamageCooldownRemaining = Math.max(
@@ -82,8 +89,9 @@ export class SplitterEnemy implements CombatEnemy {
     if (direction.lengthSq() === 0) return [];
 
     direction.normalize();
-    this.view.x += direction.x * this.speed * deltaSeconds;
-    this.view.y += direction.y * this.speed * deltaSeconds;
+    const moveScale = safeMovementMultiplier(movementMultiplier);
+    this.view.x += direction.x * this.speed * deltaSeconds * moveScale;
+    this.view.y += direction.y * this.speed * deltaSeconds * moveScale;
     this.body.rotation += (this.small ? 1.8 : 0.9) * deltaSeconds;
     return [];
   }
@@ -107,4 +115,8 @@ export class SplitterEnemy implements CombatEnemy {
     this.alive = false;
     this.view.destroy(true);
   }
+}
+
+function safeMovementMultiplier(multiplier: number): number {
+  return Number.isFinite(multiplier) ? Math.max(0, multiplier) : 1;
 }

@@ -2,8 +2,11 @@ import Phaser from 'phaser';
 import type { SpellJudge } from '../spell/judge';
 import { createJudge } from '../spell/createJudge';
 import type { SpellSpec } from '../spell/types';
+import { SpellHistory } from '../spell/spellHistory';
+import type { JudgeSource } from '../spell/spellHistory';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
 import type { SpellImpact } from '../render/spellRenderer';
+import type { RunController } from '../run/runContract';
 import {
   ELEMENT_LABELS,
   ELEMENT_PALETTES,
@@ -28,13 +31,21 @@ import {
   spellBuffManaFromPower,
   spellDamageFromPower,
   spellHealFromPower,
+  spellPowerWithAffinity,
   spellShieldFromPower,
 } from '../combat-core/combat/combatConfig';
+import { firstBoltCollision } from '../combat-core/combat/boltCollision';
+import type { BoltCollision } from '../combat-core/combat/boltCollision';
 import {
   WAVE_CONFIG,
   WaveManager,
 } from '../combat-core/waves/waveManager';
 import type { WaveDefinition } from '../combat-core/waves/waveManager';
+import { CombatRunController } from '../combat-core/run/runController';
+import { CONTROL_CONFIG } from '../combat-core/control/controlConfig';
+import { EnemyControlState } from '../combat-core/control/enemyControlState';
+import { SUMMON_CONFIG } from '../combat-core/summons/summonConfig';
+import { SummonedOrb } from '../combat-core/summons/summonedOrb';
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;
@@ -48,10 +59,13 @@ const HUD = {
   barHeight: 7,
 } as const;
 
-interface BasicMissile {
+interface FriendlyMissile {
   body: Phaser.GameObjects.Arc;
   halo: Phaser.GameObjects.Arc;
   target: CombatEnemy;
+  damage: number;
+  speed: number;
+  hitDistance: number;
 }
 
 interface EnemyProjectile {
@@ -71,6 +85,10 @@ export class ProtoScene extends Phaser.Scene {
   private judge: SpellJudge = createJudge();
   private player!: Phaser.GameObjects.Container;
   private playerState = new PlayerCombatState();
+  private readonly spellHistory = new SpellHistory();
+  private readonly combatRunController = new CombatRunController({
+    playerState: this.playerState,
+  });
   private moveKeys!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private worldBounds = new Phaser.Geom.Rectangle();
   private enemies: CombatEnemy[] = [];
@@ -93,10 +111,18 @@ export class ProtoScene extends Phaser.Scene {
   private casting = false;
   private timeScale = 1;
   private basicAttackCooldownRemaining = 0;
-  private basicMissiles: BasicMissile[] = [];
+  private friendlyMissiles: FriendlyMissile[] = [];
+  private activeSummon: SummonedOrb | null = null;
+  private readonly enemyControlState = new EnemyControlState();
+  private readonly controlIndicators = new Map<CombatEnemy, Phaser.GameObjects.Arc>();
 
   constructor() {
     super('proto');
+  }
+
+  /** R3는 구체 전투 구현이 아니라 PR #12의 공개 계약만 소비한다. */
+  get runController(): RunController {
+    return this.combatRunController;
   }
 
   create(): void {
@@ -129,7 +155,8 @@ export class ProtoScene extends Phaser.Scene {
       right: Phaser.Input.Keyboard.KeyCodes.D,
     }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
     this.createHud(width, height);
-    this.spawnWave(this.waveManager.start());
+    this.setupRunFlow();
+    this.startRoom(1);
     this.updateStatusText();
 
     this.setupIncantBar();
@@ -139,17 +166,84 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   override update(_time: number, delta: number): void {
-    // 슬로모션: timeScale을 개체 이동에 직접 곱한다 (프로토 방식)
-    const d = (delta / 1000) * this.timeScale;
-    this.playerState.update(d);
-    this.basicAttackCooldownRemaining = Math.max(0, this.basicAttackCooldownRemaining - d);
-    this.updatePlayerMovement(delta / 1000);
-    this.updateEnemies(d);
-    this.updateEnemyProjectiles(d);
-    this.updateBasicAttack();
-    this.updateBasicMissiles(d);
-    this.updateWaveFlow(d);
+    if (this.isCombatActive()) {
+      // 슬로모션: timeScale을 개체 이동에 직접 곱한다 (프로토 방식)
+      const d = (delta / 1000) * this.timeScale;
+      this.playerState.update(d);
+      this.basicAttackCooldownRemaining = Math.max(0, this.basicAttackCooldownRemaining - d);
+      this.updatePlayerMovement(delta / 1000);
+      this.updateEnemyControls(d);
+      this.updateEnemies(d);
+      this.updateEnemyProjectiles(d);
+      this.updateBasicAttack();
+      this.updateSummon(d);
+      this.updateFriendlyMissiles(d);
+      this.updateWaveFlow(d);
+    }
     this.updateStatusText();
+  }
+
+  private isCombatActive(): boolean {
+    return this.combatRunController.state.phase === 'combat';
+  }
+
+  private setupRunFlow(): void {
+    this.combatRunController.on('room-cleared', (options, state) => {
+      this.deferTransientCombatCleanup();
+      this.stopCastingForRunPause();
+      this.announceSystemMessage(`방 ${state.roomIndex} 클리어`, '#72f1b8');
+      console.info('[Run] reward-ready', options, state);
+    });
+    this.combatRunController.on('reward-applied', (chosen, state) => {
+      this.announceSystemMessage(chosen.title, '#ffd166');
+      console.info('[Run] reward-applied', chosen, state);
+    });
+    this.combatRunController.on('room-transition', (state, durationMs) => {
+      console.info('[Run] room-transition', { state, durationMs });
+    });
+    this.combatRunController.on('room-started', (state) => {
+      this.startRoom(state.roomIndex);
+      console.info('[Run] room-started', state);
+    });
+    this.combatRunController.on('run-completed', (state) => {
+      this.deferTransientCombatCleanup();
+      this.stopCastingForRunPause();
+      this.announceSystemMessage('런 완료', '#72f1b8');
+      console.info('[Run] completed', state);
+    });
+  }
+
+  private startRoom(roomIndex: number): void {
+    this.clearCombatRoom();
+    this.waveManager = new WaveManager();
+    this.basicAttackCooldownRemaining = 0;
+    this.player.setPosition(this.worldBounds.centerX, this.worldBounds.centerY);
+    this.cameras.main.centerOn(this.player.x, this.player.y);
+    this.spawnWave(this.waveManager.start());
+    this.announceSystemMessage(`방 ${roomIndex}`, '#8fa4ff');
+  }
+
+  private clearCombatRoom(): void {
+    this.clearEnemyControls();
+    for (const enemy of this.enemies) enemy.destroy();
+    this.enemies = [];
+    this.clearTransientCombatObjects();
+  }
+
+  private clearTransientCombatObjects(): void {
+    this.clearEnemyProjectiles();
+    this.clearFriendlyMissiles();
+    this.clearSummon();
+  }
+
+  /** 투사체 update 순회가 끝난 다음 tick에 안전하게 일괄 제거한다. */
+  private deferTransientCombatCleanup(): void {
+    this.time.delayedCall(0, () => this.clearTransientCombatObjects());
+  }
+
+  private stopCastingForRunPause(): void {
+    if (this.incanting) this.closeIncant();
+    if (this.casting) this.finishCastingUx();
   }
 
   private createHud(width: number, height: number): void {
@@ -304,7 +398,12 @@ export class ProtoScene extends Phaser.Scene {
     if (!this.playerState.alive) return;
 
     for (const enemy of this.enemies) {
-      const shots = enemy.update(deltaSeconds, this.player.x, this.player.y);
+      const shots = enemy.update(
+        deltaSeconds,
+        this.player.x,
+        this.player.y,
+        this.enemyControlState.movementMultiplierFor(enemy),
+      );
       enemy.view.x = Phaser.Math.Clamp(
         enemy.view.x,
         this.worldBounds.left + 22,
@@ -439,19 +538,48 @@ export class ProtoScene extends Phaser.Scene {
   private fireBasicMissile(target: CombatEnemy): void {
     const fromX = this.player.x;
     const fromY = this.player.y - 14;
-    const body = this.add.circle(fromX, fromY, 5, 0xc8d3ff)
-      .setBlendMode(Phaser.BlendModes.ADD);
-    const halo = this.add.circle(fromX, fromY, 10, 0x6b7cff, 0.3)
-      .setBlendMode(Phaser.BlendModes.ADD);
-
-    this.basicMissiles.push({ body, halo, target });
+    this.fireFriendlyMissile({
+      fromX,
+      fromY,
+      target,
+      damage: BASIC_ATTACK_CONFIG.damage,
+      speed: BASIC_ATTACK_CONFIG.projectileSpeed,
+      hitDistance: BASIC_ATTACK_CONFIG.hitDistance,
+      coreColor: 0xc8d3ff,
+      glowColor: 0x6b7cff,
+    });
   }
 
-  private updateBasicMissiles(deltaSeconds: number): void {
-    const active: BasicMissile[] = [];
-    for (const missile of this.basicMissiles) {
+  private fireFriendlyMissile(options: {
+    fromX: number;
+    fromY: number;
+    target: CombatEnemy;
+    damage: number;
+    speed: number;
+    hitDistance: number;
+    coreColor: number;
+    glowColor: number;
+  }): void {
+    const body = this.add.circle(options.fromX, options.fromY, 5, options.coreColor)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const halo = this.add.circle(options.fromX, options.fromY, 10, options.glowColor, 0.3)
+      .setBlendMode(Phaser.BlendModes.ADD);
+
+    this.friendlyMissiles.push({
+      body,
+      halo,
+      target: options.target,
+      damage: options.damage,
+      speed: options.speed,
+      hitDistance: options.hitDistance,
+    });
+  }
+
+  private updateFriendlyMissiles(deltaSeconds: number): void {
+    const active: FriendlyMissile[] = [];
+    for (const missile of this.friendlyMissiles) {
       if (!this.playerState.alive || !missile.target.alive) {
-        this.destroyBasicMissile(missile);
+        this.destroyFriendlyMissile(missile);
         continue;
       }
 
@@ -460,10 +588,10 @@ export class ProtoScene extends Phaser.Scene {
         missile.target.y - missile.body.y,
       );
       const distance = direction.length();
-      const travelDistance = BASIC_ATTACK_CONFIG.projectileSpeed * deltaSeconds;
-      if (distance <= BASIC_ATTACK_CONFIG.hitDistance + travelDistance) {
-        this.destroyBasicMissile(missile);
-        this.damageEnemy(missile.target, BASIC_ATTACK_CONFIG.damage);
+      const travelDistance = missile.speed * deltaSeconds;
+      if (distance <= missile.hitDistance + travelDistance) {
+        this.destroyFriendlyMissile(missile);
+        this.damageEnemy(missile.target, missile.damage);
         continue;
       }
 
@@ -473,12 +601,19 @@ export class ProtoScene extends Phaser.Scene {
       missile.halo.setPosition(missile.body.x, missile.body.y);
       active.push(missile);
     }
-    this.basicMissiles = active;
+    this.friendlyMissiles = active;
   }
 
-  private destroyBasicMissile(missile: BasicMissile): void {
+  private destroyFriendlyMissile(missile: FriendlyMissile): void {
     missile.body.destroy();
     missile.halo.destroy();
+  }
+
+  private clearFriendlyMissiles(): void {
+    for (const missile of this.friendlyMissiles) {
+      this.destroyFriendlyMissile(missile);
+    }
+    this.friendlyMissiles = [];
   }
 
   // ── 영창 모드 (DOM 입력 바 + 슬로모션) ───────────────────────
@@ -509,6 +644,10 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private tryOpenIncant(): void {
+    if (!this.isCombatActive()) {
+      this.announceSystemMessage('전투 대기');
+      return;
+    }
     if (!this.playerState.alive) {
       this.announceSystemMessage('행동 불가');
       return;
@@ -596,7 +735,7 @@ export class ProtoScene extends Phaser.Scene {
     this.casting = true;
     try {
       const judgement = await this.judge.judge(text);
-      if (!this.playerState.alive) {
+      if (!this.playerState.alive || !this.isCombatActive()) {
         this.announceSystemMessage('행동 불가');
         return;
       }
@@ -613,10 +752,30 @@ export class ProtoScene extends Phaser.Scene {
         return;
       }
 
+      const historyEntry = this.spellHistory.record({
+        rawText: text,
+        spell: spec,
+        source: this.currentJudgeSource(),
+        castAt: Date.now(),
+      });
+      const affinityBonus = this.combatRunController.state
+        .elementalAffinity[spec.element_primary] ?? 0;
+      const effectiveSpec: SpellSpec = {
+        ...spec,
+        power: spellPowerWithAffinity(historyEntry.power, affinityBonus),
+      };
+      if (historyEntry.power < historyEntry.basePower) {
+        console.info('[SpellHistory] repeat-penalty', {
+          rawText: text,
+          basePower: historyEntry.basePower,
+          power: historyEntry.power,
+        });
+      }
+
       this.playerState.startGlobalCooldown();
-      this.applySpellPalette(spec);
-      this.announceSpell(spec);
-      this.applySpellEffect(spec);
+      this.applySpellPalette(effectiveSpec);
+      this.announceSpell(effectiveSpec);
+      this.applySpellEffect(effectiveSpec);
     } finally {
       this.finishCastingUx();
     }
@@ -627,40 +786,78 @@ export class ProtoScene extends Phaser.Scene {
     if (spec.effect === 'heal') {
       const healed = this.playerState.heal(spellHealFromPower(spec.power));
       this.announceSystemMessage(`회복 +${Math.round(healed)} HP`, '#72f1a8');
-      castSpell({ scene: this, from }, spec);
       return;
     }
     if (spec.effect === 'shield') {
       const shielded = this.playerState.addShield(spellShieldFromPower(spec.power));
       this.announceSystemMessage(`보호막 +${Math.round(shielded)}`, '#72d8ff');
-      castSpell({ scene: this, from }, spec);
       return;
     }
     if (spec.effect === 'buff') {
       const restored = this.playerState.restoreMana(spellBuffManaFromPower(spec.power));
       this.announceSystemMessage(`강화 · MANA +${Math.round(restored)}`, '#c7a6ff');
-      castSpell({ scene: this, from }, spec);
+      return;
+    }
+    if (spec.effect === 'control') {
+      this.castControlSpell(from, spec);
+      return;
+    }
+    if (spec.effect === 'summon') {
+      this.createSummon(spec);
       return;
     }
 
     const target = this.nearestEnemy();
     const to = target ? new Phaser.Math.Vector2(target.x, target.y) : undefined;
+    let boltTarget: CombatEnemy | null = null;
     const hitEnemies = new Set<CombatEnemy>();
+    const castRoomIndex = this.combatRunController.state.roomIndex;
     castSpell({
       scene: this,
       from,
       to,
-      onHit: (impact) => this.onSpellHit(impact, spec, target, hitEnemies),
+      resolveBoltCollision: (fromX, fromY, toX, toY, projectileRadius) => {
+        const collision = this.findBoltCollision(
+          fromX,
+          fromY,
+          toX,
+          toY,
+          projectileRadius,
+        );
+        boltTarget = collision?.target ?? null;
+        return collision ? { x: collision.x, y: collision.y } : null;
+      },
+      onHit: (impact) => {
+        const currentRunState = this.combatRunController.state;
+        if (currentRunState.phase !== 'combat'
+          || currentRunState.roomIndex !== castRoomIndex) return;
+        this.onSpellHit(impact, spec, boltTarget, hitEnemies);
+      },
     }, spec);
+  }
+
+  private currentJudgeSource(): JudgeSource {
+    switch (this.judge.lastSource) {
+      case 'gemini':
+      case 'cache':
+      case 'fallback':
+      case 'local':
+        return this.judge.lastSource;
+      default:
+        return this.judge.name.startsWith('MockJudge') ? 'mock' : 'local';
+    }
   }
 
   private updateStatusText(): void {
     const hp = Math.ceil(this.playerState.hp);
     const mana = Math.floor(this.playerState.mana);
     const shield = Math.ceil(this.playerState.shield);
+    const runState = this.combatRunController.state;
     let actionState = 'READY';
     if (!this.playerState.alive) actionState = 'DEAD';
-    else if (this.waveManager.phase === 'room-clear') actionState = 'ROOM CLEAR';
+    else if (runState.phase === 'run-over') actionState = 'RUN COMPLETE';
+    else if (runState.phase === 'reward-select') actionState = 'REWARD SELECT';
+    else if (runState.phase === 'room-transition') actionState = 'NEXT ROOM';
     else if (this.casting) actionState = 'JUDGING';
     else if (this.incanting) actionState = 'INCANTING';
     else if (this.playerState.cooldownRemaining > 0) {
@@ -682,8 +879,12 @@ export class ProtoScene extends Phaser.Scene {
     this.shieldText.setText(`SHIELD ${shield.toString().padStart(3)} / ${this.playerState.maxHp}`);
     this.drawHudBars();
 
-    if (this.waveManager.phase === 'room-clear') {
-      this.waveText.setText('ROOM CLEAR');
+    if (runState.phase === 'run-over') {
+      this.waveText.setText('RUN COMPLETE');
+    } else if (runState.phase === 'reward-select') {
+      this.waveText.setText(`ROOM ${runState.roomIndex}/${runState.maxRooms} CLEAR`);
+    } else if (runState.phase === 'room-transition') {
+      this.waveText.setText(`NEXT ROOM ${runState.roomIndex + 1}/${runState.maxRooms}`);
     } else if (this.waveManager.phase === 'waiting') {
       this.waveText.setText(
         `NEXT WAVE ${this.waveManager.delayRemaining.toFixed(1)}s`,
@@ -787,14 +988,39 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private nearestEnemy(maxDistance = Number.POSITIVE_INFINITY): CombatEnemy | null {
+    return this.nearestEnemyFrom(this.player.x, this.player.y, maxDistance);
+  }
+
+  private nearestEnemyFrom(
+    fromX: number,
+    fromY: number,
+    maxDistance = Number.POSITIVE_INFINITY,
+  ): CombatEnemy | null {
     let best: CombatEnemy | null = null;
     let bestD = Number.POSITIVE_INFINITY;
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
-      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
+      const d = Phaser.Math.Distance.Between(fromX, fromY, enemy.x, enemy.y);
       if (d < bestD) { bestD = d; best = enemy; }
     }
     return bestD <= maxDistance ? best : null;
+  }
+
+  private findBoltCollision(
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    projectileRadius: number,
+  ): BoltCollision<CombatEnemy> | null {
+    return firstBoltCollision(
+      fromX,
+      fromY,
+      toX,
+      toY,
+      projectileRadius,
+      this.enemies.filter((enemy) => enemy.alive),
+    );
   }
 
   private onSpellHit(
@@ -803,10 +1029,7 @@ export class ProtoScene extends Phaser.Scene {
     lockedTarget: CombatEnemy | null,
     hitEnemies: Set<CombatEnemy>,
   ): void {
-    const effectMultiplier = spec.effect === 'control' ? 0.35
-      : spec.effect === 'summon' ? 0.6
-        : 1;
-    const damage = Math.max(1, Math.round(spellDamageFromPower(spec.power) * effectMultiplier));
+    const damage = Math.max(1, spellDamageFromPower(spec.power));
     if (impact.kind === 'point') {
       if (lockedTarget?.alive) this.damageEnemy(lockedTarget, damage);
       return;
@@ -831,6 +1054,165 @@ export class ProtoScene extends Phaser.Scene {
       hitEnemies.add(enemy);
       this.damageEnemy(enemy, damage);
     }
+  }
+
+  private createSummon(spec: SpellSpec): void {
+    this.clearSummon();
+    this.activeSummon = new SummonedOrb(
+      this,
+      this.player.x,
+      this.player.y,
+      spec.element_primary,
+      spec.power,
+    );
+    this.announceSystemMessage(
+      `소환 · ${this.activeSummon.state.durationSeconds.toFixed(1)}초`,
+      paletteColorToCss(ELEMENT_PALETTES[spec.element_primary].core),
+    );
+  }
+
+  private updateSummon(deltaSeconds: number): void {
+    const summon = this.activeSummon;
+    if (!summon) return;
+    if (!this.playerState.alive) {
+      this.clearSummon();
+      return;
+    }
+
+    summon.updatePosition(this.player.x, this.player.y, deltaSeconds);
+    const target = this.nearestEnemyFrom(summon.x, summon.y, SUMMON_CONFIG.attackRange);
+    const tick = summon.state.update(deltaSeconds, target !== null);
+    if (tick.expired) {
+      this.clearSummon();
+      return;
+    }
+    if (!tick.shouldAttack || !target) return;
+
+    const palette = ELEMENT_PALETTES[summon.element];
+    this.fireFriendlyMissile({
+      fromX: summon.x,
+      fromY: summon.y,
+      target,
+      damage: summon.state.damage,
+      speed: SUMMON_CONFIG.projectileSpeed,
+      hitDistance: SUMMON_CONFIG.projectileHitDistance,
+      coreColor: palette.core,
+      glowColor: palette.glow,
+    });
+  }
+
+  private clearSummon(): void {
+    this.activeSummon?.destroy();
+    this.activeSummon = null;
+  }
+
+  private castControlSpell(from: Phaser.Math.Vector2, spec: SpellSpec): void {
+    const target = this.nearestEnemy();
+    const to = target ? new Phaser.Math.Vector2(target.x, target.y) : undefined;
+    let boltTarget: CombatEnemy | null = null;
+    const affectedEnemies = new Set<CombatEnemy>();
+    const castRoomIndex = this.combatRunController.state.roomIndex;
+    castSpell({
+      scene: this,
+      from,
+      to,
+      resolveBoltCollision: (fromX, fromY, toX, toY, projectileRadius) => {
+        const collision = this.findBoltCollision(
+          fromX,
+          fromY,
+          toX,
+          toY,
+          projectileRadius,
+        );
+        boltTarget = collision?.target ?? null;
+        return collision ? { x: collision.x, y: collision.y } : null;
+      },
+      onHit: (impact) => {
+        const currentRunState = this.combatRunController.state;
+        if (currentRunState.phase !== 'combat'
+          || currentRunState.roomIndex !== castRoomIndex) return;
+        this.onControlHit(impact, spec, boltTarget, affectedEnemies);
+      },
+    }, spec);
+  }
+
+  private onControlHit(
+    impact: SpellImpact,
+    spec: SpellSpec,
+    lockedTarget: CombatEnemy | null,
+    affectedEnemies: Set<CombatEnemy>,
+  ): void {
+    if (impact.kind === 'point') {
+      if (lockedTarget?.alive) this.applySlow(lockedTarget, spec.power);
+      return;
+    }
+
+    for (const enemy of this.enemies) {
+      if (!enemy.alive || affectedEnemies.has(enemy)) continue;
+      const isHit = impact.kind === 'circle'
+        ? Phaser.Math.Distance.Between(impact.x, impact.y, enemy.x, enemy.y)
+          <= impact.radius
+        : this.pointToSegmentDistance(
+          enemy.x,
+          enemy.y,
+          impact.fromX,
+          impact.fromY,
+          impact.toX,
+          impact.toY,
+        ) <= impact.width / 2;
+      if (!isHit) continue;
+
+      affectedEnemies.add(enemy);
+      this.applySlow(enemy, spec.power);
+    }
+  }
+
+  private applySlow(enemy: CombatEnemy, power: number): void {
+    const remaining = this.enemyControlState.applySlow(enemy, power);
+    if (!this.controlIndicators.has(enemy)) {
+      const indicator = this.add.circle(
+        0,
+        0,
+        CONTROL_CONFIG.indicatorRadius,
+        CONTROL_CONFIG.indicatorColor,
+        0.08,
+      ).setStrokeStyle(2, CONTROL_CONFIG.indicatorColor, 0.85)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      enemy.view.addAt(indicator, 0);
+      this.controlIndicators.set(enemy, indicator);
+    }
+    console.info('[Control] slow-applied', {
+      enemy: enemy.kind,
+      durationSeconds: remaining,
+      movementMultiplier: CONTROL_CONFIG.slowMovementMultiplier,
+    });
+  }
+
+  private updateEnemyControls(deltaSeconds: number): void {
+    for (const enemy of this.enemyControlState.update(deltaSeconds)) {
+      this.removeControlIndicator(enemy);
+    }
+  }
+
+  private removeEnemyControl(enemy: CombatEnemy): void {
+    this.enemyControlState.remove(enemy);
+    this.removeControlIndicator(enemy);
+  }
+
+  private clearEnemyControls(): void {
+    for (const enemy of this.enemyControlState.clear()) {
+      this.removeControlIndicator(enemy);
+    }
+    for (const enemy of [...this.controlIndicators.keys()]) {
+      this.removeControlIndicator(enemy);
+    }
+  }
+
+  private removeControlIndicator(enemy: CombatEnemy): void {
+    const indicator = this.controlIndicators.get(enemy);
+    if (!indicator) return;
+    if (indicator.active) indicator.destroy();
+    this.controlIndicators.delete(enemy);
   }
 
   private pointToSegmentDistance(
@@ -864,6 +1246,7 @@ export class ProtoScene extends Phaser.Scene {
     const splitX = enemy.x;
     const splitY = enemy.y;
     const shouldSplit = enemy instanceof SplitterEnemy && enemy.canSplit;
+    this.removeEnemyControl(enemy);
     enemy.destroy();
     this.enemies = this.enemies.filter((candidate) => candidate !== enemy);
     if (shouldSplit) {
@@ -888,7 +1271,7 @@ export class ProtoScene extends Phaser.Scene {
     const completedWave = this.waveManager.currentWaveNumber;
     this.waveManager.notifyEnemiesCleared();
     if (this.waveManager.phase === 'room-clear') {
-      this.announceSystemMessage('방 클리어');
+      this.combatRunController.notifyRoomCleared();
     } else {
       this.announceSystemMessage(`웨이브 ${completedWave} 완료`);
     }
