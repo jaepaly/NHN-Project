@@ -10,6 +10,17 @@ export interface ElementPalette {
   accent: number;
 }
 
+export const ELEMENT_LABELS: Record<SpellElement, string> = {
+  fire: '화염',
+  water: '해류',
+  lightning: '뇌전',
+  ice: '빙결',
+  earth: '대지',
+  wind: '질풍',
+  light: '광휘',
+  dark: '암영',
+};
+
 export const ELEMENT_PALETTES: Record<SpellElement, ElementPalette> = {
   fire:      { core: 0xff6b2b, glow: 0xff2200, accent: 0xffd166 },
   water:     { core: 0x2bd9d9, glow: 0x0077ff, accent: 0xa8f0ff },
@@ -27,3 +38,8 @@ export const SIZE_SCALE: Record<SpellSize, number> = {
   large: 1.5,
   huge: 2.2,
 };
+
+/** Phaser 숫자 색상을 DOM 오버레이의 CSS 색상으로 공유한다. */
+export function paletteColorToCss(color: number): string {
+  return `#${color.toString(16).padStart(6, '0')}`;
+}

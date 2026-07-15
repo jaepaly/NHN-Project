@@ -46,6 +46,7 @@ TypeScript · Vite · Phaser 3 · Gemini Flash (Cloudflare Workers 프록시) ·
 |---|---|---|
 | **이도원** | R1 게임 코어 | Phaser 씬·전투·적 AI·파츠 조합 이펙트 엔진·성능 |
 | **임재윤** | R2 AI 시스템 | 판정 프롬프트·프록시 인프라·캐싱/폴백·보스 기억 + 제출물 ④ |
+| **jaepaly** | R3 콘텐츠·UX·총괄 | 영창 UX·HUD·콘텐츠 연출·배포·제출물 취합 |
 
 작업 취합·검토·머지와 다음 페이즈 제시는 총괄(@jaepaly)이 담당한다.
 
@@ -98,5 +99,15 @@ TypeScript · Vite · Phaser 3 · Gemini Flash (Cloudflare Workers 프록시) ·
 - [ ] 판정 품질 1차 테스트: 5티어별 입력 10개씩 시트 작성 → 실제 판정 결과 기록 → 프롬프트 튜닝 (기록 자체가 제출물 ④ 소재)
 - **완료 기준**: 데모 페이지에서 실제 Gemini 판정으로 주문 발동 + 프록시 강제 다운 시 폴백 동작 확인 영상을 PR에 첨부
 - 참고: [src/spell/judge.ts](src/spell/judge.ts) (인터페이스), [src/spell/mockJudge.ts](src/spell/mockJudge.ts), [src/spell/validate.ts](src/spell/validate.ts)
+
+### ✦ jaepaly (R3 콘텐츠·UX·총괄)
+
+**이번 페이즈 목표: 영창의 손맛과 전투 정보 가독성 확보**
+
+- [x] 자유 텍스트 길이에 반응하는 영창 공명 게이지와 슬로모션 입력 오버레이
+- [x] 주문 판정 대기 중 해석 애니메이션과 이동 잠금·15% 슬로모션 유지
+- [x] HP·마나·글로벌 쿨다운을 한눈에 읽는 전투 HUD
+- [x] 주문 원소 팔레트와 최근 판정 소스(gemini/cache/fallback/mock)를 HUD에 연동
+- [ ] 7/20 전체 플레이 취합·최종 점검 후 Phase 2 지시 게시
 
 > 작업 중 궁금한 점·블로커는 총괄에게 바로 공유. 7/20에 취합·검토 후 Phase 2가 게시된다.
