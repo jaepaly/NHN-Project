@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test:spell": "esbuild scripts/spell-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-regression.mjs && node node_modules/.cache/incant-spell-regression.mjs",
+    "test:history": "esbuild scripts/spell-history-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-history-regression.mjs && node node_modules/.cache/incant-spell-history-regression.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

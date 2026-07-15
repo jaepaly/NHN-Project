@@ -5,8 +5,21 @@
 > (팀 공용 1줄 기록은 [AI_USAGE_LOG.md](AI_USAGE_LOG.md), 이 파일은 R2 상세 로그)
 
 - **담당**: 임재윤 (R2 — 판정 프롬프트·프록시 인프라·캐싱/폴백·보스 기억)
-- **최근 갱신**: 2026-07-14
-- **현재 페이즈**: Phase 1 (마감 7/20) — "방 하나를 실제 LLM 판정으로 처음부터 끝까지 플레이"
+- **최근 갱신**: 2026-07-15
+- **현재 페이즈**: **Phase 2 (마감 7/27)** — 코어 런 확장. (Phase 1 조기 달성)
+
+---
+
+## Phase 2 진행 (2026-07-15~) — [PHASE_2.md](PHASE_2.md) §3 R2 기준
+
+> P0 게이트(Spell Understanding v2 판정)는 총괄이 Codex로 선구현 → 임재윤이 배포·검토. 그 위에 히스토리 계층을 얹는다.
+
+- [x] **주문 히스토리 모듈** (`src/spell/spellHistory.ts`) — 검증된 cast만 기록. R1이 발동 확정 시 호출할 `record()` + 조회 API(`recent`/`all`/`size`).
+- [x] **반복 패널티** — 동일 정규화 문장 반복 시 `repeatMultiplier`(처음 1.0, 재사용부터 ×0.8, floor 0.3). 로컬 코드가 강제, 엔진(R1)이 power에 곱해 적용.
+- [x] **BossMemoryProfile 초안** — 최다 원소/폼·최근 주문명 (Phase 3 계약용, 실제 보스 로직 미구현).
+- [x] **회귀 스크립트** (`scripts/spell-history-regression.ts`, `npm run test:history`) — 팀 컨벤션(node:assert) 준수, 7군 통과.
+- [ ] **R1 통합** — R1이 `record`/`repeatMultiplier`를 실제 전투 흐름에 연결 (계약 전달 필요, PR 본문에 R1↔R2 명시).
+- [ ] **5티어 품질 스냅샷** (P1) — 티어별 5개 입력 실측 기록.
 
 ---
 
