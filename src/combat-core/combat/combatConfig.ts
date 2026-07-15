@@ -67,6 +67,13 @@ export function spellDamageFromPower(power: number): number {
   return Math.max(0, Math.round(power));
 }
 
+/** 반복 패널티 반영 power에 런 원소 친화 보너스를 적용한다. */
+export function spellPowerWithAffinity(power: number, affinityBonus: number): number {
+  const safePower = Number.isFinite(power) ? Math.max(0, power) : 0;
+  const safeBonus = Number.isFinite(affinityBonus) ? Math.max(0, affinityBonus) : 0;
+  return Math.round(safePower * (1 + safeBonus));
+}
+
 export function spellHealFromPower(power: number): number {
   return Math.max(1, Math.round(5 + power * 0.45));
 }

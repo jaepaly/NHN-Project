@@ -166,6 +166,56 @@
 
 ---
 
+## [R1] Phase 2 — 런·방·보상 코어
+
+### 작업 개요
+
+| 항목 | 내용 |
+|---|---|
+| 작업 기간 | 2026-07-15 ~ 진행 중 |
+| 담당 영역 | R1 게임 코어 |
+| 담당자 | 이도원 (`dowon03`) |
+| 브랜치 | `feat/phase2-run-reward-core` |
+| 목표 | 방 1 전투 이후 3택 1 보상을 적용하고 방 2·런 완료로 이어지는 코어 상태 구현 |
+| 구현 상태 | P0 코드 연결 완료, 플레이 검증 및 신규 폼 진행 전 |
+
+### R1 수행 작업과 협업 경계
+
+- **R1 수행 작업**: 최대 HP·마나 성장 API, 결정론적 보상 설정, `RunController` 상태 전이, 전투 phase 정지와 방 초기화, 히스토리·친화 적용
+- **R2 협업 경계**: 병합된 `SpellHistory`를 마나 지불 후 호출하고 반환된 반복 패널티 power를 실제 영창 효과에 소비
+- **R3 협업 경계**: PR #12의 `src/run/runContract.ts`를 변경하지 않고 구현하며, 카드 UI·1/2/3 입력·HUD·전환 연출은 R3 소유
+
+### 구현 이력과 결과
+
+| 역할 | 브랜치 또는 커밋 | 주요 작업 | 산출물 |
+|---|---|---|---|
+| `[R1]` | `feat/phase2-run-reward-core` | 플레이어 최대 능력치 확장, 3택 보상과 2개 방 phase·이벤트 구현 | `playerCombatState.ts`, `rewardConfig.ts`, `runController.ts` |
+| `[R1]` | `feat/phase2-run-reward-core` | `ProtoScene` 전투 정지·방 재시작, 반복 패널티와 원소 친화 power 연결 | `ProtoScene.ts`, `combatConfig.ts` |
+| `[R1]` | `feat/phase2-run-reward-core` | 보상 3종·이벤트 순서·마지막 방·방어 스냅샷·친화 계산 회귀 검증 | `run-controller-regression.ts`, `test:run` |
+
+### 주요 결정과 후속 협의
+
+- 공유 계약은 `src/run/runContract.ts`, R1 구현과 보상 데이터는 `src/combat-core/run/`에 둔다.
+- 방은 2개, 전환은 700ms이며 마지막 방은 보상 없이 `run-completed`로 종료한다.
+- 보상 임시값은 최대 HP +20·HP 20 회복, 최대 마나 +20·마나 20 회복, 방 기준 원소 친화 +15%다.
+- `reward-applied` 발생 전에 phase를 `room-transition`으로 변경한다.
+- 원소 친화는 반복 패널티가 적용된 power 뒤에 더하며 공격·회복·보호막·강화에 공통 적용한다.
+- 방 전환 시 플레이어를 중앙으로 이동하고 HP·마나·보호막·보상·히스토리는 유지한다.
+- 신규 `zone`, `rain` 폼은 후속 작업이다.
+
+### 검증 및 완료 상태
+
+- [x] 플레이어 최대 HP·마나 성장 API
+- [x] 보상 3종과 `CombatRunController` 순수 상태 로직
+- [x] `test:run`, `test:spell`, `test:history` 통과
+- [x] TypeScript 및 프로덕션 빌드 통과
+- [x] `ProtoScene` 방 진행·전투 정지·초기화 연결
+- [x] 주문 히스토리·반복 패널티·원소 친화 적용
+- [ ] `zone`, `rain` 폼과 6폼 피해 검증
+- [ ] PR 리뷰·병합
+
+---
+
 ## [R1] 이후 작업 기록 템플릿
 
 새 페이즈나 독립적인 작업 묶음을 시작할 때 아래 형식을 복사해 이어서 작성한다.

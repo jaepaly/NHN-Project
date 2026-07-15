@@ -8,13 +8,21 @@ export const PLAYER_COMBAT_CONFIG = {
 } as const;
 
 export class PlayerCombatState {
-  readonly maxHp: number = PLAYER_COMBAT_CONFIG.maxHp;
-  readonly maxMana: number = PLAYER_COMBAT_CONFIG.maxMana;
+  private maxHpValue: number = PLAYER_COMBAT_CONFIG.maxHp;
+  private maxManaValue: number = PLAYER_COMBAT_CONFIG.maxMana;
 
-  hp: number = this.maxHp;
-  mana: number = this.maxMana;
+  hp: number = this.maxHpValue;
+  mana: number = this.maxManaValue;
   shield: number = 0;
   cooldownRemaining: number = 0;
+
+  get maxHp(): number {
+    return this.maxHpValue;
+  }
+
+  get maxMana(): number {
+    return this.maxManaValue;
+  }
 
   get alive(): boolean {
     return this.hp > 0;
@@ -42,6 +50,18 @@ export class PlayerCombatState {
 
   startGlobalCooldown(): void {
     this.cooldownRemaining = PLAYER_COMBAT_CONFIG.globalCooldownSeconds;
+  }
+
+  increaseMaxHp(amount: number): number {
+    const increase = safePositiveAmount(amount);
+    this.maxHpValue += increase;
+    return increase;
+  }
+
+  increaseMaxMana(amount: number): number {
+    const increase = safePositiveAmount(amount);
+    this.maxManaValue += increase;
+    return increase;
   }
 
   takeDamage(amount: number): { hpDamage: number; shieldDamage: number } {
@@ -73,4 +93,8 @@ export class PlayerCombatState {
     this.mana = Math.min(this.maxMana, this.mana + Math.max(0, amount));
     return this.mana - previous;
   }
+}
+
+function safePositiveAmount(amount: number): number {
+  return Number.isFinite(amount) ? Math.max(0, amount) : 0;
 }

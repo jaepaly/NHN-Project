@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "test:spell": "esbuild scripts/spell-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-regression.mjs && node node_modules/.cache/incant-spell-regression.mjs",
     "test:history": "esbuild scripts/spell-history-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-history-regression.mjs && node node_modules/.cache/incant-spell-history-regression.mjs",
+    "test:run": "esbuild scripts/run-controller-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-run-controller-regression.mjs && node node_modules/.cache/incant-run-controller-regression.mjs",
     "snapshot:quality": "esbuild scripts/spell-quality-snapshot.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-quality-snapshot.mjs && node node_modules/.cache/incant-spell-quality-snapshot.mjs",
     "preview": "vite preview"
   },
