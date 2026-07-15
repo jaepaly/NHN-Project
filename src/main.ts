@@ -1,8 +1,6 @@
 import Phaser from 'phaser';
 import { ProtoScene } from './scenes/ProtoScene';
-import { showRewardCards } from './ui/rewardCardOverlay';
-import { playRoomTransition } from './ui/roomTransition';
-import { clearRunHud, updateRunHud } from './ui/runHud';
+import { bindRunUi } from './ui/runUiBinding';
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -20,11 +18,13 @@ const game = new Phaser.Game({
 // 디버그·QA 스크립트용 (96조합 자동 스크린샷 QA에서 프레임 정지에 사용)
 (window as unknown as Record<string, unknown>).__game = game;
 
-// R3 런 UI 데모·QA 훅 — R1 RunController 연결 전까지의 검증용.
-// 실제 결합은 docs/R3_RUN_UI_CONTRACT.md의 이벤트 계약을 따른다 (연결 PR에서 이 훅 제거).
-(window as unknown as Record<string, unknown>).__r3 = {
-  showRewardCards,
-  playRoomTransition,
-  updateRunHud,
-  clearRunHud,
+// R3 런 UI 결합 — 씬 부트 완료 후 RunController 공개 계약에 바인딩 (씬 코드 무접촉)
+const bindRunUiWhenReady = (): void => {
+  const scene = game.scene.getScene('proto') as ProtoScene | null;
+  if (scene?.runController) {
+    bindRunUi(scene.runController);
+    return;
+  }
+  window.setTimeout(bindRunUiWhenReady, 50);
 };
+bindRunUiWhenReady();
