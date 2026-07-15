@@ -773,11 +773,14 @@ export class ProtoScene extends Phaser.Scene {
         power: spellPowerWithAffinity(historyEntry.power, affinityBonus),
       };
       if (historyEntry.power < historyEntry.basePower) {
-        console.info('[SpellHistory] repeat-penalty', {
-          rawText: text,
-          basePower: historyEntry.basePower,
-          power: historyEntry.power,
-        });
+        // 반복 패널티를 원인과 함께 표시 — 다양성 유도가 게임의 핵심 경험 (PHASE_2 R3 P1)
+        const penaltyPct = Math.round(
+          (1 - historyEntry.power / historyEntry.basePower) * 100,
+        );
+        this.announceSystemMessage(
+          `REPEAT -${penaltyPct}% · 같은 주문은 힘을 잃는다`,
+          '#ffa94d',
+        );
       }
 
       this.playerState.startGlobalCooldown();
