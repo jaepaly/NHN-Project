@@ -40,6 +40,8 @@ import {
 } from '../combat-core/waves/waveManager';
 import type { WaveDefinition } from '../combat-core/waves/waveManager';
 import { CombatRunController } from '../combat-core/run/runController';
+import { CONTROL_CONFIG } from '../combat-core/control/controlConfig';
+import { EnemyControlState } from '../combat-core/control/enemyControlState';
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;
@@ -103,6 +105,8 @@ export class ProtoScene extends Phaser.Scene {
   private timeScale = 1;
   private basicAttackCooldownRemaining = 0;
   private basicMissiles: BasicMissile[] = [];
+  private readonly enemyControlState = new EnemyControlState();
+  private readonly controlIndicators = new Map<CombatEnemy, Phaser.GameObjects.Arc>();
 
   constructor() {
     super('proto');
@@ -160,6 +164,7 @@ export class ProtoScene extends Phaser.Scene {
       this.playerState.update(d);
       this.basicAttackCooldownRemaining = Math.max(0, this.basicAttackCooldownRemaining - d);
       this.updatePlayerMovement(delta / 1000);
+      this.updateEnemyControls(d);
       this.updateEnemies(d);
       this.updateEnemyProjectiles(d);
       this.updateBasicAttack();
@@ -210,6 +215,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private clearCombatRoom(): void {
+    this.clearEnemyControls();
     for (const enemy of this.enemies) enemy.destroy();
     this.enemies = [];
     this.clearTransientCombatObjects();
@@ -382,7 +388,12 @@ export class ProtoScene extends Phaser.Scene {
     if (!this.playerState.alive) return;
 
     for (const enemy of this.enemies) {
-      const shots = enemy.update(deltaSeconds, this.player.x, this.player.y);
+      const shots = enemy.update(
+        deltaSeconds,
+        this.player.x,
+        this.player.y,
+        this.enemyControlState.movementMultiplierFor(enemy),
+      );
       enemy.view.x = Phaser.Math.Clamp(
         enemy.view.x,
         this.worldBounds.left + 22,
@@ -748,6 +759,10 @@ export class ProtoScene extends Phaser.Scene {
       this.announceSystemMessage(`강화 · MANA +${Math.round(restored)}`, '#c7a6ff');
       return;
     }
+    if (spec.effect === 'control') {
+      this.castControlSpell(from, spec);
+      return;
+    }
 
     const target = this.nearestEnemy();
     const to = target ? new Phaser.Math.Vector2(target.x, target.y) : undefined;
@@ -934,9 +949,7 @@ export class ProtoScene extends Phaser.Scene {
     lockedTarget: CombatEnemy | null,
     hitEnemies: Set<CombatEnemy>,
   ): void {
-    const effectMultiplier = spec.effect === 'control' ? 0.35
-      : spec.effect === 'summon' ? 0.6
-        : 1;
+    const effectMultiplier = spec.effect === 'summon' ? 0.6 : 1;
     const damage = Math.max(1, Math.round(spellDamageFromPower(spec.power) * effectMultiplier));
     if (impact.kind === 'point') {
       if (lockedTarget?.alive) this.damageEnemy(lockedTarget, damage);
@@ -962,6 +975,103 @@ export class ProtoScene extends Phaser.Scene {
       hitEnemies.add(enemy);
       this.damageEnemy(enemy, damage);
     }
+  }
+
+  private castControlSpell(from: Phaser.Math.Vector2, spec: SpellSpec): void {
+    const target = this.nearestEnemy();
+    const to = target ? new Phaser.Math.Vector2(target.x, target.y) : undefined;
+    const affectedEnemies = new Set<CombatEnemy>();
+    const castRoomIndex = this.combatRunController.state.roomIndex;
+    castSpell({
+      scene: this,
+      from,
+      to,
+      onHit: (impact) => {
+        const currentRunState = this.combatRunController.state;
+        if (currentRunState.phase !== 'combat'
+          || currentRunState.roomIndex !== castRoomIndex) return;
+        this.onControlHit(impact, spec, target, affectedEnemies);
+      },
+    }, spec);
+  }
+
+  private onControlHit(
+    impact: SpellImpact,
+    spec: SpellSpec,
+    lockedTarget: CombatEnemy | null,
+    affectedEnemies: Set<CombatEnemy>,
+  ): void {
+    if (impact.kind === 'point') {
+      if (lockedTarget?.alive) this.applySlow(lockedTarget, spec.power);
+      return;
+    }
+
+    for (const enemy of this.enemies) {
+      if (!enemy.alive || affectedEnemies.has(enemy)) continue;
+      const isHit = impact.kind === 'circle'
+        ? Phaser.Math.Distance.Between(impact.x, impact.y, enemy.x, enemy.y)
+          <= impact.radius
+        : this.pointToSegmentDistance(
+          enemy.x,
+          enemy.y,
+          impact.fromX,
+          impact.fromY,
+          impact.toX,
+          impact.toY,
+        ) <= impact.width / 2;
+      if (!isHit) continue;
+
+      affectedEnemies.add(enemy);
+      this.applySlow(enemy, spec.power);
+    }
+  }
+
+  private applySlow(enemy: CombatEnemy, power: number): void {
+    const remaining = this.enemyControlState.applySlow(enemy, power);
+    if (!this.controlIndicators.has(enemy)) {
+      const indicator = this.add.circle(
+        0,
+        0,
+        CONTROL_CONFIG.indicatorRadius,
+        CONTROL_CONFIG.indicatorColor,
+        0.08,
+      ).setStrokeStyle(2, CONTROL_CONFIG.indicatorColor, 0.85)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      enemy.view.addAt(indicator, 0);
+      this.controlIndicators.set(enemy, indicator);
+    }
+    console.info('[Control] slow-applied', {
+      enemy: enemy.kind,
+      durationSeconds: remaining,
+      movementMultiplier: CONTROL_CONFIG.slowMovementMultiplier,
+    });
+  }
+
+  private updateEnemyControls(deltaSeconds: number): void {
+    for (const enemy of this.enemyControlState.update(deltaSeconds)) {
+      this.removeControlIndicator(enemy);
+    }
+  }
+
+  private removeEnemyControl(enemy: CombatEnemy): void {
+    this.enemyControlState.remove(enemy);
+    this.removeControlIndicator(enemy);
+  }
+
+  private clearEnemyControls(): void {
+    for (const enemy of this.enemyControlState.clear()) {
+      this.removeControlIndicator(enemy);
+    }
+    for (const enemy of [...this.controlIndicators.keys()]) {
+      this.removeControlIndicator(enemy);
+    }
+  }
+
+  private removeControlIndicator(enemy: CombatEnemy): void {
+    const indicator = this.controlIndicators.get(enemy);
+    if (!indicator) return;
+    if (indicator.active) indicator.destroy();
+    this.controlIndicators.delete(enemy);
   }
 
   private pointToSegmentDistance(
@@ -995,6 +1105,7 @@ export class ProtoScene extends Phaser.Scene {
     const splitX = enemy.x;
     const splitY = enemy.y;
     const shouldSplit = enemy instanceof SplitterEnemy && enemy.canSplit;
+    this.removeEnemyControl(enemy);
     enemy.destroy();
     this.enemies = this.enemies.filter((candidate) => candidate !== enemy);
     if (shouldSplit) {

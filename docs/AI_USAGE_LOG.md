@@ -6,6 +6,7 @@
 
 | 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
 |---|---|---|---|---|---|---|
+| 2026-07-15 | 이도원 | Codex | R1 Phase 2 control 둔화 효과 구현 | 미정인 상태이상 전체를 확장하지 않고 Phase 2 최소 범위로 control을 직접 피해 없는 이동 둔화에 연결하고, 적별 수명·비중첩 갱신·시각 링·방/처치 정리를 구현 | `controlConfig.ts`, `enemyControlState.ts`, 적 공통 update 계약, `ProtoScene.ts`, `control-effects-regression.ts`, `test:control` | 이동 배율 0.5·지속시간 2~6초는 임시값, 회귀·빌드·플레이 검증 완료, 전용 cage 렌더러와 summon은 후속 작업 |
 | 2026-07-15 | 이도원 | Codex | R1 Phase 2 런·보상 코어 및 전투 씬 연결 | PR #12 계약을 구현한 2개 방·결정론적 3택 보상과 최대 HP·마나 성장을 만들고, 전투 phase 정지·방 초기화·R2 주문 히스토리 반복 패널티·원소 친화를 실제 영창 흐름에 연결 | `PlayerCombatState`, `rewardConfig.ts`, `runController.ts`, `ProtoScene.ts`, `run-controller-regression.ts`, `test:run` | 런 회귀 6군·기존 주문/히스토리 회귀·프로덕션 빌드·로컬 브라우저 무오류 확인 |
 | 2026-07-15 | 임재윤 | Claude Code (Opus 4.8) | R2 Phase 2: 주문 히스토리·반복 패널티·보스 요약 | 검증된 cast 주문만 기록하는 런 단위 SpellHistory 모듈(기록/조회 API), 동일 정규화 문장 반복 시 power×0.8 로컬 패널티(floor 0.3), BossMemoryProfile 초안, node:assert 회귀 스크립트 | `src/spell/spellHistory.ts`, `scripts/spell-history-regression.ts`, `test:history` | 팀 재현스크립트 컨벤션 준수(Vitest 미도입), 7군 통과·tsc 통과 |
 | 2026-07-15 | jaepaly | Claude Code | PR #11 검토 + R1↔R3 런 계약 제안 | v2 판정 계약·자원 미소모·회복/보호막을 코드와 브라우저 런타임(heal +21·shield +31·fizzle 자원 불변)으로 검증. R1 방/보상 계약 부재 확인 → 중복 구현 대신 인터페이스 계약 제안 | PR #11 검토 승인, `runContract.ts`, `R3_RUN_UI_CONTRACT.md` | 라이브 Gemini 미사용 (Mock·로컬 검증만) |

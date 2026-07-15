@@ -23,7 +23,12 @@ export interface CombatEnemy {
   readonly y: number;
   readonly canDealContactDamage: boolean;
 
-  update(deltaSeconds: number, targetX: number, targetY: number): EnemyShotRequest[];
+  update(
+    deltaSeconds: number,
+    targetX: number,
+    targetY: number,
+    movementMultiplier?: number,
+  ): EnemyShotRequest[];
   startContactDamageCooldown(): void;
   takeDamage(amount: number): boolean;
   destroy(): void;

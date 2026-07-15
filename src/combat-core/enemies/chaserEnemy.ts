@@ -38,7 +38,12 @@ export class ChaserEnemy implements CombatEnemy {
     return this.view.y;
   }
 
-  update(deltaSeconds: number, targetX: number, targetY: number): EnemyShotRequest[] {
+  update(
+    deltaSeconds: number,
+    targetX: number,
+    targetY: number,
+    movementMultiplier = 1,
+  ): EnemyShotRequest[] {
     if (!this.alive) return [];
 
     this.contactDamageCooldownRemaining = Math.max(
@@ -50,8 +55,9 @@ export class ChaserEnemy implements CombatEnemy {
     if (direction.lengthSq() === 0) return [];
 
     direction.normalize();
-    this.view.x += direction.x * CHASER_CONFIG.speed * deltaSeconds;
-    this.view.y += direction.y * CHASER_CONFIG.speed * deltaSeconds;
+    const moveScale = safeMovementMultiplier(movementMultiplier);
+    this.view.x += direction.x * CHASER_CONFIG.speed * deltaSeconds * moveScale;
+    this.view.y += direction.y * CHASER_CONFIG.speed * deltaSeconds * moveScale;
     this.body.rotation = direction.angle() + Math.PI / 2;
     return [];
   }
@@ -80,4 +86,8 @@ export class ChaserEnemy implements CombatEnemy {
     this.alive = false;
     this.view.destroy(true);
   }
+}
+
+function safeMovementMultiplier(multiplier: number): number {
+  return Number.isFinite(multiplier) ? Math.max(0, multiplier) : 1;
 }
