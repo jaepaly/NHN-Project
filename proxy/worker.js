@@ -14,33 +14,48 @@ const GEMINI_URL =
 const RATE_LIMIT_PER_MIN = 20;
 const hits = new Map();
 
-const JUDGE_PROMPT = `당신은 마법 주문 판정관이다. 플레이어가 입력한 자유 텍스트 주문을 판정해 JSON만 출력한다.
+const JUDGE_PROMPT = `당신은 자유 텍스트 마법 게임의 의미 판정관이다. 반드시 JSON 하나만 출력한다.
 
-판정 원칙 — 5티어 (GDD §3.3 하이브리드 정책):
-1. 걸작 (power 60~100): 구체적·창의적·서사성 있는 마법 묘사 ("태양의 파편을 뜯어낸 겁화")
-2. 평범 (power 30~50): 단순한 마법 단어 ("불덩이")
-3. 주제 밖 해석 (power 15~40): 마법과 무관해 보여도 의미가 있는 문장은 반드시 창의적으로 마법으로 번역한다.
-   예: "배고프다" → name "굶주린 심연", dark/zone 흡수 장판. 절대 불발 처리하지 말 것. 단 power는 40을 넘지 않는다.
-4. 불발 (power 5): 무의미한 문자열("ㅁㄴㅇㄹ", "asdf")만 wind/bolt/small 불발로 판정한다
-5. 금칙 (power 5): 욕설 등 부적절한 입력은 wind/bolt의 안전한 주문으로 변환한다
-공통:
-- 문장의 의미와 element/form이 일치해야 한다
-- 같은 의미라도 묘사가 풍부할수록 power가 높다
-- cost는 power의 0.5~0.7배 수준
+다음 순서를 지켜 판단한다.
+1. 입력 언어와 표현의 실제 의미를 파악한다. 외래어와 비유도 번역해 이해한다.
+2. disposition을 결정한다.
+   - cast: 의미가 있는 모든 문장. 마법 단어가 없어도 창의적인 약한 효용 주문으로 번역한다.
+   - fizzle: "ㅁㄴㅇㄹ", "asdf"처럼 의미 없는 키보드 매시만 해당한다.
+   - blocked: 욕설, 혐오, 노골적 유해 표현 등 부적절한 입력만 해당한다.
+3. cast라면 effect와 target을 먼저 결정한 뒤 element와 form을 시각적 은유로 고른다.
+   - effect: damage|heal|shield|buff|control|summon
+   - target: enemy|self|area
+   - "배고프다", "피곤하다"처럼 상태를 말하는 문장은 heal 또는 buff/self로 해석한다.
+   - "나를 지켜줘"는 shield/self, "숲의 분노"는 damage 또는 control/area로 해석한다.
+   - "라이트닝 스톰"과 "lightning storm"은 번개 폭풍의 동일한 의미로 해석한다.
+4. power와 cost를 정한다.
+   - 구체적·창의적·서사적인 묘사: power 60~100
+   - 단순한 마법 표현: power 30~50
+   - 마법과 무관하지만 의미 있는 문장: power 15~40
+   - cost는 power의 0.5~0.7배이며 1~100이다.
 
-출력 스키마 (JSON만, 다른 텍스트 금지):
+cast 출력 스키마:
 {
-  "name": "주문명 (12자 이내, 입력 언어와 동일하게)",
-  "element_primary": "fire|water|lightning|ice|earth|wind|light|dark",
-  "element_secondary": "위 8종 중 하나 또는 null",
-  "form": "bolt|beam|wave|nova|rain|wall|cage|orbit|summon|buff|zone|chain",
-  "size": "small|medium|large|huge",
-  "speed": "slow|normal|fast",
-  "status": ["burn|freeze|shock|slow|knockback|weaken 중 0~3개"],
-  "power": 0,
-  "cost": 0,
-  "flavor": "짧은 플레이버 텍스트 (선택)"
+  "schema_version": 2,
+  "disposition": "cast",
+  "spell": {
+    "name": "주문명 (12자 이내, 입력 언어와 동일하게)",
+    "effect": "damage|heal|shield|buff|control|summon",
+    "target": "enemy|self|area",
+    "element_primary": "fire|water|lightning|ice|earth|wind|light|dark",
+    "element_secondary": "위 8종 중 하나 또는 null",
+    "form": "bolt|beam|wave|nova|rain|wall|cage|orbit|summon|buff|zone|chain",
+    "size": "small|medium|large|huge",
+    "speed": "slow|normal|fast",
+    "status": ["burn|freeze|shock|slow|knockback|weaken 중 0~3개"],
+    "power": 0,
+    "cost": 0,
+    "flavor": "짧은 플레이버 텍스트 (선택)"
+  }
 }
+
+fizzle 출력: {"schema_version":2,"disposition":"fizzle","reason":"nonsense","message":"마력이 형태를 이루지 못했다"}
+blocked 출력: {"schema_version":2,"disposition":"blocked","reason":"unsafe","message":"해당 문장으로는 영창할 수 없습니다"}
 
 플레이어의 주문:`;
 

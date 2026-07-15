@@ -31,11 +31,13 @@ POST /
 Content-Type: application/json
 
 { "text": "번개를 품은 해일" }
-→ 200 { "name": "뇌전해일", "element_primary": "water", ... }  (SpellSpec JSON)
+→ 200 { "schema_version": 2, "disposition": "cast", "spell": { "name": "뇌전해일", "effect": "damage", ... } }
+→ 200 { "schema_version": 2, "disposition": "fizzle", "reason": "nonsense", ... }
 → 429 rate limited / 502 upstream 오류
 ```
 
-클라이언트(`GeminiJudge`)는 응답을 `validateSpec`으로 재검증하고, 실패·타임아웃 시 MockJudge로 폴백한다.
+클라이언트(`GeminiJudge`)는 응답을 `validateJudgement`로 재검증하고, 실패·타임아웃 시 MockJudge v2로 폴백한다.
+캐시는 `incant:judge:v2:<promptVersion>:` 접두사를 사용해 구형 판정과 분리한다.
 
 ## 주의
 

@@ -66,3 +66,15 @@ export const SPELL_DAMAGE_CONFIG = {
 export function spellDamageFromPower(power: number): number {
   return Math.max(0, Math.round(power));
 }
+
+export function spellHealFromPower(power: number): number {
+  return Math.max(1, Math.round(5 + power * 0.45));
+}
+
+export function spellShieldFromPower(power: number): number {
+  return Math.max(1, Math.round(8 + power * 0.6));
+}
+
+export function spellBuffManaFromPower(power: number): number {
+  return Math.max(1, Math.round(3 + power * 0.25));
+}

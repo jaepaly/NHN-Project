@@ -1,7 +1,7 @@
 # 게임 디자인 문서 (GDD)
 
 > NAN 2026 (NHN Game × AI Hackathon) 사전과제 제출작
-> 버전 0.1 — 2026-07-14 초안. 팀 리뷰 후 확정.
+> 버전 0.2 — 2026-07-15 Spell Understanding v2 결정 반영.
 
 ---
 
@@ -58,23 +58,43 @@
 4. LLM 판정 (목표 1.5초 내, 영창 이펙트로 대기시간 연출)
 5. 판정 JSON → 파츠 조합 렌더링 → 발동 + 주문명 화면 각인
 
-### 3.2 판정 스키마 (LLM 출력)
+### 3.2 판정 스키마 v2 (Phase 2 목표)
 
-```jsonc
-{
-  "name": "뇌전해일",              // LLM이 지은 주문명 (화면 에코)
-  "element_primary": "water",     // 8종: fire, water, lightning, ice, earth, wind, light, dark
-  "element_secondary": "lightning", // 옵션 (null 가능)
-  "form": "wave",                 // 12종: bolt, beam, wave, nova, rain, wall, cage, orbit,
-                                  //        summon, buff, zone, chain
-  "size": "large",                // small / medium / large / huge
-  "speed": "slow",                // slow / normal / fast
-  "status": ["shock", "knockback"], // 상태이상 풀: burn, freeze, shock, slow, knockback, weaken
-  "power": 72,                    // 0~100. 창의성·구체성·서사성 판정
-  "cost": 45,                     // 마나 비용. power에 비례하되 LLM이 조정
-  "flavor": "심연이 하늘로 치솟는다" // 짧은 플레이버 텍스트 (옵션)
+판정은 먼저 **발동 가능성**을 구분한다. 유효한 문장만 주문 효과와 원소·폼을 갖는다.
+무의미 입력이나 금칙 입력에 억지로 `wind/bolt`를 부여하지 않는다.
+
+```ts
+type SpellJudgement =
+  | {
+      schema_version: 2;
+      disposition: 'cast';
+      spell: CastSpellSpec;
+    }
+  | {
+      schema_version: 2;
+      disposition: 'fizzle' | 'blocked';
+      reason: 'nonsense' | 'unsafe';
+      message: string;
+    };
+
+interface CastSpellSpec {
+  name: string;
+  effect: 'damage' | 'heal' | 'shield' | 'buff' | 'control' | 'summon';
+  target: 'enemy' | 'self' | 'area';
+  element_primary: SpellElement;
+  element_secondary: SpellElement | null;
+  form: SpellForm;
+  size: SpellSize;
+  speed: SpellSpeed;
+  status: SpellStatus[];
+  power: number;
+  cost: number;
+  flavor?: string;
 }
 ```
+
+- 회복량·보호막량·피해량은 LLM이 직접 정하지 않고 검증된 `effect`, `power`를 받아 엔진 공식이 계산한다.
+- 상세 판정 순서·호환 전략·회귀 입력은 [SPELL_UNDERSTANDING_V2.md](SPELL_UNDERSTANDING_V2.md)를 따른다.
 
 ### 3.3 판정 원칙 — 하이브리드 5티어 정책 (2026-07-14 확정)
 
@@ -85,12 +105,14 @@
 |---|---|---|---|
 | 걸작 | "태양의 파편을 뜯어낸 겁화" | 구체적·창의적·서사적 묘사 | 60~100 |
 | 평범 | "불덩이" | 의미 정합 판정 | 30~50 |
-| **주제 밖 해석** | "배고프다" → *"굶주린 심연"* (dark/zone 흡수 장판) | **LLM이 의미를 마법으로 번역** | 15~40 |
-| 불발 | "ㅁㄴㅇㄹ" | wind/bolt 불발 연출 | 5 |
-| 금칙 | 욕설 등 부적절 입력 | 안전한 기본 주문으로 변환 | 5 |
+| **주제 밖 해석** | "배고프다" → *"공복의 포식"* (`heal/self`, dark/buff) | **의미를 비공격 마법으로도 번역** | 15~40 |
+| 불발 | "ㅁㄴㅇㄹ" | `fizzle`, 캐스팅 실패 안내 | 0 |
+| 금칙 | 욕설 등 부적절 입력 | `blocked`, 경고문 표시 | 0 |
 
 - **구체성 보상**: 같은 의미라도 묘사가 풍부할수록 power↑ ("불" < "화염구" < "태양의 파편을 뜯어낸 겁화")
 - **의미 정합성**: element/form은 문장 의미와 일치해야 함 (판정의 재미 = 게임의 재미)
+- **다국어·은유 우선**: `라이트닝 스톰`, `forest fury`, `숲의 분노`처럼 외래어·영어·은유도 키워드가 아니라 의미로 판정
+- **효과 의도 우선**: 공격·회복·보호·강화·제어·소환을 먼저 결정한 뒤 원소와 폼을 매핑
 - **주제 밖 해석의 상한 40**: "장난 입력 스팸"이 최적 전략이 되는 것을 방지 — 진지한 마법 묘사가 항상 더 강하다
 - **MockJudge(폴백)는 창의 해석 없이 불발 처리** — 폴백의 목적은 무중단이지 재치가 아님
 
@@ -102,12 +124,15 @@
 | power 상한 | 스테이지별 캡 (S1: 60, S2: 80, S3: 100). LLM이 초과값을 줘도 클램프 |
 | 반복 패널티 | 동일/유사 주문 반복 시 power 20%씩 감소 (다양성 유도 → §4 보스 기억과 시너지) |
 | 쿨다운 | 영창 후 3초 글로벌 쿨다운 (스팸 방지 + API 비용 통제) |
+| 비공격 효과 | `power`를 엔진 공식으로 회복량·보호막량·버프 시간에 변환. LLM 수치를 직접 적용하지 않음 |
+| 불발·금칙 | 마나 소모 없음. 불발은 짧은 입력 잠금, 금칙은 경고 후 발동 차단 |
 
 ### 3.5 안정성 (버그 제로 전략)
 
 - **스키마 검증**: enum 밖 값 → 1회 재시도 → 실패 시 기본 주문 폴백. 렌더러에는 검증된 값만 도달
 - **타임아웃**: 2.5초 초과 시 로컬 키워드 판정기(MockJudge)로 즉시 폴백 — 게임이 멈추는 경우는 없음
-- **캐시**: 동일 문장 = 동일 판정 (localStorage). 데모 시연 시 응답 속도 보장
+- **로컬 사전검사**: 빈 입력·명백한 키보드 난타는 프록시 호출 전에 `fizzle` 처리
+- **캐시 버전**: `incant:judge:v2:<promptVersion>:` 접두사를 사용해 이전 프롬프트의 잘못된 판정을 재사용하지 않음
 - **판정기 추상화**: `SpellJudge` 인터페이스 — `MockJudge`(키워드 결정론) / `GeminiJudge`(프록시) / (W4) `WebLLMJudge`
 
 ## 4. 기억하는 보스

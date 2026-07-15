@@ -13,6 +13,7 @@ export class PlayerCombatState {
 
   hp: number = this.maxHp;
   mana: number = this.maxMana;
+  shield: number = 0;
   cooldownRemaining: number = 0;
 
   get alive(): boolean {
@@ -43,8 +44,33 @@ export class PlayerCombatState {
     this.cooldownRemaining = PLAYER_COMBAT_CONFIG.globalCooldownSeconds;
   }
 
-  takeDamage(amount: number): void {
+  takeDamage(amount: number): { hpDamage: number; shieldDamage: number } {
     const damage = Math.max(0, amount);
-    this.hp = Math.max(0, this.hp - damage);
+    const shieldDamage = Math.min(this.shield, damage);
+    this.shield -= shieldDamage;
+    const hpDamage = Math.min(this.hp, damage - shieldDamage);
+    this.hp -= hpDamage;
+    return { hpDamage, shieldDamage };
+  }
+
+  heal(amount: number): number {
+    if (!this.alive) return 0;
+    const previous = this.hp;
+    this.hp = Math.min(this.maxHp, this.hp + Math.max(0, amount));
+    return this.hp - previous;
+  }
+
+  addShield(amount: number): number {
+    if (!this.alive) return 0;
+    const previous = this.shield;
+    this.shield = Math.min(this.maxHp, this.shield + Math.max(0, amount));
+    return this.shield - previous;
+  }
+
+  restoreMana(amount: number): number {
+    if (!this.alive) return 0;
+    const previous = this.mana;
+    this.mana = Math.min(this.maxMana, this.mana + Math.max(0, amount));
+    return this.mana - previous;
   }
 }
