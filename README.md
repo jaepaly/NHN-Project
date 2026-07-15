@@ -1,4 +1,4 @@
-# INCANT (가칭) — 말이 곧 마법이 되는 로그라이크
+# INCANT — 말이 곧 마법이 되는 로그라이크
 
 > **NAN 2026 (NHN Game × AI Hackathon) 사전과제 제출작**
 > 정해진 스킬은 없다. 당신이 입력한 문장이 곧 주문이 된다.
@@ -36,7 +36,8 @@ npm run build   # 프로덕션 빌드 (dist/)
 | [docs/SUBMISSION_PLAN.md](docs/SUBMISSION_PLAN.md) | 제출물 5종 계획 + 주차별 마일스톤 |
 | [docs/AI_USAGE_LOG.md](docs/AI_USAGE_LOG.md) | AI 활용 로그 (전원 기록 의무) |
 | [docs/PHASE_1_SUMMARY.md](docs/PHASE_1_SUMMARY.md) | Phase 1 완료 근거·검증 결과·이월 항목 |
-| [docs/PHASE_2.md](docs/PHASE_2.md) | Phase 2 담당자별 작업 지시·완료 기준 |
+| [docs/PHASE_2.md](docs/PHASE_2.md) | Phase 2 담당자별 작업 지시·완료 기준 (완료) |
+| [docs/PHASE_3.md](docs/PHASE_3.md) | **Phase 3 지시 — 기억하는 보스 & 에셋 (현재)** |
 | [docs/SPELL_UNDERSTANDING_V2.md](docs/SPELL_UNDERSTANDING_V2.md) | 자유 문장 의미 판정·비공격 효과·불발/금칙 설계 |
 
 ## 🏗 기술 스택
@@ -47,7 +48,7 @@ TypeScript · Vite · Phaser 3 · Gemini Flash (Cloudflare Workers 프록시) ·
 
 | 이름 | 역할 | 담당 |
 |---|---|---|
-| **이도원** | R1 게임 코어 | Phaser 씬·전투·적 AI·파츠 조합 이펙트 엔진·성능 |
+| **이도원** | R1 게임 코어 + 에셋 | Phaser 씬·전투·적 AI·이펙트 엔진 + **사운드·타이틀·디자인 (Phase 3~)** |
 | **임재윤** | R2 AI 시스템 | 판정 프롬프트·프록시 인프라·캐싱/폴백·보스 기억 + 제출물 ④ |
 | **jaepaly** | R3 콘텐츠·UX·총괄 | 영창 UX·HUD·콘텐츠 연출·배포·제출물 취합 |
 
@@ -69,28 +70,25 @@ TypeScript · Vite · Phaser 3 · Gemini Flash (Cloudflare Workers 프록시) ·
 
 ---
 
-## 📌 현재 페이즈: Phase 2 (마감 7/27)
+## 📌 현재 페이즈: Phase 3 (마감 7/22)
 
-> 목표: **"방을 클리어하고 보상을 골라 다음 방으로 이어지는 한 런의 뼈대를 완성한다."**
+> 목표: **"런의 끝에서 나를 기억하는 보스와 싸우고, 게임이 소리와 얼굴(타이틀)을 갖춘다."**
 
-Phase 1 기술 목표는 2026-07-15에 조기 달성했다. 완료 근거와 라이브 검증 결과는
-[Phase 1 완료 요약](docs/PHASE_1_SUMMARY.md)에 보관한다.
+Phase 2는 2026-07-15 완료 (계획 7/27 대비 12일 조기) — 방 2개·보상 3택·폼 6종·의미 판정 v2·
+반복 패널티까지 Mock/라이브 통합 QA 통과. **게임명은 INCANT로 확정** (Issue #2 종료).
 
 ### 이번 페이즈 핵심
 
-- **R1 이도원**: 2개 방 진행·3택 1 보상·회복/보호 효과 적용·주문 폼 6종
-- **R2 임재윤**: **Spell Understanding v2**·주문 히스토리·반복 패널티·보스 기억용 요약
-- **R3 jaepaly**: 보상 선택 UI·불발/금칙/회복 피드백·방 전환·통합 QA
+- **이도원 (에셋·디자인)**: AI 생성 사운드(원소 8종 SFX+BGM)·타이틀 화면(INCANT 로고)·웹폰트·파비콘.
+  **도구·프롬프트·통합 방법을 담은 상세 가이드가 [PHASE_3.md §2](docs/PHASE_3.md)에 있다** — 그대로 따라가면 된다
+- **임재윤 (보스 기억)**: bossMemory 기반 내성 프로필·런 간 기억(localStorage)·보스 대사 생성(/boss-line, 템플릿 폴백 필수)
+- 보스 전투 코어·연출·통합 QA는 총괄이 진행
 
-담당자별 구현 범위, 인터페이스 계약, 일정과 완료 기준은
-**[docs/PHASE_2.md](docs/PHASE_2.md)**를 기준으로 한다.
-의미 판정 v2 구현은 [Issue #10](https://github.com/jaepaly/NHN-Project/issues/10)에서 통합 추적한다.
+담당자별 상세 지시·완료 기준·일정·스코프 컷은 **[docs/PHASE_3.md](docs/PHASE_3.md)** 기준.
 
 ### 공통 시작 절차
 
 1. `git checkout main && git pull && npm ci`
-2. 반복 전투 개발은 `.env`에 `VITE_JUDGE_MOCK=1`을 사용한다.
-3. 역할별 feature 브랜치에서 작업하고 AI 활용 로그를 같은 PR에 포함한다.
-4. `SpellSpec` 스키마나 역할 간 이벤트 계약 변경은 구현 전에 공유한다.
-
-> 게임명 투표 [Issue #2](https://github.com/jaepaly/NHN-Project/issues/2)는 7/20까지 유지하며, 결과는 기능 개발과 별도로 반영한다.
+2. 개발 중 판정은 `.env`에 `VITE_JUDGE_MOCK=1` (공용 할당량 절약)
+3. 역할별 feature 브랜치 + AI_USAGE_LOG 기록을 같은 PR에 포함
+4. 계약 파일(`SpellSpec`/`RunContract`) 변경은 구현 전 합의
