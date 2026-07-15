@@ -1,8 +1,8 @@
 import {
-  ELEMENTS, FORMS, SIZES, SPEEDS, STATUSES,
+  EFFECTS, ELEMENTS, FORMS, SIZES, SPEEDS, STATUSES, TARGETS,
   FALLBACK_SPELL,
 } from './types';
-import type { SpellSpec, SpellStatus } from './types';
+import type { SpellJudgement, SpellSpec, SpellStatus } from './types';
 
 const MAX_SPELL_NAME_LENGTH = 30;
 
@@ -29,6 +29,8 @@ export function validateSpec(raw: unknown, powerCap = 100): SpellSpec | null {
   // 필수 enum 필드 — 하나라도 어긋나면 통째로 거부 (부분 수용은 예측 불가능성을 낳는다)
   if (!isOneOf(ELEMENTS, o.element_primary)) return null;
   if (!isOneOf(FORMS, o.form)) return null;
+  if (!isOneOf(EFFECTS, o.effect)) return null;
+  if (!isOneOf(TARGETS, o.target)) return null;
 
   const secondary =
     o.element_secondary === null || o.element_secondary === undefined
@@ -52,6 +54,8 @@ export function validateSpec(raw: unknown, powerCap = 100): SpellSpec | null {
 
   return {
     name,
+    effect: o.effect,
+    target: o.target,
     element_primary: o.element_primary,
     element_secondary: secondary === o.element_primary ? null : secondary,
     form: o.form,
@@ -61,5 +65,33 @@ export function validateSpec(raw: unknown, powerCap = 100): SpellSpec | null {
     power,
     cost,
     flavor: typeof o.flavor === 'string' ? o.flavor.slice(0, 60) : undefined,
+  };
+}
+
+/** 신뢰할 수 없는 LLM/캐시 출력을 SpellJudgement v2로 검증한다. */
+export function validateJudgement(raw: unknown, powerCap = 100): SpellJudgement | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const o = raw as Record<string, unknown>;
+  if (o.schema_version !== 2) return null;
+
+  if (o.disposition === 'cast') {
+    const spell = validateSpec(o.spell, powerCap);
+    return spell ? { schema_version: 2, disposition: 'cast', spell } : null;
+  }
+
+  if (o.disposition !== 'fizzle' && o.disposition !== 'blocked') return null;
+  const expectedReason = o.disposition === 'fizzle' ? 'nonsense' : 'unsafe';
+  if (o.reason !== expectedReason) return null;
+  const fallbackMessage = o.disposition === 'fizzle'
+    ? '마력이 형태를 이루지 못했다'
+    : '해당 문장으로는 영창할 수 없습니다';
+  const message = typeof o.message === 'string' && o.message.trim()
+    ? o.message.trim().slice(0, 60)
+    : fallbackMessage;
+  return {
+    schema_version: 2,
+    disposition: o.disposition,
+    reason: expectedReason,
+    message,
   };
 }

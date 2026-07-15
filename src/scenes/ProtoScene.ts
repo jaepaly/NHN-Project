@@ -25,7 +25,10 @@ import {
   BASIC_ATTACK_CONFIG,
   SHOOTER_CONFIG,
   SPLITTER_CONFIG,
+  spellBuffManaFromPower,
   spellDamageFromPower,
+  spellHealFromPower,
+  spellShieldFromPower,
 } from '../combat-core/combat/combatConfig';
 import {
   WAVE_CONFIG,
@@ -39,7 +42,7 @@ const HUD = {
   x: 18,
   y: 18,
   width: 360,
-  height: 150,
+  height: 186,
   barX: 34,
   barWidth: 270,
   barHeight: 7,
@@ -76,6 +79,7 @@ export class ProtoScene extends Phaser.Scene {
   private statusText!: Phaser.GameObjects.Text;
   private hpText!: Phaser.GameObjects.Text;
   private manaText!: Phaser.GameObjects.Text;
+  private shieldText!: Phaser.GameObjects.Text;
   private attunementText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
   private waveManager = new WaveManager();
@@ -169,7 +173,12 @@ export class ProtoScene extends Phaser.Scene {
       fontSize: '12px',
       color: '#91b7ff',
     }).setScrollFactor(0).setDepth(100);
-    this.attunementText = this.add.text(34, 126, 'ARCANE // UNBOUND', {
+    this.shieldText = this.add.text(34, 122, '', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '12px',
+      color: '#72d8ff',
+    }).setScrollFactor(0).setDepth(100);
+    this.attunementText = this.add.text(34, 160, 'ARCANE // UNBOUND', {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
       color: '#8fa4ff',
@@ -309,7 +318,8 @@ export class ProtoScene extends Phaser.Scene {
       for (const shot of shots) this.spawnEnemyProjectile(shot);
     }
 
-    let totalDamage = 0;
+    let totalHpDamage = 0;
+    let totalShieldDamage = 0;
     for (const enemy of this.enemies) {
       const touching = Phaser.Math.Distance.Between(
         enemy.x,
@@ -319,14 +329,15 @@ export class ProtoScene extends Phaser.Scene {
       ) <= enemy.contactDistance;
       if (!touching || !enemy.canDealContactDamage) continue;
 
-      this.playerState.takeDamage(enemy.contactDamage);
+      const applied = this.playerState.takeDamage(enemy.contactDamage);
       enemy.startContactDamageCooldown();
-      totalDamage += enemy.contactDamage;
+      totalHpDamage += applied.hpDamage;
+      totalShieldDamage += applied.shieldDamage;
       if (!this.playerState.alive) break;
     }
-    if (totalDamage === 0) return;
+    if (totalHpDamage === 0 && totalShieldDamage === 0) return;
 
-    this.announceSystemMessage(`-${totalDamage} HP`);
+    this.announceIncomingDamage(totalHpDamage, totalShieldDamage);
 
     if (!this.playerState.alive) {
       if (this.incanting) this.closeIncant();
@@ -354,7 +365,8 @@ export class ProtoScene extends Phaser.Scene {
 
   private updateEnemyProjectiles(deltaSeconds: number): void {
     const active: EnemyProjectile[] = [];
-    let totalDamage = 0;
+    let totalHpDamage = 0;
+    let totalShieldDamage = 0;
 
     for (const projectile of this.enemyProjectiles) {
       if (!this.playerState.alive) {
@@ -381,8 +393,9 @@ export class ProtoScene extends Phaser.Scene {
         this.player.y,
       ) <= SHOOTER_CONFIG.bulletHitDistance;
       if (hitPlayer) {
-        this.playerState.takeDamage(SHOOTER_CONFIG.bulletDamage);
-        totalDamage += SHOOTER_CONFIG.bulletDamage;
+        const applied = this.playerState.takeDamage(SHOOTER_CONFIG.bulletDamage);
+        totalHpDamage += applied.hpDamage;
+        totalShieldDamage += applied.shieldDamage;
         this.destroyEnemyProjectile(projectile);
         continue;
       }
@@ -391,9 +404,9 @@ export class ProtoScene extends Phaser.Scene {
     }
 
     this.enemyProjectiles = active;
-    if (totalDamage === 0) return;
+    if (totalHpDamage === 0 && totalShieldDamage === 0) return;
 
-    this.announceSystemMessage(`-${totalDamage} HP`);
+    this.announceIncomingDamage(totalHpDamage, totalShieldDamage);
     if (!this.playerState.alive) {
       if (this.incanting) this.closeIncant();
       this.clearEnemyProjectiles();
@@ -582,11 +595,19 @@ export class ProtoScene extends Phaser.Scene {
   private async castFromText(text: string): Promise<void> {
     this.casting = true;
     try {
-      const spec = await this.judge.judge(text);
+      const judgement = await this.judge.judge(text);
       if (!this.playerState.alive) {
         this.announceSystemMessage('행동 불가');
         return;
       }
+      if (judgement.disposition !== 'cast') {
+        const prefix = judgement.disposition === 'fizzle' ? '불발' : '영창 차단';
+        const color = judgement.disposition === 'fizzle' ? '#ffd166' : '#ff6b86';
+        this.announceSystemMessage(`${prefix} · ${judgement.message}`, color);
+        return;
+      }
+
+      const spec = judgement.spell;
       if (!this.playerState.trySpendMana(spec.cost)) {
         this.announceSystemMessage('마나 부족');
         return;
@@ -595,25 +616,48 @@ export class ProtoScene extends Phaser.Scene {
       this.playerState.startGlobalCooldown();
       this.applySpellPalette(spec);
       this.announceSpell(spec);
-
-      const from = new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
-      const target = this.nearestEnemy();
-      const to = target ? new Phaser.Math.Vector2(target.x, target.y) : undefined;
-      const hitEnemies = new Set<CombatEnemy>();
-      castSpell({
-        scene: this,
-        from,
-        to,
-        onHit: (impact) => this.onSpellHit(impact, spec, target, hitEnemies),
-      }, spec);
+      this.applySpellEffect(spec);
     } finally {
       this.finishCastingUx();
     }
   }
 
+  private applySpellEffect(spec: SpellSpec): void {
+    const from = new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
+    if (spec.effect === 'heal') {
+      const healed = this.playerState.heal(spellHealFromPower(spec.power));
+      this.announceSystemMessage(`회복 +${Math.round(healed)} HP`, '#72f1a8');
+      castSpell({ scene: this, from }, spec);
+      return;
+    }
+    if (spec.effect === 'shield') {
+      const shielded = this.playerState.addShield(spellShieldFromPower(spec.power));
+      this.announceSystemMessage(`보호막 +${Math.round(shielded)}`, '#72d8ff');
+      castSpell({ scene: this, from }, spec);
+      return;
+    }
+    if (spec.effect === 'buff') {
+      const restored = this.playerState.restoreMana(spellBuffManaFromPower(spec.power));
+      this.announceSystemMessage(`강화 · MANA +${Math.round(restored)}`, '#c7a6ff');
+      castSpell({ scene: this, from }, spec);
+      return;
+    }
+
+    const target = this.nearestEnemy();
+    const to = target ? new Phaser.Math.Vector2(target.x, target.y) : undefined;
+    const hitEnemies = new Set<CombatEnemy>();
+    castSpell({
+      scene: this,
+      from,
+      to,
+      onHit: (impact) => this.onSpellHit(impact, spec, target, hitEnemies),
+    }, spec);
+  }
+
   private updateStatusText(): void {
     const hp = Math.ceil(this.playerState.hp);
     const mana = Math.floor(this.playerState.mana);
+    const shield = Math.ceil(this.playerState.shield);
     let actionState = 'READY';
     if (!this.playerState.alive) actionState = 'DEAD';
     else if (this.waveManager.phase === 'room-clear') actionState = 'ROOM CLEAR';
@@ -635,6 +679,7 @@ export class ProtoScene extends Phaser.Scene {
     this.statusText.setText(`● ${actionState}`).setColor(statusColor);
     this.hpText.setText(`HP    ${hp.toString().padStart(3)} / ${this.playerState.maxHp}`);
     this.manaText.setText(`MANA  ${mana.toString().padStart(3)} / ${this.playerState.maxMana}`);
+    this.shieldText.setText(`SHIELD ${shield.toString().padStart(3)} / ${this.playerState.maxHp}`);
     this.drawHudBars();
 
     if (this.waveManager.phase === 'room-clear') {
@@ -654,6 +699,7 @@ export class ProtoScene extends Phaser.Scene {
   private drawHudBars(): void {
     const hpRatio = Phaser.Math.Clamp(this.playerState.hp / this.playerState.maxHp, 0, 1);
     const manaRatio = Phaser.Math.Clamp(this.playerState.mana / this.playerState.maxMana, 0, 1);
+    const shieldRatio = Phaser.Math.Clamp(this.playerState.shield / this.playerState.maxHp, 0, 1);
     const cooldownRatio = Phaser.Math.Clamp(
       this.playerState.cooldownRemaining / PLAYER_COMBAT_CONFIG.globalCooldownSeconds,
       0,
@@ -669,10 +715,13 @@ export class ProtoScene extends Phaser.Scene {
     g.fillStyle(0x141a35, 1);
     g.fillRoundedRect(HUD.barX, 73, HUD.barWidth, HUD.barHeight, 4);
     g.fillRoundedRect(HUD.barX, 107, HUD.barWidth, HUD.barHeight, 4);
+    g.fillRoundedRect(HUD.barX, 141, HUD.barWidth, HUD.barHeight, 4);
     g.fillStyle(0xff5c82, 1);
     g.fillRoundedRect(HUD.barX, 73, HUD.barWidth * hpRatio, HUD.barHeight, 4);
     g.fillStyle(0x5b8cff, 1);
     g.fillRoundedRect(HUD.barX, 107, HUD.barWidth * manaRatio, HUD.barHeight, 4);
+    g.fillStyle(0x48c9ff, 1);
+    g.fillRoundedRect(HUD.barX, 141, HUD.barWidth * shieldRatio, HUD.barHeight, 4);
 
     g.fillStyle(0x1d2445, 1);
     g.fillRoundedRect(HUD.x + 8, HUD.y + HUD.height - 5, HUD.width - 16, 3, 2);
@@ -707,12 +756,12 @@ export class ProtoScene extends Phaser.Scene {
       .setColor(paletteColorToCss(palette.core));
   }
 
-  private announceSystemMessage(message: string): void {
+  private announceSystemMessage(message: string, color = '#ff8fa3'): void {
     const { width, height } = this.scale;
     const label = this.add.text(width / 2, height * 0.42, message, {
       fontSize: '24px',
       fontStyle: 'bold',
-      color: '#ff8fa3',
+      color,
       stroke: '#05060f',
       strokeThickness: 4,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(100);
@@ -725,6 +774,16 @@ export class ProtoScene extends Phaser.Scene {
       ease: 'Cubic.easeOut',
       onComplete: () => label.destroy(),
     });
+  }
+
+  private announceIncomingDamage(hpDamage: number, shieldDamage: number): void {
+    const shieldPart = shieldDamage > 0 ? `보호막 -${Math.round(shieldDamage)}` : '';
+    const hpPart = hpDamage > 0 ? `HP -${Math.round(hpDamage)}` : '';
+    const separator = shieldPart && hpPart ? ' · ' : '';
+    this.announceSystemMessage(
+      `${shieldPart}${separator}${hpPart}`,
+      hpDamage > 0 ? '#ff8fa3' : '#72d8ff',
+    );
   }
 
   private nearestEnemy(maxDistance = Number.POSITIVE_INFINITY): CombatEnemy | null {
@@ -744,7 +803,10 @@ export class ProtoScene extends Phaser.Scene {
     lockedTarget: CombatEnemy | null,
     hitEnemies: Set<CombatEnemy>,
   ): void {
-    const damage = spellDamageFromPower(spec.power);
+    const effectMultiplier = spec.effect === 'control' ? 0.35
+      : spec.effect === 'summon' ? 0.6
+        : 1;
+    const damage = Math.max(1, Math.round(spellDamageFromPower(spec.power) * effectMultiplier));
     if (impact.kind === 'point') {
       if (lockedTarget?.alive) this.damageEnemy(lockedTarget, damage);
       return;
@@ -853,7 +915,7 @@ export class ProtoScene extends Phaser.Scene {
     const source = this.judge.lastSource ?? this.judge.name;
     const meta = this.add.text(width / 2, height * 0.32 + 36,
       `${spec.element_primary}${spec.element_secondary ? '+' + spec.element_secondary : ''}`
-      + ` · ${spec.form} · power ${spec.power} · [${source}]`,
+      + ` · ${spec.effect}/${spec.target} · ${spec.form} · power ${spec.power} · [${source}]`,
       { fontSize: '14px', color: '#8fa4ff' },
     ).setOrigin(0.5).setAlpha(0).setScrollFactor(0).setDepth(100);
 
