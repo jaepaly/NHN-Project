@@ -20,13 +20,13 @@
 | P0-d | 회귀 테스트 (`node:assert`, `npm run test:history`) | ✅ 완료 (7군 통과) |
 | P0-e | R1 통합 — `record`/`repeatMultiplier`를 전투 흐름에 연결 | ⬜ 협업 (이도원 몫, 계약 전달) |
 | P1-a | 보스 기억 요약 (`BossMemoryProfile` 초안) | ✅ 완료 (PR #13) |
-| P1-b | **5티어 품질 스냅샷** (고정 코퍼스 실측 기록) | ⬜ **← 다음 할 일** |
+| P1-b | 5티어 품질 스냅샷 (고정 코퍼스 실측 기록) | ✅ 완료 (PR #13, [SPELL_QUALITY_SNAPSHOT.md](SPELL_QUALITY_SNAPSHOT.md)) |
 
-**▶ 현재 위치**: R2 Phase 2 코어(판정 v2 + 히스토리/패널티/요약)는 완료·검증. **PR #13** 리뷰 대기 중.
+**▶ 현재 위치**: R2 Phase 2 **빌드 작업 전부 완료** (판정 v2 + 히스토리/패널티/요약 + 품질 스냅샷). **PR #13** 리뷰 대기.
 
-**▶ 지금 내가 할 일 (우선순위 순)**:
-1. **5티어 품질 스냅샷** (P1-b) — R2가 지금 바로 할 수 있는 마지막 빌드. 고정 코퍼스(걸작/평범/주제밖/불발/금칙 각 5개)를 실제 Gemini로 실측 → 결과 JSON·latency·source·티어 적합 여부 기록. **주의: 대량 연속 요청 금지, 같은 입력은 캐시.** (제출물 ④ 소재)
-2. **PR #13 머지 요청** (총괄) + **이도원에게 계약 전달**(record/repeatMultiplier 호출법) → 전투 통합. ← 협업, 내 코딩 아님.
+**▶ 다음 (협업/이월)**:
+1. **PR #13 머지 요청**(총괄) + **이도원에게 계약 전달**(`record`/`repeatMultiplier`) → 전투 통합(P0-e).
+2. 스냅샷에서 나온 프롬프트·밸런스 이슈(아래 P1-b 관찰)는 **총괄 방향대로 데모 후 튜닝**.
 
 > 히스토리를 실제로 쓰려면(런 도중 기록·조회) R1이 `SpellHistory` 인스턴스를 런 상태에 두고 호출해야 함. R2는 클래스·API까지 제공 완료.
 
@@ -65,11 +65,17 @@
 - `bossMemory()` → `BossMemoryProfile { dominantElement, dominantForm, recentSpellNames, totalCasts }`.
 - **Phase 3 계약용 초안만.** 실제 보스 전투·대사는 구현하지 않음(스코프 밖).
 
-### P1-b · 5티어 품질 스냅샷 — ⬜ (다음 할 일)
+### P1-b · 5티어 품질 스냅샷 — ✅ (PR #13)
 
-- **목표**: 걸작/평범/주제밖/불발/금칙 각 5개(최대 25개) 고정 코퍼스를 실제 Gemini로 실측 → 결과 JSON·latency·source·**티어 적합 여부** 기록.
-- **규칙**: 대량 연속 요청 금지, 같은 입력은 캐시 사용(할당량 보존).
-- **산출**: v2 판정 품질 검증(예: 걸작 입력이 실제 60+ 나오나) + 제출물 ④ 소재.
+- **산출**: `scripts/spell-quality-snapshot.ts` + `npm run snapshot:quality` → [SPELL_QUALITY_SNAPSHOT.md](SPELL_QUALITY_SNAPSHOT.md) (코퍼스 26개 실측). 페이싱 4.5s로 RPM 보호.
+- **결과**: 자동 적합 23/26, 평균 1462ms. 걸작 85~95 · 평범 35~45 · 주제밖 의미대로 heal/shield 판정 우수. 다국어 "숲의 분노=forest fury" 일치.
+
+**관찰·이슈 (총괄 검토용 — 튜닝은 데모 후)**:
+
+1. **"죽어버려" → cast(damage) 수용** (팀 확인). 게임 맥락상 공격 주문으로 봄. "씨발"은 blocked 정상.
+2. **한/영 power 불일치**: 라이트닝 스톰 50 vs lightning storm 85 (원소·폼 lightning/rain은 동일). **글자수 문제 아님** — Gemini는 길이 안 셈(그건 MockJudge 방식). 원인은 temperature 0.6 변동 + 언어별 해석 차. 완화: temperature↓ 또는 프롬프트에 "동일 의미 다국어는 같은 power" 명시.
+3. **"나를 지켜줘" power 65**: 주제밖 상한 40 초과(shield 자체는 맞음). 상한이 엔진 강제가 아니라 프롬프트 부탁이라 발생.
+4. **latency 스파이크**: 대부분 1.3초인데 일부 2.9~4.7초 → **2.5초 초과 시 게임에선 폴백.** 관찰만(모델·타임아웃 조정은 데모 후).
 
 ---
 
