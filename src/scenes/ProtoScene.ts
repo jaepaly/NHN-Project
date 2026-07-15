@@ -40,6 +40,10 @@ import {
 } from '../combat-core/waves/waveManager';
 import type { WaveDefinition } from '../combat-core/waves/waveManager';
 import { CombatRunController } from '../combat-core/run/runController';
+import { CONTROL_CONFIG } from '../combat-core/control/controlConfig';
+import { EnemyControlState } from '../combat-core/control/enemyControlState';
+import { SUMMON_CONFIG } from '../combat-core/summons/summonConfig';
+import { SummonedOrb } from '../combat-core/summons/summonedOrb';
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;
@@ -53,10 +57,13 @@ const HUD = {
   barHeight: 7,
 } as const;
 
-interface BasicMissile {
+interface FriendlyMissile {
   body: Phaser.GameObjects.Arc;
   halo: Phaser.GameObjects.Arc;
   target: CombatEnemy;
+  damage: number;
+  speed: number;
+  hitDistance: number;
 }
 
 interface EnemyProjectile {
@@ -102,7 +109,10 @@ export class ProtoScene extends Phaser.Scene {
   private casting = false;
   private timeScale = 1;
   private basicAttackCooldownRemaining = 0;
-  private basicMissiles: BasicMissile[] = [];
+  private friendlyMissiles: FriendlyMissile[] = [];
+  private activeSummon: SummonedOrb | null = null;
+  private readonly enemyControlState = new EnemyControlState();
+  private readonly controlIndicators = new Map<CombatEnemy, Phaser.GameObjects.Arc>();
 
   constructor() {
     super('proto');
@@ -160,10 +170,12 @@ export class ProtoScene extends Phaser.Scene {
       this.playerState.update(d);
       this.basicAttackCooldownRemaining = Math.max(0, this.basicAttackCooldownRemaining - d);
       this.updatePlayerMovement(delta / 1000);
+      this.updateEnemyControls(d);
       this.updateEnemies(d);
       this.updateEnemyProjectiles(d);
       this.updateBasicAttack();
-      this.updateBasicMissiles(d);
+      this.updateSummon(d);
+      this.updateFriendlyMissiles(d);
       this.updateWaveFlow(d);
     }
     this.updateStatusText();
@@ -210,6 +222,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private clearCombatRoom(): void {
+    this.clearEnemyControls();
     for (const enemy of this.enemies) enemy.destroy();
     this.enemies = [];
     this.clearTransientCombatObjects();
@@ -217,7 +230,8 @@ export class ProtoScene extends Phaser.Scene {
 
   private clearTransientCombatObjects(): void {
     this.clearEnemyProjectiles();
-    this.clearBasicMissiles();
+    this.clearFriendlyMissiles();
+    this.clearSummon();
   }
 
   /** 투사체 update 순회가 끝난 다음 tick에 안전하게 일괄 제거한다. */
@@ -382,7 +396,12 @@ export class ProtoScene extends Phaser.Scene {
     if (!this.playerState.alive) return;
 
     for (const enemy of this.enemies) {
-      const shots = enemy.update(deltaSeconds, this.player.x, this.player.y);
+      const shots = enemy.update(
+        deltaSeconds,
+        this.player.x,
+        this.player.y,
+        this.enemyControlState.movementMultiplierFor(enemy),
+      );
       enemy.view.x = Phaser.Math.Clamp(
         enemy.view.x,
         this.worldBounds.left + 22,
@@ -517,19 +536,48 @@ export class ProtoScene extends Phaser.Scene {
   private fireBasicMissile(target: CombatEnemy): void {
     const fromX = this.player.x;
     const fromY = this.player.y - 14;
-    const body = this.add.circle(fromX, fromY, 5, 0xc8d3ff)
-      .setBlendMode(Phaser.BlendModes.ADD);
-    const halo = this.add.circle(fromX, fromY, 10, 0x6b7cff, 0.3)
-      .setBlendMode(Phaser.BlendModes.ADD);
-
-    this.basicMissiles.push({ body, halo, target });
+    this.fireFriendlyMissile({
+      fromX,
+      fromY,
+      target,
+      damage: BASIC_ATTACK_CONFIG.damage,
+      speed: BASIC_ATTACK_CONFIG.projectileSpeed,
+      hitDistance: BASIC_ATTACK_CONFIG.hitDistance,
+      coreColor: 0xc8d3ff,
+      glowColor: 0x6b7cff,
+    });
   }
 
-  private updateBasicMissiles(deltaSeconds: number): void {
-    const active: BasicMissile[] = [];
-    for (const missile of this.basicMissiles) {
+  private fireFriendlyMissile(options: {
+    fromX: number;
+    fromY: number;
+    target: CombatEnemy;
+    damage: number;
+    speed: number;
+    hitDistance: number;
+    coreColor: number;
+    glowColor: number;
+  }): void {
+    const body = this.add.circle(options.fromX, options.fromY, 5, options.coreColor)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const halo = this.add.circle(options.fromX, options.fromY, 10, options.glowColor, 0.3)
+      .setBlendMode(Phaser.BlendModes.ADD);
+
+    this.friendlyMissiles.push({
+      body,
+      halo,
+      target: options.target,
+      damage: options.damage,
+      speed: options.speed,
+      hitDistance: options.hitDistance,
+    });
+  }
+
+  private updateFriendlyMissiles(deltaSeconds: number): void {
+    const active: FriendlyMissile[] = [];
+    for (const missile of this.friendlyMissiles) {
       if (!this.playerState.alive || !missile.target.alive) {
-        this.destroyBasicMissile(missile);
+        this.destroyFriendlyMissile(missile);
         continue;
       }
 
@@ -538,10 +586,10 @@ export class ProtoScene extends Phaser.Scene {
         missile.target.y - missile.body.y,
       );
       const distance = direction.length();
-      const travelDistance = BASIC_ATTACK_CONFIG.projectileSpeed * deltaSeconds;
-      if (distance <= BASIC_ATTACK_CONFIG.hitDistance + travelDistance) {
-        this.destroyBasicMissile(missile);
-        this.damageEnemy(missile.target, BASIC_ATTACK_CONFIG.damage);
+      const travelDistance = missile.speed * deltaSeconds;
+      if (distance <= missile.hitDistance + travelDistance) {
+        this.destroyFriendlyMissile(missile);
+        this.damageEnemy(missile.target, missile.damage);
         continue;
       }
 
@@ -551,19 +599,19 @@ export class ProtoScene extends Phaser.Scene {
       missile.halo.setPosition(missile.body.x, missile.body.y);
       active.push(missile);
     }
-    this.basicMissiles = active;
+    this.friendlyMissiles = active;
   }
 
-  private destroyBasicMissile(missile: BasicMissile): void {
+  private destroyFriendlyMissile(missile: FriendlyMissile): void {
     missile.body.destroy();
     missile.halo.destroy();
   }
 
-  private clearBasicMissiles(): void {
-    for (const missile of this.basicMissiles) {
-      this.destroyBasicMissile(missile);
+  private clearFriendlyMissiles(): void {
+    for (const missile of this.friendlyMissiles) {
+      this.destroyFriendlyMissile(missile);
     }
-    this.basicMissiles = [];
+    this.friendlyMissiles = [];
   }
 
   // ── 영창 모드 (DOM 입력 바 + 슬로모션) ───────────────────────
@@ -748,6 +796,14 @@ export class ProtoScene extends Phaser.Scene {
       this.announceSystemMessage(`강화 · MANA +${Math.round(restored)}`, '#c7a6ff');
       return;
     }
+    if (spec.effect === 'control') {
+      this.castControlSpell(from, spec);
+      return;
+    }
+    if (spec.effect === 'summon') {
+      this.createSummon(spec);
+      return;
+    }
 
     const target = this.nearestEnemy();
     const to = target ? new Phaser.Math.Vector2(target.x, target.y) : undefined;
@@ -918,11 +974,19 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private nearestEnemy(maxDistance = Number.POSITIVE_INFINITY): CombatEnemy | null {
+    return this.nearestEnemyFrom(this.player.x, this.player.y, maxDistance);
+  }
+
+  private nearestEnemyFrom(
+    fromX: number,
+    fromY: number,
+    maxDistance = Number.POSITIVE_INFINITY,
+  ): CombatEnemy | null {
     let best: CombatEnemy | null = null;
     let bestD = Number.POSITIVE_INFINITY;
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
-      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
+      const d = Phaser.Math.Distance.Between(fromX, fromY, enemy.x, enemy.y);
       if (d < bestD) { bestD = d; best = enemy; }
     }
     return bestD <= maxDistance ? best : null;
@@ -934,10 +998,7 @@ export class ProtoScene extends Phaser.Scene {
     lockedTarget: CombatEnemy | null,
     hitEnemies: Set<CombatEnemy>,
   ): void {
-    const effectMultiplier = spec.effect === 'control' ? 0.35
-      : spec.effect === 'summon' ? 0.6
-        : 1;
-    const damage = Math.max(1, Math.round(spellDamageFromPower(spec.power) * effectMultiplier));
+    const damage = Math.max(1, spellDamageFromPower(spec.power));
     if (impact.kind === 'point') {
       if (lockedTarget?.alive) this.damageEnemy(lockedTarget, damage);
       return;
@@ -962,6 +1023,153 @@ export class ProtoScene extends Phaser.Scene {
       hitEnemies.add(enemy);
       this.damageEnemy(enemy, damage);
     }
+  }
+
+  private createSummon(spec: SpellSpec): void {
+    this.clearSummon();
+    this.activeSummon = new SummonedOrb(
+      this,
+      this.player.x,
+      this.player.y,
+      spec.element_primary,
+      spec.power,
+    );
+    this.announceSystemMessage(
+      `소환 · ${this.activeSummon.state.durationSeconds.toFixed(1)}초`,
+      paletteColorToCss(ELEMENT_PALETTES[spec.element_primary].core),
+    );
+  }
+
+  private updateSummon(deltaSeconds: number): void {
+    const summon = this.activeSummon;
+    if (!summon) return;
+    if (!this.playerState.alive) {
+      this.clearSummon();
+      return;
+    }
+
+    summon.updatePosition(this.player.x, this.player.y, deltaSeconds);
+    const target = this.nearestEnemyFrom(summon.x, summon.y, SUMMON_CONFIG.attackRange);
+    const tick = summon.state.update(deltaSeconds, target !== null);
+    if (tick.expired) {
+      this.clearSummon();
+      return;
+    }
+    if (!tick.shouldAttack || !target) return;
+
+    const palette = ELEMENT_PALETTES[summon.element];
+    this.fireFriendlyMissile({
+      fromX: summon.x,
+      fromY: summon.y,
+      target,
+      damage: summon.state.damage,
+      speed: SUMMON_CONFIG.projectileSpeed,
+      hitDistance: SUMMON_CONFIG.projectileHitDistance,
+      coreColor: palette.core,
+      glowColor: palette.glow,
+    });
+  }
+
+  private clearSummon(): void {
+    this.activeSummon?.destroy();
+    this.activeSummon = null;
+  }
+
+  private castControlSpell(from: Phaser.Math.Vector2, spec: SpellSpec): void {
+    const target = this.nearestEnemy();
+    const to = target ? new Phaser.Math.Vector2(target.x, target.y) : undefined;
+    const affectedEnemies = new Set<CombatEnemy>();
+    const castRoomIndex = this.combatRunController.state.roomIndex;
+    castSpell({
+      scene: this,
+      from,
+      to,
+      onHit: (impact) => {
+        const currentRunState = this.combatRunController.state;
+        if (currentRunState.phase !== 'combat'
+          || currentRunState.roomIndex !== castRoomIndex) return;
+        this.onControlHit(impact, spec, target, affectedEnemies);
+      },
+    }, spec);
+  }
+
+  private onControlHit(
+    impact: SpellImpact,
+    spec: SpellSpec,
+    lockedTarget: CombatEnemy | null,
+    affectedEnemies: Set<CombatEnemy>,
+  ): void {
+    if (impact.kind === 'point') {
+      if (lockedTarget?.alive) this.applySlow(lockedTarget, spec.power);
+      return;
+    }
+
+    for (const enemy of this.enemies) {
+      if (!enemy.alive || affectedEnemies.has(enemy)) continue;
+      const isHit = impact.kind === 'circle'
+        ? Phaser.Math.Distance.Between(impact.x, impact.y, enemy.x, enemy.y)
+          <= impact.radius
+        : this.pointToSegmentDistance(
+          enemy.x,
+          enemy.y,
+          impact.fromX,
+          impact.fromY,
+          impact.toX,
+          impact.toY,
+        ) <= impact.width / 2;
+      if (!isHit) continue;
+
+      affectedEnemies.add(enemy);
+      this.applySlow(enemy, spec.power);
+    }
+  }
+
+  private applySlow(enemy: CombatEnemy, power: number): void {
+    const remaining = this.enemyControlState.applySlow(enemy, power);
+    if (!this.controlIndicators.has(enemy)) {
+      const indicator = this.add.circle(
+        0,
+        0,
+        CONTROL_CONFIG.indicatorRadius,
+        CONTROL_CONFIG.indicatorColor,
+        0.08,
+      ).setStrokeStyle(2, CONTROL_CONFIG.indicatorColor, 0.85)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      enemy.view.addAt(indicator, 0);
+      this.controlIndicators.set(enemy, indicator);
+    }
+    console.info('[Control] slow-applied', {
+      enemy: enemy.kind,
+      durationSeconds: remaining,
+      movementMultiplier: CONTROL_CONFIG.slowMovementMultiplier,
+    });
+  }
+
+  private updateEnemyControls(deltaSeconds: number): void {
+    for (const enemy of this.enemyControlState.update(deltaSeconds)) {
+      this.removeControlIndicator(enemy);
+    }
+  }
+
+  private removeEnemyControl(enemy: CombatEnemy): void {
+    this.enemyControlState.remove(enemy);
+    this.removeControlIndicator(enemy);
+  }
+
+  private clearEnemyControls(): void {
+    for (const enemy of this.enemyControlState.clear()) {
+      this.removeControlIndicator(enemy);
+    }
+    for (const enemy of [...this.controlIndicators.keys()]) {
+      this.removeControlIndicator(enemy);
+    }
+  }
+
+  private removeControlIndicator(enemy: CombatEnemy): void {
+    const indicator = this.controlIndicators.get(enemy);
+    if (!indicator) return;
+    if (indicator.active) indicator.destroy();
+    this.controlIndicators.delete(enemy);
   }
 
   private pointToSegmentDistance(
@@ -995,6 +1203,7 @@ export class ProtoScene extends Phaser.Scene {
     const splitX = enemy.x;
     const splitY = enemy.y;
     const shouldSplit = enemy instanceof SplitterEnemy && enemy.canSplit;
+    this.removeEnemyControl(enemy);
     enemy.destroy();
     this.enemies = this.enemies.filter((candidate) => candidate !== enemy);
     if (shouldSplit) {
