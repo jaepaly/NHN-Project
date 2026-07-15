@@ -1,7 +1,9 @@
-# R1↔R3 런 진행 계약 제안 — 보상 카드·방 전환 UI
+# R1↔R3 런 진행 계약 — 보상 카드·방 전환 UI
 
-> 상태: **제안 (R1 확정 대기)** · 작성 2026-07-15 · PHASE_2.md §2 "런 계약 확정" 게이트(7/15~7/17) 대응
+> 상태: **R1 답변 반영 (2026-07-15) — R1 최종 확인 대기** · PHASE_2.md §2 "런 계약 확정" 게이트(7/15~7/17)
 > 타입 정의: [src/run/runContract.ts](../src/run/runContract.ts) (타입 전용 — 구현은 R1 소유)
+> 반영 내역 (PR #12 R1 검토 의견): ① `RewardKind`의 `heal` → `max-hp`(최대 HP 증가+즉시 일부 회복)
+> ② `run-completed` 이벤트 추가(마지막 방 클리어 → `run-over`) ③ `RunStateSnapshot.rewards` 누적 기록 추가
 
 ## 왜 이 PR이 먼저인가
 
@@ -21,6 +23,9 @@ R3 P0(보상 카드 UI·방 전환 연출)는 R1의 방/보상 코어 API가 필
    → R1: phase='room-transition', emit 'room-transition' (durationMs 500~1000)
    → R3: 페이드 + "ROOM 2" 문구 연출
    → R1: phase='combat', emit 'room-started' (R3: 카드·연출 해제)
+
+[마지막 방 클리어 시] → R1: phase='run-over', emit 'run-completed' (보상 선택 없음)
+   → R3: 런 요약 화면 (Phase 2에서는 방 2 클리어 = 런 완주)
 ```
 
 ## 책임 경계
@@ -42,17 +47,23 @@ R3 P0(보상 카드 UI·방 전환 연출)는 R1의 방/보상 코어 API가 필
 
 | kind | 예시 카드 | 적용(R1) |
 |---|---|---|
+| `max-hp` | "생명 증폭 — 최대 HP +20, 즉시 20 회복" | maxHp 증가 + 즉시 일부 회복 |
 | `max-mana` | "마나 증폭 — 최대 마나 +20" | maxMana 증가 + 즉시 회복 |
-| `heal` | "생명의 숨결 — HP 40 회복" | hp 회복 (컷 1순위 대비 변형) |
 | `affinity` | "화염 친화 — 화염 위력 +15%" | elementalAffinity 갱신 |
 
-일정 컷 시 `affinity` 제거 → `max-mana`/`heal` 변형 3장 구성 (§6-1).
+- 수치는 R1 설정(`rewardConfig.ts`)의 임시 밸런스값 — 플레이테스트·팀 합의로 조정
+- 일정 컷 시 `affinity` 제거 → `max-hp`/`max-mana` 변형 3장 구성 (§6-1)
 
-## R1에게 확인 요청 (이 PR 리뷰에서 답변)
+## 합의 사항 (2026-07-15, PR #12 리뷰)
 
-1. `WaveManager.phase`를 확장할지, 별도 `RunController`를 신설할지 (제안: 신설 — WaveManager는 방 내부 웨이브만)
-2. 보상 풀 데이터(제목·수치)의 소유 위치 — 제안: R1 폴더의 데이터 파일, R3는 표시만
-3. `durationMs` 기본값 (제안: 700ms)
-4. 이벤트 방식 — 제안 인터페이스의 on/off 대신 Phaser EventEmitter를 쓸지 (둘 다 무방, 시그니처만 유지)
+1. **RunController 신설** — WaveManager는 방 내부 웨이브만, RunController가 방·보상·런 전이 담당
+2. **보상 풀 데이터는 R1 소유** — id·제목·설명·수치는 R1 설정에서 생성, R3는 `RewardOption` 표시만
+3. **전환 `durationMs` 기본 700ms**
+4. **공개 계약은 타입 지정 on/off 유지** — R1 내부의 Phaser EventEmitter 사용은 자유, R3는 내부 구현에 비의존
 
-합의되면 이 문서 상태를 "확정"으로 바꾸고, R1 구현 PR → R3 UI PR 순서로 진행한다 (PHASE_2 §4).
+**파일 구성 (R1 확정)**
+- `src/run/runContract.ts` — R1↔R3 공유 타입·인터페이스 (전투 구현 두지 않음)
+- `src/combat-core/run/runController.ts` — R1 실제 구현
+- `src/combat-core/run/rewardConfig.ts` — R1 보상 데이터
+
+R1이 수정된 계약을 최종 확인하면 R1 구현 PR → R3 UI 결합 PR 순서로 진행한다 (PHASE_2 §4).
