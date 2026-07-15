@@ -6,6 +6,7 @@
 
 | 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
 |---|---|---|---|---|---|---|
+| 2026-07-15 | jaepaly | Codex | Phase 1 취합 종료·Phase 2 지시 설계 | R1/R2/R3 병합 상태와 Pages·Gemini 라이브 검증을 근거로 Phase 1 완료를 기록하고, W2 코어 루프를 역할별 계약·완료 기준·일정으로 분해 | `PHASE_1_SUMMARY.md`, `PHASE_2.md`, README, SUBMISSION_PLAN | 라이브 Gemini 요청 1회, `[gemini]` 확인 |
 | 2026-07-15 | jaepaly | Codex | R3 영창 입력 포커스 회귀 수정 | Enter로 영창창을 열면 Phaser 키 캡처를 해제하고 짧은 렌더 구간 동안 입력 포커스를 재확인해 마우스 클릭 없이 바로 타이핑되도록 수정 | `ProtoScene.ts` | Enter→즉시 타이핑·Esc 후 재진입 브라우저 회귀 테스트 |
 | 2026-07-15 | jaepaly | Codex | R3 영창 차징 UX·HUD·팔레트 | 영창 입력의 공명 게이지·판정 대기 연출, HP/마나/쿨다운 HUD, 주문 원소 팔레트와 판정 소스의 지속 표시를 구현하고 로컬 Mock 모드로 시각 검증 | `index.html`, `ProtoScene.ts`, `palette.ts`, README | 공용 Gemini 할당량 없이 빌드·브라우저 검증 |
 | 2026-07-14 | 임재윤 | Claude Code (Opus 4.8) | R2 실제 LLM 판정 연결 (②③④) | 프록시 배포·디버깅(모델·시크릿·thinking 잘림 해결) → GeminiJudge 구현(2.5초 폴백·캐시·검증) → README/.env 문서화 | worker.js 개선, geminiJudge/createJudge.ts, .env.example, README | 무료 티어 함정 다수 해결(R2_PROGRESS 기록). ⑤ 품질 튜닝은 후속 |
