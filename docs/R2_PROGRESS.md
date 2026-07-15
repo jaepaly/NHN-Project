@@ -30,6 +30,47 @@
 
 > 히스토리를 실제로 쓰려면(런 도중 기록·조회) R1이 `SpellHistory` 인스턴스를 런 상태에 두고 호출해야 함. R2는 클래스·API까지 제공 완료.
 
+### P0-a · 판정 v2 — ✅ (총괄 Codex 선구현, 임재윤 배포·검토)
+
+- 판정 계약을 `SpellSpec v1` → `SpellJudgement v2`(구별 유니온)로 전환. `disposition: cast/fizzle/blocked`, cast만 `effect/target`과 전투 자원을 가짐.
+- worker.js 프롬프트를 **의미 우선**(의미→disposition→effect/target→element/form→power) 순서로 개편. 캐시 접두사에 스키마·프롬프트 버전 포함(v1 캐시 무시).
+- 임재윤이 라이브 프록시에 배포하고 "피곤해서 쉬고 싶다 → heal/self(휴식의 가호)" 실측 확인.
+
+### P0-b · 주문 히스토리 모듈 — ✅ (PR #13)
+
+- **파일**: `src/spell/spellHistory.ts`. 검증된 cast 주문만 런 단위(메모리)로 기록. 파일/네트워크 없음.
+- **기록 필드**: 원문·정규화키·주문명·effect·target·주/보조원소·폼·basePower·power(패널티 반영)·cost·source·castAt.
+- **API**: `record(input)` · `countOf` · `recent(n)` · `all` · `size` · `reset()`.
+- 시각(`castAt`)은 호출측 주입 → 모듈이 시간을 안 읽어 단위 테스트가 결정론적.
+
+### P0-c · 반복 패널티 — ✅ (PR #13)
+
+- `repeatMultiplier(text)` = 동일 정규화 문장의 기존 기록 수 기준 배수. **처음 1.0 → 재사용부터 ×0.8 누적, 하한(floor) 0.3.**
+- **로컬 코드가 강제**(프롬프트 아님). 엔진(R1)이 이 배수를 판정 power에 곱해 실제 효과 수치를 낸다.
+- 예: "화염구"(power 40) → 1번째 40, 2번째 32, 3번째 26 …
+
+### P0-d · 회귀 테스트 — ✅ (PR #13)
+
+- `scripts/spell-history-regression.ts` + `npm run test:history`. **팀 컨벤션(node:assert, esbuild+node, 의존성 0) 준수** (Vitest 미도입).
+- 검증 7군: 정규화 · 기록/size · 패널티 ×0.8/×0.64 · 정규화 반복 · floor 하한 · 보스 요약 · 리셋. **전부 통과.**
+
+### P0-e · R1 통합 — ⬜ (협업, 이도원 몫)
+
+- **계약(R1이 할 일)**: 판정이 `disposition==='cast'`이면 → 데미지 계산 전 `history.repeatMultiplier(text)`를 power에 곱함 → 마나 지불·발동 확정 후 `history.record({ rawText, spell, source, castAt })`.
+- `fizzle`/`blocked`는 기록·마나·쿨다운 소비하지 않음(호출측이 cast만 record).
+- R2는 클래스·API 제공 완료. R1이 `SpellHistory` 인스턴스를 런 상태에 두고 호출.
+
+### P1-a · 보스 기억 요약 초안 — ✅ (PR #13)
+
+- `bossMemory()` → `BossMemoryProfile { dominantElement, dominantForm, recentSpellNames, totalCasts }`.
+- **Phase 3 계약용 초안만.** 실제 보스 전투·대사는 구현하지 않음(스코프 밖).
+
+### P1-b · 5티어 품질 스냅샷 — ⬜ (다음 할 일)
+
+- **목표**: 걸작/평범/주제밖/불발/금칙 각 5개(최대 25개) 고정 코퍼스를 실제 Gemini로 실측 → 결과 JSON·latency·source·**티어 적합 여부** 기록.
+- **규칙**: 대량 연속 요청 금지, 같은 입력은 캐시 사용(할당량 보존).
+- **산출**: v2 판정 품질 검증(예: 걸작 입력이 실제 60+ 나오나) + 제출물 ④ 소재.
+
 ---
 
 ## Phase 1 진행 체크리스트
