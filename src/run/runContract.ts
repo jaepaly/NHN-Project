@@ -10,7 +10,8 @@ import type { SpellElement } from '../spell/types';
  *   R3 — 이 인터페이스와 이벤트만 사용해 카드 UI·입력(마우스+1/2/3)·HUD·전환 연출 구현
  */
 
-export type RewardKind = 'max-mana' | 'heal' | 'affinity';
+// 'max-hp': 최대 HP 증가 + 즉시 일부 회복 (PHASE_2 R1 P0 요구 — 단순 회복 아님, R1 답변 1)
+export type RewardKind = 'max-hp' | 'max-mana' | 'affinity';
 
 export interface RewardOption {
   /** 고유 id — chooseReward()에 그대로 전달 */
@@ -31,6 +32,8 @@ export interface RunStateSnapshot {
   roomIndex: number;
   maxRooms: number;
   phase: RunPhase;
+  /** 이번 런에서 획득한 보상 누적 기록 (선택 순서대로) — R1 답변 3 */
+  readonly rewards: readonly RewardOption[];
   /** 원소별 위력 배율 보너스 (0.15 = +15%) — HUD 요약 표시용 */
   elementalAffinity: Partial<Record<SpellElement, number>>;
 }
@@ -44,6 +47,8 @@ export interface RunEvents {
   'room-transition': (state: RunStateSnapshot, durationMs: number) => void;
   /** 다음 방 전투 시작. phase는 'combat' */
   'room-started': (state: RunStateSnapshot) => void;
+  /** 마지막 방 클리어 → 런 완주. phase는 'run-over' (보상 선택 없음) — R1 답변 2 */
+  'run-completed': (state: RunStateSnapshot) => void;
 }
 
 /** R1이 구현·소유. R3 UI는 이 계약 밖의 전투 내부 상태에 접근하지 않는다. */
