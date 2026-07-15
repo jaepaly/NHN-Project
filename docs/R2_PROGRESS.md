@@ -71,7 +71,31 @@
 ## ④ 문서화 — ✅ 완료
 
 - `.env.example` — `VITE_JUDGE_PROXY_URL` 견본.
-- `README.md` — 판정기 설정(기본 MockJudge / .env로 GeminiJudge 전환) 실행 문서 갱신.
+- `README.md` — 판정기 설정(기본 GeminiJudge / `VITE_JUDGE_MOCK=1`로 MockJudge) 실행 문서 갱신.
+- **판정기 기본값을 GeminiJudge로** (`createJudge.ts`) — 팀 공용 프록시 URL을 코드 기본값으로 두어
+  로컬·데모 어디서나 별도 `.env` 없이 실제 Gemini 판정이 동작. (`.env`는 gitignore라 공유 안 됨 → 하드코딩 기본값으로 해결)
+  - 배경: PR #4 머지 후 팀원 로컬·데모가 모두 MockJudge만 나옴. 원인은 `.env`(프록시 URL)가 각자에게 없어서.
+  - 프록시 URL은 비밀 아님(키는 Cloudflare secret). 모두 이 프록시=임재윤 할당량(3.1-flash-lite RPD 500) 공유.
+  - 탈출구: `VITE_JUDGE_MOCK=1` → MockJudge 강제(오프라인·할당량 절약). `VITE_JUDGE_PROXY_URL` → 다른 프록시.
+
+## 판정기 운영·할당량 방침 (2026-07-14 팀 논의)
+
+키·할당량 관련 팀 논의 결론(대화 반영):
+
+- **기본 = 팀 공용 프록시 하나 공유**: 모두 임재윤 Gemini 키/할당량을 프록시 경유로 공유한다.
+  현재 모델 `gemini-flash-lite-latest`(= 3.1 Flash Lite), 무료 한도 **RPM 15 / RPD 500**.
+  팀원은 **개인 API 키 발급 불필요** — `git pull`만 하면 임재윤 할당량으로 Gemini 동작(설정 0).
+  (프록시 URL은 비밀 아님. 실제 키는 Cloudflare secret에만 존재.)
+- **개발 중 할당량 절약**: 전투 등 대량 캐스팅 테스트는 `.env`에 `VITE_JUDGE_MOCK=1` → MockJudge(무료·즉시)로 돌려
+  공용 할당량을 보존한다. (판정 품질이 필요 없는 개발엔 이걸 권장)
+- **할당량 부족 시 처리**: 임재윤이 **새 프로젝트 키 발급 → `$key | npx.cmd wrangler secret put GEMINI_API_KEY`**로
+  프록시 키만 교체(2분). 코드·URL 불변, 팀원 무영향. (교체는 Cloudflare 계정 소유자만 가능 →
+  다른 사람이 급하면 새 키를 소유자에게 전달하거나, 자기 프록시를 따로 씀)
+- **개인 격리가 필요한 경우**: 해당 팀원이 자기 프록시를 별도 배포([proxy/README.md](../proxy/README.md)) 후
+  `.env`의 `VITE_JUDGE_PROXY_URL`을 자기 URL로 지정 → 그 사람만 자기 할당량 사용.
+- **근본 해결**: 키 교체가 잦아지면 **결제(유료 티어) 등록**으로 한도 대폭 상향(교체 자체가 불필요).
+  ※ 다수 프로젝트 키를 돌려막는 방식은 ToS 회색지대라 지양.
+- 관련 PR: **#4**(R2 판정 연결), **#7**(판정기 기본값을 GeminiJudge로 — pull만으로 팀 전체 동작).
 
 ## ⑤ 판정 품질 — 데모 우선으로 재조정 (2026-07-14 회의)
 
