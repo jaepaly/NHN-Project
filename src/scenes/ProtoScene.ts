@@ -4,8 +4,15 @@ import { createJudge } from '../spell/createJudge';
 import type { SpellSpec } from '../spell/types';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
 import type { SpellImpact } from '../render/spellRenderer';
-import { ELEMENT_PALETTES } from '../render/palette';
-import { PlayerCombatState } from '../combat-core/player/playerCombatState';
+import {
+  ELEMENT_LABELS,
+  ELEMENT_PALETTES,
+  paletteColorToCss,
+} from '../render/palette';
+import {
+  PLAYER_COMBAT_CONFIG,
+  PlayerCombatState,
+} from '../combat-core/player/playerCombatState';
 import { ChaserEnemy } from '../combat-core/enemies/chaserEnemy';
 import { ShooterEnemy } from '../combat-core/enemies/shooterEnemy';
 import { SplitterEnemy } from '../combat-core/enemies/splitterEnemy';
@@ -28,6 +35,15 @@ import type { WaveDefinition } from '../combat-core/waves/waveManager';
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;
+const HUD = {
+  x: 18,
+  y: 18,
+  width: 360,
+  height: 150,
+  barX: 34,
+  barWidth: 270,
+  barHeight: 7,
+} as const;
 
 interface BasicMissile {
   body: Phaser.GameObjects.Arc;
@@ -56,11 +72,19 @@ export class ProtoScene extends Phaser.Scene {
   private worldBounds = new Phaser.Geom.Rectangle();
   private enemies: CombatEnemy[] = [];
   private enemyProjectiles: EnemyProjectile[] = [];
+  private hudGraphics!: Phaser.GameObjects.Graphics;
   private statusText!: Phaser.GameObjects.Text;
+  private hpText!: Phaser.GameObjects.Text;
+  private manaText!: Phaser.GameObjects.Text;
+  private attunementText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
   private waveManager = new WaveManager();
   private incantWrap!: HTMLElement;
   private incantBar!: HTMLInputElement;
+  private incantState!: HTMLElement;
+  private incantCount!: HTMLElement;
+  private incantHint!: HTMLElement;
+  private incantChargeLabel!: HTMLElement;
   private incanting = false;
   private casting = false;
   private timeScale = 1;
@@ -100,19 +124,7 @@ export class ProtoScene extends Phaser.Scene {
       left: Phaser.Input.Keyboard.KeyCodes.A,
       right: Phaser.Input.Keyboard.KeyCodes.D,
     }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
-    this.add.text(16, 14,
-      '[기술검증 프로토] Enter: 영창  ·  예: "얼음 감옥", "번개를 품은 해일", "어둠의 폭발"',
-      { fontSize: '14px', color: '#6b7bd6' })
-      .setScrollFactor(0)
-      .setDepth(100);
-    this.statusText = this.add.text(16, 38, '', {
-      fontSize: '15px',
-      color: '#b8c2ff',
-    }).setScrollFactor(0).setDepth(100);
-    this.waveText = this.add.text(16, 62, '', {
-      fontSize: '15px',
-      color: '#72f1b8',
-    }).setScrollFactor(0).setDepth(100);
+    this.createHud(width, height);
     this.spawnWave(this.waveManager.start());
     this.updateStatusText();
 
@@ -136,8 +148,50 @@ export class ProtoScene extends Phaser.Scene {
     this.updateStatusText();
   }
 
+  private createHud(width: number, height: number): void {
+    this.hudGraphics = this.add.graphics()
+      .setScrollFactor(0)
+      .setDepth(99);
+
+    this.statusText = this.add.text(34, 29, 'READY', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '14px',
+      fontStyle: 'bold',
+      color: '#72f1b8',
+    }).setScrollFactor(0).setDepth(100);
+    this.hpText = this.add.text(34, 54, '', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '12px',
+      color: '#ff91ad',
+    }).setScrollFactor(0).setDepth(100);
+    this.manaText = this.add.text(34, 88, '', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '12px',
+      color: '#91b7ff',
+    }).setScrollFactor(0).setDepth(100);
+    this.attunementText = this.add.text(34, 126, 'ARCANE // UNBOUND', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '11px',
+      color: '#8fa4ff',
+    }).setScrollFactor(0).setDepth(100);
+
+    this.waveText = this.add.text(width - 34, 29, '', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '14px',
+      fontStyle: 'bold',
+      color: '#72f1b8',
+      align: 'right',
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+
+    this.add.text(20, height - 28, 'WASD 이동  ·  ENTER 영창', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '12px',
+      color: '#59679d',
+    }).setScrollFactor(0).setDepth(100);
+  }
+
   private updatePlayerMovement(deltaSeconds: number): void {
-    if (this.incanting || !this.playerState.alive) return;
+    if (this.incanting || this.casting || !this.playerState.alive) return;
 
     const direction = new Phaser.Math.Vector2(
       Number(this.moveKeys.right.isDown) - Number(this.moveKeys.left.isDown),
@@ -418,13 +472,23 @@ export class ProtoScene extends Phaser.Scene {
   private setupIncantBar(): void {
     this.incantWrap = document.getElementById('incant-wrap')!;
     this.incantBar = document.getElementById('incant-bar') as HTMLInputElement;
+    this.incantState = document.getElementById('incant-state')!;
+    this.incantCount = document.getElementById('incant-count')!;
+    this.incantHint = document.getElementById('incant-hint')!;
+    this.incantChargeLabel = document.getElementById('incant-charge-label')!;
+
+    this.incantBar.addEventListener('input', () => this.updateIncantCharge());
 
     this.incantBar.addEventListener('keydown', (e) => {
       e.stopPropagation(); // 게임 키 입력과 충돌 방지
       if (e.key === 'Enter') {
-        const text = this.incantBar.value;
-        this.closeIncant();
-        if (text.trim()) void this.castFromText(text);
+        const text = this.incantBar.value.trim();
+        if (!text) {
+          this.closeIncant();
+          return;
+        }
+        this.beginJudging();
+        void this.castFromText(text);
       } else if (e.key === 'Escape') {
         this.closeIncant();
       }
@@ -448,16 +512,70 @@ export class ProtoScene extends Phaser.Scene {
   private openIncant(): void {
     this.incanting = true;
     this.timeScale = 0.1; // 슬로모션
+    this.input.keyboard!.disableGlobalCapture();
     this.incantWrap.classList.add('active');
+    this.incantWrap.classList.remove('judging');
+    this.incantWrap.setAttribute('aria-hidden', 'false');
+    this.incantBar.disabled = false;
     this.incantBar.value = '';
-    this.incantBar.focus();
+    this.incantState.textContent = '시간 흐름 10%';
+    this.incantHint.textContent = 'Enter 발동 · Esc 취소';
+    this.updateIncantCharge();
+    this.focusIncantBar();
+  }
+
+  /** Enter의 keyup과 캔버스 포커스 복구가 끝날 때까지 입력 포커스를 짧게 재확인한다. */
+  private focusIncantBar(attempt = 0): void {
+    if (!this.incanting) return;
+    this.incantBar.focus({ preventScroll: true });
+    if (attempt >= 7) return;
+    requestAnimationFrame(() => this.focusIncantBar(attempt + 1));
   }
 
   private closeIncant(): void {
     this.incanting = false;
     this.timeScale = 1;
-    this.incantWrap.classList.remove('active');
+    this.input.keyboard!.enableGlobalCapture();
+    this.incantWrap.classList.remove('active', 'judging');
+    this.incantWrap.setAttribute('aria-hidden', 'true');
+    this.incantBar.disabled = false;
     this.incantBar.blur();
+  }
+
+  private updateIncantCharge(): void {
+    const length = Array.from(this.incantBar.value).length;
+    const percent = Math.min(100, Math.round((length / 24) * 100));
+    this.incantWrap.style.setProperty('--charge', `${percent}%`);
+    this.incantCount.textContent = `${length}/60`;
+    this.incantChargeLabel.textContent = length === 0
+      ? '공명 대기'
+      : percent < 45
+        ? '문장 공명 중'
+        : percent < 100
+          ? '공명 상승'
+          : '최대 공명';
+  }
+
+  private beginJudging(): void {
+    this.incanting = false;
+    this.casting = true;
+    this.timeScale = 0.15;
+    this.input.keyboard!.enableGlobalCapture();
+    this.incantWrap.classList.add('active', 'judging');
+    this.incantBar.disabled = true;
+    this.incantState.textContent = '마법 해석 중';
+    this.incantHint.textContent = '문장의 의미를 현실에 연결합니다';
+    this.incantChargeLabel.textContent = 'SPELL JUDGING';
+    this.incantBar.blur();
+  }
+
+  private finishCastingUx(): void {
+    this.casting = false;
+    this.timeScale = 1;
+    this.input.keyboard!.enableGlobalCapture();
+    this.incantWrap.classList.remove('active', 'judging');
+    this.incantWrap.setAttribute('aria-hidden', 'true');
+    this.incantBar.disabled = false;
   }
 
   // ── 판정 → 렌더링 사이클 ────────────────────────────────────
@@ -475,6 +593,7 @@ export class ProtoScene extends Phaser.Scene {
       }
 
       this.playerState.startGlobalCooldown();
+      this.applySpellPalette(spec);
       this.announceSpell(spec);
 
       const from = new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
@@ -488,7 +607,7 @@ export class ProtoScene extends Phaser.Scene {
         onHit: (impact) => this.onSpellHit(impact, spec, target, hitEnemies),
       }, spec);
     } finally {
-      this.casting = false;
+      this.finishCastingUx();
     }
   }
 
@@ -504,11 +623,19 @@ export class ProtoScene extends Phaser.Scene {
       actionState = `COOLDOWN ${this.playerState.cooldownRemaining.toFixed(1)}s`;
     }
 
-    this.statusText.setText(
-      `HP ${hp}/${this.playerState.maxHp}`
-      + `  ·  MANA ${mana}/${this.playerState.maxMana}`
-      + `  ·  ${actionState}`,
-    );
+    const statusColor = !this.playerState.alive
+      ? '#ff5c7a'
+      : this.casting
+        ? '#ffd166'
+        : this.incanting
+          ? '#8fa4ff'
+          : this.playerState.cooldownRemaining > 0
+            ? '#ffb86b'
+            : '#72f1b8';
+    this.statusText.setText(`● ${actionState}`).setColor(statusColor);
+    this.hpText.setText(`HP    ${hp.toString().padStart(3)} / ${this.playerState.maxHp}`);
+    this.manaText.setText(`MANA  ${mana.toString().padStart(3)} / ${this.playerState.maxMana}`);
+    this.drawHudBars();
 
     if (this.waveManager.phase === 'room-clear') {
       this.waveText.setText('ROOM CLEAR');
@@ -522,6 +649,62 @@ export class ProtoScene extends Phaser.Scene {
         + `  ·  ENEMIES ${this.enemies.length}`,
       );
     }
+  }
+
+  private drawHudBars(): void {
+    const hpRatio = Phaser.Math.Clamp(this.playerState.hp / this.playerState.maxHp, 0, 1);
+    const manaRatio = Phaser.Math.Clamp(this.playerState.mana / this.playerState.maxMana, 0, 1);
+    const cooldownRatio = Phaser.Math.Clamp(
+      this.playerState.cooldownRemaining / PLAYER_COMBAT_CONFIG.globalCooldownSeconds,
+      0,
+      1,
+    );
+    const g = this.hudGraphics.clear();
+
+    g.fillStyle(0x080b1c, 0.9);
+    g.fillRoundedRect(HUD.x, HUD.y, HUD.width, HUD.height, 12);
+    g.lineStyle(1, 0x33447f, 0.72);
+    g.strokeRoundedRect(HUD.x, HUD.y, HUD.width, HUD.height, 12);
+
+    g.fillStyle(0x141a35, 1);
+    g.fillRoundedRect(HUD.barX, 73, HUD.barWidth, HUD.barHeight, 4);
+    g.fillRoundedRect(HUD.barX, 107, HUD.barWidth, HUD.barHeight, 4);
+    g.fillStyle(0xff5c82, 1);
+    g.fillRoundedRect(HUD.barX, 73, HUD.barWidth * hpRatio, HUD.barHeight, 4);
+    g.fillStyle(0x5b8cff, 1);
+    g.fillRoundedRect(HUD.barX, 107, HUD.barWidth * manaRatio, HUD.barHeight, 4);
+
+    g.fillStyle(0x1d2445, 1);
+    g.fillRoundedRect(HUD.x + 8, HUD.y + HUD.height - 5, HUD.width - 16, 3, 2);
+    g.fillStyle(cooldownRatio > 0 ? 0xffb86b : 0x72f1b8, 1);
+    g.fillRoundedRect(
+      HUD.x + 8,
+      HUD.y + HUD.height - 5,
+      (HUD.width - 16) * (cooldownRatio > 0 ? 1 - cooldownRatio : 1),
+      3,
+      2,
+    );
+
+    const { width } = this.scale;
+    g.fillStyle(0x080b1c, 0.86);
+    g.fillRoundedRect(width - 306, 18, 288, 72, 12);
+    g.lineStyle(1, 0x2a735c, 0.62);
+    g.strokeRoundedRect(width - 306, 18, 288, 72, 12);
+  }
+
+  private applySpellPalette(spec: SpellSpec): void {
+    const palette = ELEMENT_PALETTES[spec.element_primary];
+    this.incantWrap.style.setProperty('--spell-core', paletteColorToCss(palette.core));
+    this.incantWrap.style.setProperty('--spell-glow', paletteColorToCss(palette.glow));
+    this.incantWrap.style.setProperty('--spell-accent', paletteColorToCss(palette.accent));
+
+    const secondary = spec.element_secondary
+      ? ` + ${ELEMENT_LABELS[spec.element_secondary]}`
+      : '';
+    const source = this.judge.lastSource ?? this.judge.name;
+    this.attunementText
+      .setText(`${ELEMENT_LABELS[spec.element_primary]}${secondary} // ${source.toUpperCase()}`)
+      .setColor(paletteColorToCss(palette.core));
   }
 
   private announceSystemMessage(message: string): void {
@@ -653,7 +836,7 @@ export class ProtoScene extends Phaser.Scene {
   private announceSpell(spec: SpellSpec): void {
     const { width, height } = this.scale;
     const pal = ELEMENT_PALETTES[spec.element_primary];
-    const colorHex = '#' + pal.core.toString(16).padStart(6, '0');
+    const colorHex = paletteColorToCss(pal.core);
 
     const label = this.add.text(width / 2, height * 0.32, spec.name, {
       fontSize: '42px',
