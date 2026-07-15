@@ -8,8 +8,11 @@ import {
 export class EnemyControlState {
   private readonly slowRemaining = new Map<CombatEnemy, number>();
 
-  applySlow(enemy: CombatEnemy, power: number): number {
-    const duration = controlDurationFromPower(power);
+  applySlow(enemy: CombatEnemy, power: number, durationOverrideSeconds?: number): number {
+    const duration = durationOverrideSeconds !== undefined
+      && Number.isFinite(durationOverrideSeconds)
+      ? Math.max(0, durationOverrideSeconds)
+      : controlDurationFromPower(power);
     const remaining = Math.max(this.slowRemaining.get(enemy) ?? 0, duration);
     this.slowRemaining.set(enemy, remaining);
     return remaining;

@@ -1,25 +1,43 @@
 import Phaser from 'phaser';
 import type { SpellSpec } from '../spell/types';
 import { SPELL_DAMAGE_CONFIG } from '../combat-core/combat/combatConfig';
+import {
+  RAIN_CONFIG,
+  ZONE_CONFIG,
+  areaTargetPoint,
+  rainFallDurationMs,
+  rainLaunchDurationSeconds,
+  rainOffset,
+  zoneDurationSeconds,
+} from '../combat-core/combat/areaSpellConfig';
 import { ELEMENT_PALETTES, SIZE_SCALE } from './palette';
 
+interface SpellImpactMeta {
+  /** Multiplies the power-based damage for this individual impact. */
+  damageMultiplier?: number;
+  /** Allows a persistent form to hit the same enemy once in each distinct group. */
+  hitGroup?: number;
+  /** Overrides the default power-based control duration for this form. */
+  controlDurationSeconds?: number;
+}
+
 export type SpellImpact =
-  | { kind: 'point'; x: number; y: number }
-  | { kind: 'circle'; x: number; y: number; radius: number }
-  | {
+  | ({ kind: 'point'; x: number; y: number } & SpellImpactMeta)
+  | ({ kind: 'circle'; x: number; y: number; radius: number } & SpellImpactMeta)
+  | ({
     kind: 'line';
     fromX: number;
     fromY: number;
     toX: number;
     toY: number;
     width: number;
-  };
+  } & SpellImpactMeta);
 
 /**
  * 파츠 조합 이펙트 엔진 (프로토타입) — GDD §6
  * form(궤적) × element(팔레트) × size(스케일) 레이어를 조립한다.
  *
- * 프로토 구현 범위: bolt / beam / wave / nova 4개 폼 × 8원소 전체.
+ * Phase 2 구현 범위: bolt / beam / wave / nova / zone / rain 6개 폼 × 8원소 전체.
  * 폼별 로직만 유한하고, 원소·크기는 데이터(팔레트·스케일)라서 공짜로 전 조합 지원.
  */
 
@@ -66,9 +84,15 @@ export function castSpell(ctx: CastContext, spec: SpellSpec): void {
     case 'nova':
       castNova(ctx, spec);
       break;
+    case 'zone':
+      castZone(ctx, spec);
+      break;
+    case 'rain':
+      castRain(ctx, spec);
+      break;
     case 'bolt':
     default:
-      // 프로토: 미구현 폼은 bolt로 대체 렌더링 (본 개발에서 12폼 구현)
+      // 미구현 폼은 bolt로 대체 렌더링 (후속 개발에서 12폼 구현)
       castBolt(ctx, spec);
       break;
   }
@@ -341,6 +365,200 @@ function castNova(ctx: CastContext, spec: SpellSpec): void {
   }, spec);
   scene.cameras.main.shake(200, 0.004 * scale);
   scene.time.delayedCall(700, () => burst.destroy());
+}
+
+/** zone — 제한 사거리 안의 고정된 지면에 남아 주기적으로 범위 타격 */
+function castZone(ctx: CastContext, spec: SpellSpec): void {
+  const { scene, from } = ctx;
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const scale = SIZE_SCALE[spec.size];
+  const center = areaTargetPoint(
+    from.x,
+    from.y,
+    ctx.to?.x,
+    ctx.to?.y,
+    ZONE_CONFIG.castRange,
+  );
+  const radius = ZONE_CONFIG.baseRadius * scale;
+  const durationMs = zoneDurationSeconds(spec.speed) * 1000;
+  const tickIntervalMs = durationMs / ZONE_CONFIG.tickCount;
+  const accent = spec.element_secondary
+    ? ELEMENT_PALETTES[spec.element_secondary].accent
+    : pal.accent;
+
+  const field = scene.add.circle(center.x, center.y, radius, pal.glow, 0.13)
+    .setStrokeStyle(Math.max(2, 3 * scale), pal.core, 0.75)
+    .setBlendMode(Phaser.BlendModes.ADD);
+  const inner = scene.add.circle(center.x, center.y, radius * 0.62, pal.core, 0.07)
+    .setStrokeStyle(Math.max(1, 2 * scale), accent, 0.52)
+    .setBlendMode(Phaser.BlendModes.ADD);
+  const pulse = scene.add.circle(center.x, center.y, radius * 0.3, pal.core, 0)
+    .setStrokeStyle(Math.max(2, 3 * scale), accent, 0.85)
+    .setBlendMode(Phaser.BlendModes.ADD);
+  const particles = scene.add.particles(center.x, center.y, 'particle', {
+    speed: { min: radius * 0.15, max: radius * 0.55 },
+    angle: { min: 0, max: 360 },
+    scale: { start: 0.28 * scale, end: 0 },
+    alpha: { start: 0.55, end: 0 },
+    lifespan: Math.max(500, tickIntervalMs),
+    frequency: 90,
+    quantity: 1,
+    tint: [pal.core, pal.glow, accent],
+    blendMode: Phaser.BlendModes.ADD,
+  });
+
+  scene.tweens.add({
+    targets: pulse,
+    scale: { from: 0.45, to: 1 },
+    alpha: { from: 0.9, to: 0 },
+    duration: tickIntervalMs,
+    repeat: ZONE_CONFIG.tickCount - 1,
+    ease: 'Cubic.easeOut',
+  });
+
+  const emitZoneImpact = (hitGroup: number, damageMultiplier?: number): void => {
+    if (!field.active) return;
+    ctx.onHit?.({
+      kind: 'circle',
+      x: center.x,
+      y: center.y,
+      radius,
+      damageMultiplier,
+      hitGroup,
+      controlDurationSeconds: ZONE_CONFIG.controlLingerSeconds,
+    }, spec);
+  };
+
+  for (let tick = 0; tick < ZONE_CONFIG.tickCount; tick += 1) {
+    scene.time.delayedCall(tick * tickIntervalMs, () => {
+      emitZoneImpact(tick, ZONE_CONFIG.damageMultiplierPerTick);
+    });
+  }
+
+  scene.time.delayedCall(durationMs, () => {
+    particles.stop();
+    scene.tweens.add({
+      targets: [field, inner, pulse],
+      alpha: 0,
+      duration: 240,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        field.destroy();
+        inner.destroy();
+        pulse.destroy();
+      },
+    });
+    scene.time.delayedCall(500, () => particles.destroy());
+  });
+}
+
+/** rain — 고정된 목표 영역에 순차 낙하하는 다중 범위 타격 */
+function castRain(ctx: CastContext, spec: SpellSpec): void {
+  const { scene, from } = ctx;
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const scale = SIZE_SCALE[spec.size];
+  const center = areaTargetPoint(
+    from.x,
+    from.y,
+    ctx.to?.x,
+    ctx.to?.y,
+    RAIN_CONFIG.castRange,
+  );
+  const areaRadius = RAIN_CONFIG.baseAreaRadius * scale;
+  const strikeRadius = RAIN_CONFIG.baseStrikeRadius * scale;
+  const launchDurationMs = rainLaunchDurationSeconds(spec.speed) * 1000;
+  const launchIntervalMs = launchDurationMs / RAIN_CONFIG.strikeCount;
+  const fallDurationMs = rainFallDurationMs(spec.speed);
+  const accent = spec.element_secondary
+    ? ELEMENT_PALETTES[spec.element_secondary].accent
+    : pal.accent;
+  const field = scene.add.circle(center.x, center.y, areaRadius, pal.glow, 0.045)
+    .setStrokeStyle(Math.max(1, 2 * scale), pal.core, 0.34)
+    .setBlendMode(Phaser.BlendModes.ADD);
+
+  for (let strike = 0; strike < RAIN_CONFIG.strikeCount; strike += 1) {
+    const offset = rainOffset(strike, areaRadius);
+    const landingX = center.x + offset.x;
+    const landingY = center.y + offset.y;
+    const telegraph = scene.add.circle(landingX, landingY, strikeRadius, pal.glow, 0.09)
+      .setStrokeStyle(Math.max(1, 2 * scale), accent, 0.48)
+      .setBlendMode(Phaser.BlendModes.ADD);
+
+    scene.time.delayedCall(strike * launchIntervalMs, () => {
+      if (!field.active) return;
+      const startY = landingY - RAIN_CONFIG.fallHeight * scale;
+      const drop = scene.add.circle(landingX, startY, 6 * scale, pal.core)
+        .setStrokeStyle(Math.max(1, 2 * scale), accent, 0.85)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      const halo = scene.add.circle(landingX, startY, 13 * scale, pal.glow, 0.3)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      const trail = scene.add.rectangle(
+        landingX,
+        startY - 22 * scale,
+        4 * scale,
+        52 * scale,
+        pal.core,
+        0.35,
+      ).setBlendMode(Phaser.BlendModes.ADD);
+
+      scene.tweens.add({
+        targets: [drop, halo, trail],
+        y: landingY,
+        duration: fallDurationMs,
+        ease: 'Cubic.easeIn',
+        onComplete: () => {
+          drop.destroy();
+          halo.destroy();
+          trail.destroy();
+          telegraph.destroy();
+          areaImpactBurst(scene, landingX, landingY, spec);
+          ctx.onHit?.({
+            kind: 'circle',
+            x: landingX,
+            y: landingY,
+            radius: strikeRadius,
+            damageMultiplier: RAIN_CONFIG.damageMultiplierPerStrike,
+            hitGroup: strike,
+          }, spec);
+        },
+      });
+    });
+  }
+
+  const cleanupDelayMs = (RAIN_CONFIG.strikeCount - 1) * launchIntervalMs
+    + fallDurationMs + 220;
+  scene.time.delayedCall(cleanupDelayMs, () => {
+    scene.tweens.add({
+      targets: field,
+      alpha: 0,
+      duration: 180,
+      onComplete: () => field.destroy(),
+    });
+  });
+}
+
+function areaImpactBurst(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  spec: SpellSpec,
+): void {
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const scale = SIZE_SCALE[spec.size];
+  const accent = spec.element_secondary
+    ? ELEMENT_PALETTES[spec.element_secondary].accent
+    : pal.accent;
+  const burst = scene.add.particles(x, y, 'particle', {
+    speed: { min: 45, max: 150 * scale },
+    scale: { start: 0.42 * scale, end: 0 },
+    lifespan: 330,
+    quantity: 10 + Math.floor(spec.power / 12),
+    tint: [pal.core, pal.glow, accent],
+    blendMode: Phaser.BlendModes.ADD,
+    emitting: false,
+  });
+  burst.explode();
+  scene.time.delayedCall(420, () => burst.destroy());
 }
 
 /** 착탄 폭발 (bolt 공용) */
