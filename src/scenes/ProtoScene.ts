@@ -512,6 +512,7 @@ export class ProtoScene extends Phaser.Scene {
   private openIncant(): void {
     this.incanting = true;
     this.timeScale = 0.1; // 슬로모션
+    this.input.keyboard!.disableGlobalCapture();
     this.incantWrap.classList.add('active');
     this.incantWrap.classList.remove('judging');
     this.incantWrap.setAttribute('aria-hidden', 'false');
@@ -520,12 +521,21 @@ export class ProtoScene extends Phaser.Scene {
     this.incantState.textContent = '시간 흐름 10%';
     this.incantHint.textContent = 'Enter 발동 · Esc 취소';
     this.updateIncantCharge();
-    this.incantBar.focus();
+    this.focusIncantBar();
+  }
+
+  /** Enter의 keyup과 캔버스 포커스 복구가 끝날 때까지 입력 포커스를 짧게 재확인한다. */
+  private focusIncantBar(attempt = 0): void {
+    if (!this.incanting) return;
+    this.incantBar.focus({ preventScroll: true });
+    if (attempt >= 7) return;
+    requestAnimationFrame(() => this.focusIncantBar(attempt + 1));
   }
 
   private closeIncant(): void {
     this.incanting = false;
     this.timeScale = 1;
+    this.input.keyboard!.enableGlobalCapture();
     this.incantWrap.classList.remove('active', 'judging');
     this.incantWrap.setAttribute('aria-hidden', 'true');
     this.incantBar.disabled = false;
@@ -550,6 +560,7 @@ export class ProtoScene extends Phaser.Scene {
     this.incanting = false;
     this.casting = true;
     this.timeScale = 0.15;
+    this.input.keyboard!.enableGlobalCapture();
     this.incantWrap.classList.add('active', 'judging');
     this.incantBar.disabled = true;
     this.incantState.textContent = '마법 해석 중';
@@ -561,6 +572,7 @@ export class ProtoScene extends Phaser.Scene {
   private finishCastingUx(): void {
     this.casting = false;
     this.timeScale = 1;
+    this.input.keyboard!.enableGlobalCapture();
     this.incantWrap.classList.remove('active', 'judging');
     this.incantWrap.setAttribute('aria-hidden', 'true');
     this.incantBar.disabled = false;
