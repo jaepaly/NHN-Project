@@ -1382,6 +1382,7 @@ export class ProtoScene extends Phaser.Scene {
     const colorHex = paletteColorToCss(pal.core);
 
     const label = this.add.text(width / 2, height * 0.32, spec.name, {
+      fontFamily: '"Noto Serif KR", "Malgun Gothic", serif',
       fontSize: '42px',
       fontStyle: 'bold',
       color: colorHex,
