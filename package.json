@@ -15,6 +15,7 @@
     "test:bolt": "esbuild scripts/bolt-collision-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-bolt-collision-regression.mjs && node node_modules/.cache/incant-bolt-collision-regression.mjs",
     "test:forms": "esbuild scripts/area-forms-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-area-forms-regression.mjs && node node_modules/.cache/incant-area-forms-regression.mjs",
     "test:boss": "esbuild scripts/boss-resistance-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-boss-resistance-regression.mjs && node node_modules/.cache/incant-boss-resistance-regression.mjs",
+    "test:runmemory": "esbuild scripts/run-memory-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-run-memory-regression.mjs && node node_modules/.cache/incant-run-memory-regression.mjs",
     "snapshot:quality": "esbuild scripts/spell-quality-snapshot.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-quality-snapshot.mjs && node node_modules/.cache/incant-spell-quality-snapshot.mjs",
     "preview": "vite preview"
   },

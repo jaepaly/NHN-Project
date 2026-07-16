@@ -15,14 +15,14 @@
 | # | 작업 | 상태 |
 |---|---|---|
 | ① | 내성 프로필 모듈 (`bossMemory`→최다원소 저항 ×0.3·최다폼 카운터, 순수함수+테스트) | ✅ 완료 (`bossMemory.ts`, `test:boss` 4군) |
-| ② | 런 간 기억 (localStorage, `incant:runmemory:v1:` 버전 접두사) | ⬜ **← 다음 할 일** |
-| ③ | 보스 대사 생성 (프록시 `/boss-line` + **폴백 템플릿 필수**) | ⬜ |
+| ② | 런 간 기억 (localStorage, `incant:runmemory:v1:` 버전 접두사) | ✅ 완료 (`runMemory.ts`, `test:runmemory` 4군) |
+| ③ | 보스 대사 생성 (프록시 `/boss-line` + **폴백 템플릿 필수**) | ⬜ **← 다음 할 일** |
 | ④ | 계약 파일 공개 (총괄 보스코어·R3 UI가 소비) | ⬜ |
 | ⑤ | `/evolve-name` 엔드포인트 (Phase 3.5, 후순위) | ⬜ |
 
 **▶ 현재 위치**: Phase 2 완료·머지(히스토리 통합까지 이도원이 P0-e 연결 완료). Phase 3 착수 — **INCANT 간판 기능 "기억하는 보스"가 R2 몫.**
 
-**▶ 다음 할 일**: **② 런 간 기억(localStorage)**. ①(단기 내성)은 완료. ②에서 회차 누적 시 "모든 원소 내성" 밸런스 함정을 최다 1개·최근성 가중·부분 내성으로 완화.
+**▶ 다음 할 일**: **③ 보스 대사 생성**(프록시 `/boss-line` + 폴백 템플릿 필수). ①②(내성·런간기억) 완료. ③은 런 요약→위협 대사, Mock/템플릿 우선 개발.
 
 **경계**: 보스 전투 코어·연출·통합 QA는 **총괄**. R2는 기억·내성·대사 **모듈+계약**까지. `SpellSpec`/`RunContract` 변경 없음 예정.
 
@@ -33,11 +33,13 @@
 - **계약 파일**: `BossResistanceProfile`·`BossCounterStrategy` 타입 공개 → 총괄 보스 코어·R3 UI가 소비.
 - 검증: `npm run test:boss` 4군(데이터부족·원소저항·카운터전략·순수성) + tsc 통과.
 
-### ② 런 간 기억 (localStorage) — ⬜ (다음)
+### ② 런 간 기억 (localStorage) — ✅ (feat/boss-memory)
 
-- 런 요약 저장/로드: 사망 횟수·애용 원소·최고 피해 주문명·마지막 결과.
-- **스키마 버전 접두사 `incant:runmemory:v1:` 필수** (v2 판정 캐시처럼 버전 격리).
-- **밸런스 함정 주의**(당신 지적): 회차 누적 시 보스가 모든 원소 내성 → 게임 불가. 완화: **최다 1개만 저항 + 최근성 가중/감쇠 + 장기는 부분 내성(약)**, 단기 적응이 강.
+- **파일**: `src/spell/runMemory.ts`. `RunMemory`(사망·클리어·애용원소·최고피해주문·마지막결과·최근원소) + `summarizeRun`·`updateRunMemory`(순수) + `load/saveRunMemory`(localStorage, storage 주입 가능 → 테스트됨).
+- **스키마 버전 접두사** `incant:runmemory:v1:` + 로드 시 정규화(깨진/구버전 → 기본값).
+- **누적 밸런스 완화**(당신 지적 반영): `recentDominantElements`를 최근 5런으로 제한 + `longTermResistedElement`가 그중 **최다 1개만** 반환 → "모든 원소 내성" 방지.
+- **①↔② 다리**: 총괄 보스 코어는 **초기 저항 = `longTermResistedElement`(장기·부분)** + **진행 중 적응 = `computeResistance`(단기·강)** 을 조합해 쓰면 됨.
+- 검증: `npm run test:runmemory` 4군(요약·갱신·누적완화·저장로드) + tsc 통과.
 
 ### ③ 보스 대사 생성 — ⬜
 

@@ -6,6 +6,7 @@
 
 | 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
 |---|---|---|---|---|---|---|
+| 2026-07-16 | 임재윤 | Claude Code (Opus 4.8) | R2 Phase 3 ②: 런 간 기억 (localStorage) | 런 종료 요약(사망·클리어·애용원소·최고피해주문·마지막결과)을 버전 접두사(incant:runmemory:v1:) localStorage에 누적. 순수 갱신 함수 + storage 주입형 로드/저장. 누적 내성 밸런스 함정을 최근 5런·최다 1개(longTermResistedElement)로 완화 | `src/spell/runMemory.ts`, `scripts/run-memory-regression.ts`, `test:runmemory` | 회귀 4군·tsc 통과. ①단기+②장기 조합해 총괄 보스코어가 소비 |
 | 2026-07-16 | 임재윤 | Claude Code (Opus 4.8) | R2 Phase 3 ①: 보스 내성 프로필 (계약+순수함수) | bossMemory 요약 → 최다 원소 저항(피해×0.3)·최다 폼 카운터 전략(rush/ranged) 계산하는 순수 함수와 계약 타입(BossResistanceProfile) 공개. minCasts 3 게이트. 전투 적용은 총괄 보스 코어가 소비 | `src/spell/bossMemory.ts`, `scripts/boss-resistance-regression.ts`, `test:boss` | 계약 우선 패턴, 회귀 4군·tsc 통과. ② 런간기억은 누적 내성 밸런스 완화 예정 |
 | 2026-07-16 | 이도원 | Codex | R1 Phase 2 광역 폼 렌더러·자동 조준 구현 | zone·rain을 추가하고 원형 광역은 적 위치·중간점 중 최다 적중 중심을, beam·wave는 적 방향·중간 각도 중 최다 적중 회랑을 자동 선택하며 control 장판은 마지막 틱 뒤 0.5초 내 해제되도록 연결 | `areaSpellConfig.ts`, `spellRenderer.ts`, `ProtoScene.ts`, `area-forms-regression.ts`, `test:forms` | 임시 범위·지속시간·타격 배율 기록, 광역·방향 회귀 18군·control 회귀 6군·전체 회귀·빌드·Mock 브라우저 렌더링 및 콘솔 무오류 확인 |
 | 2026-07-16 | jaepaly | Claude Code | Phase 2 종료·Phase 3 지시 게시 | 통합 QA(Mock/라이브 각 2방 완주·콘솔 무오류)로 Phase 2를 닫고, INCANT 확정·에셋 트랙 이도원 이관·AI 사운드 우선 방침을 반영한 Phase 3(기억하는 보스&에셋) 지시문 작성 — 이도원용 에셋 제작 에이전트 가이드(도구·프롬프트·통합 API·라이선스) 포함 | `PHASE_3.md`, README·GDD·ROLES 갱신 | 라이브 검증은 캐시 활용으로 Gemini 할당량 0 |
