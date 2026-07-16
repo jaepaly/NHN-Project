@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict';
 import { spellPowerWithAffinity } from '../src/combat-core/combat/combatConfig';
-import { PlayerCombatState } from '../src/combat-core/player/playerCombatState';
+import {
+  PLAYER_COMBAT_CONFIG,
+  PlayerCombatState,
+} from '../src/combat-core/player/playerCombatState';
 import { CombatRunController } from '../src/combat-core/run/runController';
-import { RUN_REWARD_CONFIG } from '../src/combat-core/run/rewardConfig';
+import {
+  createRewardOptions,
+  drawRewardOptions,
+  RUN_REWARD_CONFIG,
+} from '../src/combat-core/run/rewardConfig';
 import type { RewardOption, RunEvents } from '../src/run/runContract';
 
 interface RunHarness {
@@ -24,6 +31,8 @@ function createHarness(): RunHarness {
     // 이 하네스는 "2방 런 흐름" 시나리오를 고정 검증한다.
     // (프로덕션 maxRooms는 Phase 3부터 3 — 마지막 방은 보스방, test:boss-core에서 검증)
     maxRooms: 2,
+    // 고정 3택 주입 — 시드 랜덤 풀은 7)에서 별도 검증 (Phase 3.5)
+    rewardDraw: createRewardOptions,
     scheduleTransition: (delayMs, callback) => {
       scheduledDelay = delayMs;
       transitionCallback = callback;
@@ -156,4 +165,93 @@ assert.equal(spellPowerWithAffinity(32, 0.15), 37);
 assert.equal(spellPowerWithAffinity(32, -1), 32, '음수 친화 보너스 무시');
 assert.equal(spellPowerWithAffinity(Number.NaN, 0.15), 0, '비정상 power 방어');
 
-console.log('CombatRunController regression: 능력치·3택 보상·2개 방·이벤트·친화 6군 통과');
+// 7) Phase 3.5 보상 풀 — 시드 랜덤 추첨·신규 패시브 (PROGRESSION_DESIGN §1)
+{
+  // 7-a. 같은 시드 = 같은 추첨 (재현성), 종류 중복 없음
+  const seqA: string[] = [];
+  const seqB: string[] = [];
+  const mkRand = (seed: number) => {
+    let a = seed >>> 0;
+    return () => {
+      a += 0x6d2b79f5;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+  const randA = mkRand(42);
+  const randB = mkRand(42);
+  for (let room = 1; room <= 2; room++) {
+    const a = drawRewardOptions(room, randA);
+    const b = drawRewardOptions(room, randB);
+    assert.equal(a.length, 3);
+    assert.equal(new Set(a.map((o) => o.kind)).size, 3, '종류 중복 없음');
+    assert.deepEqual(a.map((o) => o.id), b.map((o) => o.id), '같은 시드 = 같은 추첨');
+    seqA.push(...a.map((o) => o.kind));
+    seqB.push(...b.map((o) => o.kind));
+  }
+  // 7-b. 다른 시드는 (충분한 표본에서) 다른 순열을 낸다
+  const randC = mkRand(7);
+  const kindsC: string[] = [];
+  for (let room = 1; room <= 4; room++) {
+    kindsC.push(...drawRewardOptions(room, randC).map((o) => o.kind));
+  }
+  assert.notDeepEqual(kindsC.slice(0, seqA.length), seqA, '다른 시드 = 다른 순열');
+
+  // 7-c. 신속 영창: 쿨다운 감소 + 하한
+  const swift = new PlayerCombatState();
+  swift.addCooldownReduction(RUN_REWARD_CONFIG.swiftIncantReduction);
+  assert.equal(
+    swift.globalCooldownSeconds,
+    PLAYER_COMBAT_CONFIG.globalCooldownSeconds - RUN_REWARD_CONFIG.swiftIncantReduction,
+  );
+  swift.addCooldownReduction(999);
+  assert.equal(
+    swift.globalCooldownSeconds,
+    PLAYER_COMBAT_CONFIG.globalCooldownFloorSeconds,
+    '쿨다운 하한',
+  );
+  swift.startGlobalCooldown();
+  assert.equal(swift.cooldownRemaining, PLAYER_COMBAT_CONFIG.globalCooldownFloorSeconds);
+
+  // 7-d. 마나 격류: 재생 배율
+  const surge = new PlayerCombatState();
+  surge.trySpendMana(100);
+  surge.addManaRegenMultiplier(RUN_REWARD_CONFIG.manaSurgeBonus);
+  surge.update(1);
+  assert.equal(
+    Math.round(surge.mana),
+    Math.round(PLAYER_COMBAT_CONFIG.manaRegenPerSecond * (1 + RUN_REWARD_CONFIG.manaSurgeBonus)),
+  );
+
+  // 7-e. 수호 기점: 다음 방 시작마다 보호막 부여 (+ reset으로 소멸)
+  const wardPlayer = new PlayerCombatState();
+  let wardTransition: (() => void) | null = null;
+  const wardRun = new CombatRunController({
+    playerState: wardPlayer,
+    maxRooms: 3,
+    rewardDraw: (roomIndex) => [{
+      id: `room-${roomIndex}-ward-start`,
+      kind: 'ward-start',
+      title: '수호 기점',
+      description: 'test',
+    }],
+    scheduleTransition: (_delay, callback) => { wardTransition = callback; },
+  });
+  wardRun.notifyRoomCleared();
+  wardRun.chooseReward('room-1-ward-start');
+  assert.equal(wardPlayer.shield, 0, '획득 직후가 아니라 방 시작에 부여');
+  wardTransition!();
+  assert.equal(wardPlayer.shield, RUN_REWARD_CONFIG.wardStartShield, '방 2 개막 보호막');
+  wardRun.reset();
+  assert.equal(wardRun.state.rewards.length, 0);
+
+  // 7-f. 플레이어 reset이 신규 패시브도 초기화
+  swift.reset();
+  assert.equal(swift.globalCooldownSeconds, PLAYER_COMBAT_CONFIG.globalCooldownSeconds);
+  surge.reset();
+  assert.equal(surge.manaRegenMultiplier, 1);
+}
+
+console.log('CombatRunController regression: 능력치·3택 보상·2개 방·이벤트·친화·보상풀 7군 통과');

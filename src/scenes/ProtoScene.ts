@@ -13,10 +13,7 @@ import {
   SIZE_SCALE,
   paletteColorToCss,
 } from '../render/palette';
-import {
-  PLAYER_COMBAT_CONFIG,
-  PlayerCombatState,
-} from '../combat-core/player/playerCombatState';
+import { PlayerCombatState } from '../combat-core/player/playerCombatState';
 import { ChaserEnemy } from '../combat-core/enemies/chaserEnemy';
 import { ShooterEnemy } from '../combat-core/enemies/shooterEnemy';
 import { SplitterEnemy } from '../combat-core/enemies/splitterEnemy';
@@ -1017,7 +1014,7 @@ export class ProtoScene extends Phaser.Scene {
     const manaRatio = Phaser.Math.Clamp(this.playerState.mana / this.playerState.maxMana, 0, 1);
     const shieldRatio = Phaser.Math.Clamp(this.playerState.shield / this.playerState.maxHp, 0, 1);
     const cooldownRatio = Phaser.Math.Clamp(
-      this.playerState.cooldownRemaining / PLAYER_COMBAT_CONFIG.globalCooldownSeconds,
+      this.playerState.cooldownRemaining / this.playerState.globalCooldownSeconds,
       0,
       1,
     );
