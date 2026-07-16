@@ -22,8 +22,16 @@
 
 **▶ 현재 위치**: Phase 2 완료·머지(히스토리 통합까지 이도원이 P0-e 연결 완료). Phase 3 착수 — **INCANT 간판 기능 "기억하는 보스"가 R2 몫.**
 
-**▶ 현재 위치**: **R2 Phase 3 핵심(①~④) 전부 완료** — 내성 프로필·런간기억·보스대사(배포)·계약 공개. PR #22.
-**▶ 다음 (협업/후순위)**: (1) 총괄이 PR #22 계약 위에 보스 코어 구현 (협업). (2) ⑤ `/evolve-name`은 Phase 3.5 성장 시스템용 후순위.
+**▶ 현재 위치**: **R2 Phase 3 핵심(①~④) 전부 완료·검증** — 내성 프로필·런간기억·보스대사(`/boss-line` 배포)·공개 계약. **PR #22**.
+
+**▶ 검증 (2026-07-16)**: 전체 프로덕션 빌드(tsc+vite) ✅ · 팀 회귀 10종 전부 통과(spell·history·run·control·summon·bolt·forms·boss·runmemory·bossline) ✅ · `/boss-line` 라이브 실측 ✅ · 판정(/) 무손상 ✅. **미검증**: 실제 보스전 통합(보스 코어 미구현 → 총괄 통합 시 확인).
+
+**▶ 총괄 통합 가이드**: `import { computeResistance, longTermResistedElement, loadRunMemory, saveRunMemory, summarizeRun, updateRunMemory, getBossLine } from './spell/bossMemoryContract'`
+- 보스방 진입: 초기 저항 = `longTermResistedElement(loadRunMemory())`(장기·부분) + 진행 적응 = `computeResistance(history.bossMemory())`(단기·강)
+- 대사: `await getBossLine(runMemory)` (프록시 실패해도 템플릿 폴백)
+- 런 종료: `saveRunMemory(updateRunMemory(loadRunMemory(), summarizeRun(history, 'win'|'lose')))`
+
+**▶ 다음 (협업/후순위)**: (1) 총괄이 위 계약으로 보스 코어 구현(협업). (2) ⑤ `/evolve-name`은 Phase 3.5 성장 시스템 후순위.
 
 **경계**: 보스 전투 코어·연출·통합 QA는 **총괄**. R2는 기억·내성·대사 **모듈+계약**까지. `SpellSpec`/`RunContract` 변경 없음 예정.
 
