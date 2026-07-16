@@ -63,6 +63,7 @@ import { CONTROL_CONFIG } from '../combat-core/control/controlConfig';
 import { EnemyControlState } from '../combat-core/control/enemyControlState';
 import { SUMMON_CONFIG } from '../combat-core/summons/summonConfig';
 import { SummonedOrb } from '../combat-core/summons/summonedOrb';
+import { GameAudio } from '../audio/gameAudio';
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;
@@ -136,6 +137,7 @@ export class ProtoScene extends Phaser.Scene {
   private bossResistance: BossResistanceProfile = NO_RESISTANCE;
   private lastResistNoticeAt = 0;
   private deathHandled = false;
+  private audio!: GameAudio;
 
   constructor() {
     super('proto');
@@ -144,6 +146,10 @@ export class ProtoScene extends Phaser.Scene {
   /** R3는 구체 전투 구현이 아니라 PR #12의 공개 계약만 소비한다. */
   get runController(): RunController {
     return this.combatRunController;
+  }
+
+  preload(): void {
+    GameAudio.preload(this);
   }
 
   create(): void {
@@ -157,6 +163,8 @@ export class ProtoScene extends Phaser.Scene {
     const startX = this.worldBounds.centerX;
     const startY = this.worldBounds.centerY;
     ensureParticleTexture(this);
+    this.audio = new GameAudio(this);
+    this.audio.playBgm();
 
     this.drawBackdrop(this.worldBounds.width, this.worldBounds.height);
     this.createPlayer(startX, startY);
@@ -211,12 +219,14 @@ export class ProtoScene extends Phaser.Scene {
 
   private setupRunFlow(): void {
     this.combatRunController.on('room-cleared', (options, state) => {
+      this.audio.playSfx('room-clear');
       this.deferTransientCombatCleanup();
       this.stopCastingForRunPause();
       this.announceSystemMessage(`방 ${state.roomIndex} 클리어`, '#72f1b8');
       console.info('[Run] reward-ready', options, state);
     });
     this.combatRunController.on('reward-applied', (chosen, state) => {
+      this.audio.playSfx('reward-select');
       this.announceSystemMessage(chosen.title, '#ffd166');
       console.info('[Run] reward-applied', chosen, state);
     });
@@ -767,6 +777,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private openIncant(): void {
+    this.audio.playSfx('incant-enter');
     this.incanting = true;
     this.timeScale = 0.1; // 슬로모션
     this.input.keyboard!.disableGlobalCapture();
@@ -845,6 +856,7 @@ export class ProtoScene extends Phaser.Scene {
         return;
       }
       if (judgement.disposition !== 'cast') {
+        this.audio.playSfx('fizzle');
         const prefix = judgement.disposition === 'fizzle' ? '불발' : '영창 차단';
         const color = judgement.disposition === 'fizzle' ? '#ffd166' : '#ff6b86';
         this.announceSystemMessage(`${prefix} · ${judgement.message}`, color);
@@ -853,6 +865,7 @@ export class ProtoScene extends Phaser.Scene {
 
       const spec = judgement.spell;
       if (!this.playerState.trySpendMana(spec.cost)) {
+        this.audio.playSfx('fizzle');
         this.announceSystemMessage('마나 부족');
         return;
       }
@@ -881,6 +894,7 @@ export class ProtoScene extends Phaser.Scene {
       }
 
       this.playerState.startGlobalCooldown();
+      this.audio.playCast(effectiveSpec.element_primary);
       this.applySpellPalette(effectiveSpec);
       this.announceSpell(effectiveSpec);
       this.applySpellEffect(effectiveSpec);
@@ -1444,6 +1458,8 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private damageEnemy(enemy: CombatEnemy, damage: number): void {
+    if (damage <= 0 || !enemy.alive) return;
+    this.audio.playSfx('hit');
     if (!enemy.takeDamage(damage)) {
       // 보스는 HP 임계 통과 시 하수인을 부른다
       if (enemy instanceof BossEnemy && enemy.consumeMinionTrigger()) {
@@ -1451,6 +1467,7 @@ export class ProtoScene extends Phaser.Scene {
       }
       return;
     }
+    this.audio.playSfx('enemy-defeat');
 
     const splitX = enemy.x;
     const splitY = enemy.y;

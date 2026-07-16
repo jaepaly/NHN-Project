@@ -5,8 +5,90 @@
 > (팀 공용 1줄 기록은 [AI_USAGE_LOG.md](AI_USAGE_LOG.md), 이 파일은 R2 상세 로그)
 
 - **담당**: 임재윤 (R2 — 판정 프롬프트·프록시 인프라·캐싱/폴백·보스 기억)
-- **최근 갱신**: 2026-07-15
-- **현재 페이즈**: **Phase 2 (마감 7/27)** — 코어 런 확장. (Phase 1 조기 달성)
+- **최근 갱신**: 2026-07-16
+- **현재 페이즈**: **Phase 3 (마감 7/22)** — 기억하는 보스 & 에셋. (Phase 2 조기 완료·머지)
+
+---
+
+## R2 아키텍처 한눈에 (발표·심사용 요약)
+
+```
+[플레이어 문장] → ① 판정 → ② 히스토리 → ③ 보스 기억
+```
+
+| 상자 | 하는 일 | 핵심 장치 (와 이유) |
+|---|---|---|
+| **① 판정** | 문장 → `cast/fizzle/blocked` JSON | 프록시 경유(API 키 은닉) · 프롬프트 서버 고정(조작 방지) · 스키마 검증(LLM 불신) · 2.5초 폴백(무중단) · 캐시(속도·할당량) |
+| **② 히스토리** | cast+발동 확정 주문만 런 공책에 기록 | 동일 문장 반복 ×0.8 로컬 강제(다양성 유도) · `bossMemory()` 요약 |
+| **③ 보스 기억** | 공책·지난 런으로 보스가 대비 | 단기 내성 ×0.3(이번 런 최다) · 장기 부분 내성(최근 5런·최다 1개 — 과잉내성 방지) · 도발 대사(`/boss-line`+템플릿 폴백) |
+
+fizzle/blocked는 마나·쿨다운·기록 모두 노카운트. 판정~대사 전부 "실패해도 게임은 멈추지 않는다" 원칙.
+
+---
+
+## Phase 3 진행 체크리스트 — [PHASE_3.md](PHASE_3.md) §3 R2 (트랙 2: 보스 기억·대사)
+
+| # | 작업 | 상태 |
+|---|---|---|
+| ① | 내성 프로필 모듈 (`bossMemory`→최다원소 저항 ×0.3·최다폼 카운터, 순수함수+테스트) | ✅ 완료 (`bossMemory.ts`, `test:boss` 4군) |
+| ② | 런 간 기억 (localStorage, `incant:runmemory:v1:` 버전 접두사) | ✅ 완료 (`runMemory.ts`, `test:runmemory` 4군) |
+| ③ | 보스 대사 생성 (프록시 `/boss-line` + **폴백 템플릿 필수**) | ✅ 완료 ((a)클라이언트·폴백 + (b)프록시 배포·라이브 테스트) |
+| ④ | 계약 파일 공개 (총괄 보스코어·R3 UI가 소비) | ✅ 완료 (`bossMemoryContract.ts`) |
+| ⑤ | `/evolve-name` 엔드포인트 (Phase 3.5, 후순위) | ⬜ (성장 시스템, 후순위) |
+
+**▶ 현재 위치**: Phase 2 완료·머지(히스토리 통합까지 이도원이 P0-e 연결 완료). Phase 3 착수 — **INCANT 간판 기능 "기억하는 보스"가 R2 몫.**
+
+**▶ 현재 위치**: **R2 Phase 3 핵심(①~④) 전부 완료·검증** — 내성 프로필·런간기억·보스대사(`/boss-line` 배포)·공개 계약. **PR #22**.
+
+**▶ 검증 (2026-07-16)**: 전체 프로덕션 빌드(tsc+vite) ✅ · 팀 회귀 10종 전부 통과(spell·history·run·control·summon·bolt·forms·boss·runmemory·bossline) ✅ · `/boss-line` 라이브 실측 ✅ · 판정(/) 무손상 ✅. **미검증**: 실제 보스전 통합(보스 코어 미구현 → 총괄 통합 시 확인).
+
+**▶ 총괄 통합 가이드**: `import { computeResistance, longTermResistedElement, loadRunMemory, saveRunMemory, summarizeRun, updateRunMemory, getBossLine } from './spell/bossMemoryContract'`
+- 보스방 진입: 초기 저항 = `longTermResistedElement(loadRunMemory())`(장기·부분) + 진행 적응 = `computeResistance(history.bossMemory())`(단기·강)
+- 대사: `await getBossLine(runMemory)` (프록시 실패해도 템플릿 폴백)
+- 런 종료: `saveRunMemory(updateRunMemory(loadRunMemory(), summarizeRun(history, 'win'|'lose')))`
+
+**▶ 다음 (협업/후순위)**: (1) 총괄이 위 계약으로 보스 코어 구현(협업). (2) ⑤ `/evolve-name`은 Phase 3.5 성장 시스템 후순위.
+
+**경계**: 보스 전투 코어·연출·통합 QA는 **총괄**. R2는 기억·내성·대사 **모듈+계약**까지. `SpellSpec`/`RunContract` 변경 없음 예정.
+
+**밸런스 백로그 (데모 후 튜닝, 총괄 참고)**:
+- **투톱 회피**: 원소 2개를 50:50으로 번갈아 쓰면 "최다 1개 저항" 캡을 부분 회피함(하나만 저항받고 나머지 자유).
+  보강 옵션: 2위 원소 약한 내성(×0.6) 또는 사용 비율 비례 내성. ※ 1개 캡은 누적 과잉내성(모든 원소 저항) 방지와의 **의도된 트레이드오프** — 조정은 밸런스 튜닝 때.
+
+### ① 내성 프로필 모듈 — ✅ (feat/boss-memory)
+
+- **파일**: `src/spell/bossMemory.ts` — `computeResistance(BossMemoryProfile) → BossResistanceProfile` 순수 함수.
+- 로직: 이번 런 최다 원소 → 저항(피해 ×0.3), 최다 폼 → 카운터 전략(원거리 폼 위주 `rush` / 근거리 `ranged`). `minCasts 3` 미만이면 무저항.
+- **계약 파일**: `BossResistanceProfile`·`BossCounterStrategy` 타입 공개 → 총괄 보스 코어·R3 UI가 소비.
+- 검증: `npm run test:boss` 4군(데이터부족·원소저항·카운터전략·순수성) + tsc 통과.
+
+### ② 런 간 기억 (localStorage) — ✅ (feat/boss-memory)
+
+- **파일**: `src/spell/runMemory.ts`. `RunMemory`(사망·클리어·애용원소·최고피해주문·마지막결과·최근원소) + `summarizeRun`·`updateRunMemory`(순수) + `load/saveRunMemory`(localStorage, storage 주입 가능 → 테스트됨).
+- **스키마 버전 접두사** `incant:runmemory:v1:` + 로드 시 정규화(깨진/구버전 → 기본값).
+- **누적 밸런스 완화**(당신 지적 반영): `recentDominantElements`를 최근 5런으로 제한 + `longTermResistedElement`가 그중 **최다 1개만** 반환 → "모든 원소 내성" 방지.
+- **①↔② 다리**: 총괄 보스 코어는 **초기 저항 = `longTermResistedElement`(장기·부분)** + **진행 중 적응 = `computeResistance`(단기·강)** 을 조합해 쓰면 됨.
+- 검증: `npm run test:runmemory` 4군(요약·갱신·누적완화·저장로드) + tsc 통과.
+
+### ③ 보스 대사 생성 — 🔧 (a 완료 / b 진행)
+
+- **(a) 클라이언트 ✅** (`src/spell/bossLine.ts`): `getBossLine(memory)` — 프록시 `/boss-line` 우선, 실패·타임아웃·첫조우엔 **템플릿 폴백**(보스는 반드시 말한다). `sanitizeLine`(공백·길이 80 제한), `templateBossLine`(첫조우/애용주문/원소/사망 상태별). `test:bossline` 5군 통과.
+- **(b) 프록시 ✅**: `worker.js`에 `/boss-line` 경로 라우팅 + BOSS_LINE_PROMPT(temperature 0.9) 추가 → 배포·라이브 테스트 완료.
+  - 실측: 첫 조우 "아직 잉크조차 마르지 않은 생짜배기라니…", 재도전 "뇌전해일로도 모자라 불꽃을… 두 번의 죽음으로도 부족했나" (최고주문·애용원소·사망 반영). 판정(/) 무손상 확인.
+- 대사도 검증·길이 제한(sanitize). 개발/테스트는 템플릿 폴백으로 (라이브 최소).
+
+### ④ 계약 파일 공개 — ✅ (feat/boss-memory)
+
+- **파일**: `src/spell/bossMemoryContract.ts` — ①②③의 공개 타입·함수를 한 곳에서 re-export.
+- 총괄 보스 코어·R3 UI는 이 파일 하나만 import: `SpellHistory`/`computeResistance`/`BossResistanceProfile`/`RunMemory`/`loadRunMemory`/`longTermResistedElement`/`getBossLine`/`BossLine` 등.
+- 사용 흐름 주석 포함(런 도중 기록 → 보스방 내성 → 초기 저항 → 대사 → 런 종료 저장).
+
+### ⑤ `/evolve-name` (Phase 3.5) — ⬜ (후순위, ~7/24 필요)
+
+- **뭘**: 각인 주문 **진화**·정령 **융합** 시 결과물의 **격상 주문명**을 짓는 프록시 엔드포인트 ([PROGRESSION_DESIGN.md](PROGRESSION_DESIGN.md) §5).
+- **입력** 원문 or 원소 조합+컨텍스트 → **출력** 주문명 1개 (12자 이내, 입력 언어, 검증).
+- **패턴 = `/boss-line`과 동일**: worker.js 라우트+프롬프트 / 클라이언트 **폴백 템플릿 필수**(『{원소} 대격변』류) / sanitize.
+- 소비자: 총괄 성장 시스템 ④(진화·융합, ~7/24). 컷 시에도 템플릿 작명만으로 동작해야 함.
 
 ---
 
