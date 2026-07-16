@@ -6,6 +6,7 @@
 
 | 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
 |---|---|---|---|---|---|---|
+| 2026-07-16 | 임재윤 | Claude Code (Opus 4.8) | R2 Phase 3 ③(b): 프록시 /boss-line 엔드포인트·배포 | worker.js에 경로 라우팅(/boss-line)과 보스 대사 프롬프트(temperature 0.9) 추가 후 Cloudflare 배포. 런 요약→위협 대사 실측(첫조우·재도전에서 최고주문·애용원소·사망 반영), 기존 판정(/) 무손상 확인 | `proxy/worker.js` (배포됨) | 라이브 최소 검증. 판정 로직 무변경(추가만) |
 | 2026-07-16 | 임재윤 | Claude Code (Opus 4.8) | R2 Phase 3 ③(a): 보스 대사 클라이언트·템플릿 폴백 | getBossLine(런요약)→프록시 /boss-line 우선, 실패·타임아웃·첫조우엔 템플릿 폴백(보스는 반드시 말함). sanitize(공백·길이80), 상태별 템플릿(첫조우/애용주문/원소/사망). 프록시 엔드포인트(b)는 후속 | `src/spell/bossLine.ts`, `scripts/boss-line-regression.ts`, `test:bossline` | 회귀 5군·tsc 통과. 폴백 우선 개발(라이브 최소) |
 | 2026-07-16 | 임재윤 | Claude Code (Opus 4.8) | R2 Phase 3 ②: 런 간 기억 (localStorage) | 런 종료 요약(사망·클리어·애용원소·최고피해주문·마지막결과)을 버전 접두사(incant:runmemory:v1:) localStorage에 누적. 순수 갱신 함수 + storage 주입형 로드/저장. 누적 내성 밸런스 함정을 최근 5런·최다 1개(longTermResistedElement)로 완화 | `src/spell/runMemory.ts`, `scripts/run-memory-regression.ts`, `test:runmemory` | 회귀 4군·tsc 통과. ①단기+②장기 조합해 총괄 보스코어가 소비 |
 | 2026-07-16 | 임재윤 | Claude Code (Opus 4.8) | R2 Phase 3 ①: 보스 내성 프로필 (계약+순수함수) | bossMemory 요약 → 최다 원소 저항(피해×0.3)·최다 폼 카운터 전략(rush/ranged) 계산하는 순수 함수와 계약 타입(BossResistanceProfile) 공개. minCasts 3 게이트. 전투 적용은 총괄 보스 코어가 소비 | `src/spell/bossMemory.ts`, `scripts/boss-resistance-regression.ts`, `test:boss` | 계약 우선 패턴, 회귀 4군·tsc 통과. ② 런간기억은 누적 내성 밸런스 완화 예정 |
