@@ -59,6 +59,15 @@ blocked 출력: {"schema_version":2,"disposition":"blocked","reason":"unsafe","m
 
 플레이어의 주문:`;
 
+const BOSS_LINE_PROMPT = `당신은 로그라이크 게임 INCANT의 기억하는 최종 보스다. 플레이어의 지난 전적 요약(JSON)을 보고, 그를 도발하는 짧고 위협적인 대사를 한국어로 말한다.
+규칙:
+- 1~2문장, 40자 이내.
+- 있을 때만 애용 원소(favoriteElement)·최고 주문명(topSpellName)·사망 횟수(deaths)를 자연스럽게 비꼰다.
+- 첫 조우(deaths·clears 모두 0)면 낯선 도전자를 얕보는 톤.
+- 순수 대사 한 줄만 출력한다. 따옴표·설명·JSON 없이.
+
+플레이어 전적:`;
+
 function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': origin,
@@ -75,6 +84,54 @@ function rateLimited(ip) {
   arr.push(now);
   hits.set(ip, arr);
   return arr.length > RATE_LIMIT_PER_MIN;
+}
+
+/**
+ * 보스 대사 생성 — 런 요약(JSON) → 1~2문장 위협 대사.
+ * 클라이언트는 실패 시 템플릿 폴백하므로, 여기선 순수 대사만 { text } 로 반환한다.
+ */
+async function bossLine(request, env, cors) {
+  if (!env.GEMINI_API_KEY) {
+    return new Response(JSON.stringify({ error: 'no_api_key_bound' }), { status: 500, headers: cors });
+  }
+  let summary;
+  try {
+    summary = await request.json();
+  } catch {
+    return new Response(JSON.stringify({ error: 'bad json' }), { status: 400, headers: cors });
+  }
+
+  const geminiRes = await fetch(`${GEMINI_URL}?key=${env.GEMINI_API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: `${BOSS_LINE_PROMPT}\n${JSON.stringify(summary).slice(0, 300)}` }] }],
+      generationConfig: {
+        temperature: 0.9, // 대사는 창의적으로
+        maxOutputTokens: 200,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    }),
+  });
+  if (!geminiRes.ok) {
+    const detail = await geminiRes.text().catch(() => '');
+    return new Response(
+      JSON.stringify({ error: 'upstream', status: geminiRes.status, detail: detail.slice(0, 300) }),
+      { status: 502, headers: cors },
+    );
+  }
+  const data = await geminiRes.json();
+  const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  // 공백 정리 + 앞뒤 따옴표 제거 + 길이 제한
+  const line = String(raw)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^["'“”]+|["'“”]+$/g, '')
+    .slice(0, 80);
+  if (!line) {
+    return new Response(JSON.stringify({ error: 'empty line' }), { status: 502, headers: cors });
+  }
+  return new Response(JSON.stringify({ text: line }), { status: 200, headers: cors });
 }
 
 export default {
@@ -96,6 +153,11 @@ export default {
     const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
     if (rateLimited(ip)) {
       return new Response(JSON.stringify({ error: 'rate limited' }), { status: 429, headers: cors });
+    }
+
+    // 경로 라우팅: /boss-line 은 보스 대사, 그 외(/)는 주문 판정
+    if (new URL(request.url).pathname.endsWith('/boss-line')) {
+      return bossLine(request, env, cors);
     }
 
     let text;
