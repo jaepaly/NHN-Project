@@ -1,55 +1,27 @@
 /**
- * 보스 코어 회귀 — 내성 프로필·피해 배율·3방 런 흐름·런 리셋 (Phase 3 총괄 트랙)
- * 실행: npm run test:boss-core (Phaser 비의존 모듈만 검증)
+ * 보스 코어 회귀 — 3방 런 흐름·런 리셋·장기 내성 수치 게이트 (Phase 3 총괄 트랙)
+ * 실행: npm run test:boss-core
+ * ※ 내성 프로필·피해 배율 계산은 R2 계약(test:boss)이 검증 — 여기서는 적용 수치와 런 흐름만.
  */
 import assert from 'node:assert/strict';
 import { BOSS_CONFIG } from '../src/combat-core/boss/bossConfig';
-import {
-  NO_RESISTANCE,
-  bossDamageMultiplier,
-  resistanceFromBossMemory,
-} from '../src/combat-core/boss/bossResistance';
-import type { BossMemoryProfile } from '../src/spell/spellHistory';
+import { RESISTANCE } from '../src/spell/bossMemory';
 import { PlayerCombatState, PLAYER_COMBAT_CONFIG } from '../src/combat-core/player/playerCombatState';
 import { CombatRunController } from '../src/combat-core/run/runController';
 import { RUN_REWARD_CONFIG } from '../src/combat-core/run/rewardConfig';
 
-function memory(overrides: Partial<BossMemoryProfile>): BossMemoryProfile {
-  return {
-    dominantElement: null,
-    dominantForm: null,
-    recentSpellNames: [],
-    totalCasts: 0,
-    ...overrides,
-  };
-}
-
-// ① 내성 프로필 — 표본 충분 + 최다 원소 → 내성 / 표본 부족·원소 없음 → 무내성
+// ① 장기(부분) 내성 수치 게이트 — 단기 내성(R2)보다 약하고, 무효(1)보다는 강해야 한다
 {
-  const fireHeavy = resistanceFromBossMemory(
-    memory({ dominantElement: 'fire', totalCasts: BOSS_CONFIG.resistanceMinCasts }),
+  assert.ok(
+    BOSS_CONFIG.longTermResistMultiplier > RESISTANCE.multiplier,
+    '장기 부분 내성은 단기 내성보다 약해야 함 (배수가 더 커야 함)',
   );
-  assert.equal(fireHeavy.element, 'fire');
-  assert.equal(fireHeavy.multiplier, BOSS_CONFIG.resistanceMultiplier);
-
-  const tooFew = resistanceFromBossMemory(
-    memory({ dominantElement: 'fire', totalCasts: BOSS_CONFIG.resistanceMinCasts - 1 }),
-  );
-  assert.deepEqual(tooFew, NO_RESISTANCE);
-
-  const empty = resistanceFromBossMemory(memory({ totalCasts: 10 }));
-  assert.deepEqual(empty, NO_RESISTANCE);
+  assert.ok(BOSS_CONFIG.longTermResistMultiplier < 1, '장기 내성은 유효해야 함');
+  assert.ok(BOSS_CONFIG.rushSpeedMultiplier > 1);
+  assert.ok(BOSS_CONFIG.rangedVolleyIntervalMultiplier < 1);
 }
 
-// ② 피해 배율 — 내성 원소만 감쇄, 그 외 1
-{
-  const profile = { element: 'fire', multiplier: 0.3 } as const;
-  assert.equal(bossDamageMultiplier(profile, 'fire'), 0.3);
-  assert.equal(bossDamageMultiplier(profile, 'water'), 1);
-  assert.equal(bossDamageMultiplier(NO_RESISTANCE, 'fire'), 1);
-}
-
-// ③ 3방 런 흐름 — 방1·방2 클리어는 보상, 마지막(보스)방 클리어는 run-completed
+// ② 3방 런 흐름 — 방1·방2 클리어는 보상, 마지막(보스)방 클리어는 run-completed
 {
   assert.equal(RUN_REWARD_CONFIG.maxRooms, 3, '보스방 포함 3방이어야 한다');
   const player = new PlayerCombatState();
@@ -78,7 +50,7 @@ function memory(overrides: Partial<BossMemoryProfile>): BossMemoryProfile {
     'run-completed',
   ]);
 
-  // ④ 런 리셋 — 상태 초기화 + room-started(1) 발화
+  // ③ 런 리셋 — 상태 초기화 + room-started(1) 발화
   controller.reset();
   assert.equal(controller.state.roomIndex, 1);
   assert.equal(controller.state.phase, 'combat');
@@ -87,7 +59,7 @@ function memory(overrides: Partial<BossMemoryProfile>): BossMemoryProfile {
   assert.equal(events[events.length - 1], 'room-started:1');
 }
 
-// ⑤ 플레이어 리셋 — 보상으로 늘어난 최대치·피해·실드 전부 기본값 복귀
+// ④ 플레이어 리셋 — 보상으로 늘어난 최대치·피해·실드 전부 기본값 복귀
 {
   const player = new PlayerCombatState();
   player.increaseMaxHp(40);
@@ -106,4 +78,4 @@ function memory(overrides: Partial<BossMemoryProfile>): BossMemoryProfile {
   assert.equal(player.cooldownRemaining, 0);
 }
 
-console.log('boss core regression: 내성·배율·3방 런·리셋 5군 통과');
+console.log('boss core regression: 내성수치게이트·3방 런·리셋 4군 통과');

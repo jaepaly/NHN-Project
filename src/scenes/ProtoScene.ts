@@ -53,11 +53,15 @@ import { CombatRunController } from '../combat-core/run/runController';
 import { BossEnemy } from '../combat-core/boss/bossEnemy';
 import { BOSS_CONFIG } from '../combat-core/boss/bossConfig';
 import {
-  NO_RESISTANCE,
-  bossDamageMultiplier,
-  resistanceFromBossMemory,
-} from '../combat-core/boss/bossResistance';
-import type { BossResistanceProfile } from '../combat-core/boss/bossResistance';
+  computeResistance,
+  getBossLine,
+  loadRunMemory,
+  longTermResistedElement,
+  saveRunMemory,
+  summarizeRun,
+  updateRunMemory,
+} from '../spell/bossMemoryContract';
+import type { BossResistanceProfile } from '../spell/bossMemoryContract';
 import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { CONTROL_CONFIG } from '../combat-core/control/controlConfig';
 import { EnemyControlState } from '../combat-core/control/enemyControlState';
@@ -67,6 +71,12 @@ import { GameAudio } from '../audio/gameAudio';
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;
+/** 무내성 기본값 — R2 계약(BossResistanceProfile) 형태 유지 */
+const NO_BOSS_RESISTANCE: BossResistanceProfile = {
+  resistedElement: null,
+  resistMultiplier: 1,
+  counterStrategy: null,
+};
 const HUD = {
   x: 18,
   y: 18,
@@ -134,7 +144,7 @@ export class ProtoScene extends Phaser.Scene {
   private readonly enemyControlState = new EnemyControlState();
   private readonly controlIndicators = new Map<CombatEnemy, Phaser.GameObjects.Arc>();
   /** 보스방 진입 시 주문 히스토리로 계산 — R2 내성 모듈이 오면 계산부만 교체 */
-  private bossResistance: BossResistanceProfile = NO_RESISTANCE;
+  private bossResistance: BossResistanceProfile = { ...NO_BOSS_RESISTANCE };
   private lastResistNoticeAt = 0;
   private deathHandled = false;
   private audio!: GameAudio;
@@ -242,6 +252,7 @@ export class ProtoScene extends Phaser.Scene {
       this.stopCastingForRunPause();
       this.announceSystemMessage('런 완료', '#72f1b8');
       console.info('[Run] completed', state);
+      this.persistRunMemory('win');
       // RUN COMPLETE 전환 연출(runUiBinding)이 걷힌 뒤 런 요약 → Enter로 새 런
       this.time.delayedCall(1400, () => {
         // 플레이어 사망이 먼저 확정됐다면(동시 사망 레이스) 패배 요약이 재시작을 담당한다
@@ -258,6 +269,7 @@ export class ProtoScene extends Phaser.Scene {
     // 보스가 먼저 죽어 런이 완주된 뒤의 사망(지연 판정 등)은 승리가 선점 — 패배 처리 안 함
     if (this.combatRunController.state.phase === 'run-over') return;
     this.deathHandled = true;
+    this.persistRunMemory('lose');
     this.stopCastingForRunPause();
     this.deferTransientCombatCleanup();
     this.time.delayedCall(900, () => {
@@ -281,10 +293,15 @@ export class ProtoScene extends Phaser.Scene {
     };
   }
 
+  /** 런 간 기억 저장 (GDD §4.2) — 요약은 리셋 전 히스토리 기준, 다음 런 보스가 소비 */
+  private persistRunMemory(result: 'win' | 'lose'): void {
+    saveRunMemory(updateRunMemory(loadRunMemory(), summarizeRun(this.spellHistory, result)));
+  }
+
   /** 새 런 — 씬 재시작 없이 상태만 초기화. 컨트롤러 reset이 room-started를 발화해 방 1부터 재개된다. */
   private restartRun(): void {
     this.deathHandled = false;
-    this.bossResistance = NO_RESISTANCE;
+    this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
     this.playerState.reset();
@@ -311,29 +328,44 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private startBossRoom(): void {
-    // 기억 기반 내성 — 이번 런 주문 히스토리 요약에서 계산 (GDD §4.1)
-    const memory = this.spellHistory.bossMemory();
-    this.bossResistance = resistanceFromBossMemory(memory);
+    // 단기(이번 런) 적응 — R2 내성 계약 소비 (GDD §4.1)
+    this.bossResistance = computeResistance(this.spellHistory.bossMemory());
+    const runMemory = loadRunMemory();
+    // 장기(지난 런들) 기억 — 단기 표본 부족 시 부분 내성으로 발동 (GDD §4.2)
+    if (!this.bossResistance.resistedElement) {
+      const longTerm = longTermResistedElement(runMemory);
+      if (longTerm) {
+        this.bossResistance = {
+          resistedElement: longTerm,
+          resistMultiplier: BOSS_CONFIG.longTermResistMultiplier,
+          counterStrategy: this.bossResistance.counterStrategy,
+        };
+      }
+    }
 
     const boss = new BossEnemy(
       this,
       this.player.x,
       this.player.y - 340,
     );
-    boss.showResistance(this.bossResistance.element);
+    boss.showResistance(this.bossResistance.resistedElement);
+    if (this.bossResistance.counterStrategy) {
+      boss.applyCounterStrategy(this.bossResistance.counterStrategy);
+    }
     this.enemies.push(boss);
+    this.audio.playSfx('boss-appear');
 
     this.announceSystemMessage('보스의 방', '#ff6b86');
-    // 오프닝 대사 — R2 /boss-line 생성 대사로 교체 예정, 지금은 기억 기반 템플릿
-    const line = memory.recentSpellNames.length > 0
-      ? `"…『${memory.recentSpellNames[memory.recentSpellNames.length - 1]}』. 네 주문은 전부 지켜보았다."`
-      : '"빈손으로 내 방에 들어왔는가."';
-    this.time.delayedCall(700, () => this.announceSystemMessage(line, '#d0a8ff'));
-    if (this.bossResistance.element) {
-      const label = ELEMENT_LABELS[this.bossResistance.element];
+    // 오프닝 대사 — R2 /boss-line (프록시 생성 우선, 템플릿 폴백 내장)
+    void getBossLine(runMemory).then((line) => {
+      this.time.delayedCall(500, () => this.announceSystemMessage(`"${line.text}"`, '#d0a8ff'));
+    });
+    if (this.bossResistance.resistedElement) {
+      const resisted = this.bossResistance.resistedElement;
+      const label = ELEMENT_LABELS[resisted];
       this.time.delayedCall(1500, () => this.announceSystemMessage(
         `보스가 ${label}에 대비했다 — ${label} 피해 대폭 감소`,
-        paletteColorToCss(ELEMENT_PALETTES[this.bossResistance.element!].core),
+        paletteColorToCss(ELEMENT_PALETTES[resisted].core),
       ));
     }
   }
@@ -1253,7 +1285,9 @@ export class ProtoScene extends Phaser.Scene {
     baseDamage: number,
   ): number {
     if (enemy.kind !== 'boss') return baseDamage;
-    const multiplier = bossDamageMultiplier(this.bossResistance, spec.element_primary);
+    const multiplier = this.bossResistance.resistedElement === spec.element_primary
+      ? this.bossResistance.resistMultiplier
+      : 1;
     if (multiplier < 1 && this.time.now - this.lastResistNoticeAt > 1500) {
       this.lastResistNoticeAt = this.time.now;
       const label = ELEMENT_LABELS[spec.element_primary];
