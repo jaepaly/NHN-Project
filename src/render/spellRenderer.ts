@@ -198,7 +198,8 @@ function castBeam(ctx: CastContext, spec: SpellSpec): void {
   const scale = SIZE_SCALE[spec.size];
   const end = endpointInDirection(from, ctx.to, SPELL_DAMAGE_CONFIG.beamRange);
   const width = SPELL_DAMAGE_CONFIG.beamBaseWidth * scale;
-  const durationMs = spec.speed === 'fast' ? 140 : spec.speed === 'slow' ? 300 : 210;
+  const holdDurationMs = spec.speed === 'fast' ? 200 : spec.speed === 'slow' ? 400 : 300;
+  const fadeDurationMs = spec.speed === 'fast' ? 400 : spec.speed === 'slow' ? 650 : 500;
 
   const beam = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
   beam.lineStyle(width * 2.4, pal.glow, 0.18);
@@ -224,12 +225,15 @@ function castBeam(ctx: CastContext, spec: SpellSpec): void {
   }, spec);
   impactBurst(scene, end.x, end.y, spec);
   scene.cameras.main.shake(100, 0.0025 * scale);
-  scene.tweens.add({
-    targets: beam,
-    alpha: 0,
-    duration: durationMs,
-    ease: 'Cubic.easeOut',
-    onComplete: () => beam.destroy(),
+  scene.time.delayedCall(holdDurationMs, () => {
+    if (!beam.active) return;
+    scene.tweens.add({
+      targets: beam,
+      alpha: 0,
+      duration: fadeDurationMs,
+      ease: 'Cubic.easeOut',
+      onComplete: () => beam.destroy(),
+    });
   });
 }
 

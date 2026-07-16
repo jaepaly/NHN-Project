@@ -6,6 +6,7 @@
 
 | 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
 |---|---|---|---|---|---|---|
+| 2026-07-16 | 이도원 | Codex | Phase 3 R1 사운드 에셋 편집·Phaser 통합 | Adobe Firefly 채택 음원을 무음 정리·페이드·피크 정규화하고 전투 BGM을 인트로+크로스페이드 루프로 편집. Phaser preload와 `playCast(element)`/`playSfx(name)`/`playBgm()` API, 전역 볼륨 0.5, M키 음소거 및 localStorage 저장을 구현하고 전투·UI 이벤트에 연결 | `public/assets/audio/`, `scripts/process-audio-assets.py`, `scripts/create-bgm-loop.py`, `src/audio/gameAudio.ts`, `src/scenes/ProtoScene.ts`, `docs/ASSET_CREDITS.md` | 실제 후보 청취와 최종 채택·루프 경계 승인은 사용자 수행. Codex는 파형 분석, 편집 자동화, 코드 통합 및 빌드 검증 수행 |
 | 2026-07-16 | 이도원 | Codex | R1 Phase 2 광역 폼 렌더러·자동 조준 구현 | zone·rain을 추가하고 원형 광역은 적 위치·중간점 중 최다 적중 중심을, beam·wave는 적 방향·중간 각도 중 최다 적중 회랑을 자동 선택하며 control 장판은 마지막 틱 뒤 0.5초 내 해제되도록 연결 | `areaSpellConfig.ts`, `spellRenderer.ts`, `ProtoScene.ts`, `area-forms-regression.ts`, `test:forms` | 임시 범위·지속시간·타격 배율 기록, 광역·방향 회귀 18군·control 회귀 6군·전체 회귀·빌드·Mock 브라우저 렌더링 및 콘솔 무오류 확인 |
 | 2026-07-16 | jaepaly | Claude Code | Phase 2 종료·Phase 3 지시 게시 | 통합 QA(Mock/라이브 각 2방 완주·콘솔 무오류)로 Phase 2를 닫고, INCANT 확정·에셋 트랙 이도원 이관·AI 사운드 우선 방침을 반영한 Phase 3(기억하는 보스&에셋) 지시문 작성 — 이도원용 에셋 제작 에이전트 가이드(도구·프롬프트·통합 API·라이선스) 포함 | `PHASE_3.md`, README·GDD·ROLES 갱신 | 라이브 검증은 캐시 활용으로 Gemini 할당량 0 |
 | 2026-07-15 | jaepaly | Claude Code | R3 런 UI 결합 (Phase 2 R3 P0 완료) | RunController 공개 계약만 소비하는 바인딩 모듈로 카드·전환·HUD를 이벤트에 연결(씬 무접촉), 데모 훅 제거. 브라우저 E2E: 방1 클리어→카드 자동 표시→키보드 선택→ROOM 2 전환 연출→친화 HUD 칩→RUN COMPLETE까지 완주, 콘솔 무오류 | `ui/runUiBinding.ts`, `main.ts` | R1 #15~17 검토·승인 후 결합. 회귀 6종·빌드 통과 |

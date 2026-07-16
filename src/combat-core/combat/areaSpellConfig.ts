@@ -17,17 +17,17 @@ export const RAIN_CONFIG = {
   castRange: 520,
   baseAreaRadius: 150,
   baseStrikeRadius: 38,
-  strikeCount: 6,
-  damageMultiplierPerStrike: 0.25,
+  strikeCount: 10,
+  damageMultiplierPerStrike: 0.75,
   launchDurationSeconds: {
-    slow: 3,
-    normal: 2.4,
-    fast: 1.8,
+    slow: 2.1,
+    normal: 1.7,
+    fast: 1.25,
   },
   fallDurationMs: {
-    slow: 520,
-    normal: 400,
-    fast: 300,
+    slow: 360,
+    normal: 280,
+    fast: 210,
   },
   fallHeight: 260,
 } as const;
@@ -191,20 +191,20 @@ export function rainFallDurationMs(speed: SpellSpeed): number {
   return RAIN_CONFIG.fallDurationMs[speed];
 }
 
-const RAIN_OFFSETS: readonly AreaTargetPoint[] = [
-  { x: 0, y: 0 },
-  { x: -0.52, y: -0.28 },
-  { x: 0.48, y: -0.42 },
-  { x: -0.38, y: 0.52 },
-  { x: 0.62, y: 0.34 },
-  { x: 0.04, y: 0.74 },
-];
-
 export function rainOffset(index: number, areaRadius: number): AreaTargetPoint {
-  const normalized = RAIN_OFFSETS[index % RAIN_OFFSETS.length];
   const safeRadius = Math.max(0, areaRadius);
+  const count = RAIN_CONFIG.strikeCount;
+  const normalizedIndex = ((Math.floor(index) % count) + count) % count;
+  if (normalizedIndex === 0 || safeRadius === 0) return { x: 0, y: 0 };
+
+  // Keep one strike at the center, then distribute the rest across the field
+  // with a deterministic golden-angle spiral. The 0.72 limit keeps each
+  // strike radius visually inside the telegraphed rain field.
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const distance = Math.sqrt(normalizedIndex / (count - 1)) * safeRadius * 0.72;
+  const angle = (normalizedIndex - 1) * goldenAngle;
   return {
-    x: normalized.x * safeRadius,
-    y: normalized.y * safeRadius,
+    x: Math.cos(angle) * distance,
+    y: Math.sin(angle) * distance,
   };
 }
