@@ -17,12 +17,13 @@
 | ① | 내성 프로필 모듈 (`bossMemory`→최다원소 저항 ×0.3·최다폼 카운터, 순수함수+테스트) | ✅ 완료 (`bossMemory.ts`, `test:boss` 4군) |
 | ② | 런 간 기억 (localStorage, `incant:runmemory:v1:` 버전 접두사) | ✅ 완료 (`runMemory.ts`, `test:runmemory` 4군) |
 | ③ | 보스 대사 생성 (프록시 `/boss-line` + **폴백 템플릿 필수**) | ✅ 완료 ((a)클라이언트·폴백 + (b)프록시 배포·라이브 테스트) |
-| ④ | 계약 파일 공개 (총괄 보스코어·R3 UI가 소비) | ⬜ **← 다음 할 일** |
-| ⑤ | `/evolve-name` 엔드포인트 (Phase 3.5, 후순위) | ⬜ |
+| ④ | 계약 파일 공개 (총괄 보스코어·R3 UI가 소비) | ✅ 완료 (`bossMemoryContract.ts`) |
+| ⑤ | `/evolve-name` 엔드포인트 (Phase 3.5, 후순위) | ⬜ (성장 시스템, 후순위) |
 
 **▶ 현재 위치**: Phase 2 완료·머지(히스토리 통합까지 이도원이 P0-e 연결 완료). Phase 3 착수 — **INCANT 간판 기능 "기억하는 보스"가 R2 몫.**
 
-**▶ 다음 할 일**: **④ 계약 파일 공개** (①②③ 공개 타입을 한 곳에서 import하도록 정리 → 총괄 보스코어·R3 UI 소비 편의). 이후 ⑤ `/evolve-name`(Phase 3.5, 후순위). ①②③ 핵심은 완료·배포됨.
+**▶ 현재 위치**: **R2 Phase 3 핵심(①~④) 전부 완료** — 내성 프로필·런간기억·보스대사(배포)·계약 공개. PR #22.
+**▶ 다음 (협업/후순위)**: (1) 총괄이 PR #22 계약 위에 보스 코어 구현 (협업). (2) ⑤ `/evolve-name`은 Phase 3.5 성장 시스템용 후순위.
 
 **경계**: 보스 전투 코어·연출·통합 QA는 **총괄**. R2는 기억·내성·대사 **모듈+계약**까지. `SpellSpec`/`RunContract` 변경 없음 예정.
 
@@ -48,9 +49,11 @@
   - 실측: 첫 조우 "아직 잉크조차 마르지 않은 생짜배기라니…", 재도전 "뇌전해일로도 모자라 불꽃을… 두 번의 죽음으로도 부족했나" (최고주문·애용원소·사망 반영). 판정(/) 무손상 확인.
 - 대사도 검증·길이 제한(sanitize). 개발/테스트는 템플릿 폴백으로 (라이브 최소).
 
-### ④ 계약 파일 공개 — ⬜
+### ④ 계약 파일 공개 — ✅ (feat/boss-memory)
 
-- ①②③ 인터페이스를 작은 계약 파일(`src/spell/` 또는 `src/run/` 소유 폴더)로 공개 → 총괄 보스 코어·R3 UI가 소비.
+- **파일**: `src/spell/bossMemoryContract.ts` — ①②③의 공개 타입·함수를 한 곳에서 re-export.
+- 총괄 보스 코어·R3 UI는 이 파일 하나만 import: `SpellHistory`/`computeResistance`/`BossResistanceProfile`/`RunMemory`/`loadRunMemory`/`longTermResistedElement`/`getBossLine`/`BossLine` 등.
+- 사용 흐름 주석 포함(런 도중 기록 → 보스방 내성 → 초기 저항 → 대사 → 런 종료 저장).
 
 ### ⑤ `/evolve-name` (Phase 3.5) — ⬜ (후순위)
 
