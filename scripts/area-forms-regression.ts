@@ -107,12 +107,12 @@ assert.equal(
 
 assert.deepEqual(
   ['slow', 'normal', 'fast'].map(rainLaunchDurationSeconds),
-  [3, 2.4, 1.8],
+  [2.1, 1.7, 1.25],
   'rain 속도별 낙하 전개 시간을 유지해야 한다',
 );
 assert.deepEqual(
   ['slow', 'normal', 'fast'].map(rainFallDurationMs),
-  [520, 400, 300],
+  [360, 280, 210],
   'rain 속도별 개별 낙하 시간을 유지해야 한다',
 );
 const offsets = Array.from(
@@ -123,5 +123,9 @@ assert.equal(new Set(offsets.map(({ x, y }) => `${x}:${y}`)).size, RAIN_CONFIG.s
   'rain 6회 낙하지점은 서로 구분되어야 한다');
 assert.ok(offsets.every(({ x, y }) => Math.hypot(x, y) <= RAIN_CONFIG.baseAreaRadius),
   '모든 rain 낙하지점은 표시된 목표 범위 안이어야 한다');
+assert.equal(RAIN_CONFIG.strikeCount, 10,
+  'rain은 서로 다른 지점에 10회 낙하해야 한다');
+assert.equal(RAIN_CONFIG.damageMultiplierPerStrike, 0.75,
+  'rain 한 발은 광역 보정을 적용한 기본 주문 피해 75%를 유지해야 한다');
 
 console.info('area forms regression: area/directional forms 18 groups passed');
