@@ -1,7 +1,7 @@
 /** R1 전투 코어의 공통 적 계약. */
 import type Phaser from 'phaser';
 
-export type EnemyKind = 'chaser' | 'shooter' | 'splitter' | 'small-splitter';
+export type EnemyKind = 'chaser' | 'shooter' | 'splitter' | 'small-splitter' | 'boss';
 
 export interface EnemyShotRequest {
   x: number;

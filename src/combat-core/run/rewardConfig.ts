@@ -4,7 +4,8 @@ import type { RewardOption } from '../../run/runContract';
 
 /** Phase 2 R1 임시 런·보상 수치. 플레이테스트와 팀 합의 후 조정한다. */
 export const RUN_REWARD_CONFIG = {
-  maxRooms: 2,
+  // 마지막 방(= maxRooms번째)은 관례상 보스방 — 웨이브 대신 보스 스폰 (Phase 3)
+  maxRooms: 3,
   transitionDurationMs: 700,
   maxHpIncrease: 20,
   hpRecovery: 20,

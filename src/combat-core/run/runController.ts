@@ -89,6 +89,19 @@ export class CombatRunController implements RunController {
     this.scheduleTransition(this.transitionDurationMs, () => this.startNextRoom());
   }
 
+  /**
+   * 새 런 시작 (R1 내부 API — RunController 계약 외).
+   * 초기 상태로 되돌리고 'room-started'를 발화해 씬·UI가 방 1부터 다시 진행하게 한다.
+   */
+  reset(): void {
+    this.roomIndex = 1;
+    this.phase = 'combat';
+    this.rewards = [];
+    this.elementalAffinity = {};
+    this.rewardOptions = [];
+    this.emit('room-started', this.snapshot());
+  }
+
   on<K extends keyof RunEvents>(event: K, handler: RunEvents[K]): void {
     let eventHandlers = this.handlers.get(event);
     if (!eventHandlers) {
