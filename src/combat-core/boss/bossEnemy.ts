@@ -1,6 +1,7 @@
 /** R1 전투 코어: 최종 보스 — 대형 기하 조형물 (GDD §5). 총괄 1차 구현, 보스 PR은 이도원 리뷰. */
 import Phaser from 'phaser';
 import type { SpellElement } from '../../spell/types';
+import type { BossCounterStrategy } from '../../spell/bossMemoryContract';
 import { ELEMENT_PALETTES } from '../../render/palette';
 import { BOSS_CONFIG } from './bossConfig';
 import type { CombatEnemy, EnemyShotRequest } from '../enemies/combatEnemy';
@@ -20,6 +21,9 @@ export class BossEnemy implements CombatEnemy {
   private volleyCooldownRemaining: number = BOSS_CONFIG.volleyInitialDelaySeconds;
   /** 아직 발동하지 않은 하수인 소환 임계 (내림차순) */
   private pendingMinionThresholds = [...BOSS_CONFIG.minionThresholds];
+  // R2 counterStrategy 적용 결과 (applyCounterStrategy)
+  private speedMultiplier = 1;
+  private volleyIntervalSeconds: number = BOSS_CONFIG.volleyIntervalSeconds;
 
   private readonly core: Phaser.GameObjects.Polygon;
   private readonly ring: Phaser.GameObjects.Arc;
@@ -63,6 +67,16 @@ export class BossEnemy implements CombatEnemy {
     this.ring.setStrokeStyle(4, pal.core, 0.95);
   }
 
+  /** R2 카운터 전략 적용 — rush: 돌진 가속 / ranged: 볼리 강화 (GDD §4.1 카운터 패턴) */
+  applyCounterStrategy(strategy: BossCounterStrategy): void {
+    if (strategy === 'rush') {
+      this.speedMultiplier = BOSS_CONFIG.rushSpeedMultiplier;
+    } else {
+      this.volleyIntervalSeconds =
+        BOSS_CONFIG.volleyIntervalSeconds * BOSS_CONFIG.rangedVolleyIntervalMultiplier;
+    }
+  }
+
   update(
     deltaSeconds: number,
     targetX: number,
@@ -83,14 +97,15 @@ export class BossEnemy implements CombatEnemy {
     if (direction.lengthSq() > 0) {
       direction.normalize();
       const moveScale = safeMovementMultiplier(movementMultiplier);
-      this.view.x += direction.x * BOSS_CONFIG.speed * deltaSeconds * moveScale;
-      this.view.y += direction.y * BOSS_CONFIG.speed * deltaSeconds * moveScale;
+      const speed = BOSS_CONFIG.speed * this.speedMultiplier;
+      this.view.x += direction.x * speed * deltaSeconds * moveScale;
+      this.view.y += direction.y * speed * deltaSeconds * moveScale;
     }
 
-    // 방사 볼리 패턴
+    // 방사 볼리 패턴 (간격은 counterStrategy 'ranged' 시 단축)
     this.volleyCooldownRemaining -= deltaSeconds;
     if (this.volleyCooldownRemaining > 0) return [];
-    this.volleyCooldownRemaining = BOSS_CONFIG.volleyIntervalSeconds;
+    this.volleyCooldownRemaining = this.volleyIntervalSeconds;
 
     const shots: EnemyShotRequest[] = [];
     const offset = Math.random() * Math.PI * 2;
