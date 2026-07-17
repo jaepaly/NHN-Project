@@ -5,11 +5,15 @@ export const PLAYER_COMBAT_CONFIG = {
   // 임시값: 플레이테스트와 팀 논의 후 조정한다 (GDD에는 초당 n으로 표기).
   manaRegenPerSecond: 10,
   globalCooldownSeconds: 3,
+  /** 신속 영창을 아무리 쌓아도 이 밑으로는 안 내려감 (PROGRESSION_DESIGN §1) */
+  globalCooldownFloorSeconds: 1,
 } as const;
 
 export class PlayerCombatState {
   private maxHpValue: number = PLAYER_COMBAT_CONFIG.maxHp;
   private maxManaValue: number = PLAYER_COMBAT_CONFIG.maxMana;
+  private cooldownReductionSeconds = 0;
+  private manaRegenMultiplierValue = 1;
 
   hp: number = this.maxHpValue;
   mana: number = this.maxManaValue;
@@ -24,6 +28,18 @@ export class PlayerCombatState {
     return this.maxManaValue;
   }
 
+  /** 신속 영창 반영 후 실제 글로벌 쿨다운 (하한 적용) */
+  get globalCooldownSeconds(): number {
+    return Math.max(
+      PLAYER_COMBAT_CONFIG.globalCooldownFloorSeconds,
+      PLAYER_COMBAT_CONFIG.globalCooldownSeconds - this.cooldownReductionSeconds,
+    );
+  }
+
+  get manaRegenMultiplier(): number {
+    return this.manaRegenMultiplierValue;
+  }
+
   get alive(): boolean {
     return this.hp > 0;
   }
@@ -35,7 +51,8 @@ export class PlayerCombatState {
     if (this.alive) {
       this.mana = Math.min(
         this.maxMana,
-        this.mana + PLAYER_COMBAT_CONFIG.manaRegenPerSecond * delta,
+        this.mana
+          + PLAYER_COMBAT_CONFIG.manaRegenPerSecond * this.manaRegenMultiplierValue * delta,
       );
     }
   }
@@ -49,13 +66,29 @@ export class PlayerCombatState {
   }
 
   startGlobalCooldown(): void {
-    this.cooldownRemaining = PLAYER_COMBAT_CONFIG.globalCooldownSeconds;
+    this.cooldownRemaining = this.globalCooldownSeconds;
+  }
+
+  /** 신속 영창 보상 — 글로벌 쿨다운 감소 (하한은 globalCooldownSeconds getter가 보장) */
+  addCooldownReduction(seconds: number): number {
+    const amount = safePositiveAmount(seconds);
+    this.cooldownReductionSeconds += amount;
+    return amount;
+  }
+
+  /** 마나 격류 보상 — 재생 배율 증가 (+0.5 = +50%) */
+  addManaRegenMultiplier(bonus: number): number {
+    const amount = safePositiveAmount(bonus);
+    this.manaRegenMultiplierValue += amount;
+    return amount;
   }
 
   /** 새 런 시작 시 기본 수치로 초기화 (보상으로 늘어난 최대치 포함) */
   reset(): void {
     this.maxHpValue = PLAYER_COMBAT_CONFIG.maxHp;
     this.maxManaValue = PLAYER_COMBAT_CONFIG.maxMana;
+    this.cooldownReductionSeconds = 0;
+    this.manaRegenMultiplierValue = 1;
     this.hp = this.maxHpValue;
     this.mana = this.maxManaValue;
     this.shield = 0;
