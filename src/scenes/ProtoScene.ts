@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { SpellJudge } from '../spell/judge';
 import { createJudge } from '../spell/createJudge';
-import type { SpellSpec } from '../spell/types';
+import type { SpellElement, SpellSpec } from '../spell/types';
 import { SpellHistory } from '../spell/spellHistory';
 import type { JudgeSource } from '../spell/spellHistory';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
@@ -92,6 +92,7 @@ interface FriendlyMissile {
   halo: Phaser.GameObjects.Arc;
   target: CombatEnemy;
   damage: number;
+  element?: SpellElement;
   speed: number;
   hitDistance: number;
 }
@@ -328,6 +329,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private startBossRoom(): void {
+    const bossRoomIndex = this.combatRunController.state.roomIndex;
     // 단기(이번 런) 적응 — R2 내성 계약 소비 (GDD §4.1)
     this.bossResistance = computeResistance(this.spellHistory.bossMemory());
     const runMemory = loadRunMemory();
@@ -348,6 +350,13 @@ export class ProtoScene extends Phaser.Scene {
       this.player.x,
       this.player.y - 340,
     );
+    const isCurrentBossRoom = (): boolean => {
+      const state = this.combatRunController.state;
+      return state.phase === 'combat'
+        && state.roomIndex === bossRoomIndex
+        && boss.alive
+        && this.enemies.includes(boss);
+    };
     boss.showResistance(this.bossResistance.resistedElement);
     if (this.bossResistance.counterStrategy) {
       boss.applyCounterStrategy(this.bossResistance.counterStrategy);
@@ -358,15 +367,22 @@ export class ProtoScene extends Phaser.Scene {
     this.announceSystemMessage('보스의 방', '#ff6b86');
     // 오프닝 대사 — R2 /boss-line (프록시 생성 우선, 템플릿 폴백 내장)
     void getBossLine(runMemory).then((line) => {
-      this.time.delayedCall(500, () => this.announceSystemMessage(`"${line.text}"`, '#d0a8ff'));
+      if (!isCurrentBossRoom()) return;
+      this.time.delayedCall(500, () => {
+        if (!isCurrentBossRoom()) return;
+        this.announceSystemMessage(`"${line.text}"`, '#d0a8ff');
+      });
     });
     if (this.bossResistance.resistedElement) {
       const resisted = this.bossResistance.resistedElement;
       const label = ELEMENT_LABELS[resisted];
-      this.time.delayedCall(1500, () => this.announceSystemMessage(
-        `보스가 ${label}에 대비했다 — ${label} 피해 대폭 감소`,
-        paletteColorToCss(ELEMENT_PALETTES[resisted].core),
-      ));
+      this.time.delayedCall(1500, () => {
+        if (!isCurrentBossRoom()) return;
+        this.announceSystemMessage(
+          `보스가 ${label}에 대비했다 — ${label} 피해 대폭 감소`,
+          paletteColorToCss(ELEMENT_PALETTES[resisted].core),
+        );
+      });
     }
   }
 
@@ -702,6 +718,7 @@ export class ProtoScene extends Phaser.Scene {
     fromY: number;
     target: CombatEnemy;
     damage: number;
+    element?: SpellElement;
     speed: number;
     hitDistance: number;
     coreColor: number;
@@ -717,6 +734,7 @@ export class ProtoScene extends Phaser.Scene {
       halo,
       target: options.target,
       damage: options.damage,
+      element: options.element,
       speed: options.speed,
       hitDistance: options.hitDistance,
     });
@@ -738,7 +756,10 @@ export class ProtoScene extends Phaser.Scene {
       const travelDistance = missile.speed * deltaSeconds;
       if (distance <= missile.hitDistance + travelDistance) {
         this.destroyFriendlyMissile(missile);
-        this.damageEnemy(missile.target, missile.damage);
+        const damage = missile.element
+          ? this.elementalDamageAgainst(missile.target, missile.element, missile.damage)
+          : missile.damage;
+        this.damageEnemy(missile.target, damage);
         continue;
       }
 
@@ -1284,13 +1305,21 @@ export class ProtoScene extends Phaser.Scene {
     spec: SpellSpec,
     baseDamage: number,
   ): number {
+    return this.elementalDamageAgainst(enemy, spec.element_primary, baseDamage);
+  }
+
+  private elementalDamageAgainst(
+    enemy: CombatEnemy,
+    element: SpellElement,
+    baseDamage: number,
+  ): number {
     if (enemy.kind !== 'boss') return baseDamage;
-    const multiplier = this.bossResistance.resistedElement === spec.element_primary
+    const multiplier = this.bossResistance.resistedElement === element
       ? this.bossResistance.resistMultiplier
       : 1;
     if (multiplier < 1 && this.time.now - this.lastResistNoticeAt > 1500) {
       this.lastResistNoticeAt = this.time.now;
-      const label = ELEMENT_LABELS[spec.element_primary];
+      const label = ELEMENT_LABELS[element];
       this.announceSystemMessage(`저항! ${label}이(가) 통하지 않는다 — 다른 원소를 창작하라`, '#ffa94d');
     }
     return baseDamage * multiplier;
@@ -1334,6 +1363,7 @@ export class ProtoScene extends Phaser.Scene {
       fromY: summon.y,
       target,
       damage: summon.state.damage,
+      element: summon.element,
       speed: SUMMON_CONFIG.projectileSpeed,
       hitDistance: SUMMON_CONFIG.projectileHitDistance,
       coreColor: palette.core,
