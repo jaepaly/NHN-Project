@@ -44,6 +44,15 @@ export interface RunSummaryData {
   recentSpellNames: string[];
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 function ensureDom(): HTMLElement {
   if (!document.getElementById(STYLE_ID)) {
     const style = document.createElement('style');
@@ -78,7 +87,7 @@ export function showRunSummaryOverlay(data: RunSummaryData): Promise<void> {
   wrap.className = victory ? 'victory' : 'defeat';
 
   const spells = data.recentSpellNames.length
-    ? data.recentSpellNames.map((name) => `『${name}』`).join(' · ')
+    ? data.recentSpellNames.map((name) => `『${escapeHtml(name)}』`).join(' · ')
     : '기록 없음';
   wrap.innerHTML = `
     <div>
