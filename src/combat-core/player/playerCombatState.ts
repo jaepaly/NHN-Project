@@ -52,6 +52,16 @@ export class PlayerCombatState {
     this.cooldownRemaining = PLAYER_COMBAT_CONFIG.globalCooldownSeconds;
   }
 
+  /** 새 런 시작 시 기본 수치로 초기화 (보상으로 늘어난 최대치 포함) */
+  reset(): void {
+    this.maxHpValue = PLAYER_COMBAT_CONFIG.maxHp;
+    this.maxManaValue = PLAYER_COMBAT_CONFIG.maxMana;
+    this.hp = this.maxHpValue;
+    this.mana = this.maxManaValue;
+    this.shield = 0;
+    this.cooldownRemaining = 0;
+  }
+
   increaseMaxHp(amount: number): number {
     const increase = safePositiveAmount(amount);
     this.maxHpValue += increase;

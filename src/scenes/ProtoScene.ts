@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { SpellJudge } from '../spell/judge';
 import { createJudge } from '../spell/createJudge';
-import type { SpellSpec } from '../spell/types';
+import type { SpellElement, SpellSpec } from '../spell/types';
 import { SpellHistory } from '../spell/spellHistory';
 import type { JudgeSource } from '../spell/spellHistory';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
@@ -50,6 +50,19 @@ import {
 } from '../combat-core/waves/waveManager';
 import type { WaveDefinition } from '../combat-core/waves/waveManager';
 import { CombatRunController } from '../combat-core/run/runController';
+import { BossEnemy } from '../combat-core/boss/bossEnemy';
+import { BOSS_CONFIG } from '../combat-core/boss/bossConfig';
+import {
+  computeResistance,
+  getBossLine,
+  loadRunMemory,
+  longTermResistedElement,
+  saveRunMemory,
+  summarizeRun,
+  updateRunMemory,
+} from '../spell/bossMemoryContract';
+import type { BossResistanceProfile } from '../spell/bossMemoryContract';
+import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { CONTROL_CONFIG } from '../combat-core/control/controlConfig';
 import { EnemyControlState } from '../combat-core/control/enemyControlState';
 import { SUMMON_CONFIG } from '../combat-core/summons/summonConfig';
@@ -58,6 +71,12 @@ import { GameAudio } from '../audio/gameAudio';
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;
+/** 무내성 기본값 — R2 계약(BossResistanceProfile) 형태 유지 */
+const NO_BOSS_RESISTANCE: BossResistanceProfile = {
+  resistedElement: null,
+  resistMultiplier: 1,
+  counterStrategy: null,
+};
 const HUD = {
   x: 18,
   y: 18,
@@ -73,6 +92,7 @@ interface FriendlyMissile {
   halo: Phaser.GameObjects.Arc;
   target: CombatEnemy;
   damage: number;
+  element?: SpellElement;
   speed: number;
   hitDistance: number;
 }
@@ -124,6 +144,10 @@ export class ProtoScene extends Phaser.Scene {
   private activeSummon: SummonedOrb | null = null;
   private readonly enemyControlState = new EnemyControlState();
   private readonly controlIndicators = new Map<CombatEnemy, Phaser.GameObjects.Arc>();
+  /** 보스방 진입 시 주문 히스토리로 계산 — R2 내성 모듈이 오면 계산부만 교체 */
+  private bossResistance: BossResistanceProfile = { ...NO_BOSS_RESISTANCE };
+  private lastResistNoticeAt = 0;
+  private deathHandled = false;
   private audio!: GameAudio;
 
   constructor() {
@@ -182,6 +206,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   override update(_time: number, delta: number): void {
+    this.checkPlayerDeath();
     if (this.isCombatActive()) {
       // 슬로모션: timeScale을 개체 이동에 직접 곱한다 (프로토 방식)
       const d = (delta / 1000) * this.timeScale;
@@ -228,7 +253,60 @@ export class ProtoScene extends Phaser.Scene {
       this.stopCastingForRunPause();
       this.announceSystemMessage('런 완료', '#72f1b8');
       console.info('[Run] completed', state);
+      this.persistRunMemory('win');
+      // RUN COMPLETE 전환 연출(runUiBinding)이 걷힌 뒤 런 요약 → Enter로 새 런
+      this.time.delayedCall(1400, () => {
+        // 플레이어 사망이 먼저 확정됐다면(동시 사망 레이스) 패배 요약이 재시작을 담당한다
+        if (this.deathHandled) return;
+        void showRunSummaryOverlay(this.buildRunSummary('victory'))
+          .then(() => this.restartRun());
+      });
     });
+  }
+
+  /** 사망은 1회만 처리 — 요약 오버레이 → Enter로 새 런 (GDD §2 사망 흐름) */
+  private checkPlayerDeath(): void {
+    if (this.playerState.alive || this.deathHandled) return;
+    // 보스가 먼저 죽어 런이 완주된 뒤의 사망(지연 판정 등)은 승리가 선점 — 패배 처리 안 함
+    if (this.combatRunController.state.phase === 'run-over') return;
+    this.deathHandled = true;
+    this.persistRunMemory('lose');
+    this.stopCastingForRunPause();
+    this.deferTransientCombatCleanup();
+    this.time.delayedCall(900, () => {
+      void showRunSummaryOverlay(this.buildRunSummary('defeat'))
+        .then(() => this.restartRun());
+    });
+  }
+
+  private buildRunSummary(result: 'victory' | 'defeat') {
+    const memory = this.spellHistory.bossMemory();
+    const runState = this.combatRunController.state;
+    return {
+      result,
+      roomIndex: runState.roomIndex,
+      maxRooms: runState.maxRooms,
+      totalCasts: memory.totalCasts,
+      dominantElementLabel: memory.dominantElement
+        ? ELEMENT_LABELS[memory.dominantElement]
+        : null,
+      recentSpellNames: memory.recentSpellNames,
+    };
+  }
+
+  /** 런 간 기억 저장 (GDD §4.2) — 요약은 리셋 전 히스토리 기준, 다음 런 보스가 소비 */
+  private persistRunMemory(result: 'win' | 'lose'): void {
+    saveRunMemory(updateRunMemory(loadRunMemory(), summarizeRun(this.spellHistory, result)));
+  }
+
+  /** 새 런 — 씬 재시작 없이 상태만 초기화. 컨트롤러 reset이 room-started를 발화해 방 1부터 재개된다. */
+  private restartRun(): void {
+    this.deathHandled = false;
+    this.bossResistance = { ...NO_BOSS_RESISTANCE };
+    this.lastResistNoticeAt = 0;
+    this.spellHistory.reset();
+    this.playerState.reset();
+    this.combatRunController.reset();
   }
 
   private startRoom(roomIndex: number): void {
@@ -237,8 +315,75 @@ export class ProtoScene extends Phaser.Scene {
     this.basicAttackCooldownRemaining = 0;
     this.player.setPosition(this.worldBounds.centerX, this.worldBounds.centerY);
     this.cameras.main.centerOn(this.player.x, this.player.y);
+    if (this.isBossRoom(roomIndex)) {
+      this.startBossRoom();
+      return;
+    }
     this.spawnWave(this.waveManager.start());
     this.announceSystemMessage(`방 ${roomIndex}`, '#8fa4ff');
+  }
+
+  /** 마지막 방 = 보스방 관례 (rewardConfig.maxRooms 참조) */
+  private isBossRoom(roomIndex: number): boolean {
+    return roomIndex >= this.combatRunController.state.maxRooms;
+  }
+
+  private startBossRoom(): void {
+    const bossRoomIndex = this.combatRunController.state.roomIndex;
+    // 단기(이번 런) 적응 — R2 내성 계약 소비 (GDD §4.1)
+    this.bossResistance = computeResistance(this.spellHistory.bossMemory());
+    const runMemory = loadRunMemory();
+    // 장기(지난 런들) 기억 — 단기 표본 부족 시 부분 내성으로 발동 (GDD §4.2)
+    if (!this.bossResistance.resistedElement) {
+      const longTerm = longTermResistedElement(runMemory);
+      if (longTerm) {
+        this.bossResistance = {
+          resistedElement: longTerm,
+          resistMultiplier: BOSS_CONFIG.longTermResistMultiplier,
+          counterStrategy: this.bossResistance.counterStrategy,
+        };
+      }
+    }
+
+    const boss = new BossEnemy(
+      this,
+      this.player.x,
+      this.player.y - 340,
+    );
+    const isCurrentBossRoom = (): boolean => {
+      const state = this.combatRunController.state;
+      return state.phase === 'combat'
+        && state.roomIndex === bossRoomIndex
+        && boss.alive
+        && this.enemies.includes(boss);
+    };
+    boss.showResistance(this.bossResistance.resistedElement);
+    if (this.bossResistance.counterStrategy) {
+      boss.applyCounterStrategy(this.bossResistance.counterStrategy);
+    }
+    this.enemies.push(boss);
+    this.audio.playSfx('boss-appear');
+
+    this.announceSystemMessage('보스의 방', '#ff6b86');
+    // 오프닝 대사 — R2 /boss-line (프록시 생성 우선, 템플릿 폴백 내장)
+    void getBossLine(runMemory).then((line) => {
+      if (!isCurrentBossRoom()) return;
+      this.time.delayedCall(500, () => {
+        if (!isCurrentBossRoom()) return;
+        this.announceSystemMessage(`"${line.text}"`, '#d0a8ff');
+      });
+    });
+    if (this.bossResistance.resistedElement) {
+      const resisted = this.bossResistance.resistedElement;
+      const label = ELEMENT_LABELS[resisted];
+      this.time.delayedCall(1500, () => {
+        if (!isCurrentBossRoom()) return;
+        this.announceSystemMessage(
+          `보스가 ${label}에 대비했다 — ${label} 피해 대폭 감소`,
+          paletteColorToCss(ELEMENT_PALETTES[resisted].core),
+        );
+      });
+    }
   }
 
   private clearCombatRoom(): void {
@@ -573,6 +718,7 @@ export class ProtoScene extends Phaser.Scene {
     fromY: number;
     target: CombatEnemy;
     damage: number;
+    element?: SpellElement;
     speed: number;
     hitDistance: number;
     coreColor: number;
@@ -588,6 +734,7 @@ export class ProtoScene extends Phaser.Scene {
       halo,
       target: options.target,
       damage: options.damage,
+      element: options.element,
       speed: options.speed,
       hitDistance: options.hitDistance,
     });
@@ -609,7 +756,10 @@ export class ProtoScene extends Phaser.Scene {
       const travelDistance = missile.speed * deltaSeconds;
       if (distance <= missile.hitDistance + travelDistance) {
         this.destroyFriendlyMissile(missile);
-        this.damageEnemy(missile.target, missile.damage);
+        const damage = missile.element
+          ? this.elementalDamageAgainst(missile.target, missile.element, missile.damage)
+          : missile.damage;
+        this.damageEnemy(missile.target, damage);
         continue;
       }
 
@@ -910,6 +1060,13 @@ export class ProtoScene extends Phaser.Scene {
       this.waveText.setText(`ROOM ${runState.roomIndex}/${runState.maxRooms} CLEAR`);
     } else if (runState.phase === 'room-transition') {
       this.waveText.setText(`NEXT ROOM ${runState.roomIndex + 1}/${runState.maxRooms}`);
+    } else if (this.isBossRoom(runState.roomIndex)) {
+      const boss = this.enemies.find((enemy) => enemy.kind === 'boss');
+      this.waveText.setText(
+        boss
+          ? `BOSS ${Math.ceil(boss.hp)}/${boss.maxHp}  ·  ENEMIES ${this.enemies.length}`
+          : 'BOSS',
+      );
     } else if (this.waveManager.phase === 'waiting') {
       this.waveText.setText(
         `NEXT WAVE ${this.waveManager.delayRemaining.toFixed(1)}s`,
@@ -1115,7 +1272,9 @@ export class ProtoScene extends Phaser.Scene {
       : 1;
     const damage = spellImpactDamageFromPower(spec.power, damageMultiplier);
     if (impact.kind === 'point') {
-      if (lockedTarget?.alive) this.damageEnemy(lockedTarget, damage);
+      if (lockedTarget?.alive) {
+        this.damageEnemy(lockedTarget, this.spellDamageAgainst(lockedTarget, spec, damage));
+      }
       return;
     }
 
@@ -1136,8 +1295,34 @@ export class ProtoScene extends Phaser.Scene {
       if (!isHit) continue;
 
       hitEnemies.add(enemy);
-      this.damageEnemy(enemy, damage);
+      this.damageEnemy(enemy, this.spellDamageAgainst(enemy, spec, damage));
     }
+  }
+
+  /** 보스 내성 반영 주문 피해 (GDD §4.1 — 내성 원소 피해 대폭 감소 + 플레이어에게 원인 표시) */
+  private spellDamageAgainst(
+    enemy: CombatEnemy,
+    spec: SpellSpec,
+    baseDamage: number,
+  ): number {
+    return this.elementalDamageAgainst(enemy, spec.element_primary, baseDamage);
+  }
+
+  private elementalDamageAgainst(
+    enemy: CombatEnemy,
+    element: SpellElement,
+    baseDamage: number,
+  ): number {
+    if (enemy.kind !== 'boss') return baseDamage;
+    const multiplier = this.bossResistance.resistedElement === element
+      ? this.bossResistance.resistMultiplier
+      : 1;
+    if (multiplier < 1 && this.time.now - this.lastResistNoticeAt > 1500) {
+      this.lastResistNoticeAt = this.time.now;
+      const label = ELEMENT_LABELS[element];
+      this.announceSystemMessage(`저항! ${label}이(가) 통하지 않는다 — 다른 원소를 창작하라`, '#ffa94d');
+    }
+    return baseDamage * multiplier;
   }
 
   private createSummon(spec: SpellSpec): void {
@@ -1178,6 +1363,7 @@ export class ProtoScene extends Phaser.Scene {
       fromY: summon.y,
       target,
       damage: summon.state.damage,
+      element: summon.element,
       speed: SUMMON_CONFIG.projectileSpeed,
       hitDistance: SUMMON_CONFIG.projectileHitDistance,
       coreColor: palette.core,
@@ -1338,7 +1524,13 @@ export class ProtoScene extends Phaser.Scene {
   private damageEnemy(enemy: CombatEnemy, damage: number): void {
     if (damage <= 0 || !enemy.alive) return;
     this.audio.playSfx('hit');
-    if (!enemy.takeDamage(damage)) return;
+    if (!enemy.takeDamage(damage)) {
+      // 보스는 HP 임계 통과 시 하수인을 부른다
+      if (enemy instanceof BossEnemy && enemy.consumeMinionTrigger()) {
+        this.spawnBossMinions(enemy);
+      }
+      return;
+    }
     this.audio.playSfx('enemy-defeat');
 
     const splitX = enemy.x;
@@ -1366,6 +1558,11 @@ export class ProtoScene extends Phaser.Scene {
     if (this.enemies.length > 0) return;
 
     this.clearEnemyProjectiles();
+    // 보스방은 웨이브 흐름 없이 전멸(보스+하수인) 즉시 방 클리어
+    if (this.isBossRoom(this.combatRunController.state.roomIndex)) {
+      this.combatRunController.notifyRoomCleared();
+      return;
+    }
     const completedWave = this.waveManager.currentWaveNumber;
     this.waveManager.notifyEnemiesCleared();
     if (this.waveManager.phase === 'room-clear') {
@@ -1373,6 +1570,24 @@ export class ProtoScene extends Phaser.Scene {
     } else {
       this.announceSystemMessage(`웨이브 ${completedWave} 완료`);
     }
+  }
+
+  private spawnBossMinions(boss: BossEnemy): void {
+    for (let i = 0; i < BOSS_CONFIG.minionsPerTrigger; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const x = Phaser.Math.Clamp(
+        boss.x + Math.cos(angle) * 110,
+        this.worldBounds.left + 22,
+        this.worldBounds.right - 22,
+      );
+      const y = Phaser.Math.Clamp(
+        boss.y + Math.sin(angle) * 110,
+        this.worldBounds.top + 22,
+        this.worldBounds.bottom - 22,
+      );
+      this.spawnEnemy('chaser', x, y);
+    }
+    this.announceSystemMessage('보스가 하수인을 불렀다', '#d0a8ff');
   }
 
   /** 주문명 각인 연출 — "내 문장이 게임이 됐다"는 순간 (GDD §3.1) */
