@@ -89,9 +89,12 @@ export class GameAudio {
   }
 
   private readonly toggleMute = (): void => {
-    this.scene.sound.mute = !this.scene.sound.mute;
+    // 다음 값을 먼저 계산해 저장 — mute 대입 직후 게터가 이전 값을 돌려주는
+    // Phaser 내부 타이밍 때문에 게터 재읽기로 저장하면 반전값이 기록된다.
+    const next = !this.scene.sound.mute;
+    this.scene.sound.mute = next;
     try {
-      localStorage.setItem(MUTE_STORAGE_KEY, String(this.scene.sound.mute));
+      localStorage.setItem(MUTE_STORAGE_KEY, String(next));
     } catch {
       // Storage can be unavailable in privacy modes; muting still works in-session.
     }

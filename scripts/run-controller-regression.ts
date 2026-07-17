@@ -21,6 +21,9 @@ function createHarness(): RunHarness {
   let transitionCallback: (() => void) | null = null;
   const controller = new CombatRunController({
     playerState: player,
+    // 이 하네스는 "2방 런 흐름" 시나리오를 고정 검증한다.
+    // (프로덕션 maxRooms는 Phase 3부터 3 — 마지막 방은 보스방, test:boss-core에서 검증)
+    maxRooms: 2,
     scheduleTransition: (delayMs, callback) => {
       scheduledDelay = delayMs;
       transitionCallback = callback;

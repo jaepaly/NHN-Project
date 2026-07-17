@@ -29,7 +29,7 @@
 - SFX: **ElevenLabs Sound Effects**(텍스트→효과음, 무료 크레딧), Stable Audio
 - BGM: **Suno** 또는 Stable Audio (루프 가능 트랙)
 
-**제작 목록** — `assets/audio/`에 저장, 파일명 규칙 `sfx-cast-fire.ogg` / `bgm-combat.ogg`:
+**제작 목록** — `public/assets/audio/`에 저장(§2-4 에셋 경로 정책), 파일명 규칙 `sfx-cast-fire.ogg` / `bgm-combat.ogg`:
 
 | 분류 | 항목 | 프롬프트 시작점 (영어로, 길이 명시) |
 |---|---|---|
@@ -59,6 +59,25 @@
 - 주문명 각인용 세리프 폰트 (Google Fonts에서 OFL 라이선스 확인 — 예: Noto Serif KR) + 로고용 폰트 → `announceSpell`·타이틀에 적용
 - 파비콘(코드 글리프 또는 단순 아이콘) + OG 메타(og:title/description/image) — 링크 공유 첫인상
 - 스테이지·보스방 배경 색조 변화는 **여유 시** (Phase 4로 밀어도 됨)
+
+### 2-4. 정적 에셋 경로 정책 (2026-07-16 확정 — 이도원 제안 + 총괄 보완)
+
+| 에셋 종류 | 위치 | 이유 |
+|---|---|---|
+| Phaser가 **문자열 URL로 로드**하는 배포 에셋 (오디오·이미지) | **`public/assets/…`** | Vite가 `public/`만 dist로 복사 — 루트 `assets/`는 배포에서 누락됨 |
+| 코드에서 **import해 번들에 포함**되는 에셋 | `src/assets/…` | Vite 번들 파이프라인(해시·최적화) 대상 |
+| 루트 `assets/` | **사용 금지** | 위 둘 중 하나로 |
+
+**런타임 접근 규칙 (중요)**: 우리는 GitHub Pages **서브경로 배포**(`base: '/NHN-Project/'`)라서
+절대경로 `/assets/...`는 라이브에서 404가 난다. 반드시 `BASE_URL`을 경유할 것:
+
+```ts
+// 권장: 씬 preload에서 한 번만 설정 — 이후 상대 키로 로드
+this.load.setPath(`${import.meta.env.BASE_URL}assets/audio/`);
+this.load.audio('sfx-cast-fire', 'sfx-cast-fire.ogg');
+```
+
+(dev `localhost:5173/NHN-Project/`와 Pages 양쪽에서 동일하게 동작. 검증은 `npm run build && npm run preview`로 배포 경로까지 확인)
 
 **PR 분리 권장**: ① 사운드+통합 ② 타이틀+폰트+메타. 리뷰는 총괄.
 
