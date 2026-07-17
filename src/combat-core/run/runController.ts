@@ -7,7 +7,7 @@ import type {
   RunStateSnapshot,
 } from '../../run/runContract';
 import {
-  createRewardOptions,
+  drawRewardOptions,
   RUN_REWARD_CONFIG,
 } from './rewardConfig';
 
@@ -18,11 +18,30 @@ export type RunTransitionScheduler = (
   callback: () => void,
 ) => void;
 
+/** 보상 추첨기 — 프로덕션은 시드 랜덤, 회귀 하네스는 고정 3택 주입 가능 */
+export type RewardDraw = (roomIndex: number) => readonly RewardOption[];
+
 export interface CombatRunControllerOptions {
   playerState: PlayerCombatState;
   maxRooms?: number;
   transitionDurationMs?: number;
   scheduleTransition?: RunTransitionScheduler;
+  /** 런 시드 (미지정 시 Date.now() — 런마다 다른 보상) */
+  seed?: number;
+  /** 보상 추첨 주입 (미지정 시 시드 랜덤 풀 추첨) */
+  rewardDraw?: RewardDraw;
+}
+
+/** mulberry32 — 의존성 없는 결정론적 PRNG (같은 시드 = 같은 보상 순열) */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a += 0x6d2b79f5;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 /** PR #12의 R1↔R3 계약을 구현하는 런·방·보상 상태 관리자. */
@@ -38,6 +57,10 @@ export class CombatRunController implements RunController {
   private rewards: RewardOption[] = [];
   private elementalAffinity: RunStateSnapshot['elementalAffinity'] = {};
   private rewardOptions: RewardOption[] = [];
+  private readonly rewardDraw: RewardDraw;
+  private rand: () => number;
+  /** 수호 기점 누적치 — 방 시작마다 부여 (PROGRESSION_DESIGN §1) */
+  private wardOnRoomStart = 0;
 
   constructor(options: CombatRunControllerOptions) {
     this.playerState = options.playerState;
@@ -47,6 +70,9 @@ export class CombatRunController implements RunController {
       options.transitionDurationMs ?? RUN_REWARD_CONFIG.transitionDurationMs,
     );
     this.scheduleTransition = options.scheduleTransition ?? defaultScheduleTransition;
+    this.rand = mulberry32(options.seed ?? Date.now());
+    this.rewardDraw = options.rewardDraw
+      ?? ((roomIndex) => drawRewardOptions(roomIndex, this.rand));
   }
 
   get state(): Readonly<RunStateSnapshot> {
@@ -64,7 +90,7 @@ export class CombatRunController implements RunController {
       return;
     }
 
-    this.rewardOptions = createRewardOptions(this.roomIndex).map(cloneReward);
+    this.rewardOptions = this.rewardDraw(this.roomIndex).map(cloneReward);
     this.phase = 'reward-select';
     this.emit(
       'room-cleared',
@@ -99,6 +125,8 @@ export class CombatRunController implements RunController {
     this.rewards = [];
     this.elementalAffinity = {};
     this.rewardOptions = [];
+    this.wardOnRoomStart = 0;
+    this.rand = mulberry32(Date.now()); // 새 런 = 새 보상 순열
     this.emit('room-started', this.snapshot());
   }
 
@@ -133,6 +161,15 @@ export class CombatRunController implements RunController {
         this.elementalAffinity[reward.element] = previous + RUN_REWARD_CONFIG.affinityBonus;
         break;
       }
+      case 'swift-incant':
+        this.playerState.addCooldownReduction(RUN_REWARD_CONFIG.swiftIncantReduction);
+        break;
+      case 'mana-surge':
+        this.playerState.addManaRegenMultiplier(RUN_REWARD_CONFIG.manaSurgeBonus);
+        break;
+      case 'ward-start':
+        this.wardOnRoomStart += RUN_REWARD_CONFIG.wardStartShield;
+        break;
     }
   }
 
@@ -141,6 +178,7 @@ export class CombatRunController implements RunController {
 
     this.roomIndex += 1;
     this.phase = 'combat';
+    if (this.wardOnRoomStart > 0) this.playerState.addShield(this.wardOnRoomStart);
     this.emit('room-started', this.snapshot());
   }
 

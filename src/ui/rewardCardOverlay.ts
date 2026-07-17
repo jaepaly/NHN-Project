@@ -83,6 +83,9 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   'max-hp': 'VITALITY',
   'max-mana': 'MANA',
   affinity: 'AFFINITY',
+  'swift-incant': 'TEMPO',
+  'mana-surge': 'FLOW',
+  'ward-start': 'WARD',
 };
 
 function ensureDom(): HTMLElement {
@@ -110,6 +113,9 @@ function cardColors(option: RewardOption): { core: string; glow: string } {
     return { core: paletteColorToCss(pal.core), glow: paletteColorToCss(pal.glow) };
   }
   if (option.kind === 'max-hp') return { core: '#72f1a8', glow: '#1f9d5c' };
+  if (option.kind === 'swift-incant') return { core: '#ffd166', glow: '#b8860b' };
+  if (option.kind === 'mana-surge') return { core: '#91b7ff', glow: '#2456c4' };
+  if (option.kind === 'ward-start') return { core: '#72d8ff', glow: '#1f7a9d' };
   return { core: '#8fa4ff', glow: '#4c66ff' };
 }
 

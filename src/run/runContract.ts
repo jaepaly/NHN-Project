@@ -11,7 +11,14 @@ import type { SpellElement } from '../spell/types';
  */
 
 // 'max-hp': 최대 HP 증가 + 즉시 일부 회복 (PHASE_2 R1 P0 요구 — 단순 회복 아님, R1 답변 1)
-export type RewardKind = 'max-hp' | 'max-mana' | 'affinity';
+// Phase 3.5 확장 (PROGRESSION_DESIGN §1): swift-incant(쿨다운 감소) / mana-surge(재생 증가) / ward-start(방 개막 보호막)
+export type RewardKind =
+  | 'max-hp'
+  | 'max-mana'
+  | 'affinity'
+  | 'swift-incant'
+  | 'mana-surge'
+  | 'ward-start';
 
 export interface RewardOption {
   /** 고유 id — chooseReward()에 그대로 전달 */
