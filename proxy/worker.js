@@ -134,6 +134,61 @@ async function bossLine(request, env, cors) {
   return new Response(JSON.stringify({ text: line }), { status: 200, headers: cors });
 }
 
+const EVOLVE_NAME_PROMPT = `당신은 로그라이크 게임 INCANT의 작명가다. 주문 진화 또는 정령 융합 정보(JSON)를 보고, 격상된 주문/정령의 멋진 새 이름을 한국어로 하나만 짓는다.
+규칙:
+- kind가 "evolve"면 baseName을 발전시킨 상위 이름, "fuse"면 두 원소를 녹인 새 이름.
+- 12자 이내, 함축적이고 강렬하게. (예: fire+lightning 융합 → "작열하는 뇌운")
+- 순수 이름 한 줄만 출력한다. 따옴표·설명·JSON 없이.
+
+정보:`;
+
+/**
+ * 진화·융합 작명 — 요청(JSON) → 격상 주문명 하나.
+ * 클라이언트는 실패 시 템플릿 폴백하므로, 여기선 순수 이름만 { name } 으로 반환한다.
+ */
+async function evolveName(request, env, cors) {
+  if (!env.GEMINI_API_KEY) {
+    return new Response(JSON.stringify({ error: 'no_api_key_bound' }), { status: 500, headers: cors });
+  }
+  let req;
+  try {
+    req = await request.json();
+  } catch {
+    return new Response(JSON.stringify({ error: 'bad json' }), { status: 400, headers: cors });
+  }
+
+  const geminiRes = await fetch(`${GEMINI_URL}?key=${env.GEMINI_API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: `${EVOLVE_NAME_PROMPT}\n${JSON.stringify(req).slice(0, 200)}` }] }],
+      generationConfig: {
+        temperature: 0.9,
+        maxOutputTokens: 100,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    }),
+  });
+  if (!geminiRes.ok) {
+    const detail = await geminiRes.text().catch(() => '');
+    return new Response(
+      JSON.stringify({ error: 'upstream', status: geminiRes.status, detail: detail.slice(0, 300) }),
+      { status: 502, headers: cors },
+    );
+  }
+  const data = await geminiRes.json();
+  const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  const name = String(raw)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^["'『「]+|["'』」]+$/g, '')
+    .slice(0, 12);
+  if (!name) {
+    return new Response(JSON.stringify({ error: 'empty name' }), { status: 502, headers: cors });
+  }
+  return new Response(JSON.stringify({ name }), { status: 200, headers: cors });
+}
+
 export default {
   async fetch(request, env) {
     // 허용 오리진: 배포(ALLOWED_ORIGIN) + 로컬 개발(vite dev).
@@ -155,9 +210,13 @@ export default {
       return new Response(JSON.stringify({ error: 'rate limited' }), { status: 429, headers: cors });
     }
 
-    // 경로 라우팅: /boss-line 은 보스 대사, 그 외(/)는 주문 판정
-    if (new URL(request.url).pathname.endsWith('/boss-line')) {
+    // 경로 라우팅: /boss-line 보스 대사, /evolve-name 진화·융합 작명, 그 외(/) 주문 판정
+    const path = new URL(request.url).pathname;
+    if (path.endsWith('/boss-line')) {
       return bossLine(request, env, cors);
+    }
+    if (path.endsWith('/evolve-name')) {
+      return evolveName(request, env, cors);
     }
 
     let text;
