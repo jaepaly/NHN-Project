@@ -57,6 +57,8 @@ import {
 } from '../combat-core/waves/waveManager';
 import type { WaveDefinition } from '../combat-core/waves/waveManager';
 import { CombatRunController } from '../combat-core/run/runController';
+import { drawRewardOptions } from '../combat-core/run/rewardConfig';
+import { EngraveManager } from '../combat-core/engrave/engraveManager';
 import { BossEnemy } from '../combat-core/boss/bossEnemy';
 import { BOSS_CONFIG } from '../combat-core/boss/bossConfig';
 import {
@@ -104,6 +106,18 @@ interface FriendlyMissile {
   hitDistance: number;
 }
 
+/** 씬 보상 추첨과 각인 카드 치환이 한 런에서 재현 가능한 순서를 공유한다. */
+function createRunRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state += 0x6d2b79f5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 interface EnemyProjectile {
   body: Phaser.GameObjects.Arc;
   halo: Phaser.GameObjects.Arc;
@@ -122,12 +136,21 @@ export class ProtoScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Container;
   private playerState = new PlayerCombatState();
   private readonly spellHistory = new SpellHistory();
+  private readonly engraveManager = new EngraveManager();
+  private engraveRewardRand = createRunRandom(Date.now());
   private readonly combatRunController = new CombatRunController({
     playerState: this.playerState,
+    rewardDraw: (roomIndex) => this.engraveManager.injectReward(
+      drawRewardOptions(roomIndex, this.engraveRewardRand),
+      roomIndex,
+      this.engraveRewardRand,
+    ),
   });
   private moveKeys!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private worldBounds = new Phaser.Geom.Rectangle();
   private enemies: CombatEnemy[] = [];
+  /** 화면 중앙에 떠 있는 시스템 메시지들 — 세로 스택으로 겹침 방지 */
+  private activeAnnouncements: Phaser.GameObjects.Text[] = [];
   private enemyProjectiles: EnemyProjectile[] = [];
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private statusText!: Phaser.GameObjects.Text;
@@ -227,6 +250,7 @@ export class ProtoScene extends Phaser.Scene {
       this.updateEnemies(d);
       this.updateEnemyProjectiles(d);
       this.updateBasicAttack();
+      this.updateEngravedSpells(d);
       this.updateSummon(d);
       this.updateFriendlyMissiles(d);
       this.updateWaveFlow(d);
@@ -248,7 +272,11 @@ export class ProtoScene extends Phaser.Scene {
     });
     this.combatRunController.on('reward-applied', (chosen, state) => {
       this.audio.playSfx('reward-select');
-      this.announceSystemMessage(chosen.title, '#ffd166');
+      const engraved = this.engraveManager.applyReward(chosen);
+      const message = engraved
+        ? `${engraved.spell.name} · 각인 Lv${engraved.level}`
+        : chosen.title;
+      this.announceSystemMessage(message, '#ffd166');
       console.info('[Run] reward-applied', chosen, state);
     });
     this.combatRunController.on('room-transition', (state, durationMs) => {
@@ -316,6 +344,8 @@ export class ProtoScene extends Phaser.Scene {
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
+    this.engraveManager.reset();
+    this.engraveRewardRand = createRunRandom(Date.now());
     this.playerState.reset();
     this.combatRunController.reset();
   }
@@ -384,7 +414,7 @@ export class ProtoScene extends Phaser.Scene {
       if (!isCurrentBossRoom()) return;
       this.time.delayedCall(500, () => {
         if (!isCurrentBossRoom()) return;
-        this.announceSystemMessage(`"${line.text}"`, '#d0a8ff');
+        this.announceSystemMessage(`"${line.text}"`, '#d0a8ff', 2800);
       });
     });
     if (this.bossResistance.resistedElement) {
@@ -395,6 +425,7 @@ export class ProtoScene extends Phaser.Scene {
         this.announceSystemMessage(
           `보스가 ${label}에 대비했다 — ${label} 피해 대폭 감소`,
           paletteColorToCss(ELEMENT_PALETTES[resisted].core),
+          2800,
         );
       });
     }
@@ -983,6 +1014,7 @@ export class ProtoScene extends Phaser.Scene {
         source: this.currentJudgeSource(),
         castAt: Date.now(),
       });
+      this.engraveManager.rememberManualCast(historyEntry.normalized, spec);
       const affinityBonus = this.combatRunController.state
         .elementalAffinity[spec.element_primary] ?? 0;
       const effectiveSpec: SpellSpec = {
@@ -1073,6 +1105,22 @@ export class ProtoScene extends Phaser.Scene {
         this.onSpellHit(impact, spec, lockedTarget, hitEnemies, chainTargets);
       },
     }, spec);
+  }
+
+  /** 마나·글로벌 쿨다운·히스토리·발동음 없이 축소 주문만 자동 시전한다. */
+  private updateEngravedSpells(deltaSeconds: number): void {
+    const roomIndex = this.combatRunController.state.roomIndex;
+    for (const request of this.engraveManager.update(deltaSeconds)) {
+      const cast = (): void => {
+        const state = this.combatRunController.state;
+        if (!this.playerState.alive
+          || state.phase !== 'combat'
+          || state.roomIndex !== roomIndex) return;
+        this.applySpellEffect(request.spell);
+      };
+      if (request.delaySeconds === 0) cast();
+      else this.time.delayedCall(request.delaySeconds * 1000, cast);
+    }
   }
 
   private currentJudgeSource(): JudgeSource {
@@ -1203,7 +1251,7 @@ export class ProtoScene extends Phaser.Scene {
       .setColor(paletteColorToCss(palette.core));
   }
 
-  private announceSystemMessage(message: string, color = '#ff8fa3'): void {
+  private announceSystemMessage(message: string, color = '#ff8fa3', holdMs = 1800): void {
     const { width, height } = this.scale;
     const label = this.add.text(width / 2, height * 0.42, message, {
       fontSize: '24px',
@@ -1211,15 +1259,43 @@ export class ProtoScene extends Phaser.Scene {
       color,
       stroke: '#05060f',
       strokeThickness: 4,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(100);
+      align: 'center',
+      wordWrap: { width: width - 80, useAdvancedWrap: true },
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(100).setAlpha(0);
+
+    // 동시에 뜨는 메시지는 세로로 쌓아 겹침을 막는다
+    this.activeAnnouncements.push(label);
+    this.repositionAnnouncements();
 
     this.tweens.add({
       targets: label,
-      alpha: 0,
-      y: label.y - 18,
-      duration: 700,
-      ease: 'Cubic.easeOut',
-      onComplete: () => label.destroy(),
+      alpha: 1,
+      duration: 150,
+      onComplete: () => {
+        this.tweens.add({
+          targets: label,
+          alpha: 0,
+          delay: holdMs,
+          duration: 450,
+          ease: 'Cubic.easeOut',
+          onComplete: () => {
+            label.destroy();
+            this.activeAnnouncements = this.activeAnnouncements.filter((l) => l !== label);
+            this.repositionAnnouncements();
+          },
+        });
+      },
+    });
+  }
+
+  /** 살아 있는 시스템 메시지를 화면 중앙 기준 세로 스택으로 재배치 (겹침 방지) */
+  private repositionAnnouncements(): void {
+    const { height } = this.scale;
+    const baseY = height * 0.42;
+    const lineHeight = 34;
+    const n = this.activeAnnouncements.length;
+    this.activeAnnouncements.forEach((label, i) => {
+      label.y = baseY + (i - (n - 1) / 2) * lineHeight;
     });
   }
 
@@ -1748,11 +1824,13 @@ export class ProtoScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0).setScrollFactor(0).setDepth(100)
       .setBlendMode(Phaser.BlendModes.ADD);
 
-    // [디버그] 판정 출처: GeminiJudge면 gemini/cache/fallback, 없으면 판정기 이름
-    const source = this.judge.lastSource ?? this.judge.name;
+    // [디버그] 판정 출처(gemini/cache/fallback)는 개발 모드에서만 노출 — 데모에선 숨김
+    const debugTail = import.meta.env.DEV
+      ? ` · [${this.judge.lastSource ?? this.judge.name}]`
+      : '';
     const meta = this.add.text(width / 2, height * 0.32 + 36,
       `${spec.element_primary}${spec.element_secondary ? '+' + spec.element_secondary : ''}`
-      + ` · ${spec.effect}/${spec.target} · ${spec.form} · power ${spec.power} · [${source}]`,
+      + ` · ${spec.effect}/${spec.target} · ${spec.form} · power ${spec.power}${debugTail}`,
       { fontSize: '14px', color: '#8fa4ff' },
     ).setOrigin(0.5).setAlpha(0).setScrollFactor(0).setDepth(100);
 

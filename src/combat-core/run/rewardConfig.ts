@@ -25,8 +25,10 @@ export function affinityElementForRoom(roomIndex: number): SpellElement {
   return ELEMENTS[(safeRoomIndex - 1) % ELEMENTS.length];
 }
 
+type StaticRewardKind = Exclude<RewardKind, 'engrave'>;
+
 function buildOption(
-  kind: RewardKind,
+  kind: StaticRewardKind,
   roomIndex: number,
   element: SpellElement,
 ): RewardOption {
@@ -79,7 +81,7 @@ function buildOption(
 }
 
 /** 시드 랜덤 추첨이 뽑는 카드 풀 (PROGRESSION_DESIGN §1 — 각인·정령은 ②③에서 추가) */
-const REWARD_POOL: readonly RewardKind[] = [
+const REWARD_POOL: readonly StaticRewardKind[] = [
   'max-hp', 'max-mana', 'affinity', 'swift-incant', 'mana-surge', 'ward-start',
 ];
 
@@ -92,7 +94,7 @@ export function drawRewardOptions(
   rand: () => number,
 ): readonly RewardOption[] {
   const pool = [...REWARD_POOL];
-  const picked: RewardKind[] = [];
+  const picked: StaticRewardKind[] = [];
   while (picked.length < 3 && pool.length > 0) {
     const index = Math.floor(rand() * pool.length) % pool.length;
     picked.push(pool.splice(index, 1)[0]);
