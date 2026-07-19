@@ -10,6 +10,14 @@ export const ROOM_BACKDROP_PALETTES = {
   boss: { base: 0x17060d, grid: 0x7a2341, gridAlpha: 0.58 },
 } as const satisfies Record<string, RoomBackdropPalette>;
 
+export function backdropPaletteForEncounter(
+  stage: 1 | 2,
+  isBoss: boolean,
+): RoomBackdropPalette {
+  if (isBoss) return ROOM_BACKDROP_PALETTES.boss;
+  return stage === 1 ? ROOM_BACKDROP_PALETTES.stage1 : ROOM_BACKDROP_PALETTES.stage2;
+}
+
 /** 현재 3방 프로토타입에서 일반 방은 단계별 색조, 마지막 방은 보스 색조를 사용한다. */
 export function backdropPaletteForRoom(
   roomIndex: number,
