@@ -1,6 +1,6 @@
 import { ELEMENTS } from '../../spell/types';
 import type { SpellElement, SpellForm, SpellSize, SpellSpec, SpellStatus } from '../../spell/types';
-import type { RewardOption, SpiritRole } from '../../run/runContract';
+import type { GrowthLevel, RewardOption, SpiritRole } from '../../run/runContract';
 import { ELEMENT_LABELS } from '../../render/palette';
 
 export const SPIRIT_CONFIG = {
@@ -15,15 +15,21 @@ export const SPIRIT_CONFIG = {
   guardAmounts: [12, 18, 26],
 } as const;
 
-export type SpiritLevel = 1 | 2 | 3;
+export type SpiritLevel = GrowthLevel;
 
 export interface SpiritSnapshot {
   spiritId: string;
   role: SpiritRole;
   element?: SpellElement;
+  /** 융합 정령 전용 — 이중 원소의 부속성 */
+  elementSecondary?: SpellElement;
   level: SpiritLevel;
   intervalSeconds: number;
   remainingSeconds: number;
+  /** 융합 정령 여부 — 2슬롯 예산을 하나로 합친다 (40% 게이트 불변) */
+  fused: boolean;
+  /** 융합 정령의 LLM 격상명 */
+  fusedName?: string;
 }
 
 export type SpiritPulseRequest =
@@ -40,6 +46,10 @@ interface SpiritDefinition {
 interface SpiritState extends SpiritDefinition {
   level: SpiritLevel;
   remainingSeconds: number;
+  /** 차지하는 슬롯 수 — 일반 1, 융합 2 (오토 DPS 예산도 슬롯 수에 비례) */
+  slotWeight: number;
+  elementSecondary?: SpellElement;
+  fusedName?: string;
 }
 
 const ELEMENT_FORMS: Record<SpellElement, SpellForm> = {
@@ -111,14 +121,61 @@ export class SpiritManager {
       return snapshot(existing);
     }
 
-    if (option.spirit.level !== 1 || this.slots.length >= SPIRIT_CONFIG.maxSlots) return null;
+    if (option.spirit.level !== 1 || this.slotCount() >= SPIRIT_CONFIG.maxSlots) return null;
     const created: SpiritState = {
       ...definition,
       level: 1,
       remainingSeconds: intervalFor({ ...definition, level: 1 }),
+      slotWeight: 1,
     };
     this.slots.push(created);
     return snapshot(created);
+  }
+
+  /** 융합 후보 — 공격 정령 2체 보유 시 (PROGRESSION_DESIGN §3). */
+  fuseCandidate(): { spiritIds: [string, string]; elements: [SpellElement, SpellElement] } | null {
+    const attackers = this.slots.filter(
+      (slot) => slot.role === 'attack' && !slot.elementSecondary && slot.element,
+    );
+    if (attackers.length < 2) return null;
+    return {
+      spiritIds: [attackers[0].spiritId, attackers[1].spiritId],
+      elements: [attackers[0].element!, attackers[1].element!],
+    };
+  }
+
+  /**
+   * 정령 융합 — 공격 정령 2체를 소모해 주+부속성 이중 원소 정령 1체를 만든다.
+   * 융합체는 2슬롯을 점유하고 2슬롯 분량의 power 예산을 쓴다 (오토 40% 게이트 불변).
+   */
+  fuse(spiritIds: readonly string[], fusedName: string): SpiritSnapshot | null {
+    if (spiritIds.length !== 2 || spiritIds[0] === spiritIds[1]) return null;
+    const name = fusedName.trim();
+    if (!name) return null;
+    const first = this.slots.find((slot) => slot.spiritId === spiritIds[0]);
+    const second = this.slots.find((slot) => slot.spiritId === spiritIds[1]);
+    if (!first?.element || !second?.element) return null;
+    if (first.role !== 'attack' || second.role !== 'attack') return null;
+    if (first.elementSecondary || second.elementSecondary) return null;
+
+    this.slots = this.slots.filter((slot) => slot !== first && slot !== second);
+    const fused: SpiritState = {
+      spiritId: `fused-${first.element}-${second.element}`,
+      role: 'attack',
+      element: first.element,
+      elementSecondary: second.element,
+      level: SPIRIT_CONFIG.maxLevel as SpiritLevel,
+      remainingSeconds: spiritInterval('attack', SPIRIT_CONFIG.maxLevel as SpiritLevel),
+      slotWeight: 2,
+      fusedName: name,
+    };
+    this.slots.push(fused);
+    return snapshot(fused);
+  }
+
+  /** 점유 슬롯 합 — 융합 정령은 2슬롯으로 센다. */
+  slotCount(): number {
+    return this.slots.reduce((sum, slot) => sum + slot.slotWeight, 0);
   }
 
   update(deltaSeconds: number): readonly SpiritPulseRequest[] {
@@ -147,7 +204,7 @@ export class SpiritManager {
 
   private createRewardOption(roomIndex: number, rand: () => number): RewardOption | null {
     const candidates: Array<{ definition: SpiritDefinition; level: SpiritLevel }> = [];
-    if (this.slots.length < SPIRIT_CONFIG.maxSlots) {
+    if (this.slotCount() < SPIRIT_CONFIG.maxSlots) {
       for (const definition of DEFINITIONS) {
         if (!this.slots.some((slot) => slot.spiritId === definition.spiritId)) {
           candidates.push({ definition, level: 1 });
@@ -215,26 +272,40 @@ function pulseFor(spirit: SpiritState): SpiritPulseRequest {
   return {
     kind: 'attack',
     spiritId: spirit.spiritId,
-    spell: attackSpell(spirit.element ?? 'light', spirit.level),
+    spell: attackSpell(spirit.element ?? 'light', spirit.level, spirit),
   };
 }
 
-function attackSpell(element: SpellElement, level: SpiritLevel): SpellSpec {
+function attackSpell(
+  element: SpellElement,
+  level: SpiritLevel,
+  state?: Pick<SpiritState, 'elementSecondary' | 'fusedName' | 'slotWeight'>,
+): SpellSpec {
   const evolved = level >= 2;
-  const size: SpellSize = level === 1 ? 'small' : level === 2 ? 'medium' : 'large';
+  const fusedSecondary = state?.elementSecondary ?? null;
+  const size: SpellSize = fusedSecondary
+    ? 'huge' // 융합체는 격상의 시각적 정점
+    : level === 1 ? 'small' : level === 2 ? 'medium' : 'large';
+  const status = level >= 3 ? [...ELEMENT_STATUSES[element]] : [];
+  if (fusedSecondary) {
+    for (const extra of ELEMENT_STATUSES[fusedSecondary]) {
+      if (!status.includes(extra) && status.length < 3) status.push(extra);
+    }
+  }
   return {
-    name: `${ELEMENT_LABELS[element]} 정령 Lv${level}`,
+    name: state?.fusedName ?? `${ELEMENT_LABELS[element]} 정령 Lv${level}`,
     effect: 'damage',
     target: evolved && ['nova', 'wave', 'zone', 'rain'].includes(ELEMENT_FORMS[element])
       ? 'area'
       : 'enemy',
     element_primary: element,
-    element_secondary: null,
+    element_secondary: fusedSecondary,
     form: evolved ? ELEMENT_FORMS[element] : 'bolt',
     size,
     speed: element === 'wind' || element === 'lightning' ? 'fast' : 'normal',
-    status: level >= 3 ? [...ELEMENT_STATUSES[element]] : [],
-    power: spiritAttackPower(level),
+    status,
+    // 융합체는 소모한 슬롯 수만큼의 power 예산을 쓴다 (2슬롯 → ×2, 총합은 불변)
+    power: spiritAttackPower(level) * (state?.slotWeight ?? 1),
     cost: 0,
     flavor: '정령의 자동 시전은 마나·쿨다운·주문 기억을 사용하지 않는다.',
   };
@@ -264,9 +335,12 @@ function snapshot(state: SpiritState): SpiritSnapshot {
     spiritId: state.spiritId,
     role: state.role,
     element: state.element,
+    elementSecondary: state.elementSecondary,
     level: state.level,
     intervalSeconds: intervalFor(state),
     remainingSeconds: state.remainingSeconds,
+    fused: state.slotWeight > 1,
+    fusedName: state.fusedName,
   };
 }
 
@@ -275,6 +349,13 @@ function cloneReward(option: RewardOption): RewardOption {
     ...option,
     engrave: option.engrave ? { ...option.engrave } : undefined,
     spirit: option.spirit ? { ...option.spirit } : undefined,
+    evolve: option.evolve
+      ? {
+        ...option.evolve,
+        spiritIds: option.evolve.spiritIds ? [...option.evolve.spiritIds] : undefined,
+        elements: [...option.evolve.elements],
+      }
+      : undefined,
   };
 }
 

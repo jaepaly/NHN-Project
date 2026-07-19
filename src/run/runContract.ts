@@ -20,13 +20,17 @@ export type RewardKind =
   | 'mana-surge'
   | 'ward-start'
   | 'engrave'
-  | 'spirit';
+  | 'spirit'
+  | 'evolve';
+
+/** 각인·정령 공통 성장 레벨 — 범위 밖 값이 보상으로 소비되는 경로를 타입에서 차단 (R1 리뷰) */
+export type GrowthLevel = 1 | 2 | 3;
 
 export interface EngraveRewardData {
   /** 정규화된 원문 주문 키 — 이번 런의 수동 영창 기록과 연결한다. */
   spellKey: string;
-  /** 선택 후 도달할 각인 레벨 (1~3). */
-  level: number;
+  /** 선택 후 도달할 각인 레벨. */
+  level: GrowthLevel;
 }
 
 export type SpiritRole = 'attack' | 'heal' | 'guard';
@@ -35,8 +39,20 @@ export interface SpiritRewardData {
   /** 같은 정령의 획득·강화를 연결하는 안정 ID. */
   spiritId: string;
   role: SpiritRole;
-  /** 선택 후 도달할 레벨 (1~3). */
-  level: number;
+  /** 선택 후 도달할 레벨. */
+  level: GrowthLevel;
+}
+
+/** 성장의 정점(PROGRESSION_DESIGN §2·§3) — 격상 이름은 씬이 LLM(/evolve-name)으로 짓는다 */
+export interface EvolveRewardData {
+  /** 'engrave' = 각인 Lv3 진화, 'spirit-fuse' = 공격 정령 2체 융합 */
+  target: 'engrave' | 'spirit-fuse';
+  /** target='engrave' 전용 — 진화할 각인의 spellKey */
+  engraveKey?: string;
+  /** target='spirit-fuse' 전용 — 융합에 소모될 공격 정령 2체 */
+  spiritIds?: readonly string[];
+  /** 작명·연출용 원소 (진화 1개, 융합 2개) */
+  elements: readonly SpellElement[];
 }
 
 export interface RewardOption {
@@ -53,6 +69,8 @@ export interface RewardOption {
   engrave?: EngraveRewardData;
   /** kind='spirit' 전용 — 정령 역할과 선택 후 레벨 */
   spirit?: SpiritRewardData;
+  /** kind='evolve' 전용 — 진화·융합 대상 */
+  evolve?: EvolveRewardData;
 }
 
 export type RunPhase = 'combat' | 'reward-select' | 'room-transition' | 'run-over';

@@ -74,6 +74,18 @@ export function spellImpactDamageFromPower(power: number, multiplier = 1): numbe
   return Math.max(1, Math.round(spellDamageFromPower(power) * safeMultiplier));
 }
 
+/**
+ * 오토 시전(각인·정령) 전용 피해 — 반올림·최소 피해 1을 적용하지 않는 정확한 실수값.
+ * 수동 주문의 타격별 반올림·바닥(min 1)은 저출력 오토 시전에서 DPS를 부풀린다
+ * (예: zone 10틱 × 0.08배가 틱당 1로 승격 → 예산 초과). 오토는 정확값을 쓰면
+ * `power / 주기` 산술 게이트(오토 ≤ 수동 40%)와 실전 피해가 항상 일치한다.
+ */
+export function autoSpellImpactDamageFromPower(power: number, multiplier = 1): number {
+  const safePower = Number.isFinite(power) ? Math.max(0, power) : 0;
+  const safeMultiplier = Number.isFinite(multiplier) ? Math.max(0, multiplier) : 1;
+  return safePower * safeMultiplier;
+}
+
 /** 반복 패널티 반영 power에 런 원소 친화 보너스를 적용한다. */
 export function spellPowerWithAffinity(power: number, affinityBonus: number): number {
   const safePower = Number.isFinite(power) ? Math.max(0, power) : 0;
