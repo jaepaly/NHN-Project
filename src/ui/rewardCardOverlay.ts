@@ -87,6 +87,8 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   'mana-surge': 'FLOW',
   'ward-start': 'WARD',
   engrave: 'ENGRAVE',
+  spirit: 'SPIRIT',
+  evolve: 'EVOLVE',
 };
 
 function ensureDom(): HTMLElement {

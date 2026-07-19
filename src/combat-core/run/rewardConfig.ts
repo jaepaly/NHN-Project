@@ -25,7 +25,7 @@ export function affinityElementForRoom(roomIndex: number): SpellElement {
   return ELEMENTS[(safeRoomIndex - 1) % ELEMENTS.length];
 }
 
-type StaticRewardKind = Exclude<RewardKind, 'engrave'>;
+type StaticRewardKind = Exclude<RewardKind, 'engrave' | 'spirit' | 'evolve'>;
 
 function buildOption(
   kind: StaticRewardKind,

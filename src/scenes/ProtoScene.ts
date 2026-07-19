@@ -6,7 +6,7 @@ import { SpellHistory } from '../spell/spellHistory';
 import type { JudgeSource } from '../spell/spellHistory';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
 import type { SpellImpact } from '../render/spellRenderer';
-import type { RunController } from '../run/runContract';
+import type { EvolveRewardData, RunController } from '../run/runContract';
 import {
   ELEMENT_LABELS,
   ELEMENT_PALETTES,
@@ -34,6 +34,7 @@ import {
   SPLITTER_CONFIG,
   spellBuffManaFromPower,
   spellHealFromPower,
+  autoSpellImpactDamageFromPower,
   spellImpactDamageFromPower,
   spellPowerWithAffinity,
   spellShieldFromPower,
@@ -59,6 +60,11 @@ import type { WaveDefinition } from '../combat-core/waves/waveManager';
 import { CombatRunController } from '../combat-core/run/runController';
 import { drawRewardOptions } from '../combat-core/run/rewardConfig';
 import { EngraveManager } from '../combat-core/engrave/engraveManager';
+import { SpiritManager } from '../combat-core/spirit/spiritManager';
+import { SpiritOrbView } from '../combat-core/spirit/spiritOrbView';
+import { buildEvolveOption, injectEvolveReward } from '../combat-core/evolve/evolveRewards';
+import { getEvolvedName, templateEvolvedName } from '../spell/evolveName';
+import type { EvolveNameRequest } from '../spell/evolveName';
 import { BossEnemy } from '../combat-core/boss/bossEnemy';
 import { BOSS_CONFIG } from '../combat-core/boss/bossConfig';
 import {
@@ -137,14 +143,35 @@ export class ProtoScene extends Phaser.Scene {
   private playerState = new PlayerCombatState();
   private readonly spellHistory = new SpellHistory();
   private readonly engraveManager = new EngraveManager();
+  private readonly spiritManager = new SpiritManager();
   private engraveRewardRand = createRunRandom(Date.now());
-  private readonly combatRunController = new CombatRunController({
+  // 명시적 타입: rewardDraw 클로저가 컨트롤러 상태(친화)를 읽어 자기참조 추론이 막히는 것 회피
+  private readonly combatRunController: CombatRunController = new CombatRunController({
     playerState: this.playerState,
-    rewardDraw: (roomIndex) => this.engraveManager.injectReward(
-      drawRewardOptions(roomIndex, this.engraveRewardRand),
-      roomIndex,
-      this.engraveRewardRand,
-    ),
+    rewardDraw: (roomIndex) => {
+      const engraved = this.engraveManager.injectReward(
+        drawRewardOptions(roomIndex, this.engraveRewardRand),
+        roomIndex,
+        this.engraveRewardRand,
+      );
+      const withSpirit = this.spiritManager.injectReward(
+        engraved,
+        roomIndex,
+        this.engraveRewardRand,
+      );
+      // 성장의 정점(④) — 진화·융합 후보가 있으면 정적 카드 한 장을 치환
+      return injectEvolveReward(
+        withSpirit,
+        buildEvolveOption(
+          roomIndex,
+          this.engraveManager,
+          this.spiritManager,
+          this.combatRunController.state.elementalAffinity,
+          this.engraveRewardRand,
+        ),
+        this.engraveRewardRand,
+      );
+    },
   });
   private moveKeys!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private worldBounds = new Phaser.Geom.Rectangle();
@@ -159,6 +186,7 @@ export class ProtoScene extends Phaser.Scene {
   private shieldText!: Phaser.GameObjects.Text;
   private attunementText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
+  private spiritHudText!: Phaser.GameObjects.Text;
   private waveManager = new WaveManager();
   private incantWrap!: HTMLElement;
   private incantBar!: HTMLInputElement;
@@ -172,6 +200,8 @@ export class ProtoScene extends Phaser.Scene {
   private basicAttackCooldownRemaining = 0;
   private friendlyMissiles: FriendlyMissile[] = [];
   private activeSummon: SummonedOrb | null = null;
+  private readonly spiritViews = new Map<string, SpiritOrbView>();
+  private spiritOrbitAngle = -Math.PI / 2;
   private readonly enemyControlState = new EnemyControlState();
   private readonly controlIndicators = new Map<CombatEnemy, Phaser.GameObjects.Arc>();
   /** 보스방 진입 시 주문 히스토리로 계산 — R2 내성 모듈이 오면 계산부만 교체 */
@@ -251,6 +281,7 @@ export class ProtoScene extends Phaser.Scene {
       this.updateEnemyProjectiles(d);
       this.updateBasicAttack();
       this.updateEngravedSpells(d);
+      this.updateSpirits(d);
       this.updateSummon(d);
       this.updateFriendlyMissiles(d);
       this.updateWaveFlow(d);
@@ -272,9 +303,19 @@ export class ProtoScene extends Phaser.Scene {
     });
     this.combatRunController.on('reward-applied', (chosen, state) => {
       this.audio.playSfx('reward-select');
+      if (chosen.kind === 'evolve' && chosen.evolve) {
+        // 진화·융합은 LLM 작명이 필요해 비동기 — 작명은 반드시 성공하므로(폴백) 미완료 상태가 없다
+        void this.applyEvolution(chosen.evolve);
+        console.info('[Run] reward-applied', chosen, state);
+        return;
+      }
       const engraved = this.engraveManager.applyReward(chosen);
+      const spirit = this.spiritManager.applyReward(chosen);
+      if (spirit) this.syncSpiritViews();
       const message = engraved
         ? `${engraved.spell.name} · 각인 Lv${engraved.level}`
+        : spirit
+          ? `${this.spiritName(spirit.role, spirit.element)} · 정령 Lv${spirit.level}`
         : chosen.title;
       this.announceSystemMessage(message, '#ffd166');
       console.info('[Run] reward-applied', chosen, state);
@@ -345,6 +386,9 @@ export class ProtoScene extends Phaser.Scene {
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
     this.engraveManager.reset();
+    this.spiritManager.reset();
+    this.clearSpiritViews();
+    this.spiritOrbitAngle = -Math.PI / 2;
     this.engraveRewardRand = createRunRandom(Date.now());
     this.playerState.reset();
     this.combatRunController.reset();
@@ -491,6 +535,13 @@ export class ProtoScene extends Phaser.Scene {
       fontSize: '14px',
       fontStyle: 'bold',
       color: '#72f1b8',
+      align: 'right',
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+
+    this.spiritHudText = this.add.text(width - 34, 59, 'SPIRIT 0/2', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '11px',
+      color: '#8fa4ff',
       align: 'right',
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
 
@@ -1042,8 +1093,13 @@ export class ProtoScene extends Phaser.Scene {
     }
   }
 
-  private applySpellEffect(spec: SpellSpec): void {
-    const from = new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
+  private applySpellEffect(
+    spec: SpellSpec,
+    origin?: Phaser.Math.Vector2,
+    auto = false,
+  ): void {
+    const from = origin?.clone()
+      ?? new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
     if (spec.effect === 'heal') {
       const healed = this.playerState.heal(spellHealFromPower(spec.power));
       this.announceSystemMessage(`회복 +${Math.round(healed)} HP`, '#72f1a8');
@@ -1102,7 +1158,7 @@ export class ProtoScene extends Phaser.Scene {
         const currentRunState = this.combatRunController.state;
         if (currentRunState.phase !== 'combat'
           || currentRunState.roomIndex !== castRoomIndex) return;
-        this.onSpellHit(impact, spec, lockedTarget, hitEnemies, chainTargets);
+        this.onSpellHit(impact, spec, lockedTarget, hitEnemies, chainTargets, auto);
       },
     }, spec);
   }
@@ -1116,10 +1172,112 @@ export class ProtoScene extends Phaser.Scene {
         if (!this.playerState.alive
           || state.phase !== 'combat'
           || state.roomIndex !== roomIndex) return;
-        this.applySpellEffect(request.spell);
+        this.applySpellEffect(request.spell, undefined, true);
       };
       if (request.delaySeconds === 0) cast();
       else this.time.delayedCall(request.delaySeconds * 1000, cast);
+    }
+  }
+
+  /** 마나·쿨다운·수동 주문 기억에 개입하지 않는 정령 자동 발동. */
+  private updateSpirits(deltaSeconds: number): void {
+    this.spiritOrbitAngle += deltaSeconds * 1.35;
+    this.syncSpiritViews();
+    const entries = this.spiritManager.entries;
+    entries.forEach((entry, index) => {
+      const angle = this.spiritOrbitAngle + (Math.PI * 2 * index) / Math.max(1, entries.length);
+      this.spiritViews.get(entry.spiritId)?.updatePosition(
+        this.player.x,
+        this.player.y - 8,
+        angle,
+        68,
+      );
+    });
+
+    for (const request of this.spiritManager.update(deltaSeconds)) {
+      const view = this.spiritViews.get(request.spiritId);
+      view?.pulse(this);
+      if (request.kind === 'attack') {
+        if (!this.nearestEnemy()) continue;
+        const origin = view
+          ? new Phaser.Math.Vector2(view.x, view.y)
+          : new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
+        this.applySpellEffect(request.spell, origin, true);
+        continue;
+      }
+      if (request.kind === 'heal') {
+        const amount = this.playerState.heal(request.amount);
+        if (amount > 0) this.announceSystemMessage(`치유 정령 · HP +${Math.round(amount)}`, '#72f1a8');
+        continue;
+      }
+      const amount = this.playerState.addShield(request.amount);
+      if (amount > 0) this.announceSystemMessage(`수호 정령 · 보호막 +${Math.round(amount)}`, '#72d8ff');
+    }
+  }
+
+  private syncSpiritViews(): void {
+    const entries = this.spiritManager.entries;
+    const activeIds = new Set(entries.map((entry) => entry.spiritId));
+    for (const [spiritId, view] of this.spiritViews) {
+      if (activeIds.has(spiritId)) continue;
+      view.destroy();
+      this.spiritViews.delete(spiritId);
+    }
+    for (const entry of entries) {
+      if (this.spiritViews.has(entry.spiritId)) continue;
+      const visualElement = entry.element ?? (entry.role === 'heal' ? 'light' : 'earth');
+      this.spiritViews.set(entry.spiritId, new SpiritOrbView(this, visualElement));
+    }
+  }
+
+  private clearSpiritViews(): void {
+    for (const view of this.spiritViews.values()) view.destroy();
+    this.spiritViews.clear();
+  }
+
+  private spiritName(role: 'attack' | 'heal' | 'guard', element?: SpellElement): string {
+    if (role === 'heal') return '치유';
+    if (role === 'guard') return '수호';
+    return ELEMENT_LABELS[element ?? 'light'];
+  }
+
+  // ── 진화·융합 (성장 시스템 ④) ────────────────────────────────
+  /**
+   * 격상 이름 — 라이브 /evolve-name(캐시 포함) 우선.
+   * Mock 모드에선 템플릿으로 고정해 개발·QA 중 라이브 호출을 막는다 (할당량 정책).
+   */
+  private async evolvedNameFor(req: EvolveNameRequest): Promise<string> {
+    if (import.meta.env.VITE_JUDGE_MOCK === '1') return templateEvolvedName(req);
+    return getEvolvedName(req);
+  }
+
+  /** 진화·융합 적용 — 작명은 반드시 성공하므로(템플릿 폴백) 실패 상태가 없다. */
+  private async applyEvolution(data: EvolveRewardData): Promise<void> {
+    if (data.target === 'engrave' && data.engraveKey) {
+      const slot = this.engraveManager.entries
+        .find((entry) => entry.spellKey === data.engraveKey);
+      const name = await this.evolvedNameFor({
+        kind: 'evolve',
+        baseName: slot?.spell.name,
+        elements: [...data.elements],
+        level: slot?.level,
+      });
+      const evolved = this.engraveManager.evolve(data.engraveKey, name);
+      if (evolved) {
+        this.announceSystemMessage(`각인 진화 — 『${name}』`, '#ffd166', 2800);
+      }
+      return;
+    }
+    if (data.target === 'spirit-fuse' && data.spiritIds?.length === 2) {
+      const name = await this.evolvedNameFor({
+        kind: 'fuse',
+        elements: [...data.elements],
+      });
+      const fused = this.spiritManager.fuse(data.spiritIds, name);
+      if (fused) {
+        this.syncSpiritViews();
+        this.announceSystemMessage(`정령 융합 — 『${name}』`, '#ffd166', 2800);
+      }
     }
   }
 
@@ -1164,6 +1322,15 @@ export class ProtoScene extends Phaser.Scene {
     this.hpText.setText(`HP    ${hp.toString().padStart(3)} / ${this.playerState.maxHp}`);
     this.manaText.setText(`MANA  ${mana.toString().padStart(3)} / ${this.playerState.maxMana}`);
     this.shieldText.setText(`SHIELD ${shield.toString().padStart(3)} / ${this.playerState.maxHp}`);
+    const spirits = this.spiritManager.entries;
+    const spiritSummary = spirits.length === 0
+      ? 'SPIRIT 0/2'
+      : `SPIRIT ${this.spiritManager.slotCount()}/2 · ${spirits
+        .map((entry) => entry.fusedName
+          ? `『${entry.fusedName}』`
+          : `${this.spiritName(entry.role, entry.element)} Lv${entry.level}`)
+        .join(' · ')}`;
+    this.spiritHudText.setText(spiritSummary);
     this.drawHudBars();
 
     if (runState.phase === 'run-over') {
@@ -1406,12 +1573,16 @@ export class ProtoScene extends Phaser.Scene {
     lockedTarget: CombatEnemy | null,
     hitEnemies: Set<CombatEnemy>,
     chainTargets: readonly CombatEnemy[] = [],
+    auto = false,
   ): void {
     if (impact.hitGroup !== undefined) hitEnemies.clear();
     const damageMultiplier = Number.isFinite(impact.damageMultiplier)
       ? Math.max(0, impact.damageMultiplier ?? 1)
       : 1;
-    const damage = spellImpactDamageFromPower(spec.power, damageMultiplier);
+    // 오토 시전은 비반올림·바닥 미적용 — 산술 게이트(≤40%)와 실전 피해 일치 (PR #39 R1 리뷰)
+    const damage = auto
+      ? autoSpellImpactDamageFromPower(spec.power, damageMultiplier)
+      : spellImpactDamageFromPower(spec.power, damageMultiplier);
     if (impact.kind === 'point') {
       if (impact.chainIndex !== undefined) {
         const chainTarget = chainTargets[impact.chainIndex];

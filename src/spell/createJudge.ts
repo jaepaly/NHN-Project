@@ -1,6 +1,7 @@
 import type { SpellJudge } from './judge';
 import { MockJudge } from './mockJudge';
 import { GeminiJudge } from './geminiJudge';
+import { LoggingJudge } from './loggingJudge';
 
 /**
  * 판정기를 선택한다 — GDD §3.5 판정기 추상화.
@@ -16,8 +17,13 @@ const DEFAULT_PROXY_URL = 'https://incant-judge-proxy.diawodbsdot.workers.dev';
 
 export function createJudge(): SpellJudge {
   if (import.meta.env.VITE_JUDGE_MOCK === '1') {
-    return new MockJudge();
+    return withDevLogging(new MockJudge());
   }
   const proxyUrl = import.meta.env.VITE_JUDGE_PROXY_URL?.trim() || DEFAULT_PROXY_URL;
-  return new GeminiJudge(proxyUrl);
+  return withDevLogging(new GeminiJudge(proxyUrl));
+}
+
+/** 개발 모드에서만 판정을 logs/play.jsonl로 기록 (피드백용). 프로덕션은 그대로 반환. */
+function withDevLogging(judge: SpellJudge): SpellJudge {
+  return import.meta.env.DEV ? new LoggingJudge(judge) : judge;
 }
