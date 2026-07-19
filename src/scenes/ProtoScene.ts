@@ -118,6 +118,8 @@ export class ProtoScene extends Phaser.Scene {
   private moveKeys!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private worldBounds = new Phaser.Geom.Rectangle();
   private enemies: CombatEnemy[] = [];
+  /** 화면 중앙에 떠 있는 시스템 메시지들 — 세로 스택으로 겹침 방지 */
+  private activeAnnouncements: Phaser.GameObjects.Text[] = [];
   private enemyProjectiles: EnemyProjectile[] = [];
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private statusText!: Phaser.GameObjects.Text;
@@ -368,7 +370,7 @@ export class ProtoScene extends Phaser.Scene {
       if (!isCurrentBossRoom()) return;
       this.time.delayedCall(500, () => {
         if (!isCurrentBossRoom()) return;
-        this.announceSystemMessage(`"${line.text}"`, '#d0a8ff');
+        this.announceSystemMessage(`"${line.text}"`, '#d0a8ff', 2800);
       });
     });
     if (this.bossResistance.resistedElement) {
@@ -379,6 +381,7 @@ export class ProtoScene extends Phaser.Scene {
         this.announceSystemMessage(
           `보스가 ${label}에 대비했다 — ${label} 피해 대폭 감소`,
           paletteColorToCss(ELEMENT_PALETTES[resisted].core),
+          2800,
         );
       });
     }
@@ -1137,7 +1140,7 @@ export class ProtoScene extends Phaser.Scene {
       .setColor(paletteColorToCss(palette.core));
   }
 
-  private announceSystemMessage(message: string, color = '#ff8fa3'): void {
+  private announceSystemMessage(message: string, color = '#ff8fa3', holdMs = 1200): void {
     const { width, height } = this.scale;
     const label = this.add.text(width / 2, height * 0.42, message, {
       fontSize: '24px',
@@ -1145,15 +1148,43 @@ export class ProtoScene extends Phaser.Scene {
       color,
       stroke: '#05060f',
       strokeThickness: 4,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(100);
+      align: 'center',
+      wordWrap: { width: width - 80, useAdvancedWrap: true },
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(100).setAlpha(0);
+
+    // 동시에 뜨는 메시지는 세로로 쌓아 겹침을 막는다
+    this.activeAnnouncements.push(label);
+    this.repositionAnnouncements();
 
     this.tweens.add({
       targets: label,
-      alpha: 0,
-      y: label.y - 18,
-      duration: 700,
-      ease: 'Cubic.easeOut',
-      onComplete: () => label.destroy(),
+      alpha: 1,
+      duration: 150,
+      onComplete: () => {
+        this.tweens.add({
+          targets: label,
+          alpha: 0,
+          delay: holdMs,
+          duration: 450,
+          ease: 'Cubic.easeOut',
+          onComplete: () => {
+            label.destroy();
+            this.activeAnnouncements = this.activeAnnouncements.filter((l) => l !== label);
+            this.repositionAnnouncements();
+          },
+        });
+      },
+    });
+  }
+
+  /** 살아 있는 시스템 메시지를 화면 중앙 기준 세로 스택으로 재배치 (겹침 방지) */
+  private repositionAnnouncements(): void {
+    const { height } = this.scale;
+    const baseY = height * 0.42;
+    const lineHeight = 34;
+    const n = this.activeAnnouncements.length;
+    this.activeAnnouncements.forEach((label, i) => {
+      label.y = baseY + (i - (n - 1) / 2) * lineHeight;
     });
   }
 
@@ -1606,11 +1637,13 @@ export class ProtoScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0).setScrollFactor(0).setDepth(100)
       .setBlendMode(Phaser.BlendModes.ADD);
 
-    // [디버그] 판정 출처: GeminiJudge면 gemini/cache/fallback, 없으면 판정기 이름
-    const source = this.judge.lastSource ?? this.judge.name;
+    // [디버그] 판정 출처(gemini/cache/fallback)는 개발 모드에서만 노출 — 데모에선 숨김
+    const debugTail = import.meta.env.DEV
+      ? ` · [${this.judge.lastSource ?? this.judge.name}]`
+      : '';
     const meta = this.add.text(width / 2, height * 0.32 + 36,
       `${spec.element_primary}${spec.element_secondary ? '+' + spec.element_secondary : ''}`
-      + ` · ${spec.effect}/${spec.target} · ${spec.form} · power ${spec.power} · [${source}]`,
+      + ` · ${spec.effect}/${spec.target} · ${spec.form} · power ${spec.power}${debugTail}`,
       { fontSize: '14px', color: '#8fa4ff' },
     ).setOrigin(0.5).setAlpha(0).setScrollFactor(0).setDepth(100);
 
