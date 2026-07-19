@@ -2,6 +2,9 @@
 import Phaser from 'phaser';
 import { CHASER_CONFIG } from '../combat/combatConfig';
 import type { CombatEnemy, EnemyShotRequest } from './combatEnemy';
+import { playHitReact, playAttackLunge, playDeathPop } from './enemyJuice';
+
+const CHASER_COLOR = 0xff4d6d;
 
 export class ChaserEnemy implements CombatEnemy {
   readonly kind = 'chaser' as const;
@@ -14,6 +17,7 @@ export class ChaserEnemy implements CombatEnemy {
   hp: number = this.maxHp;
   alive = true;
   contactDamageCooldownRemaining = 0;
+  private dying = false;
 
   private readonly body: Phaser.GameObjects.Triangle;
   private readonly healthFill: Phaser.GameObjects.Rectangle;
@@ -69,6 +73,7 @@ export class ChaserEnemy implements CombatEnemy {
 
   startContactDamageCooldown(): void {
     this.contactDamageCooldownRemaining = CHASER_CONFIG.contactDamageCooldownSeconds;
+    playAttackLunge(this.view.scene, this.view); // 때리는 순간 펀치
   }
 
   /** @returns 이 피해로 처치됐으면 true */
@@ -77,7 +82,10 @@ export class ChaserEnemy implements CombatEnemy {
 
     this.hp = Math.max(0, this.hp - Math.max(0, amount));
     this.healthFill.setScale(this.hp / this.maxHp, 1);
-    if (this.hp > 0) return false;
+    if (this.hp > 0) {
+      playHitReact(this.view.scene, this.view, this.body, CHASER_COLOR); // 맞는 순간 플래시+squash
+      return false;
+    }
 
     this.alive = false;
     return true;
@@ -85,7 +93,11 @@ export class ChaserEnemy implements CombatEnemy {
 
   destroy(): void {
     this.alive = false;
-    this.view.destroy(true);
+    if (this.dying) return;
+    this.dying = true;
+    playDeathPop(this.view.scene, this.view, () => {
+      if (this.view.active) this.view.destroy(true);
+    });
   }
 }
 
