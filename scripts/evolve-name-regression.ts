@@ -3,6 +3,7 @@ import {
   sanitizeName,
   templateEvolvedName,
   getEvolvedName,
+  evolveCacheKey,
 } from '../src/spell/evolveName';
 import type { EvolveNameRequest } from '../src/spell/evolveName';
 
@@ -29,4 +30,58 @@ const name = await getEvolvedName(fuse, 'http://127.0.0.1:9'); // 닫힌 포트
 assert.equal(name, '불꽃·뇌전 융합', '프록시 실패 → 템플릿 폴백');
 assert.ok(name.length > 0 && name.length <= 12, '항상 유효한 12자 이내 이름');
 
-console.log('EvolveName regression: sanitize·템플릿(evolve/fuse)·폴백 3군 통과');
+// 4) evolveCacheKey — 결정론 + 원소 정렬(같은 융합=같은 키)
+assert.equal(
+  evolveCacheKey({ kind: 'fuse', elements: ['fire', 'lightning'] }),
+  evolveCacheKey({ kind: 'fuse', elements: ['lightning', 'fire'] }),
+  '원소 순서 무관 동일 키',
+);
+assert.equal(
+  evolveCacheKey({ kind: 'evolve', baseName: '화염구', elements: ['fire'] }),
+  'evolve:fire:화염구',
+  '진화 키에 baseName 포함',
+);
+
+// 5) 캐시 동작 — localStorage·fetch 스텁으로 히트/미스/폴백-비저장 검증
+const store = new Map<string, string>();
+(globalThis as { localStorage?: unknown }).localStorage = {
+  getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
+  setItem: (k: string, v: string) => void store.set(k, v),
+  removeItem: (k: string) => void store.delete(k),
+  clear: () => store.clear(),
+};
+let fetchCalls = 0;
+const okFetch = (name: string) => async () =>
+  ({ ok: true, json: async () => ({ name }) }) as Response;
+const setFetch = (fn: () => Promise<Response>) => {
+  (globalThis as { fetch: unknown }).fetch = () => {
+    fetchCalls++;
+    return fn();
+  };
+};
+
+const req: EvolveNameRequest = { kind: 'fuse', elements: ['fire', 'lightning'] };
+setFetch(okFetch('업화의 뇌격'));
+assert.equal(await getEvolvedName(req, 'http://x'), '업화의 뇌격', '첫 호출 프록시');
+assert.equal(fetchCalls, 1, '첫 호출은 프록시 1회');
+assert.equal(await getEvolvedName(req, 'http://x'), '업화의 뇌격', '둘째 캐시 히트');
+assert.equal(fetchCalls, 1, '캐시 히트 → 프록시 재호출 없음');
+assert.equal(
+  await getEvolvedName({ kind: 'fuse', elements: ['lightning', 'fire'] }, 'http://x'),
+  '업화의 뇌격',
+  '원소 순서 반대여도 같은 캐시',
+);
+assert.equal(fetchCalls, 1, '정렬 키 덕에 프록시 재호출 없음');
+
+// 폴백은 캐시하지 않는다 → 프록시 복구 시 진짜 이름을 받는다
+const evReq: EvolveNameRequest = { kind: 'evolve', baseName: '화염구', elements: ['fire'] };
+setFetch(async () => {
+  throw new Error('down');
+});
+assert.equal(await getEvolvedName(evReq, 'http://x'), '불꽃 대격변', '프록시 실패 → 템플릿');
+fetchCalls = 0;
+setFetch(okFetch('작열의 핵'));
+assert.equal(await getEvolvedName(evReq, 'http://x'), '작열의 핵', '복구 후 진짜 이름');
+assert.equal(fetchCalls, 1, '폴백은 캐시 안 됨 → 프록시 재호출');
+
+console.log('EvolveName regression: sanitize·템플릿·폴백·캐시키·캐시히트/폴백비저장 5군 통과');
