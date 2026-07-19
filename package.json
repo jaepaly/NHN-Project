@@ -23,6 +23,7 @@
     "test:engrave": "esbuild scripts/engrave-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-engrave-regression.mjs && node node_modules/.cache/incant-engrave-regression.mjs",
     "test:spirit": "esbuild scripts/spirit-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spirit-regression.mjs && node node_modules/.cache/incant-spirit-regression.mjs",
     "test:evolvefuse": "esbuild scripts/evolve-fuse-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-evolve-fuse-regression.mjs && node node_modules/.cache/incant-evolve-fuse-regression.mjs",
+    "test:growth": "esbuild scripts/growth-feedback-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-growth-feedback-regression.mjs && node node_modules/.cache/incant-growth-feedback-regression.mjs",
     "snapshot:quality": "esbuild scripts/spell-quality-snapshot.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-quality-snapshot.mjs && node node_modules/.cache/incant-spell-quality-snapshot.mjs",
     "preview": "vite preview",
     "test:boss-core": "esbuild scripts/boss-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-boss-regression.mjs && node node_modules/.cache/incant-boss-regression.mjs"

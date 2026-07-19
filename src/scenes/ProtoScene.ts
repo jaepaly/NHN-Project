@@ -63,6 +63,11 @@ import { EngraveManager } from '../combat-core/engrave/engraveManager';
 import { SpiritManager } from '../combat-core/spirit/spiritManager';
 import { SpiritOrbView } from '../combat-core/spirit/spiritOrbView';
 import { buildEvolveOption, injectEvolveReward } from '../combat-core/evolve/evolveRewards';
+import {
+  GrowthMarks,
+  playRewardConvergence,
+  showGainText,
+} from '../render/growthFeedback';
 import { getEvolvedName, templateEvolvedName } from '../spell/evolveName';
 import type { EvolveNameRequest } from '../spell/evolveName';
 import { BossEnemy } from '../combat-core/boss/bossEnemy';
@@ -200,6 +205,8 @@ export class ProtoScene extends Phaser.Scene {
   private basicAttackCooldownRemaining = 0;
   private friendlyMissiles: FriendlyMissile[] = [];
   private activeSummon: SummonedOrb | null = null;
+  /** 성장 누적 표식 (룬 링·친화 오라) — 보상 선택 때 갱신, 매 프레임 플레이어 추종 */
+  private growthMarks!: GrowthMarks;
   private readonly spiritViews = new Map<string, SpiritOrbView>();
   private spiritOrbitAngle = -Math.PI / 2;
   private readonly enemyControlState = new EnemyControlState();
@@ -242,6 +249,7 @@ export class ProtoScene extends Phaser.Scene {
 
     this.drawBackdrop(this.worldBounds.width, this.worldBounds.height);
     this.createPlayer(startX, startY);
+    this.growthMarks = new GrowthMarks(this);
     this.cameras.main
       .setBounds(
         this.worldBounds.x,
@@ -286,6 +294,8 @@ export class ProtoScene extends Phaser.Scene {
       this.updateFriendlyMissiles(d);
       this.updateWaveFlow(d);
     }
+    // 성장 표식은 전투 정지 중(보상 선택·전환)에도 플레이어를 따라간다
+    this.growthMarks.follow(this.player.x, this.player.y);
     this.updateStatusText();
   }
 
@@ -303,6 +313,15 @@ export class ProtoScene extends Phaser.Scene {
     });
     this.combatRunController.on('reward-applied', (chosen, state) => {
       this.audio.playSfx('reward-select');
+      // ⑤ 강화 체감: 보상 색이 플레이어로 수렴 → 증가분 부상 텍스트 → 누적 표식 갱신
+      playRewardConvergence(this, this.player.x, this.player.y, chosen);
+      showGainText(this, this.player.x, this.player.y, chosen);
+      this.growthMarks.sync(
+        state.rewards.length,
+        state.elementalAffinity,
+        this.player.x,
+        this.player.y,
+      );
       if (chosen.kind === 'evolve' && chosen.evolve) {
         // 진화·융합은 LLM 작명이 필요해 비동기 — 작명은 반드시 성공하므로(폴백) 미완료 상태가 없다
         void this.applyEvolution(chosen.evolve);
@@ -388,6 +407,7 @@ export class ProtoScene extends Phaser.Scene {
     this.engraveManager.reset();
     this.spiritManager.reset();
     this.clearSpiritViews();
+    this.growthMarks.reset();
     this.spiritOrbitAngle = -Math.PI / 2;
     this.engraveRewardRand = createRunRandom(Date.now());
     this.playerState.reset();
