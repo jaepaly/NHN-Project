@@ -1,6 +1,22 @@
 import Phaser from 'phaser';
 import { ProtoScene } from './scenes/ProtoScene';
+import { TitleScene } from './scenes/TitleScene';
 import { bindRunUi } from './ui/runUiBinding';
+
+try {
+  const fontUrl = `${import.meta.env.BASE_URL}assets/fonts/NotoSerifKR-Variable.woff2`;
+  const faces = await Promise.all([
+    new FontFace('Noto Serif KR', `url("${fontUrl}") format("woff2")`, {
+      weight: '400',
+    }).load(),
+    new FontFace('Noto Serif KR', `url("${fontUrl}") format("woff2")`, {
+      weight: '700',
+    }).load(),
+  ]);
+  for (const face of faces) document.fonts.add(face);
+} catch (error) {
+  console.warn('[Font] Noto Serif KR preload failed; using system fallback.', error);
+}
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -8,7 +24,7 @@ const game = new Phaser.Game({
   width: 960,
   height: 640,
   backgroundColor: '#05060f',
-  scene: [ProtoScene],
+  scene: [TitleScene, ProtoScene],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -21,7 +37,7 @@ const game = new Phaser.Game({
 // R3 런 UI 결합 — 씬 부트 완료 후 RunController 공개 계약에 바인딩 (씬 코드 무접촉)
 const bindRunUiWhenReady = (): void => {
   const scene = game.scene.getScene('proto') as ProtoScene | null;
-  if (scene?.runController) {
+  if (game.scene.isActive('proto') && scene?.runController) {
     bindRunUi(scene.runController);
     return;
   }
