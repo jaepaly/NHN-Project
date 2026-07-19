@@ -25,6 +25,8 @@ export interface EngravedSpellSnapshot {
   intervalSeconds: number;
   shotCount: number;
   remainingSeconds: number;
+  /** 진화 완료 여부 — 진화 시 LLM 격상명·huge 크기를 얻는다 (DPS 예산은 불변) */
+  evolved: boolean;
 }
 
 export interface EngraveCastRequest {
@@ -40,6 +42,7 @@ interface EngravedSpellState {
   level: EngraveLevel;
   spell: SpellSpec;
   remainingSeconds: number;
+  evolved: boolean;
 }
 
 /** Phaser와 분리된 각인 슬롯·강화·타이머 관리자. */
@@ -96,9 +99,37 @@ export class EngraveManager {
       level: 1,
       spell: cloneSpell(candidate),
       remainingSeconds: ENGRAVE_CONFIG.baseIntervalSeconds,
+      evolved: false,
     };
     this.slots.push(created);
     return snapshot(created);
+  }
+
+  /**
+   * 진화 후보 — Lv3 각인 중 동일 원소 친화를 보유한 미진화 슬롯 (PROGRESSION_DESIGN §2).
+   */
+  evolveCandidates(
+    affinity: Partial<Record<SpellSpec['element_primary'], number>>,
+  ): readonly EngravedSpellSnapshot[] {
+    return this.slots
+      .filter((slot) => slot.level >= ENGRAVE_CONFIG.maxLevel
+        && !slot.evolved
+        && (affinity[slot.spell.element_primary] ?? 0) > 0)
+      .map(snapshot);
+  }
+
+  /**
+   * 각인 진화 — LLM 격상명으로 개명하고 huge 크기가 된다.
+   * DPS 예산(powerScale·주기)은 그대로 — 진화는 정체성·연출의 격상이다 (§0 게이트 유지).
+   */
+  evolve(spellKey: string, evolvedName: string): EngravedSpellSnapshot | null {
+    const slot = this.slots.find((entry) => entry.spellKey === spellKey);
+    if (!slot || slot.level < ENGRAVE_CONFIG.maxLevel || slot.evolved) return null;
+    const name = evolvedName.trim();
+    if (!name) return null;
+    slot.evolved = true;
+    slot.spell = { ...cloneSpell(slot.spell), name };
+    return snapshot(slot);
   }
 
   /** 전투 중 델타를 누적하고 이번 프레임에 예약할 자동 시전 목록을 반환한다. */
@@ -116,7 +147,7 @@ export class EngraveManager {
           casts.push({
             spellKey: slot.spellKey,
             level: slot.level,
-            spell: scaledSpell(slot.spell, slot.level),
+            spell: scaledSpell(slot.spell, slot.level, slot.evolved),
             delaySeconds: shot === 0 ? 0 : ENGRAVE_CONFIG.secondShotDelaySeconds,
           });
         }
@@ -197,10 +228,11 @@ export function scaledPowerForLevel(basePower: number, level: EngraveLevel): num
     / shotCountForLevel(level);
 }
 
-function scaledSpell(spell: SpellSpec, level: EngraveLevel): SpellSpec {
+function scaledSpell(spell: SpellSpec, level: EngraveLevel, evolved = false): SpellSpec {
   return {
     ...cloneSpell(spell),
-    size: level >= 3 ? increaseSize(spell.size) : spell.size,
+    // 진화는 무조건 huge — 격상의 시각적 정점 (power 예산은 그대로)
+    size: evolved ? 'huge' : level >= 3 ? increaseSize(spell.size) : spell.size,
     power: scaledPowerForLevel(spell.power, level),
     cost: 0,
   };
@@ -219,6 +251,7 @@ function snapshot(state: EngravedSpellState): EngravedSpellSnapshot {
     intervalSeconds: intervalForLevel(state.level),
     shotCount: shotCountForLevel(state.level),
     remainingSeconds: state.remainingSeconds,
+    evolved: state.evolved,
   };
 }
 
@@ -231,6 +264,13 @@ function cloneReward(option: RewardOption): RewardOption {
     ...option,
     engrave: option.engrave ? { ...option.engrave } : undefined,
     spirit: option.spirit ? { ...option.spirit } : undefined,
+    evolve: option.evolve
+      ? {
+        ...option.evolve,
+        spiritIds: option.evolve.spiritIds ? [...option.evolve.spiritIds] : undefined,
+        elements: [...option.evolve.elements],
+      }
+      : undefined,
   };
 }
 

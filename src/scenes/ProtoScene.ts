@@ -6,7 +6,7 @@ import { SpellHistory } from '../spell/spellHistory';
 import type { JudgeSource } from '../spell/spellHistory';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
 import type { SpellImpact } from '../render/spellRenderer';
-import type { RunController } from '../run/runContract';
+import type { EvolveRewardData, RunController } from '../run/runContract';
 import {
   ELEMENT_LABELS,
   ELEMENT_PALETTES,
@@ -61,6 +61,9 @@ import { drawRewardOptions } from '../combat-core/run/rewardConfig';
 import { EngraveManager } from '../combat-core/engrave/engraveManager';
 import { SpiritManager } from '../combat-core/spirit/spiritManager';
 import { SpiritOrbView } from '../combat-core/spirit/spiritOrbView';
+import { buildEvolveOption, injectEvolveReward } from '../combat-core/evolve/evolveRewards';
+import { getEvolvedName, templateEvolvedName } from '../spell/evolveName';
+import type { EvolveNameRequest } from '../spell/evolveName';
 import { BossEnemy } from '../combat-core/boss/bossEnemy';
 import { BOSS_CONFIG } from '../combat-core/boss/bossConfig';
 import {
@@ -141,7 +144,8 @@ export class ProtoScene extends Phaser.Scene {
   private readonly engraveManager = new EngraveManager();
   private readonly spiritManager = new SpiritManager();
   private engraveRewardRand = createRunRandom(Date.now());
-  private readonly combatRunController = new CombatRunController({
+  // 명시적 타입: rewardDraw 클로저가 컨트롤러 상태(친화)를 읽어 자기참조 추론이 막히는 것 회피
+  private readonly combatRunController: CombatRunController = new CombatRunController({
     playerState: this.playerState,
     rewardDraw: (roomIndex) => {
       const engraved = this.engraveManager.injectReward(
@@ -149,9 +153,21 @@ export class ProtoScene extends Phaser.Scene {
         roomIndex,
         this.engraveRewardRand,
       );
-      return this.spiritManager.injectReward(
+      const withSpirit = this.spiritManager.injectReward(
         engraved,
         roomIndex,
+        this.engraveRewardRand,
+      );
+      // 성장의 정점(④) — 진화·융합 후보가 있으면 정적 카드 한 장을 치환
+      return injectEvolveReward(
+        withSpirit,
+        buildEvolveOption(
+          roomIndex,
+          this.engraveManager,
+          this.spiritManager,
+          this.combatRunController.state.elementalAffinity,
+          this.engraveRewardRand,
+        ),
         this.engraveRewardRand,
       );
     },
@@ -286,6 +302,12 @@ export class ProtoScene extends Phaser.Scene {
     });
     this.combatRunController.on('reward-applied', (chosen, state) => {
       this.audio.playSfx('reward-select');
+      if (chosen.kind === 'evolve' && chosen.evolve) {
+        // 진화·융합은 LLM 작명이 필요해 비동기 — 작명은 반드시 성공하므로(폴백) 미완료 상태가 없다
+        void this.applyEvolution(chosen.evolve);
+        console.info('[Run] reward-applied', chosen, state);
+        return;
+      }
       const engraved = this.engraveManager.applyReward(chosen);
       const spirit = this.spiritManager.applyReward(chosen);
       if (spirit) this.syncSpiritViews();
@@ -1214,6 +1236,46 @@ export class ProtoScene extends Phaser.Scene {
     return ELEMENT_LABELS[element ?? 'light'];
   }
 
+  // ── 진화·융합 (성장 시스템 ④) ────────────────────────────────
+  /**
+   * 격상 이름 — 라이브 /evolve-name(캐시 포함) 우선.
+   * Mock 모드에선 템플릿으로 고정해 개발·QA 중 라이브 호출을 막는다 (할당량 정책).
+   */
+  private async evolvedNameFor(req: EvolveNameRequest): Promise<string> {
+    if (import.meta.env.VITE_JUDGE_MOCK === '1') return templateEvolvedName(req);
+    return getEvolvedName(req);
+  }
+
+  /** 진화·융합 적용 — 작명은 반드시 성공하므로(템플릿 폴백) 실패 상태가 없다. */
+  private async applyEvolution(data: EvolveRewardData): Promise<void> {
+    if (data.target === 'engrave' && data.engraveKey) {
+      const slot = this.engraveManager.entries
+        .find((entry) => entry.spellKey === data.engraveKey);
+      const name = await this.evolvedNameFor({
+        kind: 'evolve',
+        baseName: slot?.spell.name,
+        elements: [...data.elements],
+        level: slot?.level,
+      });
+      const evolved = this.engraveManager.evolve(data.engraveKey, name);
+      if (evolved) {
+        this.announceSystemMessage(`각인 진화 — 『${name}』`, '#ffd166', 2800);
+      }
+      return;
+    }
+    if (data.target === 'spirit-fuse' && data.spiritIds?.length === 2) {
+      const name = await this.evolvedNameFor({
+        kind: 'fuse',
+        elements: [...data.elements],
+      });
+      const fused = this.spiritManager.fuse(data.spiritIds, name);
+      if (fused) {
+        this.syncSpiritViews();
+        this.announceSystemMessage(`정령 융합 — 『${name}』`, '#ffd166', 2800);
+      }
+    }
+  }
+
   private currentJudgeSource(): JudgeSource {
     switch (this.judge.lastSource) {
       case 'gemini':
@@ -1258,8 +1320,10 @@ export class ProtoScene extends Phaser.Scene {
     const spirits = this.spiritManager.entries;
     const spiritSummary = spirits.length === 0
       ? 'SPIRIT 0/2'
-      : `SPIRIT ${spirits.length}/2 · ${spirits
-        .map((entry) => `${this.spiritName(entry.role, entry.element)} Lv${entry.level}`)
+      : `SPIRIT ${this.spiritManager.slotCount()}/2 · ${spirits
+        .map((entry) => entry.fusedName
+          ? `『${entry.fusedName}』`
+          : `${this.spiritName(entry.role, entry.element)} Lv${entry.level}`)
         .join(' · ')}`;
     this.spiritHudText.setText(spiritSummary);
     this.drawHudBars();
