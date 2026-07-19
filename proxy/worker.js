@@ -197,7 +197,10 @@ export default {
     // 요청 Origin이 허용 목록에 있으면 그대로 반사, 아니면 배포 오리진으로 응답.
     const allowed = [env.ALLOWED_ORIGIN, 'http://localhost:5173', 'http://127.0.0.1:5173'];
     const reqOrigin = request.headers.get('Origin');
-    const origin = allowed.includes(reqOrigin) ? reqOrigin : (env.ALLOWED_ORIGIN ?? '*');
+    // 로컬 개발은 포트가 유동적(5173이 점유되면 5174…)이므로 localhost/127.0.0.1의 임의 포트를 허용한다.
+    // (허용 안 하면 CORS 차단 → 판정이 조용히 MockJudge로 폴백돼 "가짜 판정"을 테스트하게 됨)
+    const isLocalDev = !!reqOrigin && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(reqOrigin);
+    const origin = allowed.includes(reqOrigin) || isLocalDev ? reqOrigin : (env.ALLOWED_ORIGIN ?? '*');
     const cors = corsHeaders(origin);
 
     if (request.method === 'OPTIONS') {
