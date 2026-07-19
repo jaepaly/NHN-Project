@@ -1236,7 +1236,7 @@ export class ProtoScene extends Phaser.Scene {
       .setColor(paletteColorToCss(palette.core));
   }
 
-  private announceSystemMessage(message: string, color = '#ff8fa3', holdMs = 1200): void {
+  private announceSystemMessage(message: string, color = '#ff8fa3', holdMs = 1800): void {
     const { width, height } = this.scale;
     const label = this.add.text(width / 2, height * 0.42, message, {
       fontSize: '24px',
