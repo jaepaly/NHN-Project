@@ -41,6 +41,11 @@ import {
 import { firstBoltCollision } from '../combat-core/combat/boltCollision';
 import type { BoltCollision } from '../combat-core/combat/boltCollision';
 import {
+  CAGE_CONFIG,
+  lockedPointTargetForForm,
+  selectChainTargets,
+} from '../combat-core/combat/advancedFormConfig';
+import {
   RAIN_CONFIG,
   ZONE_CONFIG,
   densestAreaTarget,
@@ -1063,15 +1068,25 @@ export class ProtoScene extends Phaser.Scene {
       return;
     }
 
-    const target = this.nearestEnemy();
+    const chainTargets = spec.form === 'chain'
+      ? selectChainTargets(
+        from.x,
+        from.y,
+        this.enemies.filter((enemy) => enemy.alive),
+      )
+      : [];
+    const target = spec.form === 'chain'
+      ? chainTargets[0] ?? null
+      : this.nearestEnemy();
     const to = this.spellTargetPoint(from, spec, target);
-    let boltTarget: CombatEnemy | null = null;
+    let lockedTarget = lockedPointTargetForForm(spec.form, target);
     const hitEnemies = new Set<CombatEnemy>();
     const castRoomIndex = this.combatRunController.state.roomIndex;
     castSpell({
       scene: this,
       from,
       to,
+      chainPath: chainTargets,
       resolveBoltCollision: (fromX, fromY, toX, toY, projectileRadius) => {
         const collision = this.findBoltCollision(
           fromX,
@@ -1080,14 +1095,14 @@ export class ProtoScene extends Phaser.Scene {
           toY,
           projectileRadius,
         );
-        boltTarget = collision?.target ?? null;
+        lockedTarget = collision?.target ?? null;
         return collision ? { x: collision.x, y: collision.y } : null;
       },
       onHit: (impact) => {
         const currentRunState = this.combatRunController.state;
         if (currentRunState.phase !== 'combat'
           || currentRunState.roomIndex !== castRoomIndex) return;
-        this.onSpellHit(impact, spec, boltTarget, hitEnemies);
+        this.onSpellHit(impact, spec, lockedTarget, hitEnemies, chainTargets);
       },
     }, spec);
   }
@@ -1390,6 +1405,7 @@ export class ProtoScene extends Phaser.Scene {
     spec: SpellSpec,
     lockedTarget: CombatEnemy | null,
     hitEnemies: Set<CombatEnemy>,
+    chainTargets: readonly CombatEnemy[] = [],
   ): void {
     if (impact.hitGroup !== undefined) hitEnemies.clear();
     const damageMultiplier = Number.isFinite(impact.damageMultiplier)
@@ -1397,6 +1413,16 @@ export class ProtoScene extends Phaser.Scene {
       : 1;
     const damage = spellImpactDamageFromPower(spec.power, damageMultiplier);
     if (impact.kind === 'point') {
+      if (impact.chainIndex !== undefined) {
+        const chainTarget = chainTargets[impact.chainIndex];
+        if (chainTarget?.alive) {
+          this.damageEnemy(
+            chainTarget,
+            this.spellDamageAgainst(chainTarget, spec, damage),
+          );
+        }
+        return;
+      }
       if (lockedTarget?.alive) {
         this.damageEnemy(lockedTarget, this.spellDamageAgainst(lockedTarget, spec, damage));
       }
@@ -1502,15 +1528,25 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private castControlSpell(from: Phaser.Math.Vector2, spec: SpellSpec): void {
-    const target = this.nearestEnemy();
+    const chainTargets = spec.form === 'chain'
+      ? selectChainTargets(
+        from.x,
+        from.y,
+        this.enemies.filter((enemy) => enemy.alive),
+      )
+      : [];
+    const target = spec.form === 'chain'
+      ? chainTargets[0] ?? null
+      : this.nearestEnemy();
     const to = this.spellTargetPoint(from, spec, target);
-    let boltTarget: CombatEnemy | null = null;
+    let lockedTarget = lockedPointTargetForForm(spec.form, target);
     const affectedEnemies = new Set<CombatEnemy>();
     const castRoomIndex = this.combatRunController.state.roomIndex;
     castSpell({
       scene: this,
       from,
       to,
+      chainPath: chainTargets,
       resolveBoltCollision: (fromX, fromY, toX, toY, projectileRadius) => {
         const collision = this.findBoltCollision(
           fromX,
@@ -1519,14 +1555,14 @@ export class ProtoScene extends Phaser.Scene {
           toY,
           projectileRadius,
         );
-        boltTarget = collision?.target ?? null;
+        lockedTarget = collision?.target ?? null;
         return collision ? { x: collision.x, y: collision.y } : null;
       },
       onHit: (impact) => {
         const currentRunState = this.combatRunController.state;
         if (currentRunState.phase !== 'combat'
           || currentRunState.roomIndex !== castRoomIndex) return;
-        this.onControlHit(impact, spec, boltTarget, affectedEnemies);
+        this.onControlHit(impact, spec, lockedTarget, affectedEnemies, chainTargets);
       },
     }, spec);
   }
@@ -1536,11 +1572,19 @@ export class ProtoScene extends Phaser.Scene {
     spec: SpellSpec,
     lockedTarget: CombatEnemy | null,
     affectedEnemies: Set<CombatEnemy>,
+    chainTargets: readonly CombatEnemy[] = [],
   ): void {
     if (impact.hitGroup !== undefined) affectedEnemies.clear();
     if (impact.kind === 'point') {
+      if (impact.chainIndex !== undefined) {
+        const chainTarget = chainTargets[impact.chainIndex];
+        if (chainTarget?.alive) {
+          this.applyControl(chainTarget, spec.power, impact);
+        }
+        return;
+      }
       if (lockedTarget?.alive) {
-        this.applySlow(lockedTarget, spec.power, impact.controlDurationSeconds);
+        this.applyControl(lockedTarget, spec.power, impact);
       }
       return;
     }
@@ -1561,8 +1605,16 @@ export class ProtoScene extends Phaser.Scene {
       if (!isHit) continue;
 
       affectedEnemies.add(enemy);
-      this.applySlow(enemy, spec.power, impact.controlDurationSeconds);
+      this.applyControl(enemy, spec.power, impact);
     }
+  }
+
+  private applyControl(enemy: CombatEnemy, power: number, impact: SpellImpact): void {
+    if (impact.controlMode === 'root') {
+      this.applyRoot(enemy, impact.controlDurationSeconds ?? CAGE_CONFIG.rootDurationSeconds);
+      return;
+    }
+    this.applySlow(enemy, power, impact.controlDurationSeconds);
   }
 
   private applySlow(
@@ -1594,9 +1646,48 @@ export class ProtoScene extends Phaser.Scene {
     });
   }
 
+  private applyRoot(enemy: CombatEnemy, durationSeconds: number): void {
+    const remaining = this.enemyControlState.applyRoot(enemy, durationSeconds);
+    let indicator = this.controlIndicators.get(enemy);
+    if (!indicator) {
+      indicator = this.add.circle(
+        0,
+        0,
+        CAGE_CONFIG.baseRadius,
+        CAGE_CONFIG.indicatorColor,
+        0.08,
+      ).setBlendMode(Phaser.BlendModes.ADD);
+      enemy.view.addAt(indicator, 0);
+      this.controlIndicators.set(enemy, indicator);
+    }
+    indicator
+      .setRadius(CAGE_CONFIG.baseRadius)
+      .setFillStyle(CAGE_CONFIG.indicatorColor, 0.08)
+      .setStrokeStyle(3, CAGE_CONFIG.indicatorColor, 0.95);
+    console.info('[Control] root-applied', {
+      enemy: enemy.kind,
+      durationSeconds: remaining,
+      movementMultiplier: 0,
+    });
+  }
+
   private updateEnemyControls(deltaSeconds: number): void {
     for (const enemy of this.enemyControlState.update(deltaSeconds)) {
       this.removeControlIndicator(enemy);
+    }
+    for (const [enemy, indicator] of this.controlIndicators) {
+      if (!indicator.active) continue;
+      if (this.enemyControlState.movementMultiplierFor(enemy) === 0) {
+        indicator
+          .setRadius(CAGE_CONFIG.baseRadius)
+          .setFillStyle(CAGE_CONFIG.indicatorColor, 0.08)
+          .setStrokeStyle(3, CAGE_CONFIG.indicatorColor, 0.95);
+      } else {
+        indicator
+          .setRadius(CONTROL_CONFIG.indicatorRadius)
+          .setFillStyle(CONTROL_CONFIG.indicatorColor, 0.08)
+          .setStrokeStyle(2, CONTROL_CONFIG.indicatorColor, 0.85);
+      }
     }
   }
 

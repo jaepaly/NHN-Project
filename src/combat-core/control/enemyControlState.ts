@@ -6,49 +6,81 @@ import {
 
 /** Phase 2 최소 control 구현: 적별 비중첩 둔화 수명만 관리한다. */
 export class EnemyControlState {
-  private readonly slowRemaining = new Map<CombatEnemy, number>();
+  private readonly effects = new Map<CombatEnemy, {
+    slowRemaining: number;
+    rootRemaining: number;
+  }>();
 
   applySlow(enemy: CombatEnemy, power: number, durationOverrideSeconds?: number): number {
     const duration = durationOverrideSeconds !== undefined
       && Number.isFinite(durationOverrideSeconds)
       ? Math.max(0, durationOverrideSeconds)
       : controlDurationFromPower(power);
-    const remaining = Math.max(this.slowRemaining.get(enemy) ?? 0, duration);
-    this.slowRemaining.set(enemy, remaining);
+    const effect = this.effectFor(enemy);
+    const remaining = Math.max(effect.slowRemaining, duration);
+    effect.slowRemaining = remaining;
+    return remaining;
+  }
+
+  applyRoot(enemy: CombatEnemy, durationSeconds: number): number {
+    const duration = Number.isFinite(durationSeconds) ? Math.max(0, durationSeconds) : 0;
+    const effect = this.effectFor(enemy);
+    const remaining = Math.max(effect.rootRemaining, duration);
+    effect.rootRemaining = remaining;
     return remaining;
   }
 
   update(deltaSeconds: number): CombatEnemy[] {
     const delta = Number.isFinite(deltaSeconds) ? Math.max(0, deltaSeconds) : 0;
     const expired: CombatEnemy[] = [];
-    for (const [enemy, remaining] of this.slowRemaining) {
-      if (!enemy.alive || remaining <= delta) {
-        this.slowRemaining.delete(enemy);
+    for (const [enemy, effect] of this.effects) {
+      if (!enemy.alive) {
+        this.effects.delete(enemy);
         expired.push(enemy);
         continue;
       }
-      this.slowRemaining.set(enemy, remaining - delta);
+      effect.slowRemaining = Math.max(0, effect.slowRemaining - delta);
+      effect.rootRemaining = Math.max(0, effect.rootRemaining - delta);
+      if (effect.slowRemaining <= 0 && effect.rootRemaining <= 0) {
+        this.effects.delete(enemy);
+        expired.push(enemy);
+      }
     }
     return expired;
   }
 
   movementMultiplierFor(enemy: CombatEnemy): number {
-    return this.slowRemaining.has(enemy)
-      ? CONTROL_CONFIG.slowMovementMultiplier
-      : 1;
+    const effect = this.effects.get(enemy);
+    if (!effect) return 1;
+    if (effect.rootRemaining > 0) return 0;
+    return effect.slowRemaining > 0 ? CONTROL_CONFIG.slowMovementMultiplier : 1;
   }
 
   remainingFor(enemy: CombatEnemy): number {
-    return this.slowRemaining.get(enemy) ?? 0;
+    const effect = this.effects.get(enemy);
+    return effect ? Math.max(effect.slowRemaining, effect.rootRemaining) : 0;
+  }
+
+  rootRemainingFor(enemy: CombatEnemy): number {
+    return this.effects.get(enemy)?.rootRemaining ?? 0;
   }
 
   remove(enemy: CombatEnemy): boolean {
-    return this.slowRemaining.delete(enemy);
+    return this.effects.delete(enemy);
   }
 
   clear(): CombatEnemy[] {
-    const affected = [...this.slowRemaining.keys()];
-    this.slowRemaining.clear();
+    const affected = [...this.effects.keys()];
+    this.effects.clear();
     return affected;
+  }
+
+  private effectFor(enemy: CombatEnemy): { slowRemaining: number; rootRemaining: number } {
+    let effect = this.effects.get(enemy);
+    if (!effect) {
+      effect = { slowRemaining: 0, rootRemaining: 0 };
+      this.effects.set(enemy, effect);
+    }
+    return effect;
   }
 }

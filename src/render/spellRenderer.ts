@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { SpellSpec } from '../spell/types';
 import { SPELL_DAMAGE_CONFIG } from '../combat-core/combat/combatConfig';
+import { CAGE_CONFIG, CHAIN_CONFIG } from '../combat-core/combat/advancedFormConfig';
 import {
   RAIN_CONFIG,
   ZONE_CONFIG,
@@ -19,6 +20,10 @@ interface SpellImpactMeta {
   hitGroup?: number;
   /** Overrides the default power-based control duration for this form. */
   controlDurationSeconds?: number;
+  /** Chain 경로에서 직접 대응할 대상 인덱스. */
+  chainIndex?: number;
+  /** Control 폼이 적용할 이동 제어 종류. */
+  controlMode?: 'slow' | 'root';
 }
 
 export type SpellImpact =
@@ -46,6 +51,8 @@ export interface CastContext {
   from: Phaser.Math.Vector2;
   /** 방향성 폼의 목표점 (없으면 위쪽으로 발사) */
   to?: Phaser.Math.Vector2;
+  /** 전투 코어가 결정한 chain 대상 좌표. 최초 대상부터 순서대로 전달한다. */
+  chainPath?: readonly { x: number; y: number }[];
   /** 렌더러가 만든 실제 형상의 적중 영역을 전투 씬에 전달 */
   onHit?: (impact: SpellImpact, spec: SpellSpec) => void;
   /** Checks a bolt's latest movement segment against live combat targets. */
@@ -89,6 +96,12 @@ export function castSpell(ctx: CastContext, spec: SpellSpec): void {
       break;
     case 'rain':
       castRain(ctx, spec);
+      break;
+    case 'chain':
+      castChain(ctx, spec);
+      break;
+    case 'cage':
+      castCage(ctx, spec);
       break;
     case 'bolt':
     default:
@@ -189,6 +202,100 @@ function castBolt(ctx: CastContext, spec: SpellSpec): void {
       finish(to.x, to.y, !ctx.resolveBoltCollision);
     },
   });
+}
+
+/** chain — 최초 적중 후 가까운 미적중 대상으로 최대 3회 연쇄 */
+function castChain(ctx: CastContext, spec: SpellSpec): void {
+  const { scene, from } = ctx;
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const scale = SIZE_SCALE[spec.size];
+  const path = ctx.chainPath ?? [];
+  if (path.length === 0) {
+    const miss = ctx.to ?? new Phaser.Math.Vector2(from.x, from.y - 120);
+    drawChainSegment(scene, from.x, from.y, miss.x, miss.y, pal.core, pal.glow, scale);
+    return;
+  }
+
+  path.forEach((point, index) => {
+    scene.time.delayedCall(index * CHAIN_CONFIG.segmentDelayMs, () => {
+      const previous = index === 0 ? from : path[index - 1];
+      drawChainSegment(
+        scene,
+        previous.x,
+        previous.y,
+        point.x,
+        point.y,
+        pal.core,
+        pal.glow,
+        scale,
+      );
+      impactBurst(scene, point.x, point.y, spec);
+      ctx.onHit?.({
+        kind: 'point',
+        x: point.x,
+        y: point.y,
+        chainIndex: index,
+        damageMultiplier: CHAIN_CONFIG.damageMultipliers[index] ?? 0,
+      }, spec);
+    });
+  });
+}
+
+function drawChainSegment(
+  scene: Phaser.Scene,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  coreColor: number,
+  glowColor: number,
+  scale: number,
+): void {
+  const segment = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+  segment.lineStyle(10 * scale, glowColor, 0.2);
+  segment.lineBetween(fromX, fromY, toX, toY);
+  segment.lineStyle(Math.max(2, 3 * scale), coreColor, 0.95);
+  segment.lineBetween(fromX, fromY, toX, toY);
+  scene.tweens.add({
+    targets: segment,
+    alpha: 0,
+    duration: 260,
+    ease: 'Cubic.easeOut',
+    onComplete: () => segment.destroy(),
+  });
+}
+
+/** cage — 대상의 이동만 완전히 봉쇄하는 짧은 감금 활성화 연출 */
+function castCage(ctx: CastContext, spec: SpellSpec): void {
+  const { scene, from } = ctx;
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const scale = SIZE_SCALE[spec.size];
+  const center = ctx.to ?? from;
+  const radius = CAGE_CONFIG.baseRadius * scale;
+  const ring = scene.add.circle(center.x, center.y, radius, pal.glow, 0.1)
+    .setStrokeStyle(Math.max(2, 3 * scale), pal.core, 0.95)
+    .setBlendMode(Phaser.BlendModes.ADD);
+  const inner = scene.add.circle(center.x, center.y, radius * 0.65, pal.core, 0)
+    .setStrokeStyle(Math.max(1, 2 * scale), pal.accent, 0.8)
+    .setBlendMode(Phaser.BlendModes.ADD);
+  scene.tweens.add({
+    targets: [ring, inner],
+    scale: { from: 1.35, to: 1 },
+    alpha: { from: 1, to: 0 },
+    duration: 520,
+    ease: 'Cubic.easeOut',
+    onComplete: () => {
+      ring.destroy();
+      inner.destroy();
+    },
+  });
+  ctx.onHit?.({
+    kind: 'point',
+    x: center.x,
+    y: center.y,
+    controlDurationSeconds: CAGE_CONFIG.rootDurationSeconds,
+    controlMode: 'root',
+  }, spec);
 }
 
 /** beam — 목표 방향의 모든 적을 관통하는 순간 직선 광선 */

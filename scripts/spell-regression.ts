@@ -28,6 +28,13 @@ await expectCast('배고프다', 'heal', 'self');
 await expectCast('오늘 너무 지쳤다', 'heal', 'self');
 await expectCast('나를 지켜줘', 'shield', 'self');
 
+const controlChain = await judge.judge('적들을 연쇄 속박');
+assert.equal(controlChain.disposition, 'cast');
+if (controlChain.disposition === 'cast') {
+  assert.equal(controlChain.spell.effect, 'control');
+  assert.equal(controlChain.spell.form, 'chain');
+}
+
 assert.equal((await judge.judge('ㅁㄴㅇㄹ')).disposition, 'fizzle');
 assert.equal((await judge.judge('asdf')).disposition, 'fizzle');
 assert.equal((await judge.judge('씨발')).disposition, 'blocked');
@@ -49,4 +56,4 @@ const damage = state.takeDamage(25);
 assert.deepEqual(damage, { hpDamage: 5, shieldDamage: 20 });
 assert.equal(state.hp, 70);
 
-console.log('Spell Understanding v2 regression: 10 inputs + player effects passed');
+console.log('Spell Understanding v2 regression: 11 inputs + player effects passed');
