@@ -12,6 +12,7 @@ export const SFX_NAMES = [
 ] as const;
 
 export type SfxName = (typeof SFX_NAMES)[number];
+export type BgmName = 'combat' | 'boss';
 
 const MASTER_VOLUME = 0.5;
 const MUTE_STORAGE_KEY = 'incant.audio.muted';
@@ -42,6 +43,8 @@ export class GameAudio {
   private readonly scene: Phaser.Scene;
   private intro: Phaser.Sound.BaseSound | null = null;
   private loop: Phaser.Sound.BaseSound | null = null;
+  private currentBgm: BgmName | null = null;
+  private bgmGeneration = 0;
   private lastHitAt = -Infinity;
 
   static preload(scene: Phaser.Scene): void {
@@ -54,6 +57,8 @@ export class GameAudio {
     }
     scene.load.audio('audio-bgm-combat-intro', 'bgm-combat-intro.ogg');
     scene.load.audio('audio-bgm-combat-loop', 'bgm-combat-loop.ogg');
+    scene.load.audio('audio-bgm-boss-intro', 'bgm-boss-intro.ogg');
+    scene.load.audio('audio-bgm-boss-loop', 'bgm-boss-loop.ogg');
   }
 
   constructor(scene: Phaser.Scene) {
@@ -79,13 +84,29 @@ export class GameAudio {
     });
   }
 
-  playBgm(): void {
-    if (this.intro?.isPlaying || this.loop?.isPlaying) return;
+  playBgm(name: BgmName = 'combat'): void {
+    if (this.currentBgm === name && (this.intro?.isPlaying || this.loop?.isPlaying)) return;
 
-    this.intro = this.scene.sound.add('audio-bgm-combat-intro');
-    this.loop = this.scene.sound.add('audio-bgm-combat-loop', { loop: true });
-    this.intro.once(Phaser.Sound.Events.COMPLETE, () => this.loop?.play());
+    this.stopBgm();
+    this.currentBgm = name;
+    const generation = ++this.bgmGeneration;
+    this.intro = this.scene.sound.add(`audio-bgm-${name}-intro`);
+    this.loop = this.scene.sound.add(`audio-bgm-${name}-loop`, { loop: true });
+    this.intro.once(Phaser.Sound.Events.COMPLETE, () => {
+      if (this.currentBgm === name && this.bgmGeneration === generation) {
+        this.loop?.play();
+      }
+    });
     this.intro.play();
+  }
+
+  private stopBgm(): void {
+    this.bgmGeneration += 1;
+    this.intro?.destroy();
+    this.loop?.destroy();
+    this.intro = null;
+    this.loop = null;
+    this.currentBgm = null;
   }
 
   private readonly toggleMute = (): void => {
@@ -110,9 +131,6 @@ export class GameAudio {
 
   private destroy(): void {
     this.scene.input.keyboard?.off('keydown-M', this.toggleMute, this);
-    this.intro?.destroy();
-    this.loop?.destroy();
-    this.intro = null;
-    this.loop = null;
+    this.stopBgm();
   }
 }

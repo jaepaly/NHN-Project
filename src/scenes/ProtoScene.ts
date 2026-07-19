@@ -13,6 +13,11 @@ import {
   SIZE_SCALE,
   paletteColorToCss,
 } from '../render/palette';
+import {
+  backdropPaletteForRoom,
+  ROOM_BACKDROP_PALETTES,
+} from '../render/roomBackdropConfig';
+import type { RoomBackdropPalette } from '../render/roomBackdropConfig';
 import { PlayerCombatState } from '../combat-core/player/playerCombatState';
 import { ChaserEnemy } from '../combat-core/enemies/chaserEnemy';
 import { ShooterEnemy } from '../combat-core/enemies/shooterEnemy';
@@ -47,6 +52,8 @@ import {
 } from '../combat-core/waves/waveManager';
 import type { WaveDefinition } from '../combat-core/waves/waveManager';
 import { CombatRunController } from '../combat-core/run/runController';
+import { drawRewardOptions } from '../combat-core/run/rewardConfig';
+import { EngraveManager } from '../combat-core/engrave/engraveManager';
 import { BossEnemy } from '../combat-core/boss/bossEnemy';
 import { BOSS_CONFIG } from '../combat-core/boss/bossConfig';
 import {
@@ -94,6 +101,18 @@ interface FriendlyMissile {
   hitDistance: number;
 }
 
+/** 씬 보상 추첨과 각인 카드 치환이 한 런에서 재현 가능한 순서를 공유한다. */
+function createRunRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state += 0x6d2b79f5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 interface EnemyProjectile {
   body: Phaser.GameObjects.Arc;
   halo: Phaser.GameObjects.Arc;
@@ -112,8 +131,15 @@ export class ProtoScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Container;
   private playerState = new PlayerCombatState();
   private readonly spellHistory = new SpellHistory();
+  private readonly engraveManager = new EngraveManager();
+  private engraveRewardRand = createRunRandom(Date.now());
   private readonly combatRunController = new CombatRunController({
     playerState: this.playerState,
+    rewardDraw: (roomIndex) => this.engraveManager.injectReward(
+      drawRewardOptions(roomIndex, this.engraveRewardRand),
+      roomIndex,
+      this.engraveRewardRand,
+    ),
   });
   private moveKeys!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private worldBounds = new Phaser.Geom.Rectangle();
@@ -148,6 +174,9 @@ export class ProtoScene extends Phaser.Scene {
   private lastResistNoticeAt = 0;
   private deathHandled = false;
   private audio!: GameAudio;
+  private backdropBase!: Phaser.GameObjects.Rectangle;
+  private backdropGrid!: Phaser.GameObjects.Graphics;
+  private backdropColor: number = ROOM_BACKDROP_PALETTES.stage1.base;
 
   constructor() {
     super('proto');
@@ -216,6 +245,7 @@ export class ProtoScene extends Phaser.Scene {
       this.updateEnemies(d);
       this.updateEnemyProjectiles(d);
       this.updateBasicAttack();
+      this.updateEngravedSpells(d);
       this.updateSummon(d);
       this.updateFriendlyMissiles(d);
       this.updateWaveFlow(d);
@@ -237,7 +267,11 @@ export class ProtoScene extends Phaser.Scene {
     });
     this.combatRunController.on('reward-applied', (chosen, state) => {
       this.audio.playSfx('reward-select');
-      this.announceSystemMessage(chosen.title, '#ffd166');
+      const engraved = this.engraveManager.applyReward(chosen);
+      const message = engraved
+        ? `${engraved.spell.name} · 각인 Lv${engraved.level}`
+        : chosen.title;
+      this.announceSystemMessage(message, '#ffd166');
       console.info('[Run] reward-applied', chosen, state);
     });
     this.combatRunController.on('room-transition', (state, durationMs) => {
@@ -305,12 +339,15 @@ export class ProtoScene extends Phaser.Scene {
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
+    this.engraveManager.reset();
+    this.engraveRewardRand = createRunRandom(Date.now());
     this.playerState.reset();
     this.combatRunController.reset();
   }
 
   private startRoom(roomIndex: number): void {
     this.clearCombatRoom();
+    this.applyRoomBackdrop(roomIndex);
     this.waveManager = new WaveManager();
     this.basicAttackCooldownRemaining = 0;
     this.player.setPosition(this.worldBounds.centerX, this.worldBounds.centerY);
@@ -319,6 +356,7 @@ export class ProtoScene extends Phaser.Scene {
       this.startBossRoom();
       return;
     }
+    this.audio.playBgm('combat');
     this.spawnWave(this.waveManager.start());
     this.announceSystemMessage(`방 ${roomIndex}`, '#8fa4ff');
   }
@@ -330,6 +368,7 @@ export class ProtoScene extends Phaser.Scene {
 
   private startBossRoom(): void {
     const bossRoomIndex = this.combatRunController.state.roomIndex;
+    this.audio.playBgm('boss');
     // 단기(이번 런) 적응 — R2 내성 계약 소비 (GDD §4.1)
     this.bossResistance = computeResistance(this.spellHistory.bossMemory());
     const runMemory = loadRunMemory();
@@ -480,12 +519,52 @@ export class ProtoScene extends Phaser.Scene {
     );
   }
 
-  // ── 배경: 네온 그리드 + 마법진 ───────────────────────────────
+  // ── 배경: 방 진행에 따라 색조가 바뀌는 네온 그리드 ──────────
   private drawBackdrop(width: number, height: number): void {
-    const g = this.add.graphics();
-    g.lineStyle(1, 0x1a2350, 0.5);
-    for (let x = 0; x <= width; x += 48) g.lineBetween(x, 0, x, height);
-    for (let y = 0; y <= height; y += 48) g.lineBetween(0, y, width, y);
+    const initial = ROOM_BACKDROP_PALETTES.stage1;
+    this.backdropBase = this.add.rectangle(
+      width / 2,
+      height / 2,
+      width,
+      height,
+      initial.base,
+    ).setDepth(-100);
+
+    this.backdropGrid = this.add.graphics().setDepth(-99);
+    this.redrawBackdropDetails(initial);
+  }
+
+  private applyRoomBackdrop(roomIndex: number): void {
+    const palette = backdropPaletteForRoom(
+      roomIndex,
+      this.combatRunController.state.maxRooms,
+    );
+    const from = Phaser.Display.Color.IntegerToColor(this.backdropColor);
+    const to = Phaser.Display.Color.IntegerToColor(palette.base);
+    this.tweens.addCounter({
+      from: 0,
+      to: 100,
+      duration: 700,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        const mixed = Phaser.Display.Color.Interpolate.ColorWithColor(
+          from,
+          to,
+          100,
+          tween.getValue() ?? 100,
+        );
+        this.backdropBase.setFillStyle(Phaser.Display.Color.GetColor(mixed.r, mixed.g, mixed.b));
+      },
+    });
+    this.redrawBackdropDetails(palette);
+    this.backdropColor = palette.base;
+  }
+
+  private redrawBackdropDetails(palette: RoomBackdropPalette): void {
+    const { width, height } = this.worldBounds;
+    this.backdropGrid.clear().lineStyle(1, palette.grid, palette.gridAlpha);
+    for (let x = 0; x <= width; x += 48) this.backdropGrid.lineBetween(x, 0, x, height);
+    for (let y = 0; y <= height; y += 48) this.backdropGrid.lineBetween(0, y, width, y);
   }
 
   private createPlayer(x: number, y: number): void {
@@ -930,6 +1009,7 @@ export class ProtoScene extends Phaser.Scene {
         source: this.currentJudgeSource(),
         castAt: Date.now(),
       });
+      this.engraveManager.rememberManualCast(historyEntry.normalized, spec);
       const affinityBonus = this.combatRunController.state
         .elementalAffinity[spec.element_primary] ?? 0;
       const effectiveSpec: SpellSpec = {
@@ -1010,6 +1090,22 @@ export class ProtoScene extends Phaser.Scene {
         this.onSpellHit(impact, spec, boltTarget, hitEnemies);
       },
     }, spec);
+  }
+
+  /** 마나·글로벌 쿨다운·히스토리·발동음 없이 축소 주문만 자동 시전한다. */
+  private updateEngravedSpells(deltaSeconds: number): void {
+    const roomIndex = this.combatRunController.state.roomIndex;
+    for (const request of this.engraveManager.update(deltaSeconds)) {
+      const cast = (): void => {
+        const state = this.combatRunController.state;
+        if (!this.playerState.alive
+          || state.phase !== 'combat'
+          || state.roomIndex !== roomIndex) return;
+        this.applySpellEffect(request.spell);
+      };
+      if (request.delaySeconds === 0) cast();
+      else this.time.delayedCall(request.delaySeconds * 1000, cast);
+    }
   }
 
   private currentJudgeSource(): JudgeSource {
