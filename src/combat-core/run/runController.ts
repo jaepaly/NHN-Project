@@ -1,11 +1,13 @@
 import type { PlayerCombatState } from '../player/playerCombatState';
 import type {
+  EncounterDefinition,
   RewardOption,
   RunController,
   RunEvents,
   RunPhase,
   RunStateSnapshot,
 } from '../../run/runContract';
+import { RUN_ENCOUNTERS } from './encounterConfig';
 import {
   drawRewardOptions,
   RUN_REWARD_CONFIG,
@@ -23,6 +25,9 @@ export type RewardDraw = (roomIndex: number) => readonly RewardOption[];
 
 export interface CombatRunControllerOptions {
   playerState: PlayerCombatState;
+  encounters?: readonly EncounterDefinition[];
+  /** 로컬 조우 검증용. 제품 기본값은 첫 번째 조우다. */
+  initialRoomIndex?: number;
   maxRooms?: number;
   transitionDurationMs?: number;
   scheduleTransition?: RunTransitionScheduler;
@@ -48,6 +53,9 @@ function mulberry32(seed: number): () => number {
 export class CombatRunController implements RunController {
   private readonly playerState: PlayerCombatState;
   private readonly maxRooms: number;
+  private readonly encounterDefinitions: readonly EncounterDefinition[];
+  private encounters: ResolvedEncounter[];
+  private readonly initialRoomIndex: number;
   private readonly transitionDurationMs: number;
   private readonly scheduleTransition: RunTransitionScheduler;
   private readonly handlers = new Map<keyof RunEvents, Set<RunEventHandler>>();
@@ -64,13 +72,21 @@ export class CombatRunController implements RunController {
 
   constructor(options: CombatRunControllerOptions) {
     this.playerState = options.playerState;
-    this.maxRooms = positiveInteger(options.maxRooms ?? RUN_REWARD_CONFIG.maxRooms);
+    this.encounterDefinitions = options.encounters
+      ?? (options.maxRooms === undefined
+        ? RUN_ENCOUNTERS
+        : createLegacyEncounters(positiveInteger(options.maxRooms)));
+    this.maxRooms = this.encounterDefinitions.length;
+    this.initialRoomIndex = clampRoomIndex(options.initialRoomIndex ?? 1, this.maxRooms);
+    this.roomIndex = this.initialRoomIndex;
     this.transitionDurationMs = Math.max(
       0,
       options.transitionDurationMs ?? RUN_REWARD_CONFIG.transitionDurationMs,
     );
     this.scheduleTransition = options.scheduleTransition ?? defaultScheduleTransition;
-    this.rand = mulberry32(options.seed ?? Date.now());
+    const seed = options.seed ?? Date.now();
+    this.rand = mulberry32(seed);
+    this.encounters = resolveEncounters(this.encounterDefinitions, mulberry32(seed ^ 0x9e3779b9));
     this.rewardDraw = options.rewardDraw
       ?? ((roomIndex) => drawRewardOptions(roomIndex, this.rand));
   }
@@ -83,10 +99,18 @@ export class CombatRunController implements RunController {
   notifyRoomCleared(): void {
     if (this.phase !== 'combat') return;
 
-    if (this.roomIndex >= this.maxRooms) {
+    const encounter = this.currentEncounter();
+    if (encounter.kind === 'memory-boss' || this.roomIndex >= this.maxRooms) {
       this.phase = 'run-over';
       this.rewardOptions = [];
       this.emit('run-completed', this.snapshot());
+      return;
+    }
+
+    if (!encounter.rewardAfterClear) {
+      this.phase = 'room-transition';
+      this.emit('room-transition', this.snapshot(), this.transitionDurationMs);
+      this.scheduleTransition(this.transitionDurationMs, () => this.startNextRoom());
       return;
     }
 
@@ -119,14 +143,15 @@ export class CombatRunController implements RunController {
    * 새 런 시작 (R1 내부 API — RunController 계약 외).
    * 초기 상태로 되돌리고 'room-started'를 발화해 씬·UI가 방 1부터 다시 진행하게 한다.
    */
-  reset(): void {
-    this.roomIndex = 1;
+  reset(seed = Date.now()): void {
+    this.roomIndex = this.initialRoomIndex;
     this.phase = 'combat';
     this.rewards = [];
     this.elementalAffinity = {};
     this.rewardOptions = [];
     this.wardOnRoomStart = 0;
-    this.rand = mulberry32(Date.now()); // 새 런 = 새 보상 순열
+    this.rand = mulberry32(seed);
+    this.encounters = resolveEncounters(this.encounterDefinitions, mulberry32(seed ^ 0x9e3779b9));
     this.emit('room-started', this.snapshot());
   }
 
@@ -192,13 +217,23 @@ export class CombatRunController implements RunController {
   }
 
   private snapshot(): RunStateSnapshot {
+    const encounter = this.currentEncounter();
     return {
       roomIndex: this.roomIndex,
       maxRooms: this.maxRooms,
+      stage: encounter.stage,
+      encounterId: encounter.id,
+      encounterKind: encounter.kind,
+      encounterVariantId: encounter.variantId,
+      waveSetId: encounter.waveSetId,
       phase: this.phase,
       rewards: this.rewards.map(cloneReward),
       elementalAffinity: { ...this.elementalAffinity },
     };
+  }
+
+  private currentEncounter(): ResolvedEncounter {
+    return this.encounters[Math.min(this.roomIndex - 1, this.encounters.length - 1)];
   }
 
   private emit<K extends keyof RunEvents>(
@@ -213,6 +248,39 @@ export class CombatRunController implements RunController {
       typedHandler(...args);
     }
   }
+}
+
+interface ResolvedEncounter extends EncounterDefinition {
+  variantId?: string;
+}
+
+function resolveEncounters(
+  definitions: readonly EncounterDefinition[],
+  rand: () => number,
+): ResolvedEncounter[] {
+  return definitions.map((definition) => {
+    const variant = pick(definition.variants, rand);
+    return {
+      ...definition,
+      waveSetId: variant?.waveSetId ?? definition.waveSetId,
+      variantId: variant?.id,
+    };
+  });
+}
+
+function pick<T>(values: readonly T[] | undefined, rand: () => number): T | undefined {
+  if (!values?.length) return undefined;
+  return values[Math.floor(rand() * values.length)];
+}
+
+function createLegacyEncounters(count: number): EncounterDefinition[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `legacy-room-${index + 1}`,
+    stage: index + 1 === count ? 2 : 1,
+    kind: index + 1 === count ? 'memory-boss' : 'combat',
+    rewardAfterClear: index + 1 < count,
+    waveSetId: 'legacy',
+  }));
 }
 
 function cloneReward(reward: RewardOption): RewardOption {
@@ -233,6 +301,11 @@ function cloneReward(reward: RewardOption): RewardOption {
 function positiveInteger(value: number): number {
   if (!Number.isFinite(value)) return 1;
   return Math.max(1, Math.floor(value));
+}
+
+function clampRoomIndex(value: number, maxRooms: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(maxRooms, Math.max(1, Math.floor(value)));
 }
 
 function defaultScheduleTransition(delayMs: number, callback: () => void): void {
