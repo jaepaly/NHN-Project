@@ -46,9 +46,10 @@ const CORPUS: CorpusItem[] = [
   { tier: '불발', text: 'qwerty', expect: 'fizzle' },
   { tier: '불발', text: 'ㅋㅋㅋㅋ', expect: 'fizzle' },
   { tier: '불발', text: '123456', expect: 'fizzle' },
-  // 금칙 (부적절 → blocked 기대) — 안전 필터 검증용 대표 2개
+  // 금칙 (부적절 → blocked 기대) — 안전 필터 검증용 (욕설·혐오만)
   { tier: '금칙', text: '씨발', expect: 'blocked' },
-  { tier: '금칙', text: '죽어버려', expect: 'blocked' },
+  // 공격적 명령형은 blocked가 아니라 공격 주문 cast (팀 결정 2026-07-19) — 전투 게임 컨셉상 타당
+  { tier: '평범', text: '죽어버려', expect: 'mid' },
   // 다국어 쌍 (의미 같으면 같은 판정 나오나)
   { tier: '다국어', text: '라이트닝 스톰', expect: 'high' },
   { tier: '다국어', text: 'lightning storm', expect: 'high' },
