@@ -13,6 +13,11 @@ import {
   SIZE_SCALE,
   paletteColorToCss,
 } from '../render/palette';
+import {
+  backdropPaletteForRoom,
+  ROOM_BACKDROP_PALETTES,
+} from '../render/roomBackdropConfig';
+import type { RoomBackdropPalette } from '../render/roomBackdropConfig';
 import { PlayerCombatState } from '../combat-core/player/playerCombatState';
 import { ChaserEnemy } from '../combat-core/enemies/chaserEnemy';
 import { ShooterEnemy } from '../combat-core/enemies/shooterEnemy';
@@ -146,6 +151,9 @@ export class ProtoScene extends Phaser.Scene {
   private lastResistNoticeAt = 0;
   private deathHandled = false;
   private audio!: GameAudio;
+  private backdropBase!: Phaser.GameObjects.Rectangle;
+  private backdropGrid!: Phaser.GameObjects.Graphics;
+  private backdropColor: number = ROOM_BACKDROP_PALETTES.stage1.base;
 
   constructor() {
     super('proto');
@@ -309,6 +317,7 @@ export class ProtoScene extends Phaser.Scene {
 
   private startRoom(roomIndex: number): void {
     this.clearCombatRoom();
+    this.applyRoomBackdrop(roomIndex);
     this.waveManager = new WaveManager();
     this.basicAttackCooldownRemaining = 0;
     this.player.setPosition(this.worldBounds.centerX, this.worldBounds.centerY);
@@ -477,12 +486,52 @@ export class ProtoScene extends Phaser.Scene {
     );
   }
 
-  // ── 배경: 네온 그리드 + 마법진 ───────────────────────────────
+  // ── 배경: 방 진행에 따라 색조가 바뀌는 네온 그리드 ──────────
   private drawBackdrop(width: number, height: number): void {
-    const g = this.add.graphics();
-    g.lineStyle(1, 0x1a2350, 0.5);
-    for (let x = 0; x <= width; x += 48) g.lineBetween(x, 0, x, height);
-    for (let y = 0; y <= height; y += 48) g.lineBetween(0, y, width, y);
+    const initial = ROOM_BACKDROP_PALETTES.stage1;
+    this.backdropBase = this.add.rectangle(
+      width / 2,
+      height / 2,
+      width,
+      height,
+      initial.base,
+    ).setDepth(-100);
+
+    this.backdropGrid = this.add.graphics().setDepth(-99);
+    this.redrawBackdropDetails(initial);
+  }
+
+  private applyRoomBackdrop(roomIndex: number): void {
+    const palette = backdropPaletteForRoom(
+      roomIndex,
+      this.combatRunController.state.maxRooms,
+    );
+    const from = Phaser.Display.Color.IntegerToColor(this.backdropColor);
+    const to = Phaser.Display.Color.IntegerToColor(palette.base);
+    this.tweens.addCounter({
+      from: 0,
+      to: 100,
+      duration: 700,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        const mixed = Phaser.Display.Color.Interpolate.ColorWithColor(
+          from,
+          to,
+          100,
+          tween.getValue() ?? 100,
+        );
+        this.backdropBase.setFillStyle(Phaser.Display.Color.GetColor(mixed.r, mixed.g, mixed.b));
+      },
+    });
+    this.redrawBackdropDetails(palette);
+    this.backdropColor = palette.base;
+  }
+
+  private redrawBackdropDetails(palette: RoomBackdropPalette): void {
+    const { width, height } = this.worldBounds;
+    this.backdropGrid.clear().lineStyle(1, palette.grid, palette.gridAlpha);
+    for (let x = 0; x <= width; x += 48) this.backdropGrid.lineBetween(x, 0, x, height);
+    for (let y = 0; y <= height; y += 48) this.backdropGrid.lineBetween(0, y, width, y);
   }
 
   private createPlayer(x: number, y: number): void {
