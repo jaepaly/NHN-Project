@@ -37,6 +37,7 @@ import { firstBoltCollision } from '../combat-core/combat/boltCollision';
 import type { BoltCollision } from '../combat-core/combat/boltCollision';
 import {
   CAGE_CONFIG,
+  lockedPointTargetForForm,
   selectChainTargets,
 } from '../combat-core/combat/advancedFormConfig';
 import {
@@ -995,7 +996,7 @@ export class ProtoScene extends Phaser.Scene {
       ? chainTargets[0] ?? null
       : this.nearestEnemy();
     const to = this.spellTargetPoint(from, spec, target);
-    let boltTarget: CombatEnemy | null = null;
+    let lockedTarget = lockedPointTargetForForm(spec.form, target);
     const hitEnemies = new Set<CombatEnemy>();
     const castRoomIndex = this.combatRunController.state.roomIndex;
     castSpell({
@@ -1011,14 +1012,14 @@ export class ProtoScene extends Phaser.Scene {
           toY,
           projectileRadius,
         );
-        boltTarget = collision?.target ?? null;
+        lockedTarget = collision?.target ?? null;
         return collision ? { x: collision.x, y: collision.y } : null;
       },
       onHit: (impact) => {
         const currentRunState = this.combatRunController.state;
         if (currentRunState.phase !== 'combat'
           || currentRunState.roomIndex !== castRoomIndex) return;
-        this.onSpellHit(impact, spec, boltTarget, hitEnemies, chainTargets);
+        this.onSpellHit(impact, spec, lockedTarget, hitEnemies, chainTargets);
       },
     }, spec);
   }
@@ -1411,7 +1412,7 @@ export class ProtoScene extends Phaser.Scene {
       ? chainTargets[0] ?? null
       : this.nearestEnemy();
     const to = this.spellTargetPoint(from, spec, target);
-    let boltTarget: CombatEnemy | null = spec.form === 'cage' ? target : null;
+    let lockedTarget = lockedPointTargetForForm(spec.form, target);
     const affectedEnemies = new Set<CombatEnemy>();
     const castRoomIndex = this.combatRunController.state.roomIndex;
     castSpell({
@@ -1427,14 +1428,14 @@ export class ProtoScene extends Phaser.Scene {
           toY,
           projectileRadius,
         );
-        boltTarget = collision?.target ?? null;
+        lockedTarget = collision?.target ?? null;
         return collision ? { x: collision.x, y: collision.y } : null;
       },
       onHit: (impact) => {
         const currentRunState = this.combatRunController.state;
         if (currentRunState.phase !== 'combat'
           || currentRunState.roomIndex !== castRoomIndex) return;
-        this.onControlHit(impact, spec, boltTarget, affectedEnemies, chainTargets);
+        this.onControlHit(impact, spec, lockedTarget, affectedEnemies, chainTargets);
       },
     }, spec);
   }

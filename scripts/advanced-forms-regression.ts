@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   CHAIN_CONFIG,
+  lockedPointTargetForForm,
   selectChainTargets,
 } from '../src/combat-core/combat/advancedFormConfig';
 
@@ -67,4 +68,13 @@ assert.ok(Math.abs(
   CHAIN_CONFIG.damageMultipliers.reduce((sum, value) => sum + value, 0) - 2.7,
 ) < 1e-9);
 
-console.log('advanced forms regression: chain 경로·중복금지·거리·사망제외·감쇠 6군 통과');
+// 7) cage는 collision resolver를 거치지 않으므로 damage/control 모두 시전 대상을 고정한다.
+const cageTarget = { id: 'cage-target' };
+assert.equal(lockedPointTargetForForm('cage', cageTarget), cageTarget);
+assert.equal(lockedPointTargetForForm('cage', null), null);
+
+// 8) 충돌 또는 별도 경로로 대상을 정하는 폼은 point 대상을 미리 고정하지 않는다.
+assert.equal(lockedPointTargetForForm('bolt', cageTarget), null);
+assert.equal(lockedPointTargetForForm('chain', cageTarget), null);
+
+console.log('advanced forms regression: chain 6군 + cage 단일 대상 고정 2군 통과');

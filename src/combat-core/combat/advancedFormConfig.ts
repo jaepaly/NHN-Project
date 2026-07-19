@@ -1,3 +1,5 @@
+import type { SpellForm } from '../../spell/types';
+
 export const CHAIN_CONFIG = {
   initialRange: 420,
   jumpRadius: 380,
@@ -16,6 +18,14 @@ export interface ChainCandidate {
   x: number;
   y: number;
   alive?: boolean;
+}
+
+/**
+ * Cage는 투사체 충돌 콜백 없이 대상 위치에서 point impact를 발생시킨다.
+ * 따라서 effect와 무관하게 시전 시점의 대상을 고정해야 한다.
+ */
+export function lockedPointTargetForForm<T>(form: SpellForm, target: T | null): T | null {
+  return form === 'cage' ? target : null;
 }
 
 /**
