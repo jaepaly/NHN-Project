@@ -75,10 +75,33 @@ export interface RewardOption {
 
 export type RunPhase = 'combat' | 'reward-select' | 'room-transition' | 'run-over';
 
+export type EncounterKind = 'combat' | 'elite' | 'stage-boss' | 'memory-boss';
+export type EliteModifier = 'swift' | 'guard' | 'unstable';
+
+export interface EncounterVariantDefinition {
+  id: string;
+  waveSetId: string;
+}
+
+export interface EncounterDefinition {
+  id: string;
+  stage: 1 | 2;
+  kind: EncounterKind;
+  rewardAfterClear: boolean;
+  waveSetId?: string;
+  variants?: readonly EncounterVariantDefinition[];
+  eliteModifiers?: readonly EliteModifier[];
+}
+
 export interface RunStateSnapshot {
   /** 1부터 시작 */
   roomIndex: number;
   maxRooms: number;
+  stage: 1 | 2;
+  encounterId: string;
+  encounterKind: EncounterKind;
+  encounterVariantId?: string;
+  waveSetId?: string;
   phase: RunPhase;
   /** 이번 런에서 획득한 보상 누적 기록 (선택 순서대로) — R1 답변 3 */
   readonly rewards: readonly RewardOption[];
