@@ -6,6 +6,7 @@
 
 | 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
 |---|---|---|---|---|---|---|
+| 2026-07-20 | 이도원 | Codex + Browser | Phaser 캔버스 중복 중앙 정렬 수정 | 타이틀 해상도 불일치 의견을 960×640·1280×720·1920×1080·390×844에서 실측해 Phaser `CENTER_BOTH`와 `#game-root` flex 중앙 정렬의 중복 적용으로 캔버스가 우측·하단으로 밀리는 원인을 확인. CSS flex 정렬을 제거하고 Phaser 단일 정렬로 통일 | `index.html`, `docs/R1_PROJECT_WORK_LOG.md`, `docs/AI_USAGE_LOG.md` | 데스크톱 중심 오차 0px, 모바일 반올림 오차 약 1.7px. 타이틀→인게임 위치 유지·콘솔 무오류·프로덕션 빌드 통과 |
 | 2026-07-20 | jaepaly | Codex | PR #29 최신 통합 재검토 | `damage+cage` 무피해 리뷰 수정과 대상 고정 회귀를 확인하고, #36·#35·#31·#37이 병합된 최신 `main`을 chain/cage 브랜치에 통합해 런 구조 문서·각인·R2 캐시·보스 텍스트 UX와 고급 폼을 모두 보존 | PR #29 병합 커밋, 전체 회귀·빌드 | `HANDOFF_CODEX.md` 제외, Gemini 호출 0회 |
 | 2026-07-19 | 이도원 | Codex + Git | PR #29 최신 `main` 통합·충돌 해결 | #30 보스 BGM·#32 방 색조·#33 작업 로그가 병합된 `main`을 chain/cage 브랜치에 병합하고, `AI_USAGE_LOG` 양쪽 기록과 `package.json`의 advanced/backdrop 회귀 명령을 모두 보존. `ProtoScene` 자동 병합 결과에서 BGM·배경·chain/cage 연결 공존 확인 | `docs/AI_USAGE_LOG.md`, `package.json`, `ProtoScene.ts` 및 `main` 병합 변경 | 전체 회귀 14종·프로덕션 빌드·diff check 통과 |
 | 2026-07-19 | 이도원 | Codex + GitHub Review | PR #29 `damage+cage` 무피해 경로 수정 | 미해결 리뷰 스레드와 실제 `ProtoScene` 호출 흐름을 대조해 cage가 bolt 충돌 콜백 없이 point impact를 발생시켜 대상이 잠기지 않는 원인을 확인. effect와 무관하게 cage의 시전 대상을 고정하는 순수 함수를 피해·제어 경로에 공통 적용하고 회귀 2군 추가 | `advancedFormConfig.ts`, `ProtoScene.ts`, `advanced-forms-regression.ts` | damage+cage는 단일 대상 기본 피해만, control+cage는 기존 감금만 적용. advanced/control/spell/boss 회귀·프로덕션 빌드 통과, 사용자가 실제 플레이에서 damage+cage 피해 적용 확인 |
