@@ -1,6 +1,6 @@
 import { ELEMENTS } from '../../spell/types';
 import type { SpellElement, SpellForm, SpellSize, SpellSpec, SpellStatus } from '../../spell/types';
-import type { RewardOption, SpiritRole } from '../../run/runContract';
+import type { GrowthLevel, RewardOption, SpiritRole } from '../../run/runContract';
 import { ELEMENT_LABELS } from '../../render/palette';
 
 export const SPIRIT_CONFIG = {
@@ -15,7 +15,7 @@ export const SPIRIT_CONFIG = {
   guardAmounts: [12, 18, 26],
 } as const;
 
-export type SpiritLevel = 1 | 2 | 3;
+export type SpiritLevel = GrowthLevel;
 
 export interface SpiritSnapshot {
   spiritId: string;

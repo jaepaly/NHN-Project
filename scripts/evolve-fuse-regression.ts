@@ -16,6 +16,12 @@ import {
   buildEvolveOption,
   injectEvolveReward,
 } from '../src/combat-core/evolve/evolveRewards';
+import {
+  autoSpellImpactDamageFromPower,
+  spellImpactDamageFromPower,
+} from '../src/combat-core/combat/combatConfig';
+import { ZONE_CONFIG, RAIN_CONFIG } from '../src/combat-core/combat/areaSpellConfig';
+import { CHAIN_CONFIG } from '../src/combat-core/combat/advancedFormConfig';
 import type { RewardOption } from '../src/run/runContract';
 import type { SpellSpec } from '../src/spell/types';
 
@@ -182,6 +188,40 @@ function spiritReward(spiritId: string, role: 'attack' | 'heal' | 'guard', level
   assert.equal(Math.round(((engraveDps + fusedDps) / manualDps) * 100), 40, '정확히 40%');
 }
 
+// 6) 실피해 정합 (PR #39 R1 리뷰) — 오토 시전은 반올림·최소 피해 1 없이 정확값을 쓴다.
+//    수동 변환은 저출력·다타격 폼에서 게이트를 부풀린다: 각인 Lv1 12.5→13,
+//    zone 10틱 × 0.08배는 틱당 min 1로 승격돼 펄스당 10 (의도 0.8×power).
+{
+  // 수동 경로는 불변: 타격별 반올림 + 최소 피해 1 유지
+  assert.equal(spellImpactDamageFromPower(12.5, 1), 13, '수동: 반올림 유지');
+  assert.equal(spellImpactDamageFromPower(7.5, 0.08), 1, '수동: 최소 피해 1 유지');
+
+  // 오토 경로: 정확값 — 산술 게이트(power/주기)와 실전이 항상 일치
+  assert.equal(autoSpellImpactDamageFromPower(12.5, 1), 12.5, '오토: 비반올림');
+  assert.equal(autoSpellImpactDamageFromPower(7.5, 0.08), 0.6, '오토: 바닥(min 1) 미적용');
+  assert.equal(autoSpellImpactDamageFromPower(-5, 2), 0, '오토: 음수 방어');
+
+  // 최악 케이스였던 대지 정령 zone: 펄스 총피해 = power × (틱수 × 틱배율) ≤ power
+  const zoneTotalMultiplier = ZONE_CONFIG.tickCount * ZONE_CONFIG.damageMultiplierPerTick;
+  const earthLv2Power = spiritAttackPower(2);
+  const zonePulseDamage = autoSpellImpactDamageFromPower(earthLv2Power, zoneTotalMultiplier);
+  assert.ok(zonePulseDamage <= earthLv2Power, 'zone 펄스 총피해가 power 예산 이내');
+  const inflated = spellImpactDamageFromPower(earthLv2Power, ZONE_CONFIG.damageMultiplierPerTick)
+    * ZONE_CONFIG.tickCount;
+  assert.ok(inflated > earthLv2Power, '(대조) 수동 변환이면 바닥 승격으로 예산 초과였다');
+
+  // chain: 단일 대상 기준 최초 타격 배율 1, 이후 감쇠 — 대상당 피해가 power를 넘지 않는다
+  assert.equal(CHAIN_CONFIG.damageMultipliers[0], 1, 'chain 최초 배율 1');
+  for (let i = 1; i < CHAIN_CONFIG.damageMultipliers.length; i++) {
+    assert.ok(
+      CHAIN_CONFIG.damageMultipliers[i] < CHAIN_CONFIG.damageMultipliers[i - 1],
+      'chain 배율 단조 감소',
+    );
+  }
+  // rain: 타격당 배율 ≤ 1 (타격은 공간 분산 — 단일 소형 적 기준 1~2회 피격)
+  assert.ok(RAIN_CONFIG.damageMultiplierPerStrike <= 1, 'rain 타격당 배율 ≤ 1');
+}
+
 // 5) reset — 융합·진화 상태가 새 런에서 초기화된다.
 {
   const spirit = new SpiritManager();
@@ -199,4 +239,4 @@ function spiritReward(spiritId: string, role: 'attack' | 'heal' | 'guard', level
   assert.equal(engrave.evolveCandidates({ fire: 0.15 }).length, 0, '진화 후보 reset');
 }
 
-console.log('EvolveFuse regression: 진화 게이트·융합 소모·카드 주입·40% 게이트·reset 5군 통과');
+console.log('EvolveFuse regression: 진화 게이트·융합 소모·카드 주입·40% 게이트·실피해 정합·reset 6군 통과');

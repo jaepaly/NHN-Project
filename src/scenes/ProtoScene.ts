@@ -34,6 +34,7 @@ import {
   SPLITTER_CONFIG,
   spellBuffManaFromPower,
   spellHealFromPower,
+  autoSpellImpactDamageFromPower,
   spellImpactDamageFromPower,
   spellPowerWithAffinity,
   spellShieldFromPower,
@@ -1092,7 +1093,11 @@ export class ProtoScene extends Phaser.Scene {
     }
   }
 
-  private applySpellEffect(spec: SpellSpec, origin?: Phaser.Math.Vector2): void {
+  private applySpellEffect(
+    spec: SpellSpec,
+    origin?: Phaser.Math.Vector2,
+    auto = false,
+  ): void {
     const from = origin?.clone()
       ?? new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
     if (spec.effect === 'heal') {
@@ -1153,7 +1158,7 @@ export class ProtoScene extends Phaser.Scene {
         const currentRunState = this.combatRunController.state;
         if (currentRunState.phase !== 'combat'
           || currentRunState.roomIndex !== castRoomIndex) return;
-        this.onSpellHit(impact, spec, lockedTarget, hitEnemies, chainTargets);
+        this.onSpellHit(impact, spec, lockedTarget, hitEnemies, chainTargets, auto);
       },
     }, spec);
   }
@@ -1167,7 +1172,7 @@ export class ProtoScene extends Phaser.Scene {
         if (!this.playerState.alive
           || state.phase !== 'combat'
           || state.roomIndex !== roomIndex) return;
-        this.applySpellEffect(request.spell);
+        this.applySpellEffect(request.spell, undefined, true);
       };
       if (request.delaySeconds === 0) cast();
       else this.time.delayedCall(request.delaySeconds * 1000, cast);
@@ -1197,7 +1202,7 @@ export class ProtoScene extends Phaser.Scene {
         const origin = view
           ? new Phaser.Math.Vector2(view.x, view.y)
           : new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
-        this.applySpellEffect(request.spell, origin);
+        this.applySpellEffect(request.spell, origin, true);
         continue;
       }
       if (request.kind === 'heal') {
@@ -1568,12 +1573,16 @@ export class ProtoScene extends Phaser.Scene {
     lockedTarget: CombatEnemy | null,
     hitEnemies: Set<CombatEnemy>,
     chainTargets: readonly CombatEnemy[] = [],
+    auto = false,
   ): void {
     if (impact.hitGroup !== undefined) hitEnemies.clear();
     const damageMultiplier = Number.isFinite(impact.damageMultiplier)
       ? Math.max(0, impact.damageMultiplier ?? 1)
       : 1;
-    const damage = spellImpactDamageFromPower(spec.power, damageMultiplier);
+    // 오토 시전은 비반올림·바닥 미적용 — 산술 게이트(≤40%)와 실전 피해 일치 (PR #39 R1 리뷰)
+    const damage = auto
+      ? autoSpellImpactDamageFromPower(spec.power, damageMultiplier)
+      : spellImpactDamageFromPower(spec.power, damageMultiplier);
     if (impact.kind === 'point') {
       if (impact.chainIndex !== undefined) {
         const chainTarget = chainTargets[impact.chainIndex];

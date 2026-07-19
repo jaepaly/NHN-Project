@@ -1,4 +1,4 @@
-import type { RewardOption } from '../../run/runContract';
+import type { GrowthLevel, RewardOption } from '../../run/runContract';
 import type { SpellSize, SpellSpec } from '../../spell/types';
 
 /**
@@ -16,7 +16,7 @@ export const ENGRAVE_CONFIG = {
   powerScale: 0.25,
 } as const;
 
-export type EngraveLevel = 1 | 2 | 3;
+export type EngraveLevel = GrowthLevel;
 
 export interface EngravedSpellSnapshot {
   spellKey: string;
