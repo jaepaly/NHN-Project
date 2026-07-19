@@ -248,13 +248,14 @@ export class ProtoScene extends Phaser.Scene {
     this.combatRunController.on('run-completed', (state) => {
       this.deferTransientCombatCleanup();
       this.stopCastingForRunPause();
-      this.announceSystemMessage('런 완료', '#72f1b8');
       console.info('[Run] completed', state);
+      // 플레이어 사망이 먼저 확정된 동시 확정 레이스(사망 후 장판 틱이 보스 처치 등)
+      // — 패배가 선점: 기억 저장·승리 연출 모두 생략해 한 런에 lose/win 이중 기록을 막는다
+      if (this.deathHandled) return;
+      this.announceSystemMessage('런 완료', '#72f1b8');
       this.persistRunMemory('win');
       // RUN COMPLETE 전환 연출(runUiBinding)이 걷힌 뒤 런 요약 → Enter로 새 런
       this.time.delayedCall(1400, () => {
-        // 플레이어 사망이 먼저 확정됐다면(동시 사망 레이스) 패배 요약이 재시작을 담당한다
-        if (this.deathHandled) return;
         void showRunSummaryOverlay(this.buildRunSummary('victory'))
           .then(() => this.restartRun());
       });
