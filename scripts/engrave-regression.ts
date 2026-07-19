@@ -89,7 +89,7 @@ assert.equal(lv3.length, 2);
 assert.equal(lv3[0].spell.size, 'large');
 assert.equal(timer.entries[0].intervalSeconds, ENGRAVE_CONFIG.level3IntervalSeconds);
 
-// 4) 레벨별 발수·주기가 달라도 두 슬롯 단일 대상 지속딜은 수동의 35%로 유지한다.
+// 4) 레벨별 발수·주기가 달라도 두 슬롯 단일 대상 지속딜은 수동의 25%로 유지한다.
 for (const level of [1, 2, 3] as const) {
   const autoDpsTwoSlots = scaledPowerForLevel(120, level)
     * shotCountForLevel(level)
@@ -97,7 +97,7 @@ for (const level of [1, 2, 3] as const) {
     * ENGRAVE_CONFIG.maxSlots;
   const manualDps = 120 / 3;
   assert.ok(autoDpsTwoSlots / manualDps <= 0.4, `Lv${level} 오토 DPS 40% 게이트`);
-  assert.equal(autoDpsTwoSlots / manualDps, 0.35, `Lv${level} 오토 DPS 35%`);
+  assert.equal(autoDpsTwoSlots / manualDps, 0.25, `Lv${level} 각인 DPS 25%`);
 }
 
 // 5) 두 슬롯 모두 Lv3이면 카드 미제시, 새 런 reset은 슬롯·후보·타이머를 모두 초기화한다.

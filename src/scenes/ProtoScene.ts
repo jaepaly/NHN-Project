@@ -59,6 +59,8 @@ import type { WaveDefinition } from '../combat-core/waves/waveManager';
 import { CombatRunController } from '../combat-core/run/runController';
 import { drawRewardOptions } from '../combat-core/run/rewardConfig';
 import { EngraveManager } from '../combat-core/engrave/engraveManager';
+import { SpiritManager } from '../combat-core/spirit/spiritManager';
+import { SpiritOrbView } from '../combat-core/spirit/spiritOrbView';
 import { BossEnemy } from '../combat-core/boss/bossEnemy';
 import { BOSS_CONFIG } from '../combat-core/boss/bossConfig';
 import {
@@ -137,14 +139,22 @@ export class ProtoScene extends Phaser.Scene {
   private playerState = new PlayerCombatState();
   private readonly spellHistory = new SpellHistory();
   private readonly engraveManager = new EngraveManager();
+  private readonly spiritManager = new SpiritManager();
   private engraveRewardRand = createRunRandom(Date.now());
   private readonly combatRunController = new CombatRunController({
     playerState: this.playerState,
-    rewardDraw: (roomIndex) => this.engraveManager.injectReward(
-      drawRewardOptions(roomIndex, this.engraveRewardRand),
-      roomIndex,
-      this.engraveRewardRand,
-    ),
+    rewardDraw: (roomIndex) => {
+      const engraved = this.engraveManager.injectReward(
+        drawRewardOptions(roomIndex, this.engraveRewardRand),
+        roomIndex,
+        this.engraveRewardRand,
+      );
+      return this.spiritManager.injectReward(
+        engraved,
+        roomIndex,
+        this.engraveRewardRand,
+      );
+    },
   });
   private moveKeys!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private worldBounds = new Phaser.Geom.Rectangle();
@@ -159,6 +169,7 @@ export class ProtoScene extends Phaser.Scene {
   private shieldText!: Phaser.GameObjects.Text;
   private attunementText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
+  private spiritHudText!: Phaser.GameObjects.Text;
   private waveManager = new WaveManager();
   private incantWrap!: HTMLElement;
   private incantBar!: HTMLInputElement;
@@ -172,6 +183,8 @@ export class ProtoScene extends Phaser.Scene {
   private basicAttackCooldownRemaining = 0;
   private friendlyMissiles: FriendlyMissile[] = [];
   private activeSummon: SummonedOrb | null = null;
+  private readonly spiritViews = new Map<string, SpiritOrbView>();
+  private spiritOrbitAngle = -Math.PI / 2;
   private readonly enemyControlState = new EnemyControlState();
   private readonly controlIndicators = new Map<CombatEnemy, Phaser.GameObjects.Arc>();
   /** 보스방 진입 시 주문 히스토리로 계산 — R2 내성 모듈이 오면 계산부만 교체 */
@@ -251,6 +264,7 @@ export class ProtoScene extends Phaser.Scene {
       this.updateEnemyProjectiles(d);
       this.updateBasicAttack();
       this.updateEngravedSpells(d);
+      this.updateSpirits(d);
       this.updateSummon(d);
       this.updateFriendlyMissiles(d);
       this.updateWaveFlow(d);
@@ -273,8 +287,12 @@ export class ProtoScene extends Phaser.Scene {
     this.combatRunController.on('reward-applied', (chosen, state) => {
       this.audio.playSfx('reward-select');
       const engraved = this.engraveManager.applyReward(chosen);
+      const spirit = this.spiritManager.applyReward(chosen);
+      if (spirit) this.syncSpiritViews();
       const message = engraved
         ? `${engraved.spell.name} · 각인 Lv${engraved.level}`
+        : spirit
+          ? `${this.spiritName(spirit.role, spirit.element)} · 정령 Lv${spirit.level}`
         : chosen.title;
       this.announceSystemMessage(message, '#ffd166');
       console.info('[Run] reward-applied', chosen, state);
@@ -345,6 +363,9 @@ export class ProtoScene extends Phaser.Scene {
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
     this.engraveManager.reset();
+    this.spiritManager.reset();
+    this.clearSpiritViews();
+    this.spiritOrbitAngle = -Math.PI / 2;
     this.engraveRewardRand = createRunRandom(Date.now());
     this.playerState.reset();
     this.combatRunController.reset();
@@ -491,6 +512,13 @@ export class ProtoScene extends Phaser.Scene {
       fontSize: '14px',
       fontStyle: 'bold',
       color: '#72f1b8',
+      align: 'right',
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+
+    this.spiritHudText = this.add.text(width - 34, 59, 'SPIRIT 0/2', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '11px',
+      color: '#8fa4ff',
       align: 'right',
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
 
@@ -1042,8 +1070,9 @@ export class ProtoScene extends Phaser.Scene {
     }
   }
 
-  private applySpellEffect(spec: SpellSpec): void {
-    const from = new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
+  private applySpellEffect(spec: SpellSpec, origin?: Phaser.Math.Vector2): void {
+    const from = origin?.clone()
+      ?? new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
     if (spec.effect === 'heal') {
       const healed = this.playerState.heal(spellHealFromPower(spec.power));
       this.announceSystemMessage(`회복 +${Math.round(healed)} HP`, '#72f1a8');
@@ -1123,6 +1152,68 @@ export class ProtoScene extends Phaser.Scene {
     }
   }
 
+  /** 마나·쿨다운·수동 주문 기억에 개입하지 않는 정령 자동 발동. */
+  private updateSpirits(deltaSeconds: number): void {
+    this.spiritOrbitAngle += deltaSeconds * 1.35;
+    this.syncSpiritViews();
+    const entries = this.spiritManager.entries;
+    entries.forEach((entry, index) => {
+      const angle = this.spiritOrbitAngle + (Math.PI * 2 * index) / Math.max(1, entries.length);
+      this.spiritViews.get(entry.spiritId)?.updatePosition(
+        this.player.x,
+        this.player.y - 8,
+        angle,
+        68,
+      );
+    });
+
+    for (const request of this.spiritManager.update(deltaSeconds)) {
+      const view = this.spiritViews.get(request.spiritId);
+      view?.pulse(this);
+      if (request.kind === 'attack') {
+        if (!this.nearestEnemy()) continue;
+        const origin = view
+          ? new Phaser.Math.Vector2(view.x, view.y)
+          : new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
+        this.applySpellEffect(request.spell, origin);
+        continue;
+      }
+      if (request.kind === 'heal') {
+        const amount = this.playerState.heal(request.amount);
+        if (amount > 0) this.announceSystemMessage(`치유 정령 · HP +${Math.round(amount)}`, '#72f1a8');
+        continue;
+      }
+      const amount = this.playerState.addShield(request.amount);
+      if (amount > 0) this.announceSystemMessage(`수호 정령 · 보호막 +${Math.round(amount)}`, '#72d8ff');
+    }
+  }
+
+  private syncSpiritViews(): void {
+    const entries = this.spiritManager.entries;
+    const activeIds = new Set(entries.map((entry) => entry.spiritId));
+    for (const [spiritId, view] of this.spiritViews) {
+      if (activeIds.has(spiritId)) continue;
+      view.destroy();
+      this.spiritViews.delete(spiritId);
+    }
+    for (const entry of entries) {
+      if (this.spiritViews.has(entry.spiritId)) continue;
+      const visualElement = entry.element ?? (entry.role === 'heal' ? 'light' : 'earth');
+      this.spiritViews.set(entry.spiritId, new SpiritOrbView(this, visualElement));
+    }
+  }
+
+  private clearSpiritViews(): void {
+    for (const view of this.spiritViews.values()) view.destroy();
+    this.spiritViews.clear();
+  }
+
+  private spiritName(role: 'attack' | 'heal' | 'guard', element?: SpellElement): string {
+    if (role === 'heal') return '치유';
+    if (role === 'guard') return '수호';
+    return ELEMENT_LABELS[element ?? 'light'];
+  }
+
   private currentJudgeSource(): JudgeSource {
     switch (this.judge.lastSource) {
       case 'gemini':
@@ -1164,6 +1255,13 @@ export class ProtoScene extends Phaser.Scene {
     this.hpText.setText(`HP    ${hp.toString().padStart(3)} / ${this.playerState.maxHp}`);
     this.manaText.setText(`MANA  ${mana.toString().padStart(3)} / ${this.playerState.maxMana}`);
     this.shieldText.setText(`SHIELD ${shield.toString().padStart(3)} / ${this.playerState.maxHp}`);
+    const spirits = this.spiritManager.entries;
+    const spiritSummary = spirits.length === 0
+      ? 'SPIRIT 0/2'
+      : `SPIRIT ${spirits.length}/2 · ${spirits
+        .map((entry) => `${this.spiritName(entry.role, entry.element)} Lv${entry.level}`)
+        .join(' · ')}`;
+    this.spiritHudText.setText(spiritSummary);
     this.drawHudBars();
 
     if (runState.phase === 'run-over') {

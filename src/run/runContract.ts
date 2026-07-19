@@ -19,12 +19,23 @@ export type RewardKind =
   | 'swift-incant'
   | 'mana-surge'
   | 'ward-start'
-  | 'engrave';
+  | 'engrave'
+  | 'spirit';
 
 export interface EngraveRewardData {
   /** 정규화된 원문 주문 키 — 이번 런의 수동 영창 기록과 연결한다. */
   spellKey: string;
   /** 선택 후 도달할 각인 레벨 (1~3). */
+  level: number;
+}
+
+export type SpiritRole = 'attack' | 'heal' | 'guard';
+
+export interface SpiritRewardData {
+  /** 같은 정령의 획득·강화를 연결하는 안정 ID. */
+  spiritId: string;
+  role: SpiritRole;
+  /** 선택 후 도달할 레벨 (1~3). */
   level: number;
 }
 
@@ -40,6 +51,8 @@ export interface RewardOption {
   element?: SpellElement;
   /** kind='engrave' 전용 — 각인 대상과 선택 후 레벨 */
   engrave?: EngraveRewardData;
+  /** kind='spirit' 전용 — 정령 역할과 선택 후 레벨 */
+  spirit?: SpiritRewardData;
 }
 
 export type RunPhase = 'combat' | 'reward-select' | 'room-transition' | 'run-over';
