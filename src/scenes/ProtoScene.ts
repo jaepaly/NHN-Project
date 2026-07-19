@@ -326,6 +326,7 @@ export class ProtoScene extends Phaser.Scene {
       this.startBossRoom();
       return;
     }
+    this.audio.playBgm('combat');
     this.spawnWave(this.waveManager.start());
     this.announceSystemMessage(`방 ${roomIndex}`, '#8fa4ff');
   }
@@ -337,6 +338,7 @@ export class ProtoScene extends Phaser.Scene {
 
   private startBossRoom(): void {
     const bossRoomIndex = this.combatRunController.state.roomIndex;
+    this.audio.playBgm('boss');
     // 단기(이번 런) 적응 — R2 내성 계약 소비 (GDD §4.1)
     this.bossResistance = computeResistance(this.spellHistory.bossMemory());
     const runMemory = loadRunMemory();
