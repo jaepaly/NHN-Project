@@ -18,7 +18,15 @@ export type RewardKind =
   | 'affinity'
   | 'swift-incant'
   | 'mana-surge'
-  | 'ward-start';
+  | 'ward-start'
+  | 'engrave';
+
+export interface EngraveRewardData {
+  /** 정규화된 원문 주문 키 — 이번 런의 수동 영창 기록과 연결한다. */
+  spellKey: string;
+  /** 선택 후 도달할 각인 레벨 (1~3). */
+  level: number;
+}
 
 export interface RewardOption {
   /** 고유 id — chooseReward()에 그대로 전달 */
@@ -30,6 +38,8 @@ export interface RewardOption {
   description: string;
   /** kind='affinity' 전용 — 카드 색상·아이콘 표시용 */
   element?: SpellElement;
+  /** kind='engrave' 전용 — 각인 대상과 선택 후 레벨 */
+  engrave?: EngraveRewardData;
 }
 
 export type RunPhase = 'combat' | 'reward-select' | 'room-transition' | 'run-over';
