@@ -86,6 +86,7 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   'swift-incant': 'TEMPO',
   'mana-surge': 'FLOW',
   'ward-start': 'WARD',
+  engrave: 'ENGRAVE',
 };
 
 function ensureDom(): HTMLElement {

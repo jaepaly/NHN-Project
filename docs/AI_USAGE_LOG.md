@@ -6,6 +6,7 @@
 
 | 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
 |---|---|---|---|---|---|---|
+| 2026-07-19 | jaepaly | Codex | 성장 시스템 ② 각인 주문 v1 | 수동으로 발동한 공격 주문만 후보로 기억해 최대 2슬롯에 각인하고, Lv1 6초 자동 시전·Lv2 2연발·Lv3 4초 및 크기 상승으로 강화. 자동 시전은 마나·쿨다운·히스토리를 소비하지 않으며 두 슬롯 합산 DPS를 수동 영창의 35%로 제한 | `EngraveManager`, 보상 계약·런/씬/UI 연결, `test:engrave` | Mock 브라우저 E2E로 보상·강화·자동 시전·재시작 초기화 및 콘솔 무오류 확인. Gemini 호출 0회, `HANDOFF_CODEX.md` 제외 |
 | 2026-07-19 | jaepaly | Codex | 반복성 개선용 런 구조 v2 확정 | 현재 3방·동일 3웨이브 구조로는 성장 빌드 시험과 적·보스 변화가 부족하다는 플레이 피드백을 반영해 선형 진행은 유지하되 2스테이지·6전투·5보상, 방 유형·엘리트·중간 보스·기억 보스 3페이즈를 P0 계약으로 설계 | `RUN_STRUCTURE_V2.md`, Phase 4·README·GDD 갱신 | 8~12분 MVP, 분기 맵·전면 스프라이트 교체는 제외. `HANDOFF_CODEX.md` 제외 |
 | 2026-07-19 | 이도원 | Codex + GitHub | R1 Phase 2~4 작업 로그 누락 복구 | 로컬 Git 커밋과 GitHub PR 메타데이터를 대조해 Phase 2 병합 상태를 갱신하고, Phase 3 사운드·타이틀·보스 리뷰 및 Phase 4 chain/cage·보스 BGM·배경 색조 작업을 R1 역할·협업 경계·검증 중심으로 역기록 | `docs/R1_PROJECT_WORK_LOG.md`, `docs/AI_USAGE_LOG.md` | PR #15~#18·#20~#25·#29·#30·#32와 실제 head SHA를 근거로 작성. 기능 코드는 변경하지 않음 |
 | 2026-07-19 | 이도원 | Codex | Phase 4 R1 스테이지·보스방 배경 색조 변화 | 현재 3방 프로토타입의 진행을 남색→보라청색→보스 적자색으로 구분하고, 기존 네온 그리드 색도 함께 전환하도록 구현 | `roomBackdropConfig.ts`, `ProtoScene.ts`, `room-backdrop-regression.ts`, `test:backdrop` | 외부 이미지 없이 Phaser 도형 사용. 700ms 색조 전환, 색상 수치는 폴리싱 임시값 |
