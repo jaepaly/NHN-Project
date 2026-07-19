@@ -66,3 +66,37 @@ assert.equal(state.movementMultiplierFor(a), 1);
 assert.equal(state.movementMultiplierFor(b), 1);
 
 console.log('Control effects regression: 지속시간·둔화·만료·비중첩·override·정리 6군 통과');
+
+// 7) cage 감금은 이동 배율을 0으로 만들고 보스에도 같은 규칙을 적용한다.
+const cageState = new EnemyControlState();
+const boss = enemy();
+assert.equal(cageState.applyRoot(boss, 2), 2);
+assert.equal(cageState.movementMultiplierFor(boss), 0);
+assert.equal(cageState.rootRemainingFor(boss), 2);
+
+// 8) 감금과 둔화는 독립 수명이며, 감금 종료 뒤 남은 둔화로 복구된다.
+cageState.applySlow(boss, 50); // 4초 둔화
+cageState.update(2);
+assert.equal(cageState.rootRemainingFor(boss), 0);
+assert.equal(cageState.remainingFor(boss), 2);
+assert.equal(cageState.movementMultiplierFor(boss), CONTROL_CONFIG.slowMovementMultiplier);
+cageState.update(2);
+assert.equal(cageState.movementMultiplierFor(boss), 1);
+
+// 9) cage 재적용은 중첩하지 않고 더 긴 남은 시간만 유지한다.
+const refreshTarget = enemy();
+cageState.applyRoot(refreshTarget, 2);
+cageState.update(0.5);
+assert.equal(cageState.applyRoot(refreshTarget, 1), 1.5);
+assert.equal(cageState.applyRoot(refreshTarget, 2), 2);
+assert.equal(cageState.movementMultiplierFor(refreshTarget), 0);
+
+// 10) 감금 대상 사망과 방 정리는 상태를 남기지 않는다.
+const rootedDead = enemy();
+cageState.applyRoot(rootedDead, 2);
+rootedDead.alive = false;
+assert.deepEqual(cageState.update(0), [rootedDead]);
+assert.equal(cageState.movementMultiplierFor(rootedDead), 1);
+assert.deepEqual(cageState.clear(), [refreshTarget]);
+
+console.log('Control effects regression: cage 감금·둔화복구·재적용·정리 4군 통과');
