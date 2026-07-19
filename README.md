@@ -37,7 +37,9 @@ npm run build   # 프로덕션 빌드 (dist/)
 | [docs/AI_USAGE_LOG.md](docs/AI_USAGE_LOG.md) | AI 활용 로그 (전원 기록 의무) |
 | [docs/PHASE_1_SUMMARY.md](docs/PHASE_1_SUMMARY.md) | Phase 1 완료 근거·검증 결과·이월 항목 |
 | [docs/PHASE_2.md](docs/PHASE_2.md) | Phase 2 담당자별 작업 지시·완료 기준 (완료) |
-| [docs/PHASE_3.md](docs/PHASE_3.md) | **Phase 3 지시 — 기억하는 보스 & 에셋 (현재)** |
+| [docs/PHASE_3.md](docs/PHASE_3.md) | Phase 3 지시 — 기억하는 보스 & 에셋 (완료) |
+| [docs/PHASE_4.md](docs/PHASE_4.md) | **Phase 4 지시 — 성장 시스템 & 폴리싱 (현재)** |
+| [docs/PROGRESSION_DESIGN.md](docs/PROGRESSION_DESIGN.md) | 성장 시스템 설계 (보상 풀·각인·정령·진화/융합) |
 | [docs/SPELL_UNDERSTANDING_V2.md](docs/SPELL_UNDERSTANDING_V2.md) | 자유 문장 의미 판정·비공격 효과·불발/금칙 설계 |
 
 ## 🏗 기술 스택
@@ -70,21 +72,20 @@ TypeScript · Vite · Phaser 3 · Gemini Flash (Cloudflare Workers 프록시) ·
 
 ---
 
-## 📌 현재 페이즈: Phase 3 (마감 7/22)
+## 📌 현재 페이즈: Phase 4 (마감 7/26)
 
-> 목표: **"런의 끝에서 나를 기억하는 보스와 싸우고, 게임이 소리와 얼굴(타이틀)을 갖춘다."**
+> 목표: **"런마다 다른 빌드가 만들어진다 — 내 문장이 각인되고, 정령이 자라고, 그 정점에 LLM이 이름을 붙인다."**
 
-Phase 2는 2026-07-15 완료 (계획 7/27 대비 12일 조기) — 방 2개·보상 3택·폼 6종·의미 판정 v2·
-반복 패널티까지 Mock/라이브 통합 QA 통과. **게임명은 INCANT로 확정** (Issue #2 종료).
+Phase 3는 2026-07-19 완료 — 기억하는 보스(단기 내성·카운터·런 간 기억·라이브 대사), 사운드(원소 8종+BGM),
+타이틀 화면·폰트·메타까지 통합 QA(타이틀→보스 풀런 + 라이브 3라우트) 통과.
 
 ### 이번 페이즈 핵심
 
-- **이도원 (에셋·디자인)**: AI 생성 사운드(원소 8종 SFX+BGM)·타이틀 화면(INCANT 로고)·웹폰트·파비콘.
-  **도구·프롬프트·통합 방법을 담은 상세 가이드가 [PHASE_3.md §2](docs/PHASE_3.md)에 있다** — 그대로 따라가면 된다
-- **임재윤 (보스 기억)**: bossMemory 기반 내성 프로필·런 간 기억(localStorage)·보스 대사 생성(/boss-line, 템플릿 폴백 필수)
-- 보스 전투 코어·연출·통합 QA는 총괄이 진행
+- **이도원 (R1)**: **chain·cage 폼 렌더러 (P0 — 정령 Lv2가 의존하는 선행 작업)**, 여유 시 보스전 BGM·스테이지 색조·wall/orbit
+- **임재윤 (R2)**: 판정 품질 튜닝(스냅샷 전/후 비교)·/evolve-name 클라이언트 캐시·심사 기간 할당량 정책 초안
+- 성장 시스템 ②각인 → ③정령 → ④진화·융합 → ⑤연출 구현은 총괄 진행 ([PROGRESSION_DESIGN.md](docs/PROGRESSION_DESIGN.md) §6)
 
-담당자별 상세 지시·완료 기준·일정·스코프 컷은 **[docs/PHASE_3.md](docs/PHASE_3.md)** 기준.
+담당자별 상세 지시·완료 기준·일정·스코프 컷은 **[docs/PHASE_4.md](docs/PHASE_4.md)** 기준.
 
 ### 공통 시작 절차
 
