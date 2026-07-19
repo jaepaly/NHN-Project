@@ -11,15 +11,50 @@ import { FIZZLE_JUDGEMENT } from './types';
  * LLM만큼 똑똑하지 않아도 된다. "게임이 절대 멈추지 않는다"가 존재 이유.
  */
 
+// 한글 외래어 표기(콩글리시)는 실제 플레이에서 가장 흔한 입력이다 — "파이어볼", "아쿠아 펀치".
+// 이게 빠지면 전부 기본 원소로 떨어져 판정이 무너지므로 영문 원어와 함께 반드시 싣는다.
+// (라이브 Gemini는 프롬프트로 외래어를 이해하지만, Mock은 폴백 경로라 자체 사전이 필요)
 const ELEMENT_KEYWORDS: Record<SpellElement, string[]> = {
-  fire: ['불', '화염', '겁화', '태양', '용암', '폭염', '작열', 'fire', 'flame', 'burn'],
-  water: ['물', '해일', '파도', '심연', '급류', '바다', 'water', 'wave', 'tide'],
-  lightning: ['번개', '뇌전', '낙뢰', '전격', '천둥', '라이트닝', 'lightning', 'thunder', 'volt'],
-  ice: ['얼음', '빙결', '서리', '눈보라', '한파', '동결', 'ice', 'frost', 'freeze'],
-  earth: ['대지', '바위', '돌', '지진', '암석', '가시', '숲', '나무', '자연', 'earth', 'rock', 'stone', 'forest', 'nature'],
-  wind: ['바람', '돌풍', '질풍', '회오리', '폭풍', 'wind', 'gale', 'storm'],
-  light: ['빛', '섬광', '성광', '축복', '신성', '광휘', 'light', 'holy', 'radiant'],
-  dark: ['어둠', '암흑', '그림자', '저주', '심야', '흑염', 'dark', 'shadow', 'curse'],
+  fire: [
+    '불', '화염', '겁화', '태양', '용암', '폭염', '작열',
+    '파이어', '플레임', '블레이즈', '인페르노', '버닝', '이그니스',
+    'fire', 'flame', 'burn', 'blaze', 'inferno',
+  ],
+  water: [
+    '물', '해일', '파도', '심연', '급류', '바다',
+    '아쿠아', '워터', '하이드로', '스플래시', '타이달', '웨이브',
+    'water', 'wave', 'tide', 'aqua', 'hydro', 'splash',
+  ],
+  lightning: [
+    '번개', '뇌전', '낙뢰', '전격', '천둥', '라이트닝',
+    '썬더', '선더', '볼트', '일렉트릭', '스파크', '플라즈마',
+    'lightning', 'thunder', 'volt', 'electric', 'spark', 'plasma',
+  ],
+  ice: [
+    '얼음', '빙결', '서리', '눈보라', '한파', '동결',
+    '아이스', '프로스트', '프리즈', '블리자드', '스노우', '글레이셜',
+    'ice', 'frost', 'freeze', 'blizzard', 'snow', 'glacial',
+  ],
+  earth: [
+    '대지', '바위', '돌', '지진', '암석', '가시', '숲', '나무', '자연',
+    '어스', '락', '스톤', '그라운드', '네이처', '포레스트', '퀘이크',
+    'earth', 'rock', 'stone', 'forest', 'nature', 'quake', 'ground',
+  ],
+  wind: [
+    '바람', '돌풍', '질풍', '회오리', '폭풍',
+    '윈드', '게일', '토네이도', '사이클론', '에어', '스톰',
+    'wind', 'gale', 'storm', 'tornado', 'cyclone', 'air',
+  ],
+  light: [
+    '빛', '섬광', '성광', '축복', '신성', '광휘',
+    '라이트', '홀리', '샤인', '루멘', '레이디언트', '글로우',
+    'light', 'holy', 'radiant', 'shine', 'lumen', 'glow',
+  ],
+  dark: [
+    '어둠', '암흑', '그림자', '저주', '심야', '흑염',
+    '다크', '섀도우', '섀도', '커스', '보이드', '나이트메어',
+    'dark', 'shadow', 'curse', 'void', 'nightmare',
+  ],
 };
 
 const UNSAFE_PATTERNS = [
@@ -28,12 +63,30 @@ const UNSAFE_PATTERNS = [
 const KNOWN_NONSENSE = new Set(['ㅁㄴㅇㄹ', 'asdf', 'qwer', 'zxcv', 'ㅋㅋㅋ', 'ㅎㅎㅎ']);
 const HEAL_KEYWORDS = [
   '배고프', '허기', '먹고 싶', '회복', '치유', '낫게', '살려', '지쳤', '피곤',
-  'hungry', 'hunger', 'heal', 'cure', 'recover', 'tired',
+  '힐링', '리커버', '큐어', '리제네',
+  'hungry', 'hunger', 'heal', 'cure', 'recover', 'tired', 'regen',
 ];
-const SHIELD_KEYWORDS = ['보호', '지켜', '방패', '장벽', '갑옷', 'shield', 'protect', 'guard', 'barrier'];
-const BUFF_KEYWORDS = ['강화', '힘을', '빠르게', '용기', '가호', '축복', 'buff', 'strengthen', 'haste', 'bless'];
-const CONTROL_KEYWORDS = ['묶어', '멈춰', '속박', '가둬', '잠재워', '얼려', 'bind', 'stop', 'trap', 'sleep'];
-const SUMMON_KEYWORDS = ['소환', '불러', '정령', '사역마', '친구', 'summon', 'spirit', 'familiar'];
+const SHIELD_KEYWORDS = [
+  '보호', '지켜', '방패', '장벽', '갑옷',
+  '실드', '가드', '배리어', '프로텍트', '아머',
+  'shield', 'protect', 'guard', 'barrier', 'armor',
+];
+const BUFF_KEYWORDS = [
+  '강화', '힘을', '빠르게', '용기', '가호', '축복',
+  // '오라'는 "다크 오라"처럼 공격 주문명에도 흔해 effect 판정을 흐린다 — 제외
+  '버프', '헤이스트', '블레스', '파워업',
+  'buff', 'strengthen', 'haste', 'bless', 'empower',
+];
+const CONTROL_KEYWORDS = [
+  '묶어', '멈춰', '속박', '가둬', '잠재워', '얼려',
+  '바인드', '스턴', '슬로우', '홀드', '루트',
+  'bind', 'stop', 'trap', 'sleep', 'stun', 'slow', 'hold', 'root',
+];
+const SUMMON_KEYWORDS = [
+  '소환', '불러', '정령', '사역마', '친구',
+  '서먼', '스피릿', '패밀리어', '골렘',
+  'summon', 'spirit', 'familiar', 'golem',
+];
 
 function includesAny(text: string, keywords: string[]): boolean {
   return keywords.some((keyword) => text.includes(keyword));
@@ -81,18 +134,20 @@ function targetForEffect(effect: SpellEffect, text: string): SpellTarget {
 }
 
 const FORM_KEYWORDS: Record<SpellForm, string[]> = {
-  bolt: ['구', '화살', '탄', '창', '투사', 'bolt', 'arrow', 'shot'],
+  // '볼'은 "파이어볼/아이스볼"처럼 외래어 주문명의 사실상 표준 어미다.
+  bolt: ['구', '화살', '탄', '창', '투사', '볼', '애로우', '샷', '스피어', 'bolt', 'arrow', 'shot', 'spear'],
   beam: ['광선', '빔', '레이저', '줄기', 'beam', 'laser', 'ray'],
-  wave: ['해일', '파도', '물결', '쓰나미', 'wave', 'tide', 'surge'],
-  nova: ['폭발', '방출', '분출', '터', '노바', 'nova', 'burst', 'explosion'],
-  rain: ['비', '소나기', '낙하', '유성', '우박', 'rain', 'meteor', 'shower'],
-  wall: ['벽', '방벽', '장벽', 'wall', 'barrier'],
-  cage: ['감옥', '구속', '결박', '우리', '속박', 'cage', 'prison', 'bind'],
-  orbit: ['회전', '선회', '고리', '위성', 'orbit', 'ring'],
-  summon: ['소환', '정령', '사역마', 'summon', 'spirit'],
-  buff: ['강화', '가호', '축복', '갑옷', 'buff', 'enchant', 'shield'],
-  zone: ['장판', '영역', '지대', '늪', 'zone', 'field'],
-  chain: ['연쇄', '도약', '전이', 'chain', 'jump'],
+  wave: ['해일', '파도', '물결', '쓰나미', '웨이브', '타이달', 'wave', 'tide', 'surge'],
+  nova: ['폭발', '방출', '분출', '터', '노바', '익스플로전', '블라스트', 'nova', 'burst', 'explosion', 'blast'],
+  rain: ['비', '소나기', '낙하', '유성', '우박', '레인', '메테오', '샤워', 'rain', 'meteor', 'shower'],
+  wall: ['벽', '방벽', '장벽', '월', 'wall', 'barrier'],
+  cage: ['감옥', '구속', '결박', '우리', '속박', '케이지', '프리즌', 'cage', 'prison', 'bind'],
+  // '링'은 "힐링", '존'은 "존재"에 부분 매칭되므로 넣지 않는다 (부분 문자열 오탐 방지)
+  orbit: ['회전', '선회', '고리', '위성', '오빗', 'orbit', 'ring'],
+  summon: ['소환', '정령', '사역마', '서먼', 'summon', 'spirit'],
+  buff: ['강화', '가호', '축복', '갑옷', '버프', 'buff', 'enchant', 'shield'],
+  zone: ['장판', '영역', '지대', '늪', '필드', 'zone', 'field'],
+  chain: ['연쇄', '도약', '전이', '체인', 'chain', 'jump'],
 };
 
 const STATUS_KEYWORDS: Record<SpellStatus, string[]> = {
@@ -104,17 +159,25 @@ const STATUS_KEYWORDS: Record<SpellStatus, string[]> = {
   weaken: ['저주', '약화', '쇠약', 'weaken'],
 };
 
+/**
+ * 가장 앞에 등장한 키워드의 분류를 고른다.
+ * 같은 위치에서 겹치면 **더 긴 키워드가 이긴다** — "라이트닝"이 "라이트"(light)에
+ * 먹히지 않도록. (키 선언 순서에 의존하던 기존 동작을 명시적 규칙으로 고정)
+ */
 function findMatch<K extends string>(
   table: Record<K, string[]>, text: string,
 ): K | null {
   let best: K | null = null;
   let bestIdx = Number.POSITIVE_INFINITY;
+  let bestLen = 0;
   for (const key of Object.keys(table) as K[]) {
     for (const kw of table[key]) {
       const idx = text.indexOf(kw);
-      if (idx !== -1 && idx < bestIdx) {
+      if (idx === -1) continue;
+      if (idx < bestIdx || (idx === bestIdx && kw.length > bestLen)) {
         best = key;
         bestIdx = idx;
+        bestLen = kw.length;
       }
     }
   }
