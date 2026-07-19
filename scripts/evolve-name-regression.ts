@@ -84,4 +84,22 @@ setFetch(okFetch('작열의 핵'));
 assert.equal(await getEvolvedName(evReq, 'http://x'), '작열의 핵', '복구 후 진짜 이름');
 assert.equal(fetchCalls, 1, '폴백은 캐시 안 됨 → 프록시 재호출');
 
-console.log('EvolveName regression: sanitize·템플릿·폴백·캐시키·캐시히트/폴백비저장 5군 통과');
+// 6) 통합 표면 — 총괄이 실제로 쓰는 경로(계약 파일)에서 import돼 동작하나
+const contract = await import('../src/spell/bossMemoryContract');
+assert.equal(
+  typeof contract.getEvolvedName,
+  'function',
+  'bossMemoryContract가 getEvolvedName 공개 (총괄 소비 표면)',
+);
+setFetch(async () => {
+  throw new Error('down');
+});
+const viaContract = await contract.getEvolvedName(
+  { kind: 'fuse', elements: ['ice', 'dark'] },
+  'http://x',
+);
+assert.equal(viaContract, '서리·심연 융합', '계약 경로로 호출→폴백 이름 정상');
+
+console.log(
+  'EvolveName regression: sanitize·템플릿·폴백·캐시키·캐시히트/폴백비저장·계약표면 6군 통과',
+);
