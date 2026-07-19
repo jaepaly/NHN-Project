@@ -34,3 +34,10 @@ export type { RunMemory, RunOutcome, StorageLike } from './runMemory';
 // ── ③ 보스 대사 — 프록시 우선, 템플릿 폴백 ──
 export { getBossLine, templateBossLine, sanitizeLine, toBossLineRequest } from './bossLine';
 export type { BossLine, BossLineRequest } from './bossLine';
+
+// ── ⑤ 진화·융합 작명 (성장 시스템 ④가 소비) — 프록시 우선, 템플릿 폴백, localStorage 캐시 ──
+//   진화: getEvolvedName({ kind: 'evolve', baseName, elements }) → 격상 주문명(string)
+//   융합: getEvolvedName({ kind: 'fuse', elements: [a, b] }) → 융합 이름(string)
+//   동일 요청은 캐시로 같은 이름 재사용(원소 순서 무관). 실패해도 항상 유효한 이름 반환(throw 없음).
+export { getEvolvedName, templateEvolvedName, sanitizeName, evolveCacheKey } from './evolveName';
+export type { EvolveNameRequest } from './evolveName';
