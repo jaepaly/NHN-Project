@@ -173,6 +173,9 @@ export class CombatRunController implements RunController {
       case 'engrave':
         // 각인은 전투 스탯 보상이 아니다. 씬이 reward-applied 이벤트에서 적용한다.
         break;
+      case 'spirit':
+        // 정령도 씬의 전용 관리자가 reward-applied 이벤트에서 적용한다.
+        break;
     }
   }
 
@@ -213,6 +216,7 @@ function cloneReward(reward: RewardOption): RewardOption {
   return {
     ...reward,
     engrave: reward.engrave ? { ...reward.engrave } : undefined,
+    spirit: reward.spirit ? { ...reward.spirit } : undefined,
   };
 }
 

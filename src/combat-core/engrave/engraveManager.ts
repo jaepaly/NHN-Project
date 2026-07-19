@@ -3,7 +3,8 @@ import type { SpellSize, SpellSpec } from '../../spell/types';
 
 /**
  * 각인 v1 임시 밸런스.
- * 한 슬롯의 지속 DPS를 수동 영창의 17.5%로 고정해 두 슬롯 합계가 35%를 넘지 않게 한다.
+ * 한 슬롯의 지속 DPS를 수동 영창의 12.5%로 고정한다.
+ * 정령 두 슬롯(15%)과 합쳐도 자동 피해 총합은 수동 지속 DPS의 40% 이하다.
  */
 export const ENGRAVE_CONFIG = {
   maxSlots: 2,
@@ -12,7 +13,7 @@ export const ENGRAVE_CONFIG = {
   level3IntervalSeconds: 4,
   level2ShotCount: 2,
   secondShotDelaySeconds: 0.3,
-  powerScale: 0.35,
+  powerScale: 0.25,
 } as const;
 
 export type EngraveLevel = 1 | 2 | 3;
@@ -229,6 +230,7 @@ function cloneReward(option: RewardOption): RewardOption {
   return {
     ...option,
     engrave: option.engrave ? { ...option.engrave } : undefined,
+    spirit: option.spirit ? { ...option.spirit } : undefined,
   };
 }
 
