@@ -65,9 +65,17 @@ assert.deepEqual(new Set(state.clear()), new Set([a, b]));
 assert.equal(state.movementMultiplierFor(a), 1);
 assert.equal(state.movementMultiplierFor(b), 1);
 
-console.log('Control effects regression: 지속시간·둔화·만료·비중첩·override·정리 6군 통과');
+// 7) 폼 전용 둔화 배율은 기본 0.5와 별도로 지정하고 만료 후 복구할 수 있다.
+const customSlowState = new EnemyControlState();
+const customSlowTarget = enemy();
+customSlowState.applySlow(customSlowTarget, 100, 1.5, 0.6);
+assert.equal(customSlowState.movementMultiplierFor(customSlowTarget), 0.6);
+customSlowState.update(1.5);
+assert.equal(customSlowState.movementMultiplierFor(customSlowTarget), 1);
 
-// 7) cage 감금은 이동 배율을 0으로 만들고 보스에도 같은 규칙을 적용한다.
+console.log('Control effects regression: 지속시간·둔화·만료·비중첩·override·정리·전용배율 7군 통과');
+
+// 8) cage 감금은 이동 배율을 0으로 만들고 보스에도 같은 규칙을 적용한다.
 const cageState = new EnemyControlState();
 const boss = enemy();
 assert.equal(cageState.applyRoot(boss, 2), 2);

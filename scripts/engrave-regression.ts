@@ -44,6 +44,8 @@ const baseRewards: RewardOption[] = [
 // 1) damage 수동 영창만 후보가 되고 기본 3택 한 장을 각인 카드로 치환한다.
 const manager = new EngraveManager();
 manager.rememberManualCast('heal', { ...spell('치유'), effect: 'heal', target: 'self' });
+manager.rememberManualCast('wall', { ...spell('화염벽'), form: 'wall' });
+manager.rememberManualCast('orbit', { ...spell('화염 궤도'), form: 'orbit' });
 assert.equal(manager.injectReward(baseRewards, 1, () => 0).some((o) => o.kind === 'engrave'), false);
 manager.rememberManualCast('fire ball', spell('화염구'));
 const firstDraw = manager.injectReward(baseRewards, 1, () => 0);

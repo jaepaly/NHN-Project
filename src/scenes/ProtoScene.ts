@@ -47,6 +47,18 @@ import {
   selectChainTargets,
 } from '../combat-core/combat/advancedFormConfig';
 import {
+  ORBIT_CONFIG,
+  WALL_CONFIG,
+  orbitAngularVelocity,
+  orbitCount,
+  orbitPoint,
+  repeatHitReady,
+  sweepIntersectsPolyline,
+  wallArcPoints,
+  wallDurationSeconds,
+} from '../combat-core/combat/persistentFormConfig';
+import type { FormPoint } from '../combat-core/combat/persistentFormConfig';
+import {
   RAIN_CONFIG,
   ZONE_CONFIG,
   densestAreaTarget,
@@ -131,6 +143,23 @@ interface EnemyProjectile {
   lifetimeRemaining: number;
 }
 
+interface ActiveWall {
+  spec: SpellSpec;
+  points: readonly FormPoint[];
+  view: Phaser.GameObjects.Graphics;
+  remainingSeconds: number;
+  contactedEnemies: Set<CombatEnemy>;
+  slowedBosses: Set<CombatEnemy>;
+}
+
+interface ActiveOrbit {
+  spec: SpellSpec;
+  views: Phaser.GameObjects.Container[];
+  elapsedSeconds: number;
+  angle: number;
+  lastHitAt: Map<CombatEnemy, number>;
+}
+
 /**
  * 기술검증 프로토타입 씬 — W1 목표 (SUBMISSION_PLAN W1)
  * 검증 대상: 입력 → 판정(SpellJudge) → JSON → 파츠 조합 렌더링 1사이클
@@ -200,6 +229,8 @@ export class ProtoScene extends Phaser.Scene {
   private basicAttackCooldownRemaining = 0;
   private friendlyMissiles: FriendlyMissile[] = [];
   private activeSummon: SummonedOrb | null = null;
+  private activeWall: ActiveWall | null = null;
+  private activeOrbit: ActiveOrbit | null = null;
   private readonly spiritViews = new Map<string, SpiritOrbView>();
   private spiritOrbitAngle = -Math.PI / 2;
   private readonly enemyControlState = new EnemyControlState();
@@ -278,6 +309,7 @@ export class ProtoScene extends Phaser.Scene {
       this.updatePlayerMovement(delta / 1000);
       this.updateEnemyControls(d);
       this.updateEnemies(d);
+      this.updatePersistentForms(d);
       this.updateEnemyProjectiles(d);
       this.updateBasicAttack();
       this.updateEngravedSpells(d);
@@ -486,6 +518,8 @@ export class ProtoScene extends Phaser.Scene {
     this.clearEnemyProjectiles();
     this.clearFriendlyMissiles();
     this.clearSummon();
+    this.clearActiveWall();
+    this.clearActiveOrbit();
   }
 
   /** 투사체 update 순회가 끝난 다음 tick에 안전하게 일괄 제거한다. */
@@ -697,6 +731,7 @@ export class ProtoScene extends Phaser.Scene {
     if (!this.playerState.alive) return;
 
     for (const enemy of this.enemies) {
+      const previous = { x: enemy.x, y: enemy.y };
       const shots = enemy.update(
         deltaSeconds,
         this.player.x,
@@ -713,7 +748,10 @@ export class ProtoScene extends Phaser.Scene {
         this.worldBounds.top + 22,
         this.worldBounds.bottom - 22,
       );
-      for (const shot of shots) this.spawnEnemyProjectile(shot);
+      this.resolveWallEnemyCollision(enemy, previous);
+      if (enemy.alive) {
+        for (const shot of shots) this.spawnEnemyProjectile(shot);
+      }
     }
 
     let totalHpDamage = 0;
@@ -773,6 +811,7 @@ export class ProtoScene extends Phaser.Scene {
       }
 
       projectile.lifetimeRemaining -= deltaSeconds;
+      const previous = { x: projectile.body.x, y: projectile.body.y };
       projectile.body.x += projectile.velocity.x * deltaSeconds;
       projectile.body.y += projectile.velocity.y * deltaSeconds;
       projectile.halo.setPosition(projectile.body.x, projectile.body.y);
@@ -780,6 +819,17 @@ export class ProtoScene extends Phaser.Scene {
       const expired = projectile.lifetimeRemaining <= 0;
       const outsideWorld = !this.worldBounds.contains(projectile.body.x, projectile.body.y);
       if (expired || outsideWorld) {
+        this.destroyEnemyProjectile(projectile);
+        continue;
+      }
+
+      const wall = this.activeWall;
+      if (wall && sweepIntersectsPolyline(
+        previous,
+        { x: projectile.body.x, y: projectile.body.y },
+        5 + WALL_CONFIG.thickness / 2,
+        wall.points,
+      )) {
         this.destroyEnemyProjectile(projectile);
         continue;
       }
@@ -1115,6 +1165,14 @@ export class ProtoScene extends Phaser.Scene {
       this.announceSystemMessage(`강화 · MANA +${Math.round(restored)}`, '#c7a6ff');
       return;
     }
+    if (spec.form === 'wall' && (spec.effect === 'damage' || spec.effect === 'control')) {
+      this.createWall(from, spec);
+      return;
+    }
+    if (spec.form === 'orbit' && (spec.effect === 'damage' || spec.effect === 'control')) {
+      this.createOrbit(spec);
+      return;
+    }
     if (spec.effect === 'control') {
       this.castControlSpell(from, spec);
       return;
@@ -1233,6 +1291,148 @@ export class ProtoScene extends Phaser.Scene {
   private clearSpiritViews(): void {
     for (const view of this.spiritViews.values()) view.destroy();
     this.spiritViews.clear();
+  }
+
+  private createWall(from: Phaser.Math.Vector2, spec: SpellSpec): void {
+    this.clearActiveWall();
+    const target = spec.target === 'self'
+      ? this.nearestEnemy()
+      : densestDirectionalTarget(
+        from.x,
+        from.y,
+        WALL_CONFIG.targetingRange,
+        WALL_CONFIG.targetingHalfWidth,
+        this.enemies.filter((enemy) => enemy.alive),
+      ) ?? this.nearestEnemy();
+    const points = wallArcPoints(
+      from,
+      target ? { x: target.x, y: target.y } : null,
+      spec.size,
+    );
+    const palette = ELEMENT_PALETTES[spec.element_primary];
+    const vectors = points.map((point) => new Phaser.Math.Vector2(point.x, point.y));
+    const view = this.add.graphics().setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
+    view.lineStyle(WALL_CONFIG.thickness + 10, palette.glow, 0.18).strokePoints(vectors, false);
+    view.lineStyle(WALL_CONFIG.thickness, palette.core, 0.78).strokePoints(vectors, false);
+    view.lineStyle(2, palette.accent, 0.95).strokePoints(vectors, false);
+    this.activeWall = {
+      spec: { ...spec, status: [...spec.status] },
+      points,
+      view,
+      remainingSeconds: wallDurationSeconds(spec.speed),
+      contactedEnemies: new Set(),
+      slowedBosses: new Set(),
+    };
+  }
+
+  private createOrbit(spec: SpellSpec): void {
+    this.clearActiveOrbit();
+    const palette = ELEMENT_PALETTES[spec.element_primary];
+    const count = orbitCount(spec.size);
+    const views = Array.from({ length: count }, () => {
+      const halo = this.add.circle(0, 0, 13, palette.glow, 0.26)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      const core = this.add.circle(0, 0, 6, palette.core, 0.95)
+        .setStrokeStyle(1.5, palette.accent, 0.9)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      return this.add.container(this.player.x, this.player.y, [halo, core]).setDepth(8);
+    });
+    this.activeOrbit = {
+      spec: { ...spec, status: [...spec.status] },
+      views,
+      elapsedSeconds: 0,
+      angle: -Math.PI / 2,
+      lastHitAt: new Map(),
+    };
+  }
+
+  private updatePersistentForms(deltaSeconds: number): void {
+    const wall = this.activeWall;
+    if (wall) {
+      wall.remainingSeconds -= deltaSeconds;
+      if (wall.remainingSeconds <= 0) this.clearActiveWall();
+    }
+
+    const orbit = this.activeOrbit;
+    if (!orbit) return;
+    orbit.elapsedSeconds += deltaSeconds;
+    if (orbit.elapsedSeconds >= ORBIT_CONFIG.durationSeconds) {
+      this.clearActiveOrbit();
+      return;
+    }
+    orbit.angle += orbitAngularVelocity(orbit.spec.speed) * deltaSeconds;
+    const center = { x: this.player.x, y: this.player.y - 8 };
+    orbit.views.forEach((view, index) => {
+      const point = orbitPoint(center, orbit.angle, index, orbit.views.length);
+      view.setPosition(point.x, point.y);
+      for (const enemy of [...this.enemies]) {
+        if (!enemy.alive) continue;
+        if (Phaser.Math.Distance.Between(point.x, point.y, enemy.x, enemy.y)
+          > ORBIT_CONFIG.contactRadius + enemy.collisionRadius) continue;
+        if (!repeatHitReady(orbit.lastHitAt.get(enemy), orbit.elapsedSeconds)) continue;
+        orbit.lastHitAt.set(enemy, orbit.elapsedSeconds);
+        if (orbit.spec.effect === 'control') {
+          this.applyControl(enemy, orbit.spec.power, { kind: 'point', x: point.x, y: point.y });
+        } else {
+          const damage = spellImpactDamageFromPower(
+            orbit.spec.power,
+            ORBIT_CONFIG.damageMultiplier,
+          );
+          this.damageEnemy(enemy, this.spellDamageAgainst(enemy, orbit.spec, damage));
+        }
+      }
+    });
+  }
+
+  private resolveWallEnemyCollision(enemy: CombatEnemy, previous: FormPoint): void {
+    const wall = this.activeWall;
+    if (!wall || !enemy.alive) return;
+    const crossed = sweepIntersectsPolyline(
+      previous,
+      { x: enemy.x, y: enemy.y },
+      enemy.collisionRadius + WALL_CONFIG.thickness / 2,
+      wall.points,
+    );
+    if (!crossed) return;
+
+    const startedTouching = sweepIntersectsPolyline(
+      previous,
+      previous,
+      enemy.collisionRadius + WALL_CONFIG.thickness / 2,
+      wall.points,
+    );
+    if (enemy.kind !== 'boss' && !startedTouching) {
+      enemy.view.setPosition(previous.x, previous.y);
+    }
+    if (enemy.kind === 'boss' && !wall.slowedBosses.has(enemy)) {
+      wall.slowedBosses.add(enemy);
+      this.applySlow(
+        enemy,
+        wall.spec.power,
+        WALL_CONFIG.bossSlowDurationSeconds,
+        WALL_CONFIG.bossSlowMovementMultiplier,
+      );
+    }
+    if (wall.contactedEnemies.has(enemy)) return;
+    wall.contactedEnemies.add(enemy);
+    if (wall.spec.effect === 'control') {
+      if (enemy.kind !== 'boss') {
+        this.applyControl(enemy, wall.spec.power, { kind: 'point', x: enemy.x, y: enemy.y });
+      }
+      return;
+    }
+    const damage = spellImpactDamageFromPower(wall.spec.power, WALL_CONFIG.damageMultiplier);
+    this.damageEnemy(enemy, this.spellDamageAgainst(enemy, wall.spec, damage));
+  }
+
+  private clearActiveWall(): void {
+    this.activeWall?.view.destroy();
+    this.activeWall = null;
+  }
+
+  private clearActiveOrbit(): void {
+    for (const view of this.activeOrbit?.views ?? []) view.destroy(true);
+    this.activeOrbit = null;
   }
 
   private spiritName(role: 'attack' | 'heal' | 'guard', element?: SpellElement): string {
@@ -1792,11 +1992,13 @@ export class ProtoScene extends Phaser.Scene {
     enemy: CombatEnemy,
     power: number,
     durationOverrideSeconds?: number,
+    movementMultiplierOverride?: number,
   ): void {
     const remaining = this.enemyControlState.applySlow(
       enemy,
       power,
       durationOverrideSeconds,
+      movementMultiplierOverride,
     );
     if (!this.controlIndicators.has(enemy)) {
       const indicator = this.add.circle(
@@ -1813,7 +2015,7 @@ export class ProtoScene extends Phaser.Scene {
     console.info('[Control] slow-applied', {
       enemy: enemy.kind,
       durationSeconds: remaining,
-      movementMultiplier: CONTROL_CONFIG.slowMovementMultiplier,
+      movementMultiplier: this.enemyControlState.movementMultiplierFor(enemy),
     });
   }
 
