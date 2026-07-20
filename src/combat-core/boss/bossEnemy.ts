@@ -35,6 +35,7 @@ export class BossEnemy implements CombatEnemy {
 
   private readonly core: Phaser.GameObjects.Polygon;
   private readonly ring: Phaser.GameObjects.Arc;
+  private readonly secondaryResistanceRing: Phaser.GameObjects.Arc;
   private readonly healthFill: Phaser.GameObjects.Rectangle;
 
   constructor(
@@ -61,13 +62,24 @@ export class BossEnemy implements CombatEnemy {
     this.ring = scene.add.circle(0, 0, 48, 0x000000, 0)
       .setStrokeStyle(2, 0xd0a8ff, 0.7)
       .setBlendMode(Phaser.BlendModes.ADD);
+    this.secondaryResistanceRing = scene.add.circle(0, 0, 41, 0x000000, 0)
+      .setStrokeStyle(2, 0xd0a8ff, 0.7)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setVisible(false);
 
     const healthBack = scene.add.rectangle(-45, -66, 90, 7, 0x30121c, 0.9)
       .setOrigin(0, 0.5);
     this.healthFill = scene.add.rectangle(-45, -66, 90, 7, 0xff6b86, 1)
       .setOrigin(0, 0.5);
 
-    this.view = scene.add.container(x, y, [glow, this.ring, this.core, healthBack, this.healthFill]);
+    this.view = scene.add.container(x, y, [
+      glow,
+      this.ring,
+      this.secondaryResistanceRing,
+      this.core,
+      healthBack,
+      this.healthFill,
+    ]);
   }
 
   get x(): number {
@@ -101,9 +113,21 @@ export class BossEnemy implements CombatEnemy {
 
   /** 기억 기반 내성 원소를 시각화 (링 색 = 내성 원소 팔레트) — GDD §4.1 "명시적 표시" */
   showResistance(element: SpellElement | null): void {
-    if (!element) return;
-    const pal = ELEMENT_PALETTES[element];
-    this.ring.setStrokeStyle(4, pal.core, 0.95);
+    this.showResistances(element ? [element] : []);
+  }
+
+  /** 활성 내성이 둘이면 바깥·안쪽 링으로 모두 표시한다. */
+  showResistances(elements: readonly SpellElement[]): void {
+    this.ring.setStrokeStyle(2, 0xd0a8ff, 0.7);
+    this.secondaryResistanceRing.setVisible(false);
+    const primary = elements[0];
+    if (!primary) return;
+    this.ring.setStrokeStyle(4, ELEMENT_PALETTES[primary].core, 0.95);
+    const secondary = elements[1];
+    if (!secondary) return;
+    this.secondaryResistanceRing
+      .setStrokeStyle(3, ELEMENT_PALETTES[secondary].core, 0.9)
+      .setVisible(true);
   }
 
   /** R2 카운터 전략 적용 — rush: 돌진 가속 / ranged: 볼리 강화 (GDD §4.1 카운터 패턴) */
@@ -129,6 +153,7 @@ export class BossEnemy implements CombatEnemy {
       this.contactDamageCooldownRemaining - deltaSeconds,
     );
     this.ring.rotation += 0.9 * deltaSeconds;
+    this.secondaryResistanceRing.rotation -= 0.7 * deltaSeconds;
     this.core.rotation -= 0.25 * deltaSeconds;
 
     if (this.chargeRemaining > 0) {

@@ -8,6 +8,11 @@ import Phaser from 'phaser';
 type Container = Phaser.GameObjects.Container;
 type Shape = Phaser.GameObjects.Shape;
 
+function resetScaleTween(scene: Phaser.Scene, view: Container): void {
+  scene.tweens.killTweensOf(view);
+  if (view.active) view.setScale(1);
+}
+
 /** 피격 반응: 짧은 흰색 플래시 + 가로로 눌리는 squash (타격당하는 느낌). */
 export function playHitReact(
   scene: Phaser.Scene,
@@ -15,6 +20,7 @@ export function playHitReact(
   flashShape: Shape,
   baseColor: number,
 ): void {
+  resetScaleTween(scene, view);
   scene.tweens.add({
     targets: view,
     scaleX: 1.3,
@@ -34,6 +40,7 @@ export function playHitReact(
 
 /** 공격 순간: 앞으로 뻗는 듯한 스케일 펀치 (때리는 느낌). */
 export function playAttackLunge(scene: Phaser.Scene, view: Container): void {
+  resetScaleTween(scene, view);
   scene.tweens.add({
     targets: view,
     scaleX: 1.24,

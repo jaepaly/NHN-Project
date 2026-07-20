@@ -10,6 +10,7 @@ import { ELEMENT_LABELS, ELEMENT_PALETTES, paletteColorToCss } from '../render/p
 
 const STYLE_ID = 'r3-runhud-style';
 const WRAP_ID = 'r3-runhud';
+let resizeBound = false;
 
 const CSS = `
 #${WRAP_ID} {
@@ -17,6 +18,7 @@ const CSS = `
   display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
   font-family: 'Consolas', 'Segoe UI', monospace;
   pointer-events: none;
+  transform-origin: top right;
 }
 #${WRAP_ID} .run-room {
   padding: 6px 12px; border-radius: 8px;
@@ -26,7 +28,7 @@ const CSS = `
   text-shadow: 0 0 10px rgba(76, 102, 255, 0.7);
 }
 #${WRAP_ID} .run-affinity {
-  display: flex; gap: 5px;
+  display: flex; gap: 5px; margin-top: 76px;
 }
 #${WRAP_ID} .affinity-chip {
   padding: 3px 8px; border-radius: 999px;
@@ -50,7 +52,24 @@ function ensureDom(): HTMLElement {
     wrap.setAttribute('aria-hidden', 'true');
     document.body.appendChild(wrap);
   }
+  if (!resizeBound) {
+    resizeBound = true;
+    window.addEventListener('resize', () => {
+      const current = document.getElementById(WRAP_ID);
+      if (current) positionOverGameHud(current);
+    });
+  }
   return wrap;
+}
+
+function positionOverGameHud(wrap: HTMLElement): void {
+  const canvas = document.querySelector<HTMLCanvasElement>('#game-root canvas');
+  if (!canvas) return;
+  const bounds = canvas.getBoundingClientRect();
+  const scale = bounds.width / canvas.width;
+  wrap.style.top = `${bounds.top + 18 * scale}px`;
+  wrap.style.right = `${window.innerWidth - bounds.right + 18 * scale}px`;
+  wrap.style.transform = `scale(${scale})`;
 }
 
 /** 런 상태를 HUD에 반영한다. 매 프레임이 아니라 상태 변화 시에만 호출하면 된다. */
@@ -64,6 +83,7 @@ export function updateRunHud(state: RunStateSnapshot): void {
   wrap.innerHTML = `
     <div class="run-room">ROOM ${state.roomIndex}/${state.maxRooms}</div>
     ${affinities.length ? '<div class="run-affinity"></div>' : ''}`;
+  positionOverGameHud(wrap);
 
   const affinityEl = wrap.querySelector('.run-affinity');
   if (affinityEl) {

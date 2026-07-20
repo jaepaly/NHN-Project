@@ -142,6 +142,19 @@ function entry(
   assert.equal(recovered[0].name, '정상');
 
   // 저장 실패(용량 초과 등)해도 던지지 않는다 — 게임은 계속돼야 한다
+  store.set('incant:grimoire:v1:entries', JSON.stringify([
+    { ...entry('invalid-element', 'fire', 30), element: 'void' },
+    { ...entry('invalid-form', 'water', 30), form: 'laser' },
+    { ...entry('invalid-power', 'ice', 30), power: 101 },
+    entry('valid', 'wind', 30),
+  ]));
+  const enumRecovered = loadGrimoire(storage);
+  assert.deepEqual(
+    enumRecovered.map((item) => item.normalized),
+    ['valid'],
+    '잘못된 원소·폼·위력 범위 항목은 로드하지 않는다',
+  );
+
   const throwing: StorageLike = {
     getItem: () => null,
     setItem: () => { throw new Error('quota'); },
