@@ -8,15 +8,27 @@ import {
 export class EnemyControlState {
   private readonly effects = new Map<CombatEnemy, {
     slowRemaining: number;
+    slowMovementMultiplier: number;
     rootRemaining: number;
   }>();
 
-  applySlow(enemy: CombatEnemy, power: number, durationOverrideSeconds?: number): number {
+  applySlow(
+    enemy: CombatEnemy,
+    power: number,
+    durationOverrideSeconds?: number,
+    movementMultiplierOverride?: number,
+  ): number {
     const duration = durationOverrideSeconds !== undefined
       && Number.isFinite(durationOverrideSeconds)
       ? Math.max(0, durationOverrideSeconds)
       : controlDurationFromPower(power);
     const effect = this.effectFor(enemy);
+    const movementMultiplier = movementMultiplierOverride !== undefined
+      && Number.isFinite(movementMultiplierOverride)
+      ? Math.max(0, Math.min(1, movementMultiplierOverride))
+      : CONTROL_CONFIG.slowMovementMultiplier;
+    if (effect.slowRemaining <= 0) effect.slowMovementMultiplier = movementMultiplier;
+    else effect.slowMovementMultiplier = Math.min(effect.slowMovementMultiplier, movementMultiplier);
     const remaining = Math.max(effect.slowRemaining, duration);
     effect.slowRemaining = remaining;
     return remaining;
@@ -40,6 +52,9 @@ export class EnemyControlState {
         continue;
       }
       effect.slowRemaining = Math.max(0, effect.slowRemaining - delta);
+      if (effect.slowRemaining <= 0) {
+        effect.slowMovementMultiplier = CONTROL_CONFIG.slowMovementMultiplier;
+      }
       effect.rootRemaining = Math.max(0, effect.rootRemaining - delta);
       if (effect.slowRemaining <= 0 && effect.rootRemaining <= 0) {
         this.effects.delete(enemy);
@@ -53,7 +68,7 @@ export class EnemyControlState {
     const effect = this.effects.get(enemy);
     if (!effect) return 1;
     if (effect.rootRemaining > 0) return 0;
-    return effect.slowRemaining > 0 ? CONTROL_CONFIG.slowMovementMultiplier : 1;
+    return effect.slowRemaining > 0 ? effect.slowMovementMultiplier : 1;
   }
 
   remainingFor(enemy: CombatEnemy): number {
@@ -75,10 +90,18 @@ export class EnemyControlState {
     return affected;
   }
 
-  private effectFor(enemy: CombatEnemy): { slowRemaining: number; rootRemaining: number } {
+  private effectFor(enemy: CombatEnemy): {
+    slowRemaining: number;
+    slowMovementMultiplier: number;
+    rootRemaining: number;
+  } {
     let effect = this.effects.get(enemy);
     if (!effect) {
-      effect = { slowRemaining: 0, rootRemaining: 0 };
+      effect = {
+        slowRemaining: 0,
+        slowMovementMultiplier: CONTROL_CONFIG.slowMovementMultiplier,
+        rootRemaining: 0,
+      };
       this.effects.set(enemy, effect);
     }
     return effect;
