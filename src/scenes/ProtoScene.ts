@@ -14,6 +14,7 @@ import {
   paletteColorToCss,
 } from '../render/palette';
 import { applyWorldFx } from '../render/postFx';
+import { TRAIL_CONFIG, spawnTrailGhost } from '../render/trailEffect';
 import {
   backdropPaletteForEncounter,
   ROOM_BACKDROP_PALETTES,
@@ -660,6 +661,9 @@ export class ProtoScene extends Phaser.Scene {
     }).setScrollFactor(0).setDepth(100);
   }
 
+  /** Phase 5 트레일 — 이동 중 잔상 스폰 간격 타이머 (Track C 아트 디렉션). */
+  private playerTrailCooldown = 0;
+
   private updatePlayerMovement(deltaSeconds: number): void {
     if (this.incanting || this.casting || !this.playerState.alive) return;
 
@@ -681,6 +685,13 @@ export class ProtoScene extends Phaser.Scene {
       this.worldBounds.top + 22,
       this.worldBounds.bottom - 22,
     );
+
+    // 이동 중 잔상 트레일 (네온 잔광). 스폰 간격으로 오브젝트 폭증을 억제한다.
+    this.playerTrailCooldown -= deltaSeconds;
+    if (this.playerTrailCooldown <= 0) {
+      this.playerTrailCooldown = TRAIL_CONFIG.spawnIntervalSeconds;
+      spawnTrailGhost(this, this.player.x, this.player.y, 12, 0x8fa4ff, this.player.depth - 1);
+    }
   }
 
   // ── 배경: 방 진행에 따라 색조가 바뀌는 네온 그리드 ──────────
