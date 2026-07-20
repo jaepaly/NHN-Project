@@ -42,6 +42,7 @@ import {
   spellPowerWithAffinity,
   spellShieldFromPower,
 } from '../combat-core/combat/combatConfig';
+import { castEconomyMode } from '../combat-core/combat/castEconomy';
 import { firstBoltCollision } from '../combat-core/combat/boltCollision';
 import type { BoltCollision } from '../combat-core/combat/boltCollision';
 import {
@@ -626,7 +627,9 @@ export class ProtoScene extends Phaser.Scene {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: '#91b7ff',
-    }).setScrollFactor(0).setDepth(100);
+    }).setScrollFactor(0).setDepth(100)
+      // 위력쿨다운식(#53)에선 마나가 없으므로 텍스트를 숨긴다.
+      .setVisible(castEconomyMode() === 'mana');
     this.shieldText = this.add.text(34, 122, '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
@@ -1747,7 +1750,9 @@ export class ProtoScene extends Phaser.Scene {
       }
 
       const spec = judgement.spell;
-      if (!this.playerState.trySpendMana(spec.cost)) {
+      const economy = castEconomyMode();
+      // 마나식에서만 마나를 소모·검사. 위력쿨다운식(#53)에선 마나 없이 시전한다.
+      if (economy === 'mana' && !this.playerState.trySpendMana(spec.cost)) {
         this.audio.playSfx('fizzle');
         this.announceSystemMessage('마나 부족');
         return;
@@ -1777,7 +1782,8 @@ export class ProtoScene extends Phaser.Scene {
         );
       }
 
-      this.playerState.startGlobalCooldown();
+      // 위력쿨다운식(#53): 주문의 판정 위력(spec.power)에 비례해 쿨다운. 마나식: 고정.
+      this.playerState.startGlobalCooldown(economy === 'cooldown' ? spec.power : undefined);
       this.audio.playCast(effectiveSpec.element_primary);
       this.applySpellPalette(effectiveSpec);
       this.announceSpell(effectiveSpec);
@@ -2228,14 +2234,17 @@ export class ProtoScene extends Phaser.Scene {
     g.lineStyle(1, 0x33447f, 0.72);
     g.strokeRoundedRect(HUD.x, HUD.y, HUD.width, HUD.height, 12);
 
+    const showMana = castEconomyMode() === 'mana';
     g.fillStyle(0x141a35, 1);
     g.fillRoundedRect(HUD.barX, 73, HUD.barWidth, HUD.barHeight, 4);
-    g.fillRoundedRect(HUD.barX, 107, HUD.barWidth, HUD.barHeight, 4);
+    if (showMana) g.fillRoundedRect(HUD.barX, 107, HUD.barWidth, HUD.barHeight, 4);
     g.fillRoundedRect(HUD.barX, 141, HUD.barWidth, HUD.barHeight, 4);
     g.fillStyle(0xff5c82, 1);
     g.fillRoundedRect(HUD.barX, 73, HUD.barWidth * hpRatio, HUD.barHeight, 4);
-    g.fillStyle(0x5b8cff, 1);
-    g.fillRoundedRect(HUD.barX, 107, HUD.barWidth * manaRatio, HUD.barHeight, 4);
+    if (showMana) {
+      g.fillStyle(0x5b8cff, 1);
+      g.fillRoundedRect(HUD.barX, 107, HUD.barWidth * manaRatio, HUD.barHeight, 4);
+    }
     g.fillStyle(0x48c9ff, 1);
     g.fillRoundedRect(HUD.barX, 141, HUD.barWidth * shieldRatio, HUD.barHeight, 4);
 

@@ -104,3 +104,18 @@ export function spellShieldFromPower(power: number): number {
 export function spellBuffManaFromPower(power: number): number {
   return Math.max(1, Math.round(3 + power * 0.25));
 }
+
+/**
+ * Track B(#53) 시전 경제 실험 — 위력 비례 쿨다운.
+ * 쿨다운(초) = baseSeconds + (power/100) × powerScaleSeconds. 임시값, 플레이테스트로 조정.
+ * 예: 30→1.9s · 65→2.8s · 100→3.6s.
+ */
+export const CAST_COOLDOWN_CONFIG = {
+  baseSeconds: 1.2,
+  powerScaleSeconds: 2.4,
+} as const;
+
+export function castCooldownFromPower(power: number): number {
+  const p = Number.isFinite(power) ? Math.max(0, Math.min(100, power)) : 0;
+  return CAST_COOLDOWN_CONFIG.baseSeconds + (p / 100) * CAST_COOLDOWN_CONFIG.powerScaleSeconds;
+}

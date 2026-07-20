@@ -1,3 +1,5 @@
+import { castCooldownFromPower } from '../combat/combatConfig';
+
 /** R1 전투 코어의 플레이어 HP·마나·쿨다운 상태. */
 export const PLAYER_COMBAT_CONFIG = {
   maxHp: 100,
@@ -65,8 +67,20 @@ export class PlayerCombatState {
     return true;
   }
 
-  startGlobalCooldown(): void {
-    this.cooldownRemaining = this.globalCooldownSeconds;
+  /**
+   * 글로벌 쿨다운 시작.
+   * - 인자 없음: 현행 고정 쿨다운(마나식 경제, 기본).
+   * - `power` 지정: 위력 비례 쿨다운(Track B #53 실험) — 신속 영창 감소·하한 적용.
+   */
+  startGlobalCooldown(power?: number): void {
+    if (power === undefined) {
+      this.cooldownRemaining = this.globalCooldownSeconds;
+      return;
+    }
+    this.cooldownRemaining = Math.max(
+      PLAYER_COMBAT_CONFIG.globalCooldownFloorSeconds,
+      castCooldownFromPower(power) - this.cooldownReductionSeconds,
+    );
   }
 
   /** 신속 영창 보상 — 글로벌 쿨다운 감소 (하한은 globalCooldownSeconds getter가 보장) */

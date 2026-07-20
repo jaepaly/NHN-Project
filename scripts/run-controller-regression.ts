@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spellPowerWithAffinity } from '../src/combat-core/combat/combatConfig';
+import { spellPowerWithAffinity, castCooldownFromPower } from '../src/combat-core/combat/combatConfig';
 import {
   PLAYER_COMBAT_CONFIG,
   PlayerCombatState,
@@ -288,4 +288,22 @@ for (let room = 1; room <= 6; room++) {
 assert.equal(phase4RewardCount, 5);
 assert.equal(phase4Run.state.phase, 'run-over');
 
-console.log('CombatRunController regression: 능력치·3택 보상·2개 방·이벤트·친화·보상풀 7군 통과');
+// Track B(#53) 위력 비례 쿨다운 실험 — 순수 공식 + startGlobalCooldown(power) 경로
+assert.ok(Math.abs(castCooldownFromPower(30) - 1.92) < 0.001, '30 → 1.92s');
+assert.ok(Math.abs(castCooldownFromPower(65) - 2.76) < 0.001, '65 → 2.76s');
+assert.ok(Math.abs(castCooldownFromPower(100) - 3.6) < 0.001, '100 → 3.6s');
+assert.ok(Math.abs(castCooldownFromPower(-5) - 1.2) < 0.001, '음수는 0으로 클램프 → 1.2');
+assert.ok(Math.abs(castCooldownFromPower(200) - 3.6) < 0.001, '100 초과는 100으로 클램프 → 3.6');
+
+const cdPlayer = new PlayerCombatState();
+cdPlayer.startGlobalCooldown(); // 인자 없음 = 현행 고정(마나식)
+assert.equal(cdPlayer.cooldownRemaining, 3, '인자 없으면 고정 3초');
+cdPlayer.startGlobalCooldown(100);
+assert.ok(Math.abs(cdPlayer.cooldownRemaining - 3.6) < 0.001, '위력 100 → 3.6초');
+cdPlayer.startGlobalCooldown(30);
+assert.ok(Math.abs(cdPlayer.cooldownRemaining - 1.92) < 0.001, '위력 30 → 1.92초');
+cdPlayer.addCooldownReduction(5); // 신속 영창 과다 → 하한 확인
+cdPlayer.startGlobalCooldown(100);
+assert.equal(cdPlayer.cooldownRemaining, 1, '감소 과다여도 하한 1초 보장');
+
+console.log('CombatRunController regression: 능력치·3택 보상·2개 방·이벤트·친화·보상풀·위력쿨다운 8군 통과');
