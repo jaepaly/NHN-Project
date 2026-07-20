@@ -6,15 +6,16 @@ import { SpellHistory } from '../spell/spellHistory';
 import type { JudgeSource } from '../spell/spellHistory';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
 import type { SpellImpact } from '../render/spellRenderer';
-import type { EvolveRewardData, RunController } from '../run/runContract';
+import type { EliteModifier, EvolveRewardData, RunController } from '../run/runContract';
 import {
   ELEMENT_LABELS,
   ELEMENT_PALETTES,
   SIZE_SCALE,
   paletteColorToCss,
 } from '../render/palette';
+import { applyWorldFx } from '../render/postFx';
 import {
-  backdropPaletteForRoom,
+  backdropPaletteForEncounter,
   ROOM_BACKDROP_PALETTES,
 } from '../render/roomBackdropConfig';
 import type { RoomBackdropPalette } from '../render/roomBackdropConfig';
@@ -22,6 +23,8 @@ import { PlayerCombatState } from '../combat-core/player/playerCombatState';
 import { ChaserEnemy } from '../combat-core/enemies/chaserEnemy';
 import { ShooterEnemy } from '../combat-core/enemies/shooterEnemy';
 import { SplitterEnemy } from '../combat-core/enemies/splitterEnemy';
+import { ShieldSentinelEnemy } from '../combat-core/enemies/shieldSentinelEnemy';
+import { EliteEnemy } from '../combat-core/enemies/eliteEnemy';
 import type {
   CombatEnemy,
   EnemyKind,
@@ -47,6 +50,18 @@ import {
   selectChainTargets,
 } from '../combat-core/combat/advancedFormConfig';
 import {
+  ORBIT_CONFIG,
+  WALL_CONFIG,
+  orbitAngularVelocity,
+  orbitCount,
+  orbitPoint,
+  repeatHitReady,
+  sweepIntersectsPolyline,
+  wallArcPoints,
+  wallDurationSeconds,
+} from '../combat-core/combat/persistentFormConfig';
+import type { FormPoint } from '../combat-core/combat/persistentFormConfig';
+import {
   RAIN_CONFIG,
   ZONE_CONFIG,
   densestAreaTarget,
@@ -54,19 +69,28 @@ import {
 } from '../combat-core/combat/areaSpellConfig';
 import {
   WAVE_CONFIG,
+  WAVE_SETS,
   WaveManager,
 } from '../combat-core/waves/waveManager';
 import type { WaveDefinition } from '../combat-core/waves/waveManager';
 import { CombatRunController } from '../combat-core/run/runController';
+import { ELITE_MODIFIERS } from '../combat-core/run/encounterConfig';
 import { drawRewardOptions } from '../combat-core/run/rewardConfig';
 import { EngraveManager } from '../combat-core/engrave/engraveManager';
 import { SpiritManager } from '../combat-core/spirit/spiritManager';
 import { SpiritOrbView } from '../combat-core/spirit/spiritOrbView';
 import { buildEvolveOption, injectEvolveReward } from '../combat-core/evolve/evolveRewards';
+import {
+  GrowthMarks,
+  playRewardConvergence,
+  showGainText,
+} from '../render/growthFeedback';
 import { getEvolvedName, templateEvolvedName } from '../spell/evolveName';
 import type { EvolveNameRequest } from '../spell/evolveName';
-import { BossEnemy } from '../combat-core/boss/bossEnemy';
+import { BOSS_CHARGE_DISTANCE, BossEnemy } from '../combat-core/boss/bossEnemy';
 import { BOSS_CONFIG } from '../combat-core/boss/bossConfig';
+import { BossPatternController } from '../combat-core/boss/bossPatternController';
+import type { BossPatternAction } from '../combat-core/boss/bossPatternController';
 import {
   computeResistance,
   getBossLine,
@@ -86,6 +110,8 @@ import { GameAudio } from '../audio/gameAudio';
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;
+/** 제품 기본값: 첫 번째 조우부터 전체 런을 시작한다. */
+const DEBUG_START_ROOM = 1;
 /** 무내성 기본값 — R2 계약(BossResistanceProfile) 형태 유지 */
 const NO_BOSS_RESISTANCE: BossResistanceProfile = {
   resistedElement: null,
@@ -131,6 +157,37 @@ interface EnemyProjectile {
   lifetimeRemaining: number;
 }
 
+interface ActiveWall {
+  spec: SpellSpec;
+  points: readonly FormPoint[];
+  view: Phaser.GameObjects.Graphics;
+  remainingSeconds: number;
+  contactedEnemies: Set<CombatEnemy>;
+  slowedBosses: Set<CombatEnemy>;
+}
+
+interface ActiveOrbit {
+  spec: SpellSpec;
+  views: Phaser.GameObjects.Container[];
+  elapsedSeconds: number;
+  angle: number;
+  lastHitAt: Map<CombatEnemy, number>;
+}
+
+interface HazardZone {
+  view: Phaser.GameObjects.GameObject;
+  contains(x: number, y: number): boolean;
+  damageCooldown: number;
+  onDamage?: () => void;
+}
+
+interface UnstableWarning {
+  view: Phaser.GameObjects.Arc;
+  pulse: Phaser.GameObjects.Arc;
+  indicator: Phaser.GameObjects.Text;
+  timers: Phaser.Time.TimerEvent[];
+}
+
 /**
  * 기술검증 프로토타입 씬 — W1 목표 (SUBMISSION_PLAN W1)
  * 검증 대상: 입력 → 판정(SpellJudge) → JSON → 파츠 조합 렌더링 1사이클
@@ -148,6 +205,7 @@ export class ProtoScene extends Phaser.Scene {
   // 명시적 타입: rewardDraw 클로저가 컨트롤러 상태(친화)를 읽어 자기참조 추론이 막히는 것 회피
   private readonly combatRunController: CombatRunController = new CombatRunController({
     playerState: this.playerState,
+    initialRoomIndex: DEBUG_START_ROOM,
     rewardDraw: (roomIndex) => {
       const engraved = this.engraveManager.injectReward(
         drawRewardOptions(roomIndex, this.engraveRewardRand),
@@ -179,6 +237,9 @@ export class ProtoScene extends Phaser.Scene {
   /** 화면 중앙에 떠 있는 시스템 메시지들 — 세로 스택으로 겹침 방지 */
   private activeAnnouncements: Phaser.GameObjects.Text[] = [];
   private enemyProjectiles: EnemyProjectile[] = [];
+  private hazardZones: HazardZone[] = [];
+  private hazardDecorations: Phaser.GameObjects.GameObject[] = [];
+  private unstableWarnings: UnstableWarning[] = [];
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private statusText!: Phaser.GameObjects.Text;
   private hpText!: Phaser.GameObjects.Text;
@@ -188,6 +249,8 @@ export class ProtoScene extends Phaser.Scene {
   private waveText!: Phaser.GameObjects.Text;
   private spiritHudText!: Phaser.GameObjects.Text;
   private waveManager = new WaveManager();
+  private eliteModifierAssignments: EliteModifier[] = [];
+  private eliteSpawnIndex = 0;
   private incantWrap!: HTMLElement;
   private incantBar!: HTMLInputElement;
   private incantState!: HTMLElement;
@@ -200,6 +263,10 @@ export class ProtoScene extends Phaser.Scene {
   private basicAttackCooldownRemaining = 0;
   private friendlyMissiles: FriendlyMissile[] = [];
   private activeSummon: SummonedOrb | null = null;
+  private activeWall: ActiveWall | null = null;
+  private activeOrbit: ActiveOrbit | null = null;
+  /** 성장 누적 표식 (룬 링·친화 오라) — 보상 선택 때 갱신, 매 프레임 플레이어 추종 */
+  private growthMarks!: GrowthMarks;
   private readonly spiritViews = new Map<string, SpiritOrbView>();
   private spiritOrbitAngle = -Math.PI / 2;
   private readonly enemyControlState = new EnemyControlState();
@@ -207,6 +274,15 @@ export class ProtoScene extends Phaser.Scene {
   /** 보스방 진입 시 주문 히스토리로 계산 — R2 내성 모듈이 오면 계산부만 교체 */
   private bossResistance: BossResistanceProfile = { ...NO_BOSS_RESISTANCE };
   private lastResistNoticeAt = 0;
+  private activeBossPhase: 1 | 2 | 3 = 1;
+  private bossPatternController: BossPatternController | null = null;
+  private bossChargeTelegraph: Phaser.GameObjects.Graphics | null = null;
+  private bossChargeTarget: Phaser.Math.Vector2 | null = null;
+  private bossChargeTrailCooldown = 0;
+  private bossVolleyTelegraph: Phaser.GameObjects.Graphics | null = null;
+  private bossVolleyAngles: number[] = [];
+  private bossEliteSummonIndex = 0;
+  private bossHazardWarnings: Phaser.GameObjects.Container[] = [];
   private deathHandled = false;
   private audio!: GameAudio;
   private backdropBase!: Phaser.GameObjects.Rectangle;
@@ -242,6 +318,7 @@ export class ProtoScene extends Phaser.Scene {
 
     this.drawBackdrop(this.worldBounds.width, this.worldBounds.height);
     this.createPlayer(startX, startY);
+    this.growthMarks = new GrowthMarks(this);
     this.cameras.main
       .setBounds(
         this.worldBounds.x,
@@ -251,6 +328,7 @@ export class ProtoScene extends Phaser.Scene {
       )
       .startFollow(this.player, true, 0.12, 0.12);
     this.cameras.main.centerOn(startX, startY);
+    applyWorldFx(this.cameras.main); // Phase 5 네온 후처리 (블룸+비네트)
     this.moveKeys = this.input.keyboard!.addKeys({
       up: Phaser.Input.Keyboard.KeyCodes.W,
       down: Phaser.Input.Keyboard.KeyCodes.S,
@@ -259,7 +337,7 @@ export class ProtoScene extends Phaser.Scene {
     }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
     this.createHud(width, height);
     this.setupRunFlow();
-    this.startRoom(1);
+    this.startRoom(this.combatRunController.state.roomIndex);
     this.updateStatusText();
 
     this.setupIncantBar();
@@ -278,7 +356,9 @@ export class ProtoScene extends Phaser.Scene {
       this.updatePlayerMovement(delta / 1000);
       this.updateEnemyControls(d);
       this.updateEnemies(d);
+      this.updatePersistentForms(d);
       this.updateEnemyProjectiles(d);
+      this.updateHazards(d);
       this.updateBasicAttack();
       this.updateEngravedSpells(d);
       this.updateSpirits(d);
@@ -286,6 +366,8 @@ export class ProtoScene extends Phaser.Scene {
       this.updateFriendlyMissiles(d);
       this.updateWaveFlow(d);
     }
+    // 성장 표식은 전투 정지 중(보상 선택·전환)에도 플레이어를 따라간다
+    this.growthMarks.follow(this.player.x, this.player.y);
     this.updateStatusText();
   }
 
@@ -303,6 +385,15 @@ export class ProtoScene extends Phaser.Scene {
     });
     this.combatRunController.on('reward-applied', (chosen, state) => {
       this.audio.playSfx('reward-select');
+      // ⑤ 강화 체감: 보상 색이 플레이어로 수렴 → 증가분 부상 텍스트 → 누적 표식 갱신
+      playRewardConvergence(this, this.player.x, this.player.y, chosen);
+      showGainText(this, this.player.x, this.player.y, chosen);
+      this.growthMarks.sync(
+        state.rewards.length,
+        state.elementalAffinity,
+        this.player.x,
+        this.player.y,
+      );
       if (chosen.kind === 'evolve' && chosen.evolve) {
         // 진화·융합은 LLM 작명이 필요해 비동기 — 작명은 반드시 성공하므로(폴백) 미완료 상태가 없다
         void this.applyEvolution(chosen.evolve);
@@ -388,6 +479,7 @@ export class ProtoScene extends Phaser.Scene {
     this.engraveManager.reset();
     this.spiritManager.reset();
     this.clearSpiritViews();
+    this.growthMarks.reset();
     this.spiritOrbitAngle = -Math.PI / 2;
     this.engraveRewardRand = createRunRandom(Date.now());
     this.playerState.reset();
@@ -395,34 +487,42 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private startRoom(roomIndex: number): void {
+    const encounter = this.combatRunController.state;
+    this.eliteSpawnIndex = 0;
+    this.eliteModifierAssignments = [];
     this.clearCombatRoom();
     this.applyRoomBackdrop(roomIndex);
-    this.waveManager = new WaveManager();
     this.basicAttackCooldownRemaining = 0;
     this.player.setPosition(this.worldBounds.centerX, this.worldBounds.centerY);
     this.cameras.main.centerOn(this.player.x, this.player.y);
-    if (this.isBossRoom(roomIndex)) {
-      this.startBossRoom();
+    if (this.isBossEncounter()) {
+      this.startBossRoom(encounter.encounterKind === 'memory-boss');
       return;
     }
+    const waveSet = encounter.waveSetId ? WAVE_SETS[encounter.waveSetId] : undefined;
+    if (!waveSet) throw new Error(`Unknown wave set: ${encounter.waveSetId ?? '(missing)'}`);
+    this.waveManager = new WaveManager(waveSet);
     this.audio.playBgm('combat');
     this.spawnWave(this.waveManager.start());
     this.announceSystemMessage(`방 ${roomIndex}`, '#8fa4ff');
   }
 
   /** 마지막 방 = 보스방 관례 (rewardConfig.maxRooms 참조) */
-  private isBossRoom(roomIndex: number): boolean {
-    return roomIndex >= this.combatRunController.state.maxRooms;
+  private isBossEncounter(): boolean {
+    const kind = this.combatRunController.state.encounterKind;
+    return kind === 'stage-boss' || kind === 'memory-boss';
   }
 
-  private startBossRoom(): void {
+  private startBossRoom(usesMemory: boolean): void {
     const bossRoomIndex = this.combatRunController.state.roomIndex;
+    this.bossEliteSummonIndex = 0;
     this.audio.playBgm('boss');
     // 단기(이번 런) 적응 — R2 내성 계약 소비 (GDD §4.1)
-    this.bossResistance = computeResistance(this.spellHistory.bossMemory());
+    this.bossResistance = { ...NO_BOSS_RESISTANCE };
+    this.activeBossPhase = 1;
     const runMemory = loadRunMemory();
     // 장기(지난 런들) 기억 — 단기 표본 부족 시 부분 내성으로 발동 (GDD §4.2)
-    if (!this.bossResistance.resistedElement) {
+    if (usesMemory) {
       const longTerm = longTermResistedElement(runMemory);
       if (longTerm) {
         this.bossResistance = {
@@ -437,7 +537,9 @@ export class ProtoScene extends Phaser.Scene {
       this,
       this.player.x,
       this.player.y - 340,
+      usesMemory ? 'memory' : 'stage',
     );
+    this.bossPatternController = new BossPatternController(usesMemory ? 'memory' : 'stage');
     const isCurrentBossRoom = (): boolean => {
       const state = this.combatRunController.state;
       return state.phase === 'combat'
@@ -454,7 +556,7 @@ export class ProtoScene extends Phaser.Scene {
 
     this.announceSystemMessage('보스의 방', '#ff6b86');
     // 오프닝 대사 — R2 /boss-line (프록시 생성 우선, 템플릿 폴백 내장)
-    void getBossLine(runMemory).then((line) => {
+    if (usesMemory) void getBossLine(runMemory).then((line) => {
       if (!isCurrentBossRoom()) return;
       this.time.delayedCall(500, () => {
         if (!isCurrentBossRoom()) return;
@@ -476,9 +578,12 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private clearCombatRoom(): void {
+    this.clearBossPatternEffects();
     this.clearEnemyControls();
     for (const enemy of this.enemies) enemy.destroy();
     this.enemies = [];
+    for (const decoration of this.hazardDecorations) decoration.destroy();
+    this.hazardDecorations = [];
     this.clearTransientCombatObjects();
   }
 
@@ -486,6 +591,9 @@ export class ProtoScene extends Phaser.Scene {
     this.clearEnemyProjectiles();
     this.clearFriendlyMissiles();
     this.clearSummon();
+    this.clearActiveWall();
+    this.clearActiveOrbit();
+    this.clearUnstableWarnings();
   }
 
   /** 투사체 update 순회가 끝난 다음 tick에 안전하게 일괄 제거한다. */
@@ -590,11 +698,9 @@ export class ProtoScene extends Phaser.Scene {
     this.redrawBackdropDetails(initial);
   }
 
-  private applyRoomBackdrop(roomIndex: number): void {
-    const palette = backdropPaletteForRoom(
-      roomIndex,
-      this.combatRunController.state.maxRooms,
-    );
+  private applyRoomBackdrop(_roomIndex: number): void {
+    const state = this.combatRunController.state;
+    const palette = backdropPaletteForEncounter(state.stage, this.isBossEncounter());
     const from = Phaser.Display.Color.IntegerToColor(this.backdropColor);
     const to = Phaser.Display.Color.IntegerToColor(palette.base);
     this.tweens.addCounter({
@@ -644,12 +750,129 @@ export class ProtoScene extends Phaser.Scene {
       ...Array<EnemyKind>(definition.chaserCount).fill('chaser'),
       ...Array<EnemyKind>(definition.shooterCount).fill('shooter'),
       ...Array<EnemyKind>(definition.splitterCount).fill('splitter'),
+      ...Array<EnemyKind>(definition.shieldSentinelCount ?? 0).fill('shield-sentinel'),
     ];
+    if (this.combatRunController.state.encounterKind === 'elite') {
+      this.eliteModifierAssignments = this.createEliteAssignments(sequence.length);
+      this.eliteSpawnIndex = 0;
+    }
     sequence.forEach((kind, index) => {
       const position = this.waveSpawnPosition(index, sequence.length);
-      this.spawnEnemy(kind, position.x, position.y);
+      this.spawnEnemy(kind, position.x, position.y, true);
     });
+    if (definition.hazard && this.hazardZones.length === 0) this.spawnHazards();
     this.announceSystemMessage(`웨이브 ${this.waveManager.currentWaveNumber}`);
+  }
+
+  private clearBossPatternEffects(): void {
+    this.bossPatternController = null;
+    this.bossChargeTelegraph?.destroy();
+    this.bossChargeTelegraph = null;
+    this.bossChargeTarget = null;
+    this.bossVolleyTelegraph?.destroy();
+    this.bossVolleyTelegraph = null;
+    this.bossVolleyAngles = [];
+    for (const warning of this.bossHazardWarnings) {
+      if (warning.active) warning.destroy();
+    }
+    this.bossHazardWarnings = [];
+    for (const hazard of this.hazardZones) {
+      if (hazard.view.active) hazard.view.destroy();
+    }
+    this.hazardZones = [];
+    this.clearEnemyProjectiles();
+  }
+
+  private spawnHazards(): void {
+    const radius = 72;
+    const offsets = [
+      [-180, -110],
+      [170, 90],
+      [20, 145],
+    ] as const;
+    for (const [offsetX, offsetY] of offsets) {
+      const view = this.add.circle(
+        Phaser.Math.Clamp(this.worldBounds.centerX + offsetX, this.worldBounds.left + radius, this.worldBounds.right - radius),
+        Phaser.Math.Clamp(this.worldBounds.centerY + offsetY, this.worldBounds.top + radius, this.worldBounds.bottom - radius),
+        radius,
+        0xb52f57,
+        0.42,
+      ).setStrokeStyle(4, 0xff5370, 0.92);
+      this.hazardZones.push({
+        view,
+        contains: (x, y) => Phaser.Math.Distance.Between(x, y, view.x, view.y) <= radius,
+        damageCooldown: 0,
+      });
+    }
+
+    this.spawnBoundaryHazards(900, 650);
+  }
+
+  private spawnBoundaryHazards(safeWidth: number, safeHeight: number): void {
+    const safeLeft = this.worldBounds.centerX - safeWidth / 2;
+    const safeRight = this.worldBounds.centerX + safeWidth / 2;
+    const safeTop = this.worldBounds.centerY - safeHeight / 2;
+    const safeBottom = this.worldBounds.centerY + safeHeight / 2;
+    const boundaryRects = [
+      new Phaser.Geom.Rectangle(
+        this.worldBounds.left,
+        this.worldBounds.top,
+        this.worldBounds.width,
+        safeTop - this.worldBounds.top,
+      ),
+      new Phaser.Geom.Rectangle(
+        this.worldBounds.left,
+        safeBottom,
+        this.worldBounds.width,
+        this.worldBounds.bottom - safeBottom,
+      ),
+      new Phaser.Geom.Rectangle(
+        this.worldBounds.left,
+        safeTop,
+        safeLeft - this.worldBounds.left,
+        safeHeight,
+      ),
+      new Phaser.Geom.Rectangle(
+        safeRight,
+        safeTop,
+        this.worldBounds.right - safeRight,
+        safeHeight,
+      ),
+    ];
+
+    for (const bounds of boundaryRects) {
+      const view = this.add.rectangle(
+        bounds.centerX,
+        bounds.centerY,
+        bounds.width,
+        bounds.height,
+        0x8f183e,
+        0.14,
+      );
+      this.hazardZones.push({
+        view,
+        contains: (x, y) => bounds.contains(x, y),
+        damageCooldown: 0,
+      });
+    }
+
+    const boundaryLine = this.add.graphics()
+      .lineStyle(3, 0xff5370, 0.72)
+      .strokeRect(safeLeft, safeTop, safeWidth, safeHeight);
+    this.hazardDecorations.push(boundaryLine);
+  }
+
+  private updateHazards(deltaSeconds: number): void {
+    for (const hazard of this.hazardZones) {
+      hazard.damageCooldown = Math.max(0, hazard.damageCooldown - deltaSeconds);
+      if (hazard.damageCooldown > 0) continue;
+      if (!hazard.contains(this.player.x, this.player.y)) continue;
+      const applied = this.playerState.takeDamage(9);
+      this.announceIncomingDamage(applied.hpDamage, applied.shieldDamage);
+      hazard.onDamage?.();
+      hazard.damageCooldown = 0.75;
+      this.cameras.main.shake(70, 0.002);
+    }
   }
 
   private waveSpawnPosition(index: number, total: number): Phaser.Math.Vector2 {
@@ -668,22 +891,47 @@ export class ProtoScene extends Phaser.Scene {
     return new Phaser.Math.Vector2(x, y);
   }
 
-  private spawnEnemy(kind: EnemyKind, x: number, y: number): void {
+  private spawnEnemy(
+    kind: EnemyKind,
+    x: number,
+    y: number,
+    applyEncounterModifier = false,
+    explicitModifier?: EliteModifier,
+  ): void {
+    let enemy: CombatEnemy;
     switch (kind) {
+      case 'shield-sentinel':
+        enemy = new ShieldSentinelEnemy(this, x, y);
+        break;
       case 'shooter':
-        this.enemies.push(new ShooterEnemy(this, x, y));
+        enemy = new ShooterEnemy(this, x, y);
         break;
       case 'splitter':
-        this.enemies.push(new SplitterEnemy(this, x, y));
+        enemy = new SplitterEnemy(this, x, y);
         break;
       case 'small-splitter':
-        this.enemies.push(new SplitterEnemy(this, x, y, true));
+        enemy = new SplitterEnemy(this, x, y, true);
         break;
       case 'chaser':
       default:
-        this.enemies.push(new ChaserEnemy(this, x, y));
+        enemy = new ChaserEnemy(this, x, y);
         break;
     }
+    const modifier = explicitModifier ?? (
+      applyEncounterModifier && this.eliteModifierAssignments.length > 0
+        ? this.eliteModifierAssignments[this.eliteSpawnIndex++]
+        : undefined
+    );
+    this.enemies.push(modifier ? new EliteEnemy(this, enemy, modifier) : enemy);
+  }
+
+  private createEliteAssignments(enemyCount: number): EliteModifier[] {
+    const modifierPool = [...ELITE_MODIFIERS];
+    const assignments: EliteModifier[] = modifierPool.slice(0, enemyCount);
+    while (assignments.length < enemyCount) {
+      assignments.push(Phaser.Utils.Array.GetRandom(modifierPool));
+    }
+    return Phaser.Utils.Array.Shuffle(assignments);
   }
 
   private updateWaveFlow(deltaSeconds: number): void {
@@ -697,12 +945,25 @@ export class ProtoScene extends Phaser.Scene {
     if (!this.playerState.alive) return;
 
     for (const enemy of this.enemies) {
+      const previous = { x: enemy.x, y: enemy.y };
+      const wasCharging = enemy instanceof BossEnemy && enemy.charging;
+      const movementMultiplier = enemy instanceof BossEnemy
+        && (this.bossChargeTarget || this.bossVolleyTelegraph)
+        ? 0
+        : this.enemyControlState.movementMultiplierFor(enemy);
       const shots = enemy.update(
         deltaSeconds,
         this.player.x,
         this.player.y,
-        this.enemyControlState.movementMultiplierFor(enemy),
+        movementMultiplier,
       );
+      if (enemy instanceof BossEnemy && enemy.phase !== this.activeBossPhase) {
+        this.handleBossPhaseChanged(enemy);
+      }
+      if (enemy instanceof BossEnemy) {
+        if (wasCharging || enemy.charging) this.updateBossChargeTrail(enemy, deltaSeconds);
+        if (wasCharging && !enemy.charging) this.showBossChargeShockwave(enemy.x, enemy.y, 0xd0a8ff);
+      }
       enemy.view.x = Phaser.Math.Clamp(
         enemy.view.x,
         this.worldBounds.left + 22,
@@ -713,8 +974,12 @@ export class ProtoScene extends Phaser.Scene {
         this.worldBounds.top + 22,
         this.worldBounds.bottom - 22,
       );
-      for (const shot of shots) this.spawnEnemyProjectile(shot);
+      this.resolveWallEnemyCollision(enemy, previous);
+      if (enemy.alive) {
+        for (const shot of shots) this.spawnEnemyProjectile(shot);
+      }
     }
+    this.updateBossPattern(deltaSeconds);
 
     let totalHpDamage = 0;
     let totalShieldDamage = 0;
@@ -743,6 +1008,421 @@ export class ProtoScene extends Phaser.Scene {
     }
   }
 
+  private handleBossPhaseChanged(boss: BossEnemy): void {
+    this.activeBossPhase = boss.phase;
+    this.clearEnemyProjectiles();
+    this.bossChargeTelegraph?.destroy();
+    this.bossChargeTelegraph = null;
+    this.bossChargeTarget = null;
+    this.bossVolleyTelegraph?.destroy();
+    this.bossVolleyTelegraph = null;
+    this.bossVolleyAngles = [];
+    const isMemoryBoss = this.combatRunController.state.encounterKind === 'memory-boss';
+    if (isMemoryBoss && boss.phase === 2) {
+      this.bossResistance = computeResistance(this.spellHistory.bossMemory());
+      boss.showResistance(this.bossResistance.resistedElement);
+      if (this.bossResistance.counterStrategy) {
+        boss.applyCounterStrategy(this.bossResistance.counterStrategy);
+      }
+      this.bossPatternController?.setCounterStrategy(this.bossResistance.counterStrategy);
+      const resistanceLabel = this.bossResistance.resistedElement
+        ? `${ELEMENT_LABELS[this.bossResistance.resistedElement]} 내성 · `
+        : '';
+      const counterLabel = this.bossResistance.counterStrategy === 'rush'
+        ? '원거리 영창 대응: 돌진 강화'
+        : this.bossResistance.counterStrategy === 'ranged'
+          ? '근거리 영창 대응: 탄막·장판 강화'
+          : '기억 부족: 혼합 패턴 유지';
+      this.announceSystemMessage(
+        `기억 적응 · ${resistanceLabel}${counterLabel}`,
+        '#d0a8ff',
+        2800,
+      );
+      return;
+    }
+    if (isMemoryBoss && boss.phase === 3) {
+      this.announceSystemMessage(
+        '기억 융합 · 엘리트 소환과 카운터 결합',
+        '#ff8fa3',
+        2800,
+      );
+    }
+  }
+
+  private updateBossPattern(deltaSeconds: number): void {
+    const controller = this.bossPatternController;
+    const boss = this.enemies.find((enemy): enemy is BossEnemy => enemy instanceof BossEnemy);
+    if (!controller || !boss?.alive) return;
+    const livingMinions = this.enemies.filter((enemy) => enemy !== boss && enemy.alive).length;
+    const result = controller.update(deltaSeconds, boss.phase, livingMinions);
+    for (const action of result.actions) this.executeBossPattern(action, boss);
+  }
+
+  private executeBossPattern(action: BossPatternAction, boss: BossEnemy): void {
+    switch (action) {
+      case 'volley-telegraph':
+        this.showBossVolleyTelegraph(
+          boss,
+          this.isMemoryBossEncounter()
+            && boss.phase >= 2
+            && this.bossResistance.counterStrategy === 'ranged'
+            ? 16
+            : 12,
+        );
+        break;
+      case 'volley-start':
+        this.spawnBossVolley(boss, this.bossVolleyAngles);
+        this.bossVolleyTelegraph?.destroy();
+        this.bossVolleyTelegraph = null;
+        this.bossVolleyAngles = [];
+        break;
+      case 'summon':
+        this.spawnBossMinions(boss);
+        break;
+      case 'summon-elite':
+        this.spawnBossEliteMinion(boss);
+        break;
+      case 'charge-telegraph':
+        this.showBossChargeTelegraph(boss);
+        break;
+      case 'charge-start':
+        if (this.bossChargeTarget) {
+          this.showBossChargeShockwave(boss.x, boss.y, 0xff5370);
+          this.bossChargeTrailCooldown = 0;
+          boss.startCharge(
+            this.bossChargeTarget.x,
+            this.bossChargeTarget.y,
+            this.bossChargeDistance(boss),
+          );
+        }
+        this.bossChargeTelegraph?.destroy();
+        this.bossChargeTelegraph = null;
+        this.bossChargeTarget = null;
+        break;
+      case 'surround':
+        this.spawnBossSurroundMinions();
+        break;
+      case 'hazard':
+        this.spawnBossHazard(boss);
+        break;
+    }
+  }
+
+  private showBossVolleyTelegraph(boss: BossEnemy, projectileCount: number): void {
+    this.bossVolleyTelegraph?.destroy();
+    const offset = Math.random() * Math.PI * 2;
+    this.bossVolleyAngles = Array.from(
+      { length: projectileCount },
+      (_, index) => offset + (Math.PI * 2 * index) / projectileCount,
+    );
+    const warning = this.add.graphics().setDepth(-1).setBlendMode(Phaser.BlendModes.ADD);
+    warning.lineStyle(3, 0xff8f70, 0.72);
+    for (const angle of this.bossVolleyAngles) {
+      const direction = new Phaser.Math.Vector2(Math.cos(angle), Math.sin(angle));
+      const distance = this.rayDistanceToWorldBounds(boss.x, boss.y, direction.x, direction.y);
+      warning.lineBetween(
+        boss.x + direction.x * 48,
+        boss.y + direction.y * 48,
+        boss.x + direction.x * distance,
+        boss.y + direction.y * distance,
+      );
+    }
+    this.bossVolleyTelegraph = warning;
+    this.tweens.add({
+      targets: warning,
+      alpha: { from: 0.28, to: 1 },
+      duration: 175,
+      yoyo: true,
+      repeat: 1,
+      ease: 'Sine.easeInOut',
+    });
+  }
+
+  private spawnBossVolley(boss: BossEnemy, angles: readonly number[]): void {
+    this.showBossChargeShockwave(boss.x, boss.y, 0xff8f70);
+    for (const angle of angles) {
+      this.spawnEnemyProjectile({
+        x: boss.x,
+        y: boss.y,
+        angle,
+        speedMultiplier: 4.5,
+      });
+    }
+  }
+
+  private rayDistanceToWorldBounds(x: number, y: number, dx: number, dy: number): number {
+    const distances = [
+      dx > 0 ? (this.worldBounds.right - x) / dx : Number.POSITIVE_INFINITY,
+      dx < 0 ? (this.worldBounds.left - x) / dx : Number.POSITIVE_INFINITY,
+      dy > 0 ? (this.worldBounds.bottom - y) / dy : Number.POSITIVE_INFINITY,
+      dy < 0 ? (this.worldBounds.top - y) / dy : Number.POSITIVE_INFINITY,
+    ];
+    return Math.min(...distances.filter((distance) => distance >= 0));
+  }
+
+  private showBossChargeTelegraph(boss: BossEnemy): void {
+    this.bossChargeTelegraph?.destroy();
+    const direction = new Phaser.Math.Vector2(this.player.x - boss.x, this.player.y - boss.y);
+    if (direction.lengthSq() === 0) direction.set(0, 1);
+    direction.normalize();
+    const chargeDistance = this.bossChargeDistance(boss);
+    this.bossChargeTarget = new Phaser.Math.Vector2(
+      Phaser.Math.Clamp(
+        boss.x + direction.x * chargeDistance,
+        this.worldBounds.left + 22,
+        this.worldBounds.right - 22,
+      ),
+      Phaser.Math.Clamp(
+        boss.y + direction.y * chargeDistance,
+        this.worldBounds.top + 22,
+        this.worldBounds.bottom - 22,
+      ),
+    );
+    const perpendicular = new Phaser.Math.Vector2(-direction.y, direction.x).scale(48);
+    const startLeft = new Phaser.Math.Vector2(boss.x, boss.y).add(perpendicular);
+    const startRight = new Phaser.Math.Vector2(boss.x, boss.y).subtract(perpendicular);
+    const endLeft = this.bossChargeTarget.clone().add(perpendicular);
+    const endRight = this.bossChargeTarget.clone().subtract(perpendicular);
+    this.bossChargeTelegraph = this.add.graphics()
+      .fillStyle(0xff5370, 0.14)
+      .fillPoints([startLeft, endLeft, endRight, startRight], true)
+      .lineStyle(3, 0xff8fa3, 0.78)
+      .lineBetween(startLeft.x, startLeft.y, endLeft.x, endLeft.y)
+      .lineBetween(startRight.x, startRight.y, endRight.x, endRight.y)
+      .fillStyle(0xff8fa3, 0.85)
+      .fillTriangle(
+        this.bossChargeTarget.x + direction.x * 18,
+        this.bossChargeTarget.y + direction.y * 18,
+        endLeft.x - direction.x * 30,
+        endLeft.y - direction.y * 30,
+        endRight.x - direction.x * 30,
+        endRight.y - direction.y * 30,
+      )
+      .setDepth(5);
+    this.tweens.add({
+      targets: this.bossChargeTelegraph,
+      alpha: { from: 0.5, to: 1 },
+      duration: 180,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+  }
+
+  private bossChargeDistance(boss: BossEnemy): number {
+    return this.isMemoryBossEncounter()
+      && boss.phase >= 2
+      && this.bossResistance.counterStrategy === 'rush'
+      ? 340
+      : BOSS_CHARGE_DISTANCE;
+  }
+
+  private isMemoryBossEncounter(): boolean {
+    return this.combatRunController.state.encounterKind === 'memory-boss';
+  }
+
+  private updateBossChargeTrail(boss: BossEnemy, deltaSeconds: number): void {
+    this.bossChargeTrailCooldown -= deltaSeconds;
+    if (this.bossChargeTrailCooldown > 0) return;
+    this.bossChargeTrailCooldown = 0.045;
+    const trail = this.add.circle(boss.x, boss.y, boss.collisionRadius, 0xb44dff, 0.24)
+      .setStrokeStyle(3, 0xd0a8ff, 0.55)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: trail,
+      alpha: 0,
+      scale: 0.72,
+      duration: 280,
+      ease: 'Cubic.easeOut',
+      onComplete: () => trail.destroy(),
+    });
+  }
+
+  private showBossChargeShockwave(x: number, y: number, color: number): void {
+    const shockwave = this.add.circle(x, y, 22, color, 0.08)
+      .setStrokeStyle(5, color, 0.9)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: shockwave,
+      radius: 78,
+      alpha: 0,
+      duration: 320,
+      ease: 'Cubic.easeOut',
+      onComplete: () => shockwave.destroy(),
+    });
+  }
+
+  private spawnBossSurroundMinions(): void {
+    for (let i = 0; i < 3; i++) {
+      const angle = (Math.PI * 2 * i) / 3;
+      const x = Phaser.Math.Clamp(this.player.x + Math.cos(angle) * 180, this.worldBounds.left + 30, this.worldBounds.right - 30);
+      const y = Phaser.Math.Clamp(this.player.y + Math.sin(angle) * 180, this.worldBounds.top + 30, this.worldBounds.bottom - 30);
+      this.spawnEnemy('chaser', x, y);
+    }
+  }
+
+  private spawnBossEliteMinion(boss: BossEnemy): void {
+    const modifier = ELITE_MODIFIERS[this.bossEliteSummonIndex++ % ELITE_MODIFIERS.length];
+    const angle = Math.random() * Math.PI * 2;
+    const x = Phaser.Math.Clamp(
+      boss.x + Math.cos(angle) * 120,
+      this.worldBounds.left + 30,
+      this.worldBounds.right - 30,
+    );
+    const y = Phaser.Math.Clamp(
+      boss.y + Math.sin(angle) * 120,
+      this.worldBounds.top + 30,
+      this.worldBounds.bottom - 30,
+    );
+    this.spawnEnemy('chaser', x, y, false, modifier);
+  }
+
+  private spawnBossHazard(boss: BossEnemy): void {
+    const enhanced = this.isMemoryBossEncounter()
+      && boss.phase >= 2
+      && this.bossResistance.counterStrategy === 'ranged';
+    const radius = enhanced ? 165 : 130;
+    const centers = this.bossHazardCenters(radius, 5, enhanced);
+    for (const center of centers) {
+      this.spawnBossHazardAt(center.x, center.y, radius);
+    }
+  }
+
+  private spawnBossHazardAt(x: number, y: number, radius: number): void {
+    const warningDurationMs = 1200;
+    const outerRing = this.add.circle(0, 0, radius, 0xff5370, 0.06)
+      .setStrokeStyle(4, 0xff5370, 0.92)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const warning = this.add.container(x, y, [outerRing]).setDepth(-1);
+    this.bossHazardWarnings.push(warning);
+    this.tweens.add({
+      targets: outerRing,
+      alpha: { from: 0.3, to: 1 },
+      duration: 210,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+    this.time.delayedCall(warningDurationMs, () => {
+      this.bossHazardWarnings = this.bossHazardWarnings.filter(
+        (candidate) => candidate !== warning,
+      );
+      if (!warning.active) return;
+      if (!this.isBossEncounter() || !this.isCombatActive()) {
+        warning.destroy();
+        return;
+      }
+      this.tweens.killTweensOf(outerRing);
+      outerRing.setAlpha(1).setFillStyle(0x8f183e, 0.32)
+        .setStrokeStyle(5, 0xff6b86, 1);
+      const particles = this.add.particles(0, 0, 'particle', {
+        emitZone: new Phaser.GameObjects.Particles.Zones.RandomZone(
+          {
+            getRandomPoint: (point: Phaser.Types.Math.Vector2Like) => {
+              const angle = Math.random() * Math.PI * 2;
+              const distance = Math.sqrt(Math.random()) * radius * 0.82;
+              point.x = Math.cos(angle) * distance;
+              point.y = Math.sin(angle) * distance;
+            },
+          },
+        ),
+        speed: { min: 25, max: 75 },
+        angle: { min: 235, max: 305 },
+        lifespan: { min: 380, max: 650 },
+        frequency: 75,
+        quantity: 2,
+        scale: { start: 0.42, end: 0 },
+        alpha: { start: 0.8, end: 0 },
+        tint: [0xff5370, 0xff8fa3, 0xb44dff],
+        blendMode: Phaser.BlendModes.ADD,
+      });
+      warning.add(particles);
+      const zone: HazardZone = {
+        view: warning,
+        contains: (px, py) => Phaser.Math.Distance.Between(px, py, x, y) <= radius,
+        damageCooldown: 0,
+        onDamage: () => {
+          if (!outerRing.active) return;
+          this.tweens.killTweensOf(outerRing);
+          outerRing.setAlpha(1).setStrokeStyle(7, 0xffc0c8, 1);
+          this.tweens.add({
+            targets: outerRing,
+            alpha: 0.82,
+            duration: 180,
+            yoyo: true,
+            onComplete: () => {
+              if (!outerRing.active) return;
+              outerRing.setStrokeStyle(5, 0xff6b86, 1);
+            },
+          });
+        },
+      };
+      this.hazardZones.push(zone);
+      this.time.delayedCall(3500, () => {
+        this.hazardZones = this.hazardZones.filter((candidate) => candidate !== zone);
+        if (!warning.active) return;
+        this.tweens.add({
+          targets: warning,
+          alpha: 0,
+          duration: 380,
+          ease: 'Cubic.easeIn',
+          onComplete: () => warning.destroy(),
+        });
+      });
+    });
+  }
+
+  private bossHazardCenters(
+    radius: number,
+    count: number,
+    includePlayerPosition = false,
+  ): Phaser.Math.Vector2[] {
+    const centers: Phaser.Math.Vector2[] = includePlayerPosition
+      ? [new Phaser.Math.Vector2(this.player.x, this.player.y)]
+      : [];
+    const minimumSeparation = radius * 2 + 24;
+    const minimumDistanceFromPlayer = radius * 0.35;
+    const maximumDistanceFromPlayer = radius * 2.6;
+    const left = this.worldBounds.left + radius + 10;
+    const right = this.worldBounds.right - radius - 10;
+    const top = this.worldBounds.top + radius + 10;
+    const bottom = this.worldBounds.bottom - radius - 10;
+
+    const tryAdd = (x: number, y: number): boolean => {
+      const candidate = new Phaser.Math.Vector2(
+        Phaser.Math.Clamp(x, left, right),
+        Phaser.Math.Clamp(y, top, bottom),
+      );
+      if (centers.some((center) => center.distance(candidate) < minimumSeparation)) {
+        return false;
+      }
+      centers.push(candidate);
+      return true;
+    };
+
+    for (let attempt = 0; attempt < 240 && centers.length < count; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = Phaser.Math.FloatBetween(
+        minimumDistanceFromPlayer,
+        maximumDistanceFromPlayer,
+      );
+      tryAdd(
+        this.player.x + Math.cos(angle) * distance,
+        this.player.y + Math.sin(angle) * distance,
+      );
+    }
+
+    // Near corners, clamping can reject many random candidates. Fill any rare
+    // remainder from the arena while preserving the same non-overlap contract.
+    for (let attempt = 0; attempt < 240 && centers.length < count; attempt++) {
+      tryAdd(
+        Phaser.Math.FloatBetween(left, right),
+        Phaser.Math.FloatBetween(top, bottom),
+      );
+    }
+    return centers;
+  }
+
   private spawnEnemyProjectile(request: EnemyShotRequest): void {
     const body = this.add.circle(request.x, request.y, 5, 0xff6b4a)
       .setBlendMode(Phaser.BlendModes.ADD);
@@ -751,7 +1431,7 @@ export class ProtoScene extends Phaser.Scene {
     const velocity = new Phaser.Math.Vector2(
       Math.cos(request.angle),
       Math.sin(request.angle),
-    ).scale(SHOOTER_CONFIG.bulletSpeed);
+    ).scale(SHOOTER_CONFIG.bulletSpeed * (request.speedMultiplier ?? 1));
 
     this.enemyProjectiles.push({
       body,
@@ -773,6 +1453,7 @@ export class ProtoScene extends Phaser.Scene {
       }
 
       projectile.lifetimeRemaining -= deltaSeconds;
+      const previous = { x: projectile.body.x, y: projectile.body.y };
       projectile.body.x += projectile.velocity.x * deltaSeconds;
       projectile.body.y += projectile.velocity.y * deltaSeconds;
       projectile.halo.setPosition(projectile.body.x, projectile.body.y);
@@ -780,6 +1461,17 @@ export class ProtoScene extends Phaser.Scene {
       const expired = projectile.lifetimeRemaining <= 0;
       const outsideWorld = !this.worldBounds.contains(projectile.body.x, projectile.body.y);
       if (expired || outsideWorld) {
+        this.destroyEnemyProjectile(projectile);
+        continue;
+      }
+
+      const wall = this.activeWall;
+      if (wall && sweepIntersectsPolyline(
+        previous,
+        { x: projectile.body.x, y: projectile.body.y },
+        5 + WALL_CONFIG.thickness / 2,
+        wall.points,
+      )) {
         this.destroyEnemyProjectile(projectile);
         continue;
       }
@@ -891,11 +1583,13 @@ export class ProtoScene extends Phaser.Scene {
       const distance = direction.length();
       const travelDistance = missile.speed * deltaSeconds;
       if (distance <= missile.hitDistance + travelDistance) {
+        const sourceX = missile.body.x;
+        const sourceY = missile.body.y;
         this.destroyFriendlyMissile(missile);
         const damage = missile.element
           ? this.elementalDamageAgainst(missile.target, missile.element, missile.damage)
           : missile.damage;
-        this.damageEnemy(missile.target, damage);
+        this.damageEnemy(missile.target, damage, missile.element, sourceX, sourceY);
         continue;
       }
 
@@ -1115,6 +1809,14 @@ export class ProtoScene extends Phaser.Scene {
       this.announceSystemMessage(`강화 · MANA +${Math.round(restored)}`, '#c7a6ff');
       return;
     }
+    if (spec.form === 'wall' && (spec.effect === 'damage' || spec.effect === 'control')) {
+      this.createWall(from, spec);
+      return;
+    }
+    if (spec.form === 'orbit' && (spec.effect === 'damage' || spec.effect === 'control')) {
+      this.createOrbit(spec);
+      return;
+    }
     if (spec.effect === 'control') {
       this.castControlSpell(from, spec);
       return;
@@ -1137,6 +1839,7 @@ export class ProtoScene extends Phaser.Scene {
     const to = this.spellTargetPoint(from, spec, target);
     let lockedTarget = lockedPointTargetForForm(spec.form, target);
     const hitEnemies = new Set<CombatEnemy>();
+    const chainOrigins = chainTargets.map((enemy) => ({ x: enemy.x, y: enemy.y }));
     const castRoomIndex = this.combatRunController.state.roomIndex;
     castSpell({
       scene: this,
@@ -1158,7 +1861,16 @@ export class ProtoScene extends Phaser.Scene {
         const currentRunState = this.combatRunController.state;
         if (currentRunState.phase !== 'combat'
           || currentRunState.roomIndex !== castRoomIndex) return;
-        this.onSpellHit(impact, spec, lockedTarget, hitEnemies, chainTargets, auto);
+        this.onSpellHit(
+          impact,
+          spec,
+          lockedTarget,
+          hitEnemies,
+          chainTargets,
+          from,
+          chainOrigins,
+          auto,
+        );
       },
     }, spec);
   }
@@ -1233,6 +1945,148 @@ export class ProtoScene extends Phaser.Scene {
   private clearSpiritViews(): void {
     for (const view of this.spiritViews.values()) view.destroy();
     this.spiritViews.clear();
+  }
+
+  private createWall(from: Phaser.Math.Vector2, spec: SpellSpec): void {
+    this.clearActiveWall();
+    const target = spec.target === 'self'
+      ? this.nearestEnemy()
+      : densestDirectionalTarget(
+        from.x,
+        from.y,
+        WALL_CONFIG.targetingRange,
+        WALL_CONFIG.targetingHalfWidth,
+        this.enemies.filter((enemy) => enemy.alive),
+      ) ?? this.nearestEnemy();
+    const points = wallArcPoints(
+      from,
+      target ? { x: target.x, y: target.y } : null,
+      spec.size,
+    );
+    const palette = ELEMENT_PALETTES[spec.element_primary];
+    const vectors = points.map((point) => new Phaser.Math.Vector2(point.x, point.y));
+    const view = this.add.graphics().setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
+    view.lineStyle(WALL_CONFIG.thickness + 10, palette.glow, 0.18).strokePoints(vectors, false);
+    view.lineStyle(WALL_CONFIG.thickness, palette.core, 0.78).strokePoints(vectors, false);
+    view.lineStyle(2, palette.accent, 0.95).strokePoints(vectors, false);
+    this.activeWall = {
+      spec: { ...spec, status: [...spec.status] },
+      points,
+      view,
+      remainingSeconds: wallDurationSeconds(spec.speed),
+      contactedEnemies: new Set(),
+      slowedBosses: new Set(),
+    };
+  }
+
+  private createOrbit(spec: SpellSpec): void {
+    this.clearActiveOrbit();
+    const palette = ELEMENT_PALETTES[spec.element_primary];
+    const count = orbitCount(spec.size);
+    const views = Array.from({ length: count }, () => {
+      const halo = this.add.circle(0, 0, 13, palette.glow, 0.26)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      const core = this.add.circle(0, 0, 6, palette.core, 0.95)
+        .setStrokeStyle(1.5, palette.accent, 0.9)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      return this.add.container(this.player.x, this.player.y, [halo, core]).setDepth(8);
+    });
+    this.activeOrbit = {
+      spec: { ...spec, status: [...spec.status] },
+      views,
+      elapsedSeconds: 0,
+      angle: -Math.PI / 2,
+      lastHitAt: new Map(),
+    };
+  }
+
+  private updatePersistentForms(deltaSeconds: number): void {
+    const wall = this.activeWall;
+    if (wall) {
+      wall.remainingSeconds -= deltaSeconds;
+      if (wall.remainingSeconds <= 0) this.clearActiveWall();
+    }
+
+    const orbit = this.activeOrbit;
+    if (!orbit) return;
+    orbit.elapsedSeconds += deltaSeconds;
+    if (orbit.elapsedSeconds >= ORBIT_CONFIG.durationSeconds) {
+      this.clearActiveOrbit();
+      return;
+    }
+    orbit.angle += orbitAngularVelocity(orbit.spec.speed) * deltaSeconds;
+    const center = { x: this.player.x, y: this.player.y - 8 };
+    orbit.views.forEach((view, index) => {
+      const point = orbitPoint(center, orbit.angle, index, orbit.views.length);
+      view.setPosition(point.x, point.y);
+      for (const enemy of [...this.enemies]) {
+        if (!enemy.alive) continue;
+        if (Phaser.Math.Distance.Between(point.x, point.y, enemy.x, enemy.y)
+          > ORBIT_CONFIG.contactRadius + enemy.collisionRadius) continue;
+        if (!repeatHitReady(orbit.lastHitAt.get(enemy), orbit.elapsedSeconds)) continue;
+        orbit.lastHitAt.set(enemy, orbit.elapsedSeconds);
+        if (orbit.spec.effect === 'control') {
+          this.applyControl(enemy, orbit.spec.power, { kind: 'point', x: point.x, y: point.y });
+        } else {
+          const damage = spellImpactDamageFromPower(
+            orbit.spec.power,
+            ORBIT_CONFIG.damageMultiplier,
+          );
+          this.damageEnemy(enemy, this.spellDamageAgainst(enemy, orbit.spec, damage));
+        }
+      }
+    });
+  }
+
+  private resolveWallEnemyCollision(enemy: CombatEnemy, previous: FormPoint): void {
+    const wall = this.activeWall;
+    if (!wall || !enemy.alive) return;
+    const crossed = sweepIntersectsPolyline(
+      previous,
+      { x: enemy.x, y: enemy.y },
+      enemy.collisionRadius + WALL_CONFIG.thickness / 2,
+      wall.points,
+    );
+    if (!crossed) return;
+
+    const startedTouching = sweepIntersectsPolyline(
+      previous,
+      previous,
+      enemy.collisionRadius + WALL_CONFIG.thickness / 2,
+      wall.points,
+    );
+    if (enemy.kind !== 'boss' && !startedTouching) {
+      enemy.view.setPosition(previous.x, previous.y);
+    }
+    if (enemy.kind === 'boss' && !wall.slowedBosses.has(enemy)) {
+      wall.slowedBosses.add(enemy);
+      this.applySlow(
+        enemy,
+        wall.spec.power,
+        WALL_CONFIG.bossSlowDurationSeconds,
+        WALL_CONFIG.bossSlowMovementMultiplier,
+      );
+    }
+    if (wall.contactedEnemies.has(enemy)) return;
+    wall.contactedEnemies.add(enemy);
+    if (wall.spec.effect === 'control') {
+      if (enemy.kind !== 'boss') {
+        this.applyControl(enemy, wall.spec.power, { kind: 'point', x: enemy.x, y: enemy.y });
+      }
+      return;
+    }
+    const damage = spellImpactDamageFromPower(wall.spec.power, WALL_CONFIG.damageMultiplier);
+    this.damageEnemy(enemy, this.spellDamageAgainst(enemy, wall.spec, damage));
+  }
+
+  private clearActiveWall(): void {
+    this.activeWall?.view.destroy();
+    this.activeWall = null;
+  }
+
+  private clearActiveOrbit(): void {
+    for (const view of this.activeOrbit?.views ?? []) view.destroy(true);
+    this.activeOrbit = null;
   }
 
   private spiritName(role: 'attack' | 'heal' | 'guard', element?: SpellElement): string {
@@ -1339,7 +2193,7 @@ export class ProtoScene extends Phaser.Scene {
       this.waveText.setText(`ROOM ${runState.roomIndex}/${runState.maxRooms} CLEAR`);
     } else if (runState.phase === 'room-transition') {
       this.waveText.setText(`NEXT ROOM ${runState.roomIndex + 1}/${runState.maxRooms}`);
-    } else if (this.isBossRoom(runState.roomIndex)) {
+    } else if (this.isBossEncounter()) {
       const boss = this.enemies.find((enemy) => enemy.kind === 'boss');
       this.waveText.setText(
         boss
@@ -1573,9 +2427,13 @@ export class ProtoScene extends Phaser.Scene {
     lockedTarget: CombatEnemy | null,
     hitEnemies: Set<CombatEnemy>,
     chainTargets: readonly CombatEnemy[] = [],
+    castOrigin = new Phaser.Math.Vector2(this.player.x, this.player.y),
+    chainOrigins: readonly { x: number; y: number }[] = [],
     auto = false,
   ): void {
-    if (impact.hitGroup !== undefined) hitEnemies.clear();
+    // Zone ticks may damage the same enemy again. Rain strikes share one cast-level
+    // hit set so overlapping landing circles cannot multiply damage on one target.
+    if (impact.hitGroup !== undefined && spec.form !== 'rain') hitEnemies.clear();
     const damageMultiplier = Number.isFinite(impact.damageMultiplier)
       ? Math.max(0, impact.damageMultiplier ?? 1)
       : 1;
@@ -1587,15 +2445,27 @@ export class ProtoScene extends Phaser.Scene {
       if (impact.chainIndex !== undefined) {
         const chainTarget = chainTargets[impact.chainIndex];
         if (chainTarget?.alive) {
+          const chainSource = impact.chainIndex === 0
+            ? castOrigin
+            : chainOrigins[impact.chainIndex - 1] ?? castOrigin;
           this.damageEnemy(
             chainTarget,
             this.spellDamageAgainst(chainTarget, spec, damage),
+            spec.element_primary,
+            chainSource.x,
+            chainSource.y,
           );
         }
         return;
       }
       if (lockedTarget?.alive) {
-        this.damageEnemy(lockedTarget, this.spellDamageAgainst(lockedTarget, spec, damage));
+        this.damageEnemy(
+          lockedTarget,
+          this.spellDamageAgainst(lockedTarget, spec, damage),
+          spec.element_primary,
+          castOrigin.x,
+          castOrigin.y,
+        );
       }
       return;
     }
@@ -1617,7 +2487,18 @@ export class ProtoScene extends Phaser.Scene {
       if (!isHit) continue;
 
       hitEnemies.add(enemy);
-      this.damageEnemy(enemy, this.spellDamageAgainst(enemy, spec, damage));
+      const bypassDirectionalShield = spec.form === 'zone' || spec.form === 'rain';
+      const impactSource = impact.kind === 'line'
+        ? { x: impact.fromX, y: impact.fromY }
+        : castOrigin;
+      this.damageEnemy(
+        enemy,
+        this.spellDamageAgainst(enemy, spec, damage),
+        spec.element_primary,
+        impactSource.x,
+        impactSource.y,
+        bypassDirectionalShield,
+      );
     }
   }
 
@@ -1745,7 +2626,7 @@ export class ProtoScene extends Phaser.Scene {
     affectedEnemies: Set<CombatEnemy>,
     chainTargets: readonly CombatEnemy[] = [],
   ): void {
-    if (impact.hitGroup !== undefined) affectedEnemies.clear();
+    if (impact.hitGroup !== undefined && spec.form !== 'rain') affectedEnemies.clear();
     if (impact.kind === 'point') {
       if (impact.chainIndex !== undefined) {
         const chainTarget = chainTargets[impact.chainIndex];
@@ -1792,11 +2673,13 @@ export class ProtoScene extends Phaser.Scene {
     enemy: CombatEnemy,
     power: number,
     durationOverrideSeconds?: number,
+    movementMultiplierOverride?: number,
   ): void {
     const remaining = this.enemyControlState.applySlow(
       enemy,
       power,
       durationOverrideSeconds,
+      movementMultiplierOverride,
     );
     if (!this.controlIndicators.has(enemy)) {
       const indicator = this.add.circle(
@@ -1813,7 +2696,7 @@ export class ProtoScene extends Phaser.Scene {
     console.info('[Control] slow-applied', {
       enemy: enemy.kind,
       durationSeconds: remaining,
-      movementMultiplier: CONTROL_CONFIG.slowMovementMultiplier,
+      movementMultiplier: this.enemyControlState.movementMultiplierFor(enemy),
     });
   }
 
@@ -1908,10 +2791,28 @@ export class ProtoScene extends Phaser.Scene {
     return Phaser.Math.Distance.Between(pointX, pointY, nearestX, nearestY);
   }
 
-  private damageEnemy(enemy: CombatEnemy, damage: number): void {
+  private damageEnemy(
+    enemy: CombatEnemy,
+    damage: number,
+    _element?: SpellElement,
+    sourceX = this.player.x,
+    sourceY = this.player.y,
+    bypassDirectionalShield = false,
+  ): void {
     if (damage <= 0 || !enemy.alive) return;
+    let defeated: boolean;
+    if (enemy instanceof ShieldSentinelEnemy && !bypassDirectionalShield) {
+      const result = enemy.takeMechanicDamage(damage, sourceX, sourceY);
+      if (result.blocked) {
+        this.showShieldBlockEffect(enemy, sourceX, sourceY);
+        return;
+      }
+      defeated = result.defeated;
+    } else {
+      defeated = enemy.takeDamage(damage);
+    }
     this.audio.playSfx('hit');
-    if (!enemy.takeDamage(damage)) {
+    if (!defeated) {
       // 보스는 HP 임계 통과 시 하수인을 부른다
       if (enemy instanceof BossEnemy && enemy.consumeMinionTrigger()) {
         this.spawnBossMinions(enemy);
@@ -1922,10 +2823,14 @@ export class ProtoScene extends Phaser.Scene {
 
     const splitX = enemy.x;
     const splitY = enemy.y;
-    const shouldSplit = enemy instanceof SplitterEnemy && enemy.canSplit;
+    const baseEnemy = enemy instanceof EliteEnemy ? enemy.baseEnemy : enemy;
+    const wasBoss = baseEnemy instanceof BossEnemy;
+    const shouldSplit = baseEnemy instanceof SplitterEnemy && baseEnemy.canSplit;
+    const wasUnstable = enemy.eliteModifier === 'unstable';
     this.removeEnemyControl(enemy);
     enemy.destroy();
     this.enemies = this.enemies.filter((candidate) => candidate !== enemy);
+    if (wasBoss) this.clearBossPatternEffects();
     if (shouldSplit) {
       for (let i = 0; i < SPLITTER_CONFIG.splitCount; i++) {
         const angle = (Math.PI * 2 * i) / SPLITTER_CONFIG.splitCount;
@@ -1942,11 +2847,14 @@ export class ProtoScene extends Phaser.Scene {
         this.spawnEnemy('small-splitter', x, y);
       }
     }
+    if (wasUnstable && this.enemies.length > 0) {
+      this.scheduleUnstableExplosion(splitX, splitY);
+    }
     if (this.enemies.length > 0) return;
 
     this.clearEnemyProjectiles();
     // 보스방은 웨이브 흐름 없이 전멸(보스+하수인) 즉시 방 클리어
-    if (this.isBossRoom(this.combatRunController.state.roomIndex)) {
+    if (this.isBossEncounter()) {
       this.combatRunController.notifyRoomCleared();
       return;
     }
@@ -1957,6 +2865,134 @@ export class ProtoScene extends Phaser.Scene {
     } else {
       this.announceSystemMessage(`웨이브 ${completedWave} 완료`);
     }
+  }
+
+  private showShieldBlockEffect(
+    enemy: ShieldSentinelEnemy,
+    sourceX: number,
+    sourceY: number,
+  ): void {
+    const direction = new Phaser.Math.Vector2(sourceX - enemy.x, sourceY - enemy.y);
+    if (direction.lengthSq() === 0) direction.set(0, -1);
+    direction.normalize();
+    const contactX = enemy.x + direction.x * 31;
+    const contactY = enemy.y + direction.y * 31;
+    const baseAngle = direction.angle();
+
+    const shockwave = this.add.circle(contactX, contactY, 8, 0x66d9ff, 0.16)
+      .setStrokeStyle(4, 0xb9efff, 0.95)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: shockwave,
+      radius: 27,
+      alpha: 0,
+      duration: 240,
+      ease: 'Cubic.easeOut',
+      onComplete: () => shockwave.destroy(),
+    });
+
+    for (let i = 0; i < 12; i++) {
+      const spread = Phaser.Math.FloatBetween(-1, 1);
+      const distance = Phaser.Math.Between(30, 62);
+      const particle = this.add.circle(
+        contactX,
+        contactY,
+        Phaser.Math.Between(3, 6),
+        i % 2 === 0 ? 0x66d9ff : 0xb9efff,
+        0.95,
+      ).setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: particle,
+        x: contactX + Math.cos(baseAngle + spread) * distance,
+        y: contactY + Math.sin(baseAngle + spread) * distance,
+        alpha: 0,
+        scale: 0.35,
+        duration: Phaser.Math.Between(260, 420),
+        ease: 'Cubic.easeOut',
+        onComplete: () => particle.destroy(),
+      });
+    }
+  }
+
+  private scheduleUnstableExplosion(x: number, y: number): void {
+    const radius = 230;
+    const warningDurationMs = 1500;
+    const roomIndex = this.combatRunController.state.roomIndex;
+    const warning = this.add.circle(x, y, radius, 0xff5370, 0.02)
+      .setStrokeStyle(2, 0xff5370, 0.48)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const pulse = this.add.circle(x, y, radius, 0xff5370, 0.035)
+      .setStrokeStyle(5, 0xff8fa3, 1)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setScale(0.18);
+    this.tweens.add({
+      targets: pulse,
+      scale: 1,
+      alpha: { from: 1, to: 0.72 },
+      duration: warningDurationMs,
+      ease: 'Cubic.easeIn',
+    });
+    const indicator = this.add.text(x, y, '!', {
+      fontSize: '58px',
+      fontStyle: 'bold',
+      color: '#ff5370',
+      stroke: '#3a0714',
+      strokeThickness: 7,
+    }).setOrigin(0.5).setDepth(20);
+    this.tweens.add({
+      targets: indicator,
+      scale: { from: 0.88, to: 1.18 },
+      alpha: { from: 0.72, to: 1 },
+      duration: 250,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+    const entry: UnstableWarning = { view: warning, pulse, indicator, timers: [] };
+    const warningTimer = this.time.delayedCall(warningDurationMs, () => {
+      if (!warning.active) return;
+      if (pulse.active) pulse.destroy();
+      if (indicator.active) indicator.destroy();
+      warning.destroy();
+      this.unstableWarnings = this.unstableWarnings.filter((candidate) => candidate !== entry);
+      const state = this.combatRunController.state;
+      if (state.phase !== 'combat' || state.roomIndex !== roomIndex) return;
+      const blast = this.add.circle(x, y, 20, 0xff5370, 0.82)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: blast,
+        radius,
+        alpha: 0.72,
+        duration: 120,
+        ease: 'Cubic.easeOut',
+        onComplete: () => {
+          this.tweens.add({
+            targets: blast,
+            alpha: 0,
+            delay: 0,
+            duration: 650,
+            ease: 'Cubic.easeIn',
+            onComplete: () => blast.destroy(),
+          });
+        },
+      });
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, x, y) <= radius) {
+        const applied = this.playerState.takeDamage(30);
+        this.announceIncomingDamage(applied.hpDamage, applied.shieldDamage);
+      }
+    });
+    entry.timers.push(warningTimer);
+    this.unstableWarnings.push(entry);
+  }
+
+  private clearUnstableWarnings(): void {
+    for (const warning of this.unstableWarnings) {
+      for (const timer of warning.timers) timer.remove(false);
+      if (warning.view.active) warning.view.destroy();
+      if (warning.pulse.active) warning.pulse.destroy();
+      if (warning.indicator.active) warning.indicator.destroy();
+    }
+    this.unstableWarnings = [];
   }
 
   private spawnBossMinions(boss: BossEnemy): void {

@@ -9,6 +9,7 @@ import { RESISTANCE } from '../src/spell/bossMemory';
 import { PlayerCombatState, PLAYER_COMBAT_CONFIG } from '../src/combat-core/player/playerCombatState';
 import { CombatRunController } from '../src/combat-core/run/runController';
 import { RUN_REWARD_CONFIG } from '../src/combat-core/run/rewardConfig';
+import { BossPatternController } from '../src/combat-core/boss/bossPatternController';
 
 // ① 장기(부분) 내성 수치 게이트 — 단기 내성(R2)보다 약하고, 무효(1)보다는 강해야 한다
 {
@@ -27,6 +28,7 @@ import { RUN_REWARD_CONFIG } from '../src/combat-core/run/rewardConfig';
   const player = new PlayerCombatState();
   const controller = new CombatRunController({
     playerState: player,
+    maxRooms: 3,
     scheduleTransition: (_delay, callback) => callback(), // 동기 전환
   });
   const events: string[] = [];
@@ -79,3 +81,48 @@ import { RUN_REWARD_CONFIG } from '../src/combat-core/run/rewardConfig';
 }
 
 console.log('boss core regression: 내성수치게이트·3방 런·리셋 4군 통과');
+
+// ⑤ Phase 4 보스 패턴 상태 머신
+{
+  const stage = new BossPatternController('stage');
+  assert.deepEqual(stage.update(2, 1, 0).actions, ['volley-telegraph']);
+  assert.deepEqual(stage.update(0.7, 1, 0).actions, ['volley-start']);
+  assert.deepEqual(stage.update(0.35, 2, 0).actions, ['charge-telegraph']);
+  assert.deepEqual(stage.update(0.7, 2, 0).actions, ['charge-start']);
+  assert.deepEqual(stage.update(0.8, 2, 0).actions, ['charge-telegraph']);
+  assert.deepEqual(stage.update(0.7, 2, 0).actions, ['charge-start']);
+  assert.deepEqual(stage.update(0.8, 2, 0).actions, ['summon']);
+
+  const rush = new BossPatternController('memory');
+  rush.setCounterStrategy('rush');
+  assert.deepEqual(rush.update(0.35, 2, 0).actions, ['charge-telegraph']);
+  assert.deepEqual(rush.update(0.7, 2, 0).actions, ['charge-start']);
+  assert.deepEqual(rush.update(0.8, 2, 0).actions, ['charge-telegraph']);
+  assert.deepEqual(rush.update(0.7, 2, 0).actions, ['charge-start']);
+
+  const intro = new BossPatternController('memory');
+  assert.deepEqual(intro.update(2, 1, 0).actions, ['volley-telegraph']);
+  assert.deepEqual(intro.update(0.7, 1, 0).actions, ['volley-start']);
+  assert.deepEqual(intro.update(2.5, 1, 0).actions, ['hazard']);
+  assert.deepEqual(intro.update(3.2, 1, 0).actions, ['charge-telegraph']);
+  assert.deepEqual(intro.update(0.7, 1, 0).actions, ['charge-start']);
+
+  const ranged = new BossPatternController('memory');
+  ranged.setCounterStrategy('ranged');
+  assert.deepEqual(ranged.update(0.35, 2, 0).actions, ['volley-telegraph']);
+  assert.deepEqual(ranged.update(0.7, 2, 0).actions, ['volley-start']);
+  assert.deepEqual(ranged.update(3.2, 2, 0).actions, ['hazard']);
+  assert.deepEqual(ranged.update(0.35, 3, 0).actions, ['volley-telegraph']);
+  assert.deepEqual(ranged.update(0.7, 3, 0).actions, ['volley-start']);
+  assert.deepEqual(ranged.update(2.6, 3, 0).actions, ['hazard']);
+  assert.deepEqual(ranged.update(2.6, 3, 0).actions, ['summon-elite']);
+  assert.deepEqual(ranged.update(2.6, 3, 4).actions, ['charge-telegraph']);
+  assert.deepEqual(ranged.update(0.7, 3, 4).actions, ['charge-start']);
+
+  const capped = new BossPatternController('memory');
+  capped.setCounterStrategy('ranged');
+  assert.deepEqual(capped.update(0.35, 3, 4).actions, ['volley-telegraph']);
+  assert.deepEqual(capped.update(0.7, 3, 4).actions, ['volley-start']);
+  assert.deepEqual(capped.update(2.6, 3, 4).actions, ['hazard']);
+  assert.deepEqual(capped.update(2.6, 3, 4).actions, ['volley-telegraph']);
+}

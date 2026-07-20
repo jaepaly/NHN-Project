@@ -6,30 +6,48 @@ import { ELEMENT_PALETTES } from '../../render/palette';
 import { BOSS_CONFIG } from './bossConfig';
 import type { CombatEnemy, EnemyShotRequest } from '../enemies/combatEnemy';
 
+export type BossProfile = 'legacy' | 'stage' | 'memory';
+
+export const BOSS_CHARGE_SPEED = 720;
+export const BOSS_CHARGE_DURATION_SECONDS = 0.35;
+export const BOSS_CHARGE_DISTANCE = BOSS_CHARGE_SPEED * BOSS_CHARGE_DURATION_SECONDS;
+
 export class BossEnemy implements CombatEnemy {
   readonly kind = 'boss' as const;
   readonly view: Phaser.GameObjects.Container;
-  readonly maxHp: number = BOSS_CONFIG.maxHp;
+  readonly maxHp: number;
   readonly contactDamage: number = BOSS_CONFIG.contactDamage;
   readonly contactDistance: number = BOSS_CONFIG.contactDistance;
   readonly collisionRadius: number = BOSS_CONFIG.collisionRadius;
 
-  hp: number = this.maxHp;
+  hp: number;
   alive = true;
 
   private contactDamageCooldownRemaining = 0;
   private volleyCooldownRemaining: number = BOSS_CONFIG.volleyInitialDelaySeconds;
   /** 아직 발동하지 않은 하수인 소환 임계 (내림차순) */
-  private pendingMinionThresholds = [...BOSS_CONFIG.minionThresholds];
+  private pendingMinionThresholds: number[];
   // R2 counterStrategy 적용 결과 (applyCounterStrategy)
   private speedMultiplier = 1;
   private volleyIntervalSeconds: number = BOSS_CONFIG.volleyIntervalSeconds;
+  private chargeRemaining = 0;
+  private readonly chargeVelocity = new Phaser.Math.Vector2();
 
   private readonly core: Phaser.GameObjects.Polygon;
   private readonly ring: Phaser.GameObjects.Arc;
   private readonly healthFill: Phaser.GameObjects.Rectangle;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    private readonly profile: BossProfile = 'legacy',
+  ) {
+    this.maxHp = profile === 'stage' ? 520 : profile === 'memory' ? 680 : BOSS_CONFIG.maxHp;
+    this.hp = this.maxHp;
+    this.pendingMinionThresholds = profile === 'legacy'
+      ? [...BOSS_CONFIG.minionThresholds]
+      : [];
     const glow = scene.add.circle(0, 0, 58, 0xb44dff, 0.14)
       .setBlendMode(Phaser.BlendModes.ADD);
     // 육각 코어 + 회전 링 — '대형 기하 조형물'
@@ -58,6 +76,27 @@ export class BossEnemy implements CombatEnemy {
 
   get y(): number {
     return this.view.y;
+  }
+
+  get phase(): 1 | 2 | 3 {
+    const ratio = this.hp / this.maxHp;
+    if (this.profile === 'stage') return ratio > 0.6 ? 1 : 2;
+    if (this.profile === 'memory') return ratio > 0.65 ? 1 : ratio > 0.3 ? 2 : 3;
+    return 1;
+  }
+
+  get charging(): boolean { return this.chargeRemaining > 0; }
+
+  startCharge(
+    targetX: number,
+    targetY: number,
+    distance = BOSS_CHARGE_DISTANCE,
+  ): void {
+    const direction = new Phaser.Math.Vector2(targetX - this.x, targetY - this.y);
+    if (direction.lengthSq() === 0) direction.set(0, 1);
+    this.chargeVelocity.copy(direction.normalize().scale(BOSS_CHARGE_SPEED));
+    const safeDistance = Number.isFinite(distance) ? Math.max(0, distance) : BOSS_CHARGE_DISTANCE;
+    this.chargeRemaining = safeDistance / BOSS_CHARGE_SPEED;
   }
 
   /** 기억 기반 내성 원소를 시각화 (링 색 = 내성 원소 팔레트) — GDD §4.1 "명시적 표시" */
@@ -92,15 +131,26 @@ export class BossEnemy implements CombatEnemy {
     this.ring.rotation += 0.9 * deltaSeconds;
     this.core.rotation -= 0.25 * deltaSeconds;
 
+    if (this.chargeRemaining > 0) {
+      const chargeDelta = Math.min(deltaSeconds, this.chargeRemaining);
+      this.view.x += this.chargeVelocity.x * chargeDelta;
+      this.view.y += this.chargeVelocity.y * chargeDelta;
+      this.chargeRemaining = Math.max(0, this.chargeRemaining - deltaSeconds);
+      return [];
+    }
+
     // 저속 추격
     const direction = new Phaser.Math.Vector2(targetX - this.x, targetY - this.y);
     if (direction.lengthSq() > 0) {
       direction.normalize();
       const moveScale = safeMovementMultiplier(movementMultiplier);
-      const speed = BOSS_CONFIG.speed * this.speedMultiplier;
+      const phaseSpeed = this.profile === 'stage' && this.phase === 2 ? 1.45 : 1;
+      const speed = BOSS_CONFIG.speed * this.speedMultiplier * phaseSpeed;
       this.view.x += direction.x * speed * deltaSeconds * moveScale;
       this.view.y += direction.y * speed * deltaSeconds * moveScale;
     }
+
+    if (this.profile !== 'legacy') return [];
 
     // 방사 볼리 패턴 (간격은 counterStrategy 'ranged' 시 단축)
     this.volleyCooldownRemaining -= deltaSeconds;
@@ -109,8 +159,9 @@ export class BossEnemy implements CombatEnemy {
 
     const shots: EnemyShotRequest[] = [];
     const offset = Math.random() * Math.PI * 2;
-    for (let i = 0; i < BOSS_CONFIG.volleyProjectiles; i++) {
-      const angle = offset + (Math.PI * 2 * i) / BOSS_CONFIG.volleyProjectiles;
+    const projectileCount = BOSS_CONFIG.volleyProjectiles;
+    for (let i = 0; i < projectileCount; i++) {
+      const angle = offset + (Math.PI * 2 * i) / projectileCount;
       shots.push({ x: this.x, y: this.y, angle });
     }
     return shots;

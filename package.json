@@ -15,6 +15,7 @@
     "test:bolt": "esbuild scripts/bolt-collision-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-bolt-collision-regression.mjs && node node_modules/.cache/incant-bolt-collision-regression.mjs",
     "test:forms": "esbuild scripts/area-forms-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-area-forms-regression.mjs && node node_modules/.cache/incant-area-forms-regression.mjs",
     "test:advanced-forms": "esbuild scripts/advanced-forms-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-advanced-forms-regression.mjs && node node_modules/.cache/incant-advanced-forms-regression.mjs",
+    "test:persistent-forms": "esbuild scripts/persistent-forms-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-persistent-forms-regression.mjs && node node_modules/.cache/incant-persistent-forms-regression.mjs",
     "test:backdrop": "esbuild scripts/room-backdrop-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-backdrop-regression.mjs && node node_modules/.cache/incant-room-backdrop-regression.mjs",
     "test:boss": "esbuild scripts/boss-resistance-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-boss-resistance-regression.mjs && node node_modules/.cache/incant-boss-resistance-regression.mjs",
     "test:runmemory": "esbuild scripts/run-memory-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-run-memory-regression.mjs && node node_modules/.cache/incant-run-memory-regression.mjs",
@@ -23,6 +24,7 @@
     "test:engrave": "esbuild scripts/engrave-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-engrave-regression.mjs && node node_modules/.cache/incant-engrave-regression.mjs",
     "test:spirit": "esbuild scripts/spirit-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spirit-regression.mjs && node node_modules/.cache/incant-spirit-regression.mjs",
     "test:evolvefuse": "esbuild scripts/evolve-fuse-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-evolve-fuse-regression.mjs && node node_modules/.cache/incant-evolve-fuse-regression.mjs",
+    "test:growth": "esbuild scripts/growth-feedback-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-growth-feedback-regression.mjs && node node_modules/.cache/incant-growth-feedback-regression.mjs",
     "snapshot:quality": "esbuild scripts/spell-quality-snapshot.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-quality-snapshot.mjs && node node_modules/.cache/incant-spell-quality-snapshot.mjs",
     "preview": "vite preview",
     "test:boss-core": "esbuild scripts/boss-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-boss-regression.mjs && node node_modules/.cache/incant-boss-regression.mjs"

@@ -1,12 +1,20 @@
 /** R1 전투 코어의 공통 적 계약. */
 import type Phaser from 'phaser';
+import type { EliteModifier } from '../../run/runContract';
 
-export type EnemyKind = 'chaser' | 'shooter' | 'splitter' | 'small-splitter' | 'boss';
+export type EnemyKind =
+  | 'chaser'
+  | 'shooter'
+  | 'splitter'
+  | 'small-splitter'
+  | 'shield-sentinel'
+  | 'boss';
 
 export interface EnemyShotRequest {
   x: number;
   y: number;
   angle: number;
+  speedMultiplier?: number;
 }
 
 export interface CombatEnemy {
@@ -16,6 +24,7 @@ export interface CombatEnemy {
   readonly contactDamage: number;
   readonly contactDistance: number;
   readonly collisionRadius: number;
+  readonly eliteModifier?: EliteModifier;
 
   hp: number;
   alive: boolean;
