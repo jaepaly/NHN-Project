@@ -6,7 +6,9 @@ import { SpellHistory } from '../spell/spellHistory';
 import type { JudgeSource } from '../spell/spellHistory';
 import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
 import type { SpellImpact } from '../render/spellRenderer';
-import type { EliteModifier, EvolveRewardData, RunController } from '../run/runContract';
+import type {
+  EliteModifier, EvolveRewardData, RewardOption, RunController,
+} from '../run/runContract';
 import {
   ELEMENT_LABELS,
   ELEMENT_PALETTES,
@@ -103,6 +105,15 @@ import {
 } from '../spell/bossMemoryContract';
 import type { BossResistanceProfile } from '../spell/bossMemoryContract';
 import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
+import { showRewardCards } from '../ui/rewardCardOverlay';
+import {
+  addEntry,
+  bestEntryFromRun,
+  loadGrimoire,
+  offerEntries,
+  saveGrimoire,
+  specFromEntry,
+} from '../spell/grimoire';
 import { CONTROL_CONFIG } from '../combat-core/control/controlConfig';
 import { EnemyControlState } from '../combat-core/control/enemyControlState';
 import { SUMMON_CONFIG } from '../combat-core/summons/summonConfig';
@@ -268,6 +279,8 @@ export class ProtoScene extends Phaser.Scene {
   private activeOrbit: ActiveOrbit | null = null;
   /** 성장 누적 표식 (룬 링·친화 오라) — 보상 선택 때 갱신, 매 프레임 플레이어 추종 */
   private growthMarks!: GrowthMarks;
+  /** 주문서 유산 선택 중 — 카드가 키를 캡처하는 동안 전투를 멈춘다 */
+  private legacySelecting = false;
   private readonly spiritViews = new Map<string, SpiritOrbView>();
   private spiritOrbitAngle = -Math.PI / 2;
   private readonly enemyControlState = new EnemyControlState();
@@ -345,6 +358,9 @@ export class ProtoScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-ENTER', () => {
       if (!this.incanting && !this.casting) this.tryOpenIncant();
     });
+
+    // 주문서에 유산이 있으면 첫 전투 전에 하나를 고른다 (첫 런은 비어 있어 조용히 넘어감)
+    void this.offerLegacyEngrave();
   }
 
   override update(_time: number, delta: number): void {
@@ -373,6 +389,8 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private isCombatActive(): boolean {
+    // 유산 선택 중에는 전투를 멈춘다 — 카드가 키를 캡처하는 동안 적에게 맞으면 안 된다
+    if (this.legacySelecting) return false;
     return this.combatRunController.state.phase === 'combat';
   }
 
@@ -467,8 +485,48 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   /** 런 간 기억 저장 (GDD §4.2) — 요약은 리셋 전 히스토리 기준, 다음 런 보스가 소비 */
+  /**
+   * 주문서 유산 선택 (Phase 5) — 보스가 기억하듯 플레이어도 기억한다.
+   * 이전 런의 주문 중 하나를 Lv1 각인으로 장착하고 출발한다. 주문서가 비면 조용히 넘어간다.
+   */
+  private async offerLegacyEngrave(): Promise<void> {
+    const book = loadGrimoire();
+    const offers = offerEntries(book);
+    if (offers.length === 0) return;
+
+    this.legacySelecting = true;
+    try {
+      const options: RewardOption[] = offers.map((entry) => ({
+        id: `legacy-${entry.normalized}`,
+        kind: 'engrave',
+        title: `유산 · ${entry.name}`,
+        description: `지난 런의 주문 (위력 ${Math.round(entry.power)}) — Lv1 각인으로 시작`,
+        element: entry.element,
+        engrave: { spellKey: entry.normalized, level: 1 },
+      }));
+      const chosen = await showRewardCards(options, {
+        kicker: 'GRIMOIRE',
+        title: '주문서에서 유산을 꺼낸다',
+      });
+      const entry = offers.find((e) => `legacy-${e.normalized}` === chosen.id);
+      if (entry) {
+        // 후보로 등록한 뒤 각인 — 이후 보상에서 같은 주문 강화 카드도 자연히 이어진다
+        this.engraveManager.rememberManualCast(entry.normalized, specFromEntry(entry));
+        const engraved = this.engraveManager.applyReward(chosen);
+        if (engraved) {
+          this.announceSystemMessage(`유산 각인 — 『${engraved.spell.name}』`, '#ffd166', 2800);
+        }
+      }
+    } finally {
+      this.legacySelecting = false;
+    }
+  }
+
   private persistRunMemory(result: 'win' | 'lose'): void {
     saveRunMemory(updateRunMemory(loadRunMemory(), summarizeRun(this.spellHistory, result)));
+    // 주문서 기록 — 승패 무관. 이번 런의 최고 공격 주문이 다음 런의 유산 후보가 된다.
+    const best = bestEntryFromRun(this.spellHistory, result);
+    if (best) saveGrimoire(addEntry(loadGrimoire(), best));
   }
 
   /** 새 런 — 씬 재시작 없이 상태만 초기화. 컨트롤러 reset이 room-started를 발화해 방 1부터 재개된다. */
@@ -485,6 +543,8 @@ export class ProtoScene extends Phaser.Scene {
     this.engraveRewardRand = createRunRandom(Date.now());
     this.playerState.reset();
     this.combatRunController.reset();
+    // 새 런에도 유산 선택 — 직전 런에서 기록된 주문이 곧바로 후보가 된다
+    void this.offerLegacyEngrave();
   }
 
   private startRoom(roomIndex: number): void {

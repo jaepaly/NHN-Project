@@ -122,6 +122,18 @@ function cardColors(option: RewardOption): { core: string; glow: string } {
   return { core: '#8fa4ff', glow: '#4c66ff' };
 }
 
+/** 같은 3택 UI를 다른 맥락(방 클리어 보상 / 주문서 유산)으로 재사용하기 위한 문구 */
+export interface CardFraming {
+  kicker?: string;
+  title?: string;
+}
+
+function escapeText(text: string): string {
+  return text.replace(/[&<>"']/g, (ch) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] ?? ch
+  ));
+}
+
 let activeCleanup: (() => void) | null = null;
 
 /** 오버레이가 열려 있는지 (R1이 phase 게이트와 별개로 참고 가능) */
@@ -133,15 +145,18 @@ export function isRewardOverlayOpen(): boolean {
  * 보상 카드를 표시하고 플레이어의 선택을 기다린다.
  * 반드시 하나를 고르게 한다 — 닫기/취소 없음 (선택 전 다음 방 진행 금지 계약).
  */
-export function showRewardCards(options: RewardOption[]): Promise<RewardOption> {
+export function showRewardCards(
+  options: RewardOption[],
+  framing: CardFraming = {},
+): Promise<RewardOption> {
   if (activeCleanup) throw new Error('reward overlay already open');
   const shown = options.slice(0, 3);
   const wrap = ensureDom();
 
   wrap.innerHTML = `
     <div class="reward-panel">
-      <div class="reward-kicker">ROOM CLEAR</div>
-      <div class="reward-title">공명의 대가를 선택하라</div>
+      <div class="reward-kicker">${escapeText(framing.kicker ?? 'ROOM CLEAR')}</div>
+      <div class="reward-title">${escapeText(framing.title ?? '공명의 대가를 선택하라')}</div>
       <div class="reward-cards"></div>
       <div class="reward-hint"><b>1·2·3</b> 또는 <b>←→ + Enter</b> · 마우스 클릭</div>
     </div>`;
