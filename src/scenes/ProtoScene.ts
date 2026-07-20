@@ -79,7 +79,7 @@ import type { WaveDefinition } from '../combat-core/waves/waveManager';
 import { CombatRunController } from '../combat-core/run/runController';
 import { ELITE_MODIFIERS } from '../combat-core/run/encounterConfig';
 import { drawRewardOptions } from '../combat-core/run/rewardConfig';
-import { EngraveManager } from '../combat-core/engrave/engraveManager';
+import { ENGRAVE_CONFIG, EngraveManager } from '../combat-core/engrave/engraveManager';
 import { SpiritManager } from '../combat-core/spirit/spiritManager';
 import { SpiritOrbView } from '../combat-core/spirit/spiritOrbView';
 import { buildEvolveOption, injectEvolveReward } from '../combat-core/evolve/evolveRewards';
@@ -259,7 +259,10 @@ export class ProtoScene extends Phaser.Scene {
   private shieldText!: Phaser.GameObjects.Text;
   private attunementText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
-  private spiritHudText!: Phaser.GameObjects.Text;
+  /** 빌드 패널 — 각인·정령·주문서 보유 현황 (우하단 상시 표시) */
+  private buildHudText!: Phaser.GameObjects.Text;
+  /** 주문서 보유 수 캐시 — HUD는 매 프레임 갱신되므로 localStorage를 직접 읽지 않는다 */
+  private grimoireCount = 0;
   private waveManager = new WaveManager();
   private eliteModifierAssignments: EliteModifier[] = [];
   private eliteSpawnIndex = 0;
@@ -491,6 +494,7 @@ export class ProtoScene extends Phaser.Scene {
    */
   private async offerLegacyEngrave(): Promise<void> {
     const book = loadGrimoire();
+    this.grimoireCount = book.length; // 런 시작마다 1회 — HUD 캐시 갱신
     const offers = offerEntries(book);
     if (offers.length === 0) return;
 
@@ -526,7 +530,11 @@ export class ProtoScene extends Phaser.Scene {
     saveRunMemory(updateRunMemory(loadRunMemory(), summarizeRun(this.spellHistory, result)));
     // 주문서 기록 — 승패 무관. 이번 런의 최고 공격 주문이 다음 런의 유산 후보가 된다.
     const best = bestEntryFromRun(this.spellHistory, result);
-    if (best) saveGrimoire(addEntry(loadGrimoire(), best));
+    if (best) {
+      const updated = addEntry(loadGrimoire(), best);
+      saveGrimoire(updated);
+      this.grimoireCount = updated.length;
+    }
   }
 
   /** 새 런 — 씬 재시작 없이 상태만 초기화. 컨트롤러 reset이 room-started를 발화해 방 1부터 재개된다. */
@@ -707,12 +715,15 @@ export class ProtoScene extends Phaser.Scene {
       align: 'right',
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
 
-    this.spiritHudText = this.add.text(width - 34, 59, 'SPIRIT 0/2', {
+    // 빌드 패널 — "지금 내가 뭘 들고 있나"를 상시 노출 (각인·정령·주문서).
+    // 우하단은 비어 있어 전투 시야를 가리지 않는다. 우상단은 ROOM/WAVE 전용으로 남긴다.
+    this.buildHudText = this.add.text(width - 20, height - 26, '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
       color: '#8fa4ff',
       align: 'right',
-    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+      lineSpacing: 3,
+    }).setOrigin(1, 1).setScrollFactor(0).setDepth(100);
 
     this.add.text(20, height - 28, 'WASD 이동  ·  ENTER 영창', {
       fontFamily: 'Consolas, monospace',
@@ -2247,15 +2258,7 @@ export class ProtoScene extends Phaser.Scene {
     this.hpText.setText(`HP    ${hp.toString().padStart(3)} / ${this.playerState.maxHp}`);
     this.manaText.setText(`MANA  ${mana.toString().padStart(3)} / ${this.playerState.maxMana}`);
     this.shieldText.setText(`SHIELD ${shield.toString().padStart(3)} / ${this.playerState.maxHp}`);
-    const spirits = this.spiritManager.entries;
-    const spiritSummary = spirits.length === 0
-      ? 'SPIRIT 0/2'
-      : `SPIRIT ${this.spiritManager.slotCount()}/2 · ${spirits
-        .map((entry) => entry.fusedName
-          ? `『${entry.fusedName}』`
-          : `${this.spiritName(entry.role, entry.element)} Lv${entry.level}`)
-        .join(' · ')}`;
-    this.spiritHudText.setText(spiritSummary);
+    this.buildHudText.setText(this.buildSummaryLines());
     this.drawHudBars();
 
     if (runState.phase === 'run-over') {
@@ -2266,9 +2269,14 @@ export class ProtoScene extends Phaser.Scene {
       this.waveText.setText(`NEXT ROOM ${runState.roomIndex + 1}/${runState.maxRooms}`);
     } else if (this.isBossEncounter()) {
       const boss = this.enemies.find((enemy) => enemy.kind === 'boss');
+      // 저항을 상시 노출한다 — 보스 링 색만으로는 "무엇이 안 통하는지" 알 수 없다
+      const resisted = this.bossResistance.resistedElement;
+      const resistLabel = resisted
+        ? `  ·  저항 ${ELEMENT_LABELS[resisted]} ×${this.bossResistance.resistMultiplier}`
+        : '';
       this.waveText.setText(
         boss
-          ? `BOSS ${Math.ceil(boss.hp)}/${boss.maxHp}  ·  ENEMIES ${this.enemies.length}`
+          ? `BOSS ${Math.ceil(boss.hp)}/${boss.maxHp}${resistLabel}  ·  ENEMIES ${this.enemies.length}`
           : 'BOSS',
       );
     } else if (this.waveManager.phase === 'waiting') {
@@ -2281,6 +2289,35 @@ export class ProtoScene extends Phaser.Scene {
         + `  ·  ENEMIES ${this.enemies.length}`,
       );
     }
+  }
+
+  /**
+   * 빌드 요약 — 각인·정령·주문서를 각 한 줄로.
+   * 슬롯이 비어 있어도 `0/2`를 보여준다: "채울 수 있는 자리가 있다"는 정보 자체가
+   * 보상 선택의 근거가 되기 때문이다.
+   */
+  private buildSummaryLines(): string[] {
+    const engraves = this.engraveManager.entries;
+    const engraveLabel = engraves.length === 0
+      ? `각인 0/${ENGRAVE_CONFIG.maxSlots}`
+      : `각인 ${engraves.length}/${ENGRAVE_CONFIG.maxSlots} · ${engraves
+        .map((e) => `${e.spell.name}${e.evolved ? '★' : ` Lv${e.level}`}`)
+        .join(' · ')}`;
+
+    const spirits = this.spiritManager.entries;
+    const spiritLabel = spirits.length === 0
+      ? '정령 0/2'
+      : `정령 ${this.spiritManager.slotCount()}/2 · ${spirits
+        .map((e) => (e.fusedName
+          ? `『${e.fusedName}』`
+          : `${this.spiritName(e.role, e.element)} Lv${e.level}`))
+        .join(' · ')}`;
+
+    const lines = [engraveLabel, spiritLabel];
+    // 주문서는 보유분이 있을 때만 — 첫 런에서 빈 줄로 혼란을 주지 않는다.
+    // 캐시된 수를 쓴다: 이 메서드는 매 프레임 호출되므로 localStorage를 여기서 읽으면 안 된다.
+    if (this.grimoireCount > 0) lines.push(`주문서 ${this.grimoireCount}`);
+    return lines;
   }
 
   private drawHudBars(): void {
