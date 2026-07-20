@@ -2,6 +2,9 @@
 import Phaser from 'phaser';
 import { SHOOTER_CONFIG } from '../combat/combatConfig';
 import type { CombatEnemy, EnemyShotRequest } from './combatEnemy';
+import { playHitReact, playAttackLunge, playDeathPop } from './enemyJuice';
+
+const SHOOTER_COLOR = 0xffa62b;
 
 export class ShooterEnemy implements CombatEnemy {
   readonly kind = 'shooter' as const;
@@ -14,6 +17,7 @@ export class ShooterEnemy implements CombatEnemy {
   hp: number = this.maxHp;
   alive = true;
   contactDamageCooldownRemaining = 0;
+  private dying = false;
 
   private readonly body: Phaser.GameObjects.Rectangle;
   private readonly healthFill: Phaser.GameObjects.Rectangle;
@@ -80,6 +84,7 @@ export class ShooterEnemy implements CombatEnemy {
     ) return [];
 
     this.attackCooldownRemaining = SHOOTER_CONFIG.attackIntervalSeconds;
+    playAttackLunge(this.view.scene, this.view); // 발사 반동
     const baseAngle = direction.angle();
     const spread = Phaser.Math.DegToRad(SHOOTER_CONFIG.bulletSpreadDegrees);
     const middleIndex = (SHOOTER_CONFIG.bulletCount - 1) / 2;
@@ -99,7 +104,10 @@ export class ShooterEnemy implements CombatEnemy {
 
     this.hp = Math.max(0, this.hp - Math.max(0, amount));
     this.healthFill.setScale(this.hp / this.maxHp, 1);
-    if (this.hp > 0) return false;
+    if (this.hp > 0) {
+      playHitReact(this.view.scene, this.view, this.body, SHOOTER_COLOR); // 맞는 순간 플래시+squash
+      return false;
+    }
 
     this.alive = false;
     return true;
@@ -107,7 +115,11 @@ export class ShooterEnemy implements CombatEnemy {
 
   destroy(): void {
     this.alive = false;
-    this.view.destroy(true);
+    if (this.dying) return;
+    this.dying = true;
+    playDeathPop(this.view.scene, this.view, () => {
+      if (this.view.active) this.view.destroy(true);
+    });
   }
 }
 
