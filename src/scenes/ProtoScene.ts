@@ -2366,11 +2366,50 @@ export class ProtoScene extends Phaser.Scene {
     );
   }
 
+  /**
+   * Phase 5 실험 — 플레이어 조준 타겟팅 (Track B 발제).
+   * 가설: "LLM은 전장을 못 보므로 '누구를 칠지'는 플레이어가 조준으로 정한다."
+   * 기본 ON, `VITE_AIM=0` 또는 런타임 `aimTargeting=false`로 자동 타겟팅(기존)과 A/B.
+   */
+  private aimTargeting =
+    ((import.meta.env as Record<string, string | undefined>).VITE_AIM ?? '1') !== '0';
+
+  /** 마우스 포인터 월드 좌표를 향한 타겟점. 조준 정보가 없으면 undefined(→ 기존 자동 타겟팅 폴백). */
+  private aimTargetPoint(
+    from: Phaser.Math.Vector2,
+    spec: SpellSpec,
+  ): Phaser.Math.Vector2 | undefined {
+    const pointer = this.input.activePointer;
+    if (!pointer) return undefined;
+    const dx = pointer.worldX - from.x;
+    const dy = pointer.worldY - from.y;
+    const length = Math.hypot(dx, dy);
+    if (!Number.isFinite(length) || length < 1) return undefined;
+    const ux = dx / length;
+    const uy = dy / length;
+    // 장판형(zone/rain): 커서 위치에 착지(castRange 클램프). 지향형: 커서 방향으로 사거리만큼.
+    if (spec.form === 'zone' || spec.form === 'rain') {
+      const castRange = spec.form === 'zone' ? ZONE_CONFIG.castRange : RAIN_CONFIG.castRange;
+      const distance = Math.min(length, castRange);
+      return new Phaser.Math.Vector2(from.x + ux * distance, from.y + uy * distance);
+    }
+    const range = spec.form === 'beam'
+      ? SPELL_DAMAGE_CONFIG.beamRange
+      : spec.form === 'wave'
+        ? SPELL_DAMAGE_CONFIG.waveRange
+        : 800;
+    return new Phaser.Math.Vector2(from.x + ux * range, from.y + uy * range);
+  }
+
   private spellTargetPoint(
     from: Phaser.Math.Vector2,
     spec: SpellSpec,
     nearestTarget: CombatEnemy | null,
   ): Phaser.Math.Vector2 | undefined {
+    if (this.aimTargeting) {
+      const aimed = this.aimTargetPoint(from, spec);
+      if (aimed) return aimed;
+    }
     const scale = SIZE_SCALE[spec.size];
     const areaConfig = spec.form === 'zone'
       ? {
