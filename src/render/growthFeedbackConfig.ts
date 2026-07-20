@@ -45,7 +45,10 @@ export function gainLabelFor(option: RewardOption): GainLabel {
     case 'swift-incant':
       return { text: `영창 쿨다운 -${RUN_REWARD_CONFIG.swiftIncantReduction}s`, color };
     case 'mana-surge':
-      return { text: `마나 재생 +${Math.round(RUN_REWARD_CONFIG.manaSurgeBonus * 100)}%`, color };
+      return {
+        text: `마나 획득 +${Math.round(RUN_REWARD_CONFIG.manaSurgeGainBonus * 100)}% · 흡수 범위 증가`,
+        color,
+      };
     case 'ward-start':
       return { text: `방 개막 보호막 +${RUN_REWARD_CONFIG.wardStartShield}`, color };
     case 'engrave':
