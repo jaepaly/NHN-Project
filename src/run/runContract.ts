@@ -21,7 +21,10 @@ export type RewardKind =
   | 'ward-start'
   | 'engrave'
   | 'spirit'
-  | 'evolve';
+  | 'evolve'
+  // Phase 5 시전 경제(#53) 전용 — 마나가 없는 모드에서 max-mana·mana-surge를 대체한다
+  | 'spell-power'
+  | 'momentum';
 
 /** 각인·정령 공통 성장 레벨 — 범위 밖 값이 보상으로 소비되는 경로를 타입에서 차단 (R1 리뷰) */
 export type GrowthLevel = 1 | 2 | 3;

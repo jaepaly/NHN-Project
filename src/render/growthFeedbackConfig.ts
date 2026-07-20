@@ -27,6 +27,8 @@ const KIND_COLORS: Partial<Record<RewardOption['kind'], number>> = {
   engrave: 0xffd166,
   spirit: 0x8fa4ff,
   evolve: 0xffd166,
+  'spell-power': 0xff8fa3,
+  momentum: 0xffd166,
 };
 
 /** 보상 → 증가분을 숫자로 드러내는 부상 텍스트. 수치는 RUN_REWARD_CONFIG 단일 출처. */
@@ -57,6 +59,10 @@ export function gainLabelFor(option: RewardOption): GainLabel {
         text: option.evolve?.target === 'spirit-fuse' ? '정령 융합' : '각인 진화',
         color,
       };
+    case 'spell-power':
+      return { text: `주문 위력 +${Math.round(RUN_REWARD_CONFIG.spellPowerBonus * 100)}%`, color };
+    case 'momentum':
+      return { text: `처치 시 쿨다운 -${RUN_REWARD_CONFIG.momentumRefundSeconds}s`, color };
   }
 }
 

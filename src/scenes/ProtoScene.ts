@@ -209,7 +209,7 @@ export class ProtoScene extends Phaser.Scene {
     initialRoomIndex: DEBUG_START_ROOM,
     rewardDraw: (roomIndex) => {
       const engraved = this.engraveManager.injectReward(
-        drawRewardOptions(roomIndex, this.engraveRewardRand),
+        drawRewardOptions(roomIndex, this.engraveRewardRand, castEconomyMode()),
         roomIndex,
         this.engraveRewardRand,
       );
@@ -1767,9 +1767,12 @@ export class ProtoScene extends Phaser.Scene {
       this.engraveManager.rememberManualCast(historyEntry.normalized, spec);
       const affinityBonus = this.combatRunController.state
         .elementalAffinity[spec.element_primary] ?? 0;
+      // 위력 보너스(친화·주문 증폭)는 피해에만 반영한다 —
+      // 쿨다운은 아래에서 판정 원본 spec.power로 계산하므로 강화가 템포를 깎지 않는다.
       const effectiveSpec: SpellSpec = {
         ...spec,
-        power: spellPowerWithAffinity(historyEntry.power, affinityBonus),
+        power: spellPowerWithAffinity(historyEntry.power, affinityBonus)
+          * this.playerState.spellPowerMultiplier,
       };
       if (historyEntry.power < historyEntry.basePower) {
         // 반복 패널티를 원인과 함께 표시 — 다양성 유도가 게임의 핵심 경험 (PHASE_2 R3 P1)
@@ -2800,6 +2803,25 @@ export class ProtoScene extends Phaser.Scene {
     return Phaser.Math.Distance.Between(pointX, pointY, nearestX, nearestY);
   }
 
+  /** 가속 환급 피드백 — 쿨다운 바 근처가 아니라 플레이어 위에 짧게 띄운다 */
+  private showCooldownRefund(seconds: number): void {
+    const label = this.add.text(
+      this.player.x, this.player.y - 52, `-${seconds.toFixed(2)}s`,
+      {
+        fontFamily: 'Consolas, monospace', fontSize: '13px', fontStyle: 'bold',
+        color: '#ffd166', stroke: '#05060f', strokeThickness: 3,
+      },
+    ).setOrigin(0.5).setDepth(60);
+    this.tweens.add({
+      targets: label,
+      y: label.y - 22,
+      alpha: { from: 0.95, to: 0 },
+      duration: 620,
+      ease: 'Quad.easeOut',
+      onComplete: () => label.destroy(),
+    });
+  }
+
   private damageEnemy(
     enemy: CombatEnemy,
     damage: number,
@@ -2829,6 +2851,9 @@ export class ProtoScene extends Phaser.Scene {
       return;
     }
     this.audio.playSfx('enemy-defeat');
+    // 가속(momentum): 처치가 곧 다음 시전을 앞당긴다 — 공격적 플레이가 템포로 보상받는다
+    const refunded = this.playerState.refundCooldownOnKill();
+    if (refunded > 0) this.showCooldownRefund(refunded);
 
     const splitX = enemy.x;
     const splitY = enemy.y;

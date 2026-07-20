@@ -89,6 +89,8 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   engrave: 'ENGRAVE',
   spirit: 'SPIRIT',
   evolve: 'EVOLVE',
+  'spell-power': 'AMP',
+  momentum: 'TEMPO',
 };
 
 function ensureDom(): HTMLElement {

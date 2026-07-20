@@ -8,6 +8,7 @@ import { CombatRunController } from '../src/combat-core/run/runController';
 import {
   createRewardOptions,
   drawRewardOptions,
+  rewardPoolFor,
   RUN_REWARD_CONFIG,
 } from '../src/combat-core/run/rewardConfig';
 import type { RewardOption, RunEvents } from '../src/run/runContract';
@@ -306,4 +307,59 @@ cdPlayer.addCooldownReduction(5); // 신속 영창 과다 → 하한 확인
 cdPlayer.startGlobalCooldown(100);
 assert.equal(cdPlayer.cooldownRemaining, 1, '감소 과다여도 하한 1초 보장');
 
-console.log('CombatRunController regression: 능력치·3택 보상·2개 방·이벤트·친화·보상풀·위력쿨다운 8군 통과');
+// 시전 경제별 보상 풀 이관 — cooldown 모드에서 마나 카드가 절대 나오지 않아야 한다
+// (마나가 없는 모드에서 마나 카드는 "아무 효과 없는 카드"로 3택 한 자리를 낭비시킨다)
+const manaPool = rewardPoolFor('mana');
+const cooldownPool = rewardPoolFor('cooldown');
+assert.ok(manaPool.includes('max-mana') && manaPool.includes('mana-surge'), '마나 모드는 마나 카드 유지');
+assert.ok(!cooldownPool.includes('max-mana'), 'cooldown 모드에 max-mana 없음');
+assert.ok(!cooldownPool.includes('mana-surge'), 'cooldown 모드에 mana-surge 없음');
+assert.ok(cooldownPool.includes('spell-power'), 'cooldown 모드에 주문 증폭 대체 카드');
+assert.ok(cooldownPool.includes('momentum'), 'cooldown 모드에 가속 대체 카드');
+assert.equal(manaPool.length, cooldownPool.length, '두 모드 선택지 수 동일');
+
+// 추첨도 모드를 따른다 (여러 시드로 마나 카드 유출 없음 확인)
+const mkEconomyRand = (seed: number) => {
+  let a = seed >>> 0;
+  return () => {
+    a += 0x6d2b79f5;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+};
+for (let seed = 0; seed < 24; seed++) {
+  const rand = mkEconomyRand(seed + 1);
+  const drawn = drawRewardOptions(1, rand, 'cooldown');
+  assert.equal(drawn.length, 3);
+  for (const card of drawn) {
+    assert.notEqual(card.kind, 'max-mana', `시드 ${seed}: cooldown 모드에서 max-mana 유출`);
+    assert.notEqual(card.kind, 'mana-surge', `시드 ${seed}: cooldown 모드에서 mana-surge 유출`);
+  }
+}
+
+// 대체 보상 효과 — 위력은 피해에만, 가속은 처치 시 쿨다운 환급
+const ampPlayer = new PlayerCombatState();
+assert.equal(ampPlayer.spellPowerMultiplier, 1, '기본 위력 배율 1');
+ampPlayer.addSpellPowerMultiplier(RUN_REWARD_CONFIG.spellPowerBonus);
+assert.ok(Math.abs(ampPlayer.spellPowerMultiplier - 1.12) < 0.001, '주문 증폭 +12%');
+ampPlayer.startGlobalCooldown(50);
+assert.ok(Math.abs(ampPlayer.cooldownRemaining - 2.4) < 0.001, '위력 증폭은 쿨다운을 늘리지 않는다');
+
+const momentumPlayer = new PlayerCombatState();
+momentumPlayer.startGlobalCooldown(100);
+assert.equal(momentumPlayer.refundCooldownOnKill(), 0, '가속 미보유면 환급 없음');
+momentumPlayer.addKillCooldownRefund(RUN_REWARD_CONFIG.momentumRefundSeconds);
+const before = momentumPlayer.cooldownRemaining;
+const refunded = momentumPlayer.refundCooldownOnKill();
+assert.ok(Math.abs(refunded - 0.25) < 0.001, '처치 시 0.25초 환급');
+assert.ok(Math.abs(before - momentumPlayer.cooldownRemaining - 0.25) < 0.001, '쿨다운에 실제 반영');
+momentumPlayer.cooldownRemaining = 0.1;
+assert.ok(Math.abs(momentumPlayer.refundCooldownOnKill() - 0.1) < 0.001, '남은 쿨다운 이상은 환급 안 함');
+assert.equal(momentumPlayer.cooldownRemaining, 0, '음수로 내려가지 않음');
+momentumPlayer.reset();
+assert.equal(momentumPlayer.spellPowerMultiplier, 1, '새 런에서 위력 배율 초기화');
+assert.equal(momentumPlayer.killCooldownRefund, 0, '새 런에서 가속 초기화');
+
+console.log('CombatRunController regression: 능력치·3택 보상·2개 방·이벤트·친화·보상풀·위력쿨다운·경제별 풀 이관 9군 통과');

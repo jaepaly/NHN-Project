@@ -17,6 +17,9 @@ export const RUN_REWARD_CONFIG = {
   swiftIncantReduction: 0.4,
   manaSurgeBonus: 0.5,
   wardStartShield: 30,
+  // Phase 5 시전 경제(#53) 전용 대체 보상 — 마나 카드가 무효인 cooldown 모드용
+  spellPowerBonus: 0.12,
+  momentumRefundSeconds: 0.25,
 } as const;
 
 /** 방 번호만으로 같은 보상 후보가 만들어지도록 원소를 결정한다. (고정 3택 하네스용) */
@@ -77,13 +80,41 @@ function buildOption(
         title: '수호 기점',
         description: `이후 매 방 시작 시 보호막 +${RUN_REWARD_CONFIG.wardStartShield}`,
       };
+    case 'spell-power':
+      return {
+        id: `room-${roomIndex}-spell-power`,
+        kind,
+        title: '주문 증폭',
+        description: `모든 주문 위력 +${Math.round(RUN_REWARD_CONFIG.spellPowerBonus * 100)}% (쿨다운 불변)`,
+      };
+    case 'momentum':
+      return {
+        id: `room-${roomIndex}-momentum`,
+        kind,
+        title: '가속',
+        description: `적 처치 시 쿨다운 -${RUN_REWARD_CONFIG.momentumRefundSeconds}초`,
+      };
   }
 }
 
-/** 시드 랜덤 추첨이 뽑는 카드 풀 (PROGRESSION_DESIGN §1 — 각인·정령은 ②③에서 추가) */
-const REWARD_POOL: readonly StaticRewardKind[] = [
+/**
+ * 시드 랜덤 추첨이 뽑는 카드 풀 (PROGRESSION_DESIGN §1 — 각인·정령은 ②③에서 추가).
+ *
+ * 시전 경제(#53)에 따라 풀이 갈린다 — 마나가 없는 cooldown 모드에서 마나 카드를 뽑으면
+ * **아무 효과 없는 카드**가 3택 중 한 자리를 차지하므로, 모드별로 대체 카드를 쓴다.
+ *   max-mana  → spell-power (위력 +12%, 쿨다운은 판정 원본 power 기준이라 불변)
+ *   mana-surge→ momentum   (적 처치 시 쿨다운 환급 — 공격적 플레이가 템포로 보상받는다)
+ */
+const MANA_ECONOMY_POOL: readonly StaticRewardKind[] = [
   'max-hp', 'max-mana', 'affinity', 'swift-incant', 'mana-surge', 'ward-start',
 ];
+const COOLDOWN_ECONOMY_POOL: readonly StaticRewardKind[] = [
+  'max-hp', 'spell-power', 'affinity', 'swift-incant', 'momentum', 'ward-start',
+];
+
+export function rewardPoolFor(economy: 'mana' | 'cooldown'): readonly StaticRewardKind[] {
+  return economy === 'cooldown' ? COOLDOWN_ECONOMY_POOL : MANA_ECONOMY_POOL;
+}
 
 /**
  * 런 시드 랜덤 3택 — LLM 호출 없음, 같은 시드면 같은 결과(재현 가능).
@@ -92,8 +123,9 @@ const REWARD_POOL: readonly StaticRewardKind[] = [
 export function drawRewardOptions(
   roomIndex: number,
   rand: () => number,
+  economy: 'mana' | 'cooldown' = 'mana',
 ): readonly RewardOption[] {
-  const pool = [...REWARD_POOL];
+  const pool = [...rewardPoolFor(economy)];
   const picked: StaticRewardKind[] = [];
   while (picked.length < 3 && pool.length > 0) {
     const index = Math.floor(rand() * pool.length) % pool.length;

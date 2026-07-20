@@ -16,6 +16,10 @@ export class PlayerCombatState {
   private maxManaValue: number = PLAYER_COMBAT_CONFIG.maxMana;
   private cooldownReductionSeconds = 0;
   private manaRegenMultiplierValue = 1;
+  /** 주문 위력 배율 (spell-power 보상) — 피해에만 반영, 쿨다운은 판정 원본 power 기준이라 불변 */
+  private spellPowerMultiplierValue = 1;
+  /** 적 처치 시 즉시 깎이는 쿨다운 (momentum 보상) */
+  private killCooldownRefundSeconds = 0;
 
   hp: number = this.maxHpValue;
   mana: number = this.maxManaValue;
@@ -40,6 +44,39 @@ export class PlayerCombatState {
 
   get manaRegenMultiplier(): number {
     return this.manaRegenMultiplierValue;
+  }
+
+  get spellPowerMultiplier(): number {
+    return this.spellPowerMultiplierValue;
+  }
+
+  get killCooldownRefund(): number {
+    return this.killCooldownRefundSeconds;
+  }
+
+  /** spell-power 보상 — 주문 위력 배율 누적 (+0.12 = +12%) */
+  addSpellPowerMultiplier(amount: number): number {
+    const value = safePositiveAmount(amount);
+    this.spellPowerMultiplierValue += value;
+    return value;
+  }
+
+  /** momentum 보상 — 적 처치당 쿨다운 환급량 누적 */
+  addKillCooldownRefund(seconds: number): number {
+    const value = safePositiveAmount(seconds);
+    this.killCooldownRefundSeconds += value;
+    return value;
+  }
+
+  /**
+   * 적 처치 시 쿨다운 즉시 감소 (momentum).
+   * 실제로 깎인 양을 반환한다 — 남은 쿨다운보다 크면 남은 만큼만.
+   */
+  refundCooldownOnKill(): number {
+    if (this.killCooldownRefundSeconds <= 0 || this.cooldownRemaining <= 0) return 0;
+    const refunded = Math.min(this.cooldownRemaining, this.killCooldownRefundSeconds);
+    this.cooldownRemaining -= refunded;
+    return refunded;
   }
 
   get alive(): boolean {
@@ -103,6 +140,8 @@ export class PlayerCombatState {
     this.maxManaValue = PLAYER_COMBAT_CONFIG.maxMana;
     this.cooldownReductionSeconds = 0;
     this.manaRegenMultiplierValue = 1;
+    this.spellPowerMultiplierValue = 1;
+    this.killCooldownRefundSeconds = 0;
     this.hp = this.maxHpValue;
     this.mana = this.maxManaValue;
     this.shield = 0;
