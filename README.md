@@ -38,7 +38,8 @@ npm run build   # 프로덕션 빌드 (dist/)
 | [docs/PHASE_1_SUMMARY.md](docs/PHASE_1_SUMMARY.md) | Phase 1 완료 근거·검증 결과·이월 항목 |
 | [docs/PHASE_2.md](docs/PHASE_2.md) | Phase 2 담당자별 작업 지시·완료 기준 (완료) |
 | [docs/PHASE_3.md](docs/PHASE_3.md) | Phase 3 지시 — 기억하는 보스 & 에셋 (완료) |
-| [docs/PHASE_4.md](docs/PHASE_4.md) | **Phase 4 지시 — 성장 시스템 & 폴리싱 (현재)** |
+| [docs/PHASE_4.md](docs/PHASE_4.md) | Phase 4 지시 — 성장 시스템 & 폴리싱 (완료) |
+| [docs/PHASE_5.md](docs/PHASE_5.md) | **Phase 5 지시 — 프레젠테이션 승격 & 완성도 (현재)** |
 | [docs/PROGRESSION_DESIGN.md](docs/PROGRESSION_DESIGN.md) | 성장 시스템 설계 (보상 풀·각인·정령·진화/융합) |
 | [docs/SPELL_UNDERSTANDING_V2.md](docs/SPELL_UNDERSTANDING_V2.md) | 자유 문장 의미 판정·비공격 효과·불발/금칙 설계 |
 
@@ -72,20 +73,21 @@ TypeScript · Vite · Phaser 3 · Gemini Flash (Cloudflare Workers 프록시) ·
 
 ---
 
-## 📌 현재 페이즈: Phase 4 (마감 7/26)
+## 📌 현재 페이즈: Phase 5 (제출 8/10)
 
-> 목표: **"런마다 다른 빌드가 만들어진다 — 내 문장이 각인되고, 정령이 자라고, 그 정점에 LLM이 이름을 붙인다."**
+> 목표: **"시스템은 다 됐다. 이제 도형 데모가 아니라 게임으로 보이게 만든다."**
 
-Phase 3는 2026-07-19 완료 — 기억하는 보스(단기 내성·카운터·런 간 기억·라이브 대사), 사운드(원소 8종+BGM),
-타이틀 화면·폰트·메타까지 통합 QA(타이틀→보스 풀런 + 라이브 3라우트) 통과.
+Phase 4는 2026-07-20 완료 — 성장(각인·정령·진화·융합·강화 연출), 런 구조 v2(2스테이지·6전투),
+기억 보스, chain·cage·wall·orbit 폼까지 병합. 회귀 19종·빌드·콘솔 무오류·Pages·오토 ≤40% 게이트 통과.
+진단: 남은 격차는 시스템이 아니라 **표현(비주얼·게임필·연출)** — Phase 5는 기능이 아니라 체감 품질에 투자한다.
 
-### 이번 페이즈 핵심
+### 이번 페이즈 핵심 (3트랙 — 동등 아님, C가 크리티컬 패스)
 
-- **이도원 (R1)**: **chain·cage 폼 렌더러** 후 [2스테이지·6전투 런 구조](docs/RUN_STRUCTURE_V2.md), 보스전 BGM·스테이지 색조·wall/orbit
-- **임재윤 (R2)**: 판정 품질 튜닝(스냅샷 전/후 비교)·/evolve-name 클라이언트 캐시·심사 기간 할당량 정책 초안
-- 성장 시스템 ②각인 → ③정령 → ④진화·융합 → ⑤연출 구현은 총괄 진행 ([PROGRESSION_DESIGN.md](docs/PROGRESSION_DESIGN.md) §6)
+- **이도원 (R1) · C 프레젠테이션 승격 ⭐**: 도형 프리미엄 룩(블룸·팔레트·트레일), 타격감(히트스톱·셰이크·임팩트), 사운드·타이틀
+- **jaepaly (총괄) · A 기능 완성도**: 오토 ≤40% 실측·96조합 QA·신규 폼 밸런스·버그·통합
+- **임재윤 (R2) · B 신기능 연구 (게이트)**: 판정 품질 튜닝·AI 네이티브 신규성 1~2개(킬 스위치·총괄 승인 병합)
 
-담당자별 상세 지시·완료 기준·일정·스코프 컷은 **[docs/PHASE_4.md](docs/PHASE_4.md)** 기준.
+담당자별 상세 지시·완료 기준·일정·스코프 컷은 **[docs/PHASE_5.md](docs/PHASE_5.md)** 기준.
 
 ### 공통 시작 절차
 
