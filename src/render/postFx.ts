@@ -9,8 +9,8 @@ import Phaser from 'phaser';
  */
 export const WORLD_FX = {
   // addBloom(color, offsetX, offsetY, blurStrength, strength, steps)
-  // strength 1.25는 너무 뿌옇다(사용자 피드백) — 잔광만 남게 완화. steps↓로 번짐 폭도 축소.
-  bloom: { color: 0xffffff, offsetX: 1, offsetY: 1, blurStrength: 0.9, strength: 0.6, steps: 5 },
+  // strength 1.25는 너무 뿌옇다(사용자 피드백) — 은은한 잔광만 남게 완화(총괄 실측 확정). steps↓로 번짐 폭도 축소.
+  bloom: { color: 0xffffff, offsetX: 1, offsetY: 1, blurStrength: 0.9, strength: 0.35, steps: 5 },
   // addVignette(x, y, radius, strength) — radius 클수록·strength 작을수록 은은
   vignette: { x: 0.5, y: 0.5, radius: 0.86, strength: 0.34 },
 } as const;
