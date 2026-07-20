@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { applyWorldFx } from '../render/postFx';
 
 const TITLE_COLORS = {
   background: 0x05060f,
@@ -26,6 +27,8 @@ export class TitleScene extends Phaser.Scene {
 
     this.input.keyboard?.once('keydown-ENTER', this.startGame, this);
     this.input.once('pointerdown', this.startGame, this);
+
+    applyWorldFx(this.cameras.main); // Phase 5 네온 후처리 (블룸+비네트)
   }
 
   private drawBackground(width: number, height: number): void {

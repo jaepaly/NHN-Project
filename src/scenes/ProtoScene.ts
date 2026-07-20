@@ -13,6 +13,7 @@ import {
   SIZE_SCALE,
   paletteColorToCss,
 } from '../render/palette';
+import { applyWorldFx } from '../render/postFx';
 import {
   backdropPaletteForEncounter,
   ROOM_BACKDROP_PALETTES,
@@ -327,6 +328,7 @@ export class ProtoScene extends Phaser.Scene {
       )
       .startFollow(this.player, true, 0.12, 0.12);
     this.cameras.main.centerOn(startX, startY);
+    applyWorldFx(this.cameras.main); // Phase 5 네온 후처리 (블룸+비네트)
     this.moveKeys = this.input.keyboard!.addKeys({
       up: Phaser.Input.Keyboard.KeyCodes.W,
       down: Phaser.Input.Keyboard.KeyCodes.S,
