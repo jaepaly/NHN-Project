@@ -23,7 +23,8 @@ npm run build   # 프로덕션 빌드 (dist/)
 
 - **기본값: GeminiJudge(실제 LLM)** — 별도 설정 없이 팀 공용 프록시로 실제 판정이 동작한다.
   (프록시 실패·2.5초 타임아웃·할당량 초과 시 MockJudge로 자동 폴백하므로 게임은 멈추지 않는다.)
-- **MockJudge를 강제**하려면 (오프라인·할당량 절약, 예: 전투 개발): `.env`에 `VITE_JUDGE_MOCK=1`.
+- **`.env`를 공유받을 필요가 없다.** `.env`엔 비밀이 없다 — 프록시 주소 하나뿐이고 그마저 코드에 기본값(`DEFAULT_PROXY_URL`)으로 박혀 있다. **API 키는 Cloudflare 서버 시크릿**이라 클라이언트는 몰라도 된다(프록시 설계의 핵심). → **클론 후 `npm run dev`만 하면 실제 Gemini.** Mock이 나오면 자기 `.env`의 `VITE_JUDGE_MOCK=1` 줄만 지우면 된다.
+- **MockJudge를 강제**하려면 (오프라인·할당량 우려 시만, 테스트 후 제거 권장): `.env`에 `VITE_JUDGE_MOCK=1`.
 - **다른 프록시**(유료 키 배포본 등)를 쓰려면: `.env`에 `VITE_JUDGE_PROXY_URL=<url>`.
 - 프록시 배포/키 설정은 [proxy/README.md](proxy/README.md) 참조. (`.env`는 커밋 금지 — `.env.example` 참고)
 
