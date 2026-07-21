@@ -5,6 +5,8 @@ import type { CombatEnemy, EnemyDestroyOptions, EnemyShotRequest } from './comba
 import { playHitReact, playAttackLunge, playDeathPop } from './enemyJuice';
 
 const SHOOTER_COLOR = 0xffa62b;
+/** AI 생성 스프라이트 키. 무채색으로 저장돼 있어 타입 색을 틴트로 입힌다. */
+const SHOOTER_SPRITE_KEY = 'enemy-shooter';
 
 export class ShooterEnemy implements CombatEnemy {
   readonly kind = 'shooter' as const;
@@ -19,15 +21,23 @@ export class ShooterEnemy implements CombatEnemy {
   contactDamageCooldownRemaining = 0;
   private dying = false;
 
-  private readonly body: Phaser.GameObjects.Rectangle;
+  private readonly body: Phaser.GameObjects.Rectangle | Phaser.GameObjects.Image;
   private readonly healthFill: Phaser.GameObjects.Rectangle;
   private attackCooldownRemaining: number = SHOOTER_CONFIG.attackIntervalSeconds;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     const glow = scene.add.rectangle(0, 0, 34, 34, 0xffb347, 0.14)
       .setBlendMode(Phaser.BlendModes.ADD);
-    this.body = scene.add.rectangle(0, 0, 24, 24, 0xffa62b)
-      .setStrokeStyle(2, 0xffd08a, 0.95);
+    // AI 스프라이트가 로드돼 있으면 사용한다. 스프라이트는 무채색이라 타입 색을 틴트로
+    // 입혀 적 색 구분 체계(추격자=핑크/사수=주황/분열체=보라)를 그대로 지킨다.
+    // 텍스처가 없으면 기존 도형으로 폴백해 게임은 항상 돌아간다.
+    this.body = scene.textures.exists(SHOOTER_SPRITE_KEY)
+      ? scene.add.image(0, 0, SHOOTER_SPRITE_KEY)
+        .setDisplaySize(46, 46)
+        .setTint(SHOOTER_COLOR)
+        .setBlendMode(Phaser.BlendModes.ADD)
+      : scene.add.rectangle(0, 0, 24, 24, SHOOTER_COLOR)
+        .setStrokeStyle(2, 0xffd08a, 0.95);
     const healthBack = scene.add.rectangle(-16, -25, 32, 4, 0x30200e, 0.9)
       .setOrigin(0, 0.5);
     this.healthFill = scene.add.rectangle(-16, -25, 32, 4, 0x72f1b8, 1)

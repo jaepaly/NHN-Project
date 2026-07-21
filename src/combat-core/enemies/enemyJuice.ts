@@ -7,6 +7,14 @@ import Phaser from 'phaser';
 
 type Container = Phaser.GameObjects.Container;
 type Shape = Phaser.GameObjects.Shape;
+/** 피격 플래시 대상 — 도형과 스프라이트를 모두 받는다 (색 교체 API가 서로 다르다). */
+type FlashTarget = Shape | Phaser.GameObjects.Image;
+
+/** 도형이면 채움색, 스프라이트면 틴트로 동일한 "색 교체" 효과를 낸다. */
+function applyFlashColor(target: FlashTarget, color: number): void {
+  if (target instanceof Phaser.GameObjects.Image) target.setTint(color);
+  else target.setFillStyle(color);
+}
 
 function resetScaleTween(scene: Phaser.Scene, view: Container): void {
   scene.tweens.killTweensOf(view);
@@ -17,7 +25,7 @@ function resetScaleTween(scene: Phaser.Scene, view: Container): void {
 export function playHitReact(
   scene: Phaser.Scene,
   view: Container,
-  flashShape: Shape,
+  flashShape: FlashTarget,
   baseColor: number,
 ): void {
   resetScaleTween(scene, view);
@@ -32,9 +40,9 @@ export function playHitReact(
       if (view.active) view.setScale(1);
     },
   });
-  flashShape.setFillStyle(0xffffff);
+  applyFlashColor(flashShape, 0xffffff);
   scene.time.delayedCall(80, () => {
-    if (flashShape.active) flashShape.setFillStyle(baseColor);
+    if (flashShape.active) applyFlashColor(flashShape, baseColor);
   });
 }
 

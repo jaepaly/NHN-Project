@@ -365,6 +365,11 @@ export class ProtoScene extends Phaser.Scene {
       'bg-boss',
       `${import.meta.env.BASE_URL}assets/backgrounds/arena-boss.jpg`,
     );
+    // 적 스프라이트 — 무채색으로 저장해두고 타입 색은 인게임 틴트로 입힌다
+    this.load.image(
+      'enemy-shooter',
+      `${import.meta.env.BASE_URL}assets/sprites/enemy-shooter.png`,
+    );
     // 로드 실패가 조용히 묻히지 않게 — 실패 시 원인·URL을 남기고 그리드 배경으로 폴백한다.
     this.load.on('loaderror', (file: Phaser.Loader.File) => {
       if (file.key === 'bg-stage1') {
