@@ -1,6 +1,11 @@
 import Phaser from 'phaser';
 import type { EliteModifier } from '../../run/runContract';
-import type { CombatEnemy, EnemyKind, EnemyShotRequest } from './combatEnemy';
+import type {
+  CombatEnemy,
+  EnemyDestroyOptions,
+  EnemyKind,
+  EnemyShotRequest,
+} from './combatEnemy';
 
 const ELITE_CONFIG = {
   swiftRateMultiplier: 1.3,
@@ -93,7 +98,7 @@ export class EliteEnemy implements CombatEnemy {
     return this.inner.takeDamage(damage);
   }
 
-  destroy(): void { this.inner.destroy(); }
+  destroy(options?: EnemyDestroyOptions): void { this.inner.destroy(options); }
 
   private updateGuard(deltaSeconds: number): void {
     if (this.guardShield > 0 || this.guardRecoveryRemaining <= 0) return;

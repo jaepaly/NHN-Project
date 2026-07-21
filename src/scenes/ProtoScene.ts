@@ -156,6 +156,10 @@ interface FriendlyMissile {
   hitDistance: number;
 }
 
+interface CastFeedbackState {
+  resistanceNoticeShown: boolean;
+}
+
 /** 씬 보상 추첨과 각인 카드 치환이 한 런에서 재현 가능한 순서를 공유한다. */
 function createRunRandom(seed: number): () => number {
   let state = seed >>> 0;
@@ -314,6 +318,8 @@ export class ProtoScene extends Phaser.Scene {
   private readonly controlIndicators = new Map<CombatEnemy, Phaser.GameObjects.Arc>();
   /** 보스방 진입 시 주문 히스토리로 계산 — R2 내성 모듈이 오면 계산부만 교체 */
   private bossResistance: BossResistanceProfile = { ...NO_BOSS_RESISTANCE };
+  /** 페이즈를 넘어 유지되는 원소별 내성. 같은 원소는 더 강한(낮은) 배수 하나만 유지한다. */
+  private readonly activeBossResistances = new Map<SpellElement, number>();
   private lastResistNoticeAt = 0;
   private activeBossPhase: 1 | 2 | 3 = 1;
   private bossPatternController: BossPatternController | null = null;
@@ -567,6 +573,7 @@ export class ProtoScene extends Phaser.Scene {
   private restartRun(): void {
     this.deathHandled = false;
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
+    this.activeBossResistances.clear();
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
     this.engraveManager.reset();
@@ -617,6 +624,7 @@ export class ProtoScene extends Phaser.Scene {
     this.audio.playBgm('boss');
     // 단기(이번 런) 적응 — R2 내성 계약 소비 (GDD §4.1)
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
+    this.activeBossResistances.clear();
     this.activeBossPhase = 1;
     const runMemory = loadRunMemory();
     // 장기(지난 런들) 기억 — 단기 표본 부족 시 부분 내성으로 발동 (GDD §4.2)
@@ -628,6 +636,7 @@ export class ProtoScene extends Phaser.Scene {
           resistMultiplier: BOSS_CONFIG.longTermResistMultiplier,
           counterStrategy: this.bossResistance.counterStrategy,
         };
+        this.activeBossResistances.set(longTerm, BOSS_CONFIG.longTermResistMultiplier);
       }
     }
 
@@ -645,7 +654,7 @@ export class ProtoScene extends Phaser.Scene {
         && boss.alive
         && this.enemies.includes(boss);
     };
-    boss.showResistance(this.bossResistance.resistedElement);
+    boss.showResistances(this.sortedBossResistanceElements());
     if (this.bossResistance.counterStrategy) {
       boss.applyCounterStrategy(this.bossResistance.counterStrategy);
     }
@@ -678,7 +687,7 @@ export class ProtoScene extends Phaser.Scene {
   private clearCombatRoom(): void {
     this.clearBossPatternEffects();
     this.clearEnemyControls();
-    for (const enemy of this.enemies) enemy.destroy();
+    for (const enemy of this.enemies) enemy.destroy({ animate: false });
     this.enemies = [];
     for (const decoration of this.hazardDecorations) decoration.destroy();
     this.hazardDecorations = [];
@@ -738,12 +747,14 @@ export class ProtoScene extends Phaser.Scene {
       color: '#8fa4ff',
     }).setScrollFactor(0).setDepth(100);
 
-    this.waveText = this.add.text(width - 34, 29, '', {
+    this.waveText = this.add.text(width - 34, 72, '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '14px',
       fontStyle: 'bold',
       color: '#72f1b8',
       align: 'right',
+      lineSpacing: 3,
+      wordWrap: { width: 256, useAdvancedWrap: true },
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
 
     // 빌드 패널 — "지금 내가 뭘 들고 있나"를 상시 노출 (각인·정령·주문서).
@@ -754,6 +765,7 @@ export class ProtoScene extends Phaser.Scene {
       color: '#8fa4ff',
       align: 'right',
       lineSpacing: 3,
+      wordWrap: { width: 430, useAdvancedWrap: true },
     }).setOrigin(1, 1).setScrollFactor(0).setDepth(100);
 
     this.add.text(20, height - 28, 'WASD 이동  ·  ENTER 영창', {
@@ -775,9 +787,11 @@ export class ProtoScene extends Phaser.Scene {
     );
     if (direction.lengthSq() === 0) return;
 
-    const speed = 220;
-    direction.normalize().scale(speed * deltaSeconds);
-    this.player.x = Phaser.Math.Clamp(
+      const speed = 220;
+      direction.normalize().scale(speed * deltaSeconds);
+      const previousX = this.player.x;
+      const previousY = this.player.y;
+      this.player.x = Phaser.Math.Clamp(
       this.player.x + direction.x,
       this.worldBounds.left + 22,
       this.worldBounds.right - 22,
@@ -785,10 +799,13 @@ export class ProtoScene extends Phaser.Scene {
     this.player.y = Phaser.Math.Clamp(
       this.player.y + direction.y,
       this.worldBounds.top + 22,
-      this.worldBounds.bottom - 22,
-    );
+        this.worldBounds.bottom - 22,
+      );
 
-    // 이동 중 잔상 트레일 (네온 잔광). 스폰 간격으로 오브젝트 폭증을 억제한다.
+      const actuallyMoved = this.player.x !== previousX || this.player.y !== previousY;
+      if (!actuallyMoved) return;
+
+      // 이동 중 잔상 트레일 (네온 잔광). 스폰 간격으로 오브젝트 폭증을 억제한다.
     this.playerTrailCooldown -= deltaSeconds;
     if (this.playerTrailCooldown <= 0) {
       this.playerTrailCooldown = TRAIL_CONFIG.spawnIntervalSeconds;
@@ -1133,7 +1150,13 @@ export class ProtoScene extends Phaser.Scene {
     const isMemoryBoss = this.combatRunController.state.encounterKind === 'memory-boss';
     if (isMemoryBoss && boss.phase === 2) {
       this.bossResistance = computeResistance(this.spellHistory.bossMemory());
-      boss.showResistance(this.bossResistance.resistedElement);
+      if (this.bossResistance.resistedElement) {
+        this.addBossResistance(
+          this.bossResistance.resistedElement,
+          this.bossResistance.resistMultiplier,
+        );
+      }
+      boss.showResistances(this.sortedBossResistanceElements());
       if (this.bossResistance.counterStrategy) {
         boss.applyCounterStrategy(this.bossResistance.counterStrategy);
       }
@@ -1296,22 +1319,29 @@ export class ProtoScene extends Phaser.Scene {
     const startRight = new Phaser.Math.Vector2(boss.x, boss.y).subtract(perpendicular);
     const endLeft = this.bossChargeTarget.clone().add(perpendicular);
     const endRight = this.bossChargeTarget.clone().subtract(perpendicular);
+    // 기존 삼각형 화살표를 통로 테두리와 겹치지 않도록 안쪽에 둔다.
+    const arrowTip = this.bossChargeTarget.clone().subtract(direction.clone().scale(18));
+    const arrowBase = this.bossChargeTarget.clone().subtract(direction.clone().scale(56));
+    const arrowWing = new Phaser.Math.Vector2(-direction.y, direction.x).scale(34);
+    const arrowLeft = arrowBase.clone().add(arrowWing);
+    const arrowRight = arrowBase.clone().subtract(arrowWing);
     this.bossChargeTelegraph = this.add.graphics()
       .fillStyle(0xff5370, 0.14)
       .fillPoints([startLeft, endLeft, endRight, startRight], true)
       .lineStyle(3, 0xff8fa3, 0.78)
       .lineBetween(startLeft.x, startLeft.y, endLeft.x, endLeft.y)
       .lineBetween(startRight.x, startRight.y, endRight.x, endRight.y)
+      .lineBetween(endLeft.x, endLeft.y, endRight.x, endRight.y)
       .fillStyle(0xff8fa3, 0.85)
       .fillTriangle(
-        this.bossChargeTarget.x + direction.x * 18,
-        this.bossChargeTarget.y + direction.y * 18,
-        endLeft.x - direction.x * 30,
-        endLeft.y - direction.y * 30,
-        endRight.x - direction.x * 30,
-        endRight.y - direction.y * 30,
+        arrowTip.x,
+        arrowTip.y,
+        arrowLeft.x,
+        arrowLeft.y,
+        arrowRight.x,
+        arrowRight.y,
       )
-      .setDepth(5);
+      .setDepth(-1);
     this.tweens.add({
       targets: this.bossChargeTelegraph,
       alpha: { from: 0.5, to: 1 },
@@ -1952,6 +1982,7 @@ export class ProtoScene extends Phaser.Scene {
     const to = this.spellTargetPoint(from, spec, target);
     let lockedTarget = lockedPointTargetForForm(spec.form, target);
     const hitEnemies = new Set<CombatEnemy>();
+    const castFeedback: CastFeedbackState = { resistanceNoticeShown: false };
     const chainOrigins = chainTargets.map((enemy) => ({ x: enemy.x, y: enemy.y }));
     const castRoomIndex = this.combatRunController.state.roomIndex;
     castSpell({
@@ -1983,6 +2014,7 @@ export class ProtoScene extends Phaser.Scene {
           from,
           chainOrigins,
           auto,
+          castFeedback,
         );
       },
     }, spec);
@@ -2291,19 +2323,20 @@ export class ProtoScene extends Phaser.Scene {
     this.shieldText.setText(`SHIELD ${shield.toString().padStart(3)} / ${this.playerState.maxHp}`);
     this.buildHudText.setText(this.buildSummaryLines());
     this.drawHudBars();
-
     if (runState.phase === 'run-over') {
       this.waveText.setText('RUN COMPLETE');
     } else if (runState.phase === 'reward-select') {
-      this.waveText.setText(`ROOM ${runState.roomIndex}/${runState.maxRooms} CLEAR`);
+      this.waveText.setText('ROOM CLEAR');
     } else if (runState.phase === 'room-transition') {
       this.waveText.setText(`NEXT ROOM ${runState.roomIndex + 1}/${runState.maxRooms}`);
     } else if (this.isBossEncounter()) {
       const boss = this.enemies.find((enemy) => enemy.kind === 'boss');
       // 저항을 상시 노출한다 — 보스 링 색만으로는 "무엇이 안 통하는지" 알 수 없다
-      const resisted = this.bossResistance.resistedElement;
-      const resistLabel = resisted
-        ? `  ·  저항 ${ELEMENT_LABELS[resisted]} ×${this.bossResistance.resistMultiplier}`
+      const resistances = this.sortedBossResistanceEntries();
+      const resistLabel = resistances.length > 0
+        ? `\n저항 ${resistances
+          .map(([element, multiplier]) => `${ELEMENT_LABELS[element]} ×${multiplier}`)
+          .join(' / ')}`
         : '';
       this.waveText.setText(
         boss
@@ -2391,9 +2424,9 @@ export class ProtoScene extends Phaser.Scene {
 
     const { width } = this.scale;
     g.fillStyle(0x080b1c, 0.86);
-    g.fillRoundedRect(width - 306, 18, 288, 72, 12);
+    g.fillRoundedRect(width - 306, 62, 288, 72, 12);
     g.lineStyle(1, 0x2a735c, 0.62);
-    g.strokeRoundedRect(width - 306, 18, 288, 72, 12);
+    g.strokeRoundedRect(width - 306, 62, 288, 72, 12);
   }
 
   private applySpellPalette(spec: SpellSpec): void {
@@ -2569,6 +2602,7 @@ export class ProtoScene extends Phaser.Scene {
     castOrigin = new Phaser.Math.Vector2(this.player.x, this.player.y),
     chainOrigins: readonly { x: number; y: number }[] = [],
     auto = false,
+    castFeedback: CastFeedbackState = { resistanceNoticeShown: false },
   ): void {
     // Zone ticks may damage the same enemy again. Rain strikes share one cast-level
     // hit set so overlapping landing circles cannot multiply damage on one target.
@@ -2580,6 +2614,16 @@ export class ProtoScene extends Phaser.Scene {
     const damage = auto
       ? autoSpellImpactDamageFromPower(spec.power, damageMultiplier)
       : spellImpactDamageFromPower(spec.power, damageMultiplier);
+    const damageAgainst = (enemy: CombatEnemy): number => {
+      const mayShowNotice = !auto && !castFeedback.resistanceNoticeShown;
+      const adjustedDamage = this.spellDamageAgainst(enemy, spec, damage, mayShowNotice);
+      if (mayShowNotice
+        && enemy.kind === 'boss'
+        && this.activeBossResistances.has(spec.element_primary)) {
+        castFeedback.resistanceNoticeShown = true;
+      }
+      return adjustedDamage;
+    };
     if (impact.kind === 'point') {
       if (impact.chainIndex !== undefined) {
         const chainTarget = chainTargets[impact.chainIndex];
@@ -2589,7 +2633,7 @@ export class ProtoScene extends Phaser.Scene {
             : chainOrigins[impact.chainIndex - 1] ?? castOrigin;
           this.damageEnemy(
             chainTarget,
-            this.spellDamageAgainst(chainTarget, spec, damage),
+            damageAgainst(chainTarget),
             spec.element_primary,
             chainSource.x,
             chainSource.y,
@@ -2600,7 +2644,7 @@ export class ProtoScene extends Phaser.Scene {
       if (lockedTarget?.alive) {
         this.damageEnemy(
           lockedTarget,
-          this.spellDamageAgainst(lockedTarget, spec, damage),
+          damageAgainst(lockedTarget),
           spec.element_primary,
           castOrigin.x,
           castOrigin.y,
@@ -2632,7 +2676,7 @@ export class ProtoScene extends Phaser.Scene {
         : castOrigin;
       this.damageEnemy(
         enemy,
-        this.spellDamageAgainst(enemy, spec, damage),
+        damageAgainst(enemy),
         spec.element_primary,
         impactSource.x,
         impactSource.y,
@@ -2646,25 +2690,46 @@ export class ProtoScene extends Phaser.Scene {
     enemy: CombatEnemy,
     spec: SpellSpec,
     baseDamage: number,
+    showResistanceNotice = true,
   ): number {
-    return this.elementalDamageAgainst(enemy, spec.element_primary, baseDamage);
+    return this.elementalDamageAgainst(
+      enemy,
+      spec.element_primary,
+      baseDamage,
+      showResistanceNotice,
+    );
   }
 
   private elementalDamageAgainst(
     enemy: CombatEnemy,
     element: SpellElement,
     baseDamage: number,
+    showResistanceNotice = false,
   ): number {
     if (enemy.kind !== 'boss') return baseDamage;
-    const multiplier = this.bossResistance.resistedElement === element
-      ? this.bossResistance.resistMultiplier
-      : 1;
-    if (multiplier < 1 && this.time.now - this.lastResistNoticeAt > 1500) {
+    const multiplier = this.activeBossResistances.get(element) ?? 1;
+    if (showResistanceNotice
+      && multiplier < 1
+      && this.time.now - this.lastResistNoticeAt > 1500) {
       this.lastResistNoticeAt = this.time.now;
       const label = ELEMENT_LABELS[element];
       this.announceSystemMessage(`저항! ${label}이(가) 통하지 않는다 — 다른 원소를 창작하라`, '#ffa94d');
     }
     return baseDamage * multiplier;
+  }
+
+  private addBossResistance(element: SpellElement, multiplier: number): void {
+    const current = this.activeBossResistances.get(element) ?? 1;
+    this.activeBossResistances.set(element, Math.min(current, multiplier));
+  }
+
+  private sortedBossResistanceEntries(): [SpellElement, number][] {
+    return [...this.activeBossResistances.entries()]
+      .sort((a, b) => a[1] - b[1]);
+  }
+
+  private sortedBossResistanceElements(): SpellElement[] {
+    return this.sortedBossResistanceEntries().map(([element]) => element);
   }
 
   private createSummon(spec: SpellSpec): void {

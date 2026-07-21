@@ -1,3 +1,4 @@
+import { ELEMENTS, FORMS } from './types';
 import type { SpellElement, SpellForm, SpellSpec } from './types';
 import type { SpellHistory } from './spellHistory';
 
@@ -172,13 +173,19 @@ function normalizeEntry(value: unknown): GrimoireEntry[] {
   if (typeof value !== 'object' || value === null) return [];
   const v = value as Record<string, unknown>;
   const power = typeof v.power === 'number' && Number.isFinite(v.power) ? v.power : null;
+  const validElement = typeof v.element === 'string'
+    && (ELEMENTS as readonly string[]).includes(v.element);
+  const validForm = typeof v.form === 'string'
+    && (FORMS as readonly string[]).includes(v.form);
   if (
-    typeof v.normalized !== 'string' || v.normalized.length === 0
-    || typeof v.rawText !== 'string'
-    || typeof v.name !== 'string'
-    || typeof v.element !== 'string'
-    || typeof v.form !== 'string'
+    typeof v.normalized !== 'string' || v.normalized.length === 0 || v.normalized.length > 200
+    || typeof v.rawText !== 'string' || v.rawText.length > 500
+    || typeof v.name !== 'string' || v.name.length === 0 || v.name.length > 120
+    || !validElement
+    || !validForm
     || power === null
+    || power < 0
+    || power > 100
   ) return [];
   return [{
     normalized: v.normalized,

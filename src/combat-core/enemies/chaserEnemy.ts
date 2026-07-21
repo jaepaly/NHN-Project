@@ -1,7 +1,7 @@
 /** R1 전투 코어: 직선 추격형 적. */
 import Phaser from 'phaser';
 import { CHASER_CONFIG } from '../combat/combatConfig';
-import type { CombatEnemy, EnemyShotRequest } from './combatEnemy';
+import type { CombatEnemy, EnemyDestroyOptions, EnemyShotRequest } from './combatEnemy';
 import { playHitReact, playAttackLunge, playDeathPop } from './enemyJuice';
 
 const CHASER_COLOR = 0xff4d6d;
@@ -91,10 +91,15 @@ export class ChaserEnemy implements CombatEnemy {
     return true;
   }
 
-  destroy(): void {
+  destroy(options: EnemyDestroyOptions = {}): void {
     this.alive = false;
     if (this.dying) return;
     this.dying = true;
+    if (options.animate === false) {
+      this.view.scene.tweens.killTweensOf(this.view);
+      if (this.view.active) this.view.destroy(true);
+      return;
+    }
     playDeathPop(this.view.scene, this.view, () => {
       if (this.view.active) this.view.destroy(true);
     });
