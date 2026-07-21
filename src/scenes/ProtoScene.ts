@@ -348,11 +348,23 @@ export class ProtoScene extends Phaser.Scene {
 
   preload(): void {
     GameAudio.preload(this);
+    // GameAudio.preload가 load.path를 오디오 폴더로 설정하고 되돌리지 않는다. 그래서
+    // 뒤따르는 배경 로드 URL 앞에 그 경로가 붙어(.../assets/audio//NHN-Project/...)
+    // Vite SPA 폴백(index.html)이 200으로 반환되고, Phaser가 그 HTML을 이미지로
+    // 처리하려다 "Failed to process file"로 실패했다(webp·jpg·png 공통 원인).
+    // 경로를 비운 뒤 배경을 싣는다.
+    this.load.setPath('');
     // Phase 5 프로토타입 — AI 생성 스테이지 배경 (도형 데모 탈피)
     this.load.image(
       'bg-stage1',
-      `${import.meta.env.BASE_URL}assets/backgrounds/arena-stage1.jpg`,
+      `${import.meta.env.BASE_URL}assets/backgrounds/arena-stage1.png`,
     );
+    // 로드 실패가 조용히 묻히지 않게 — 실패 시 원인·URL을 남기고 그리드 배경으로 폴백한다.
+    this.load.on('loaderror', (file: Phaser.Loader.File) => {
+      if (file.key === 'bg-stage1') {
+        console.warn('[backdrop] 배경 이미지 로드 실패 — 그리드로 폴백:', file.src);
+      }
+    });
   }
 
   create(): void {
