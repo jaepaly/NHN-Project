@@ -112,7 +112,8 @@ import {
   summarizeRun,
   updateRunMemory,
 } from '../spell/bossMemoryContract';
-import type { BossResistanceProfile } from '../spell/bossMemoryContract';
+import type { BossResistanceProfile, RunEscalationProfile } from '../spell/bossMemoryContract';
+import { EMPTY_RUN_MEMORY } from '../spell/runMemory';
 import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { showRewardCards } from '../ui/rewardCardOverlay';
 import {
@@ -303,6 +304,13 @@ export class ProtoScene extends Phaser.Scene {
   private buildHudText!: Phaser.GameObjects.Text;
   /** 주문서 보유 수 캐시 — HUD는 매 프레임 갱신되므로 localStorage를 직접 읽지 않는다 */
   private grimoireCount = 0;
+  /**
+   * 이번 런의 격상 프로필(#77) — clears는 런 종료 시에만 바뀌므로 **런 중 불변**이다.
+   * 시전마다 loadRunMemory()로 localStorage를 읽지 않도록 런 시작에 1회만 계산한다.
+   */
+  private runEscalation: RunEscalationProfile = runEscalationProfile(EMPTY_RUN_MEMORY);
+  /** 약화 안내를 이미 띄운 원소 — 방마다 비워 같은 경고가 시전마다 반복되지 않게 한다 */
+  private readonly escalationNoticed = new Set<SpellElement>();
   private waveManager = new WaveManager();
   private eliteModifierAssignments: EliteModifier[] = [];
   private eliteSpawnIndex = 0;
@@ -573,6 +581,11 @@ export class ProtoScene extends Phaser.Scene {
    * 이전 런의 주문 중 하나를 Lv1 각인으로 장착하고 출발한다. 주문서가 비면 조용히 넘어간다.
    */
   private async offerLegacyEngrave(): Promise<void> {
+    // 런 시작 시점에 격상 프로필을 확정한다 (이후 시전 경로는 이 캐시만 읽는다)
+    const memory = loadRunMemory();
+    this.runEscalation = runEscalationProfile(memory);
+    this.escalationNoticed.clear();
+
     const book = loadGrimoire();
     this.grimoireCount = book.length; // 런 시작마다 1회 — HUD 캐시 갱신
     const offers = offerEntries(book);
@@ -580,14 +593,21 @@ export class ProtoScene extends Phaser.Scene {
 
     this.legacySelecting = true;
     try {
-      const options: RewardOption[] = offers.map((entry) => ({
-        id: `legacy-${entry.normalized}`,
-        kind: 'engrave',
-        title: `유산 · ${entry.name}`,
-        description: `지난 런의 주문 (위력 ${Math.round(entry.power)}) — Lv1 각인으로 시작`,
-        element: entry.element,
-        engrave: { spellKey: entry.normalized, level: 1 },
-      }));
+      const options: RewardOption[] = offers.map((entry) => {
+        // 격상(#77)으로 약화된 원소는 카드에 명시한다 —
+        // 모르고 고르면 "물려받았는데 약하다"가 되고, 알고 고르면 전략적 선택이 된다.
+        const weakened = this.runEscalation.weakenedElements.includes(entry.element);
+        const weakenPercent = Math.round((1 - this.runEscalation.weakenMultiplier) * 100);
+        return {
+          id: `legacy-${entry.normalized}`,
+          kind: 'engrave' as const,
+          title: `유산 · ${entry.name}`,
+          description: `지난 런의 주문 (위력 ${Math.round(entry.power)}) — Lv1 각인으로 시작`
+            + (weakened ? `\n⚠ ${ELEMENT_LABELS[entry.element]} 약화 −${weakenPercent}%` : ''),
+          element: entry.element,
+          engrave: { spellKey: entry.normalized, level: 1 },
+        };
+      });
       const chosen = await showRewardCards(options, {
         kicker: 'GRIMOIRE',
         title: '주문서에서 유산을 꺼낸다',
@@ -640,6 +660,8 @@ export class ProtoScene extends Phaser.Scene {
 
   private startRoom(roomIndex: number): void {
     const encounter = this.combatRunController.state;
+    // 약화 안내는 방마다 다시 한 번씩 — 새 방에서 상황을 상기시키되 도배하지 않는다
+    this.escalationNoticed.clear();
     this.roomClearPending = false;
     this.manaPotionSpawnedThisRoom = false;
     this.manaPotionSpawnRemaining = manaPotionSpawnDelay(Math.random());
@@ -2077,9 +2099,9 @@ if (applied) this.playPlayerHit();
       const affinityBonus = this.combatRunController.state
         .elementalAffinity[spec.element_primary] ?? 0;
       // 런 반복 격상(#77): 회차가 쌓이면 과의존한 원소가 이번 런 전체에서 약화된다.
-      const escalation = runEscalationProfile(loadRunMemory());
-      const escalationWeaken = escalation.weakenedElements.includes(spec.element_primary)
-        ? escalation.weakenMultiplier
+      // 프로필은 런 시작에 확정된 캐시를 쓴다 (시전마다 localStorage를 읽지 않는다).
+      const escalationWeaken = this.runEscalation.weakenedElements.includes(spec.element_primary)
+        ? this.runEscalation.weakenMultiplier
         : 1;
       const effectiveSpec: SpellSpec = {
         ...spec,
@@ -2087,7 +2109,9 @@ if (applied) this.playPlayerHit();
           spellPowerWithAffinity(historyEntry.power, affinityBonus) * escalationWeaken,
         ),
       };
-      if (escalationWeaken < 1) {
+      // 같은 원소를 계속 쓰면 매 시전 반복되므로 방마다 원소별 1회만 알린다
+      if (escalationWeaken < 1 && !this.escalationNoticed.has(spec.element_primary)) {
+        this.escalationNoticed.add(spec.element_primary);
         this.announceSystemMessage(
           `${ELEMENT_LABELS[spec.element_primary]} 약화 ${Math.round((1 - escalationWeaken) * 100)}% · 세계가 네 수를 읽었다`,
           '#b18cff',
