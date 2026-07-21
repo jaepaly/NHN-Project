@@ -366,7 +366,11 @@ export class ProtoScene extends Phaser.Scene {
       `${import.meta.env.BASE_URL}assets/backgrounds/arena-boss.jpg`,
     );
     // 적 스프라이트 — 무채색으로 저장해두고 타입 색은 인게임 틴트로 입힌다
-    for (const key of ['enemy-shooter', 'enemy-chaser', 'enemy-splitter', 'enemy-small-splitter']) {
+    // 파수꾼·보스는 코어만 잘라낸 버전 — 방패 링/저항 링은 정보를 담고 있어 절차적으로 남긴다.
+    for (const key of [
+      'enemy-shooter', 'enemy-chaser', 'enemy-splitter', 'enemy-small-splitter',
+      'enemy-shield-sentinel-core', 'enemy-boss-core', 'player-invoker',
+    ]) {
       this.load.image(key, `${import.meta.env.BASE_URL}assets/sprites/${key}.png`);
     }
     // 로드 실패가 조용히 묻히지 않게 — 실패 시 원인·URL을 남기고 그리드 배경으로 폴백한다.
@@ -918,8 +922,14 @@ export class ProtoScene extends Phaser.Scene {
     magicCircle.lineStyle(2, 0x4c66ff, 0.25);
     magicCircle.strokeCircle(0, 0, 60);
     magicCircle.strokeCircle(0, 0, 44);
-    const body = this.add.circle(0, 0, 14, 0x8fa4ff)
-      .setBlendMode(Phaser.BlendModes.ADD);
+    // AI 스프라이트(인물만). 원본에는 마법진이 함께 그려져 있었지만 위 magicCircle과
+    // 중복되고, 링이 에워싼 안쪽 배경이 누끼로 안 빠져서 인물만 잘라 쓴다.
+    const body = this.textures.exists('player-invoker')
+      ? this.add.image(0, 0, 'player-invoker')
+        .setDisplaySize(40, 40)
+        .setTint(0x8fa4ff)
+      : this.add.circle(0, 0, 14, 0x8fa4ff)
+        .setBlendMode(Phaser.BlendModes.ADD);
     const halo = this.add.circle(0, 0, 22, 0x4c66ff, 0.25)
       .setBlendMode(Phaser.BlendModes.ADD);
     this.player = this.add.container(x, y, [magicCircle, halo, body]);

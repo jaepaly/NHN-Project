@@ -8,6 +8,9 @@ import type { CombatEnemy, EnemyShotRequest } from '../enemies/combatEnemy';
 
 export type BossProfile = 'legacy' | 'stage' | 'memory';
 
+/** AI 스프라이트(코어만). 무채색으로 저장돼 있어 색은 틴트로 입힌다. */
+const BOSS_SPRITE_KEY = 'enemy-boss-core';
+
 export const BOSS_CHARGE_SPEED = 720;
 export const BOSS_CHARGE_DURATION_SECONDS = 0.35;
 export const BOSS_CHARGE_DISTANCE = BOSS_CHARGE_SPEED * BOSS_CHARGE_DURATION_SECONDS;
@@ -33,7 +36,7 @@ export class BossEnemy implements CombatEnemy {
   private chargeRemaining = 0;
   private readonly chargeVelocity = new Phaser.Math.Vector2();
 
-  private readonly core: Phaser.GameObjects.Polygon;
+  private readonly core: Phaser.GameObjects.Polygon | Phaser.GameObjects.Image;
   private readonly ring: Phaser.GameObjects.Arc;
   private readonly secondaryResistanceRing: Phaser.GameObjects.Arc;
   private readonly healthFill: Phaser.GameObjects.Rectangle;
@@ -57,8 +60,15 @@ export class BossEnemy implements CombatEnemy {
       const angle = (Math.PI / 3) * i - Math.PI / 2;
       hexPoints.push(Math.cos(angle) * 34, Math.sin(angle) * 34);
     }
-    this.core = scene.add.polygon(0, 0, hexPoints, 0x2a1245, 0.95)
-      .setStrokeStyle(3, 0xb44dff, 1);
+    // AI 스프라이트는 코어만 잘라 쓴다. 원본에는 글리프 링이 그려져 있지만, 이 보스의
+    // ring/secondaryResistanceRing은 **저항 원소를 색으로 알려주는 정보**라 절차적으로
+    // 유지해야 한다. 스프라이트 링을 얹으면 그 정보와 겹쳐 읽기 어려워진다.
+    this.core = scene.textures.exists(BOSS_SPRITE_KEY)
+      ? scene.add.image(0, 0, BOSS_SPRITE_KEY)
+        .setDisplaySize(72, 72)
+        .setTint(0xb44dff)
+      : scene.add.polygon(0, 0, hexPoints, 0x2a1245, 0.95)
+        .setStrokeStyle(3, 0xb44dff, 1);
     this.ring = scene.add.circle(0, 0, 48, 0x000000, 0)
       .setStrokeStyle(2, 0xd0a8ff, 0.7)
       .setBlendMode(Phaser.BlendModes.ADD);
