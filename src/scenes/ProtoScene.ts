@@ -351,7 +351,7 @@ export class ProtoScene extends Phaser.Scene {
     // Phase 5 프로토타입 — AI 생성 스테이지 배경 (도형 데모 탈피)
     this.load.image(
       'bg-stage1',
-      `${import.meta.env.BASE_URL}assets/backgrounds/arena-stage1.webp`,
+      `${import.meta.env.BASE_URL}assets/backgrounds/arena-stage1.jpg`,
     );
   }
 
