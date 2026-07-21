@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { createSpriteLayers } from '../render/spriteLayers';
+import { playHitReact } from '../combat-core/enemies/enemyJuice';
 import type { SpellJudge } from '../spell/judge';
 import { createJudge } from '../spell/createJudge';
 import type { SpellElement, SpellSpec } from '../spell/types';
@@ -232,6 +233,12 @@ interface ManaPotion {
 export class ProtoScene extends Phaser.Scene {
   private judge: SpellJudge = createJudge();
   private player!: Phaser.GameObjects.Container;
+  /** 마법진 두 겹(서로 반대로 회전) — 플레이어가 굳어 보이지 않게 상시 돈다. */
+  private playerRingOuter!: Phaser.GameObjects.Graphics;
+  private playerRingInner!: Phaser.GameObjects.Graphics;
+  private playerHalo!: Phaser.GameObjects.Arc;
+  /** 피격 플래시 대상 — 적과 같은 playHitReact를 쓴다. */
+  private playerBody!: Phaser.GameObjects.Image | Phaser.GameObjects.Arc;
   private playerState = new PlayerCombatState();
   private readonly spellHistory = new SpellHistory();
   private readonly engraveManager = new EngraveManager();
@@ -440,6 +447,7 @@ export class ProtoScene extends Phaser.Scene {
       this.playerState.update(d);
       this.basicAttackCooldownRemaining = Math.max(0, this.basicAttackCooldownRemaining - d);
       this.updatePlayerMovement(delta / 1000);
+      this.updatePlayerAura(d);
       this.updateEnemyControls(d);
       this.updateEnemies(d);
       this.updatePersistentForms(d);
@@ -922,22 +930,79 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private createPlayer(x: number, y: number): void {
-    const magicCircle = this.add.graphics();
-    magicCircle.lineStyle(2, 0x4c66ff, 0.25);
-    magicCircle.strokeCircle(0, 0, 60);
-    magicCircle.strokeCircle(0, 0, 44);
-    // AI 스프라이트(인물만). 원본에는 마법진이 함께 그려져 있었지만 위 magicCircle과
+    // 마법진은 **끊어진 호**로 그린다. 완전한 원은 돌려도 회전이 눈에 보이지 않아
+    // 플레이어가 굳어 보였다. 두 겹을 서로 반대로 돌려 살아있는 느낌을 준다.
+    this.playerRingOuter = this.drawArcRing(60, 3, 0x4c66ff, 0.30);
+    this.playerRingInner = this.drawArcRing(44, 4, 0x8fa4ff, 0.22);
+    // AI 스프라이트(인물만). 원본에는 마법진이 함께 그려져 있었지만 위 마법진과
     // 중복되고, 링이 에워싼 안쪽 배경이 누끼로 안 빠져서 인물만 잘라 쓴다.
     const bodyLayers = this.textures.exists('player-invoker')
       ? createSpriteLayers(this, 'player-invoker', 40, 0x8fa4ff)
       : [this.add.circle(0, 0, 14, 0x8fa4ff).setBlendMode(Phaser.BlendModes.ADD)];
-    const halo = this.add.circle(0, 0, 22, 0x4c66ff, 0.25)
+    [this.playerBody] = bodyLayers;
+    this.playerHalo = this.add.circle(0, 0, 22, 0x4c66ff, 0.25)
       .setBlendMode(Phaser.BlendModes.ADD);
-    this.player = this.add.container(x, y, [magicCircle, halo, ...bodyLayers]);
+    this.player = this.add.container(
+      x,
+      y,
+      [this.playerRingOuter, this.playerRingInner, this.playerHalo, ...bodyLayers],
+    );
     this.tweens.add({
-      targets: halo, scale: { from: 1, to: 1.25 },
+      targets: this.playerHalo, scale: { from: 1, to: 1.25 },
       yoyo: true, repeat: -1, duration: 900, ease: 'Sine.easeInOut',
     });
+  }
+
+  /** 회전이 보이도록 균등한 간격을 둔 호(arc) 링을 그린다. */
+  private drawArcRing(
+    radius: number,
+    segments: number,
+    color: number,
+    alpha: number,
+  ): Phaser.GameObjects.Graphics {
+    const ring = this.add.graphics().lineStyle(2, color, alpha);
+    const span = (Math.PI * 2) / segments;
+    const gap = span * 0.32; // 끊긴 구간 — 이 틈 덕분에 회전이 읽힌다
+    for (let i = 0; i < segments; i += 1) {
+      const start = span * i;
+      ring.beginPath();
+      ring.arc(0, 0, radius, start, start + span - gap, false);
+      ring.strokePath();
+    }
+    return ring;
+  }
+
+  /** 마법진 상시 회전 — 서 있든 영창 중이든 멈추지 않아야 살아 보인다. */
+  private updatePlayerAura(deltaSeconds: number): void {
+    if (!this.player?.active) return;
+    this.playerRingOuter.rotation += 0.35 * deltaSeconds;
+    this.playerRingInner.rotation -= 0.55 * deltaSeconds;
+  }
+
+  /** 영창 성공 순간의 발산 — 이 게임의 핵심 행동이라 피드백을 준다. */
+  private playCastFlare(): void {
+    if (!this.player?.active) return;
+    for (const [ring, to] of [
+      [this.playerRingOuter, 1.18] as const,
+      [this.playerRingInner, 1.26] as const,
+    ]) {
+      this.tweens.killTweensOf(ring);
+      ring.setScale(1).setAlpha(1);
+      this.tweens.add({
+        targets: ring,
+        scale: { from: 0.9, to },
+        alpha: { from: 1, to: 0.45 },
+        duration: 260,
+        ease: 'Quad.easeOut',
+        onComplete: () => { if (ring.active) ring.setScale(1).setAlpha(1); },
+      });
+    }
+  }
+
+  /** 플레이어 피격 반응 — 적과 동일한 규칙(흰 플래시 + squash)을 그대로 쓴다. */
+  private playPlayerHit(): void {
+    if (!this.player?.active || !this.playerBody) return;
+    playHitReact(this, this.player, this.playerBody, 0x8fa4ff);
   }
 
   private spawnWave(definition: WaveDefinition): void {
@@ -1063,6 +1128,7 @@ export class ProtoScene extends Phaser.Scene {
       if (hazard.damageCooldown > 0) continue;
       if (!hazard.contains(this.player.x, this.player.y)) continue;
       const applied = this.playerState.takeDamage(9);
+if (applied) this.playPlayerHit();
       this.announceIncomingDamage(applied.hpDamage, applied.shieldDamage);
       hazard.onDamage?.();
       hazard.damageCooldown = 0.75;
@@ -1188,6 +1254,7 @@ export class ProtoScene extends Phaser.Scene {
       if (!touching || !enemy.canDealContactDamage) continue;
 
       const applied = this.playerState.takeDamage(enemy.contactDamage);
+if (applied) this.playPlayerHit();
       enemy.startContactDamageCooldown();
       totalHpDamage += applied.hpDamage;
       totalShieldDamage += applied.shieldDamage;
@@ -1692,6 +1759,7 @@ export class ProtoScene extends Phaser.Scene {
       ) <= SHOOTER_CONFIG.bulletHitDistance;
       if (hitPlayer) {
         const applied = this.playerState.takeDamage(SHOOTER_CONFIG.bulletDamage);
+if (applied) this.playPlayerHit();
         totalHpDamage += applied.hpDamage;
         totalShieldDamage += applied.shieldDamage;
         this.destroyEnemyProjectile(projectile);
@@ -1990,6 +2058,7 @@ export class ProtoScene extends Phaser.Scene {
       this.announceSpell(effectiveSpec);
       this.applySpellEffect(effectiveSpec);
       this.playerState.startInputLock(ACTIVE_MANA_CONFIG.castInputLockSeconds);
+      this.playCastFlare();
     } finally {
       this.finishCastingUx();
     }
@@ -3559,6 +3628,7 @@ export class ProtoScene extends Phaser.Scene {
       });
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, x, y) <= radius) {
         const applied = this.playerState.takeDamage(30);
+if (applied) this.playPlayerHit();
         this.announceIncomingDamage(applied.hpDamage, applied.shieldDamage);
       }
     });
