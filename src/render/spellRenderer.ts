@@ -12,6 +12,8 @@ import {
   zoneDurationSeconds,
 } from '../combat-core/combat/areaSpellConfig';
 import { ELEMENT_PALETTES, SIZE_SCALE } from './palette';
+import { requestCameraShake } from './cameraShake';
+import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
 
 interface SpellImpactMeta {
   /** Multiplies the power-based damage for this individual impact. */
@@ -53,6 +55,8 @@ export interface CastContext {
   to?: Phaser.Math.Vector2;
   /** 전투 코어가 결정한 chain 대상 좌표. 최초 대상부터 순서대로 전달한다. */
   chainPath?: readonly { x: number; y: number }[];
+  /** Automated spirit/engrave casts keep impact VFX but never move the camera. */
+  allowCameraShake?: boolean;
   /** 렌더러가 만든 실제 형상의 적중 영역을 전투 씬에 전달 */
   onHit?: (impact: SpellImpact, spec: SpellSpec) => void;
   /** Checks a bolt's latest movement segment against live combat targets. */
@@ -81,6 +85,7 @@ export function ensureParticleTexture(scene: Phaser.Scene): void {
 
 export function castSpell(ctx: CastContext, spec: SpellSpec): void {
   ensureParticleTexture(ctx.scene);
+  requestCastCameraShake(ctx, spec);
   switch (spec.form) {
     case 'beam':
       castBeam(ctx, spec);
@@ -109,6 +114,40 @@ export function castSpell(ctx: CastContext, spec: SpellSpec): void {
       castBolt(ctx, spec);
       break;
   }
+}
+
+function requestCastCameraShake(ctx: CastContext, spec: SpellSpec): void {
+  if (ctx.allowCameraShake === false || spec.form === 'bolt') return;
+  let tier: CameraShakeTier | null = null;
+  let intensityScale = 1.25;
+  switch (spec.form) {
+    case 'beam':
+      tier = 'strong';
+      intensityScale = 1.2;
+      break;
+    case 'wave':
+    case 'rain':
+      tier = 'medium';
+      break;
+    case 'nova':
+      tier = 'strong';
+      intensityScale = 1.45;
+      break;
+    case 'zone':
+    case 'cage':
+      tier = 'weak';
+      break;
+    case 'chain':
+      tier = (ctx.chainPath?.length ?? 0) > 0 ? 'medium' : null;
+      break;
+    default:
+      break;
+  }
+  if (!tier) return;
+  if ((spec.size === 'huge' || spec.power >= 80) && tier !== 'strong') {
+    tier = tier === 'weak' ? 'medium' : 'strong';
+  }
+  requestCameraShake(ctx.scene, tier, intensityScale);
 }
 
 /** bolt — 파티클 꼬리를 끄는 투사체 + 착탄 폭발 */
@@ -163,6 +202,12 @@ function castBolt(ctx: CastContext, spec: SpellSpec): void {
     body.setPosition(x, y);
     halo.setPosition(x, y);
     impactBurst(scene, x, y, spec);
+    if (emitHit && ctx.allowCameraShake !== false) {
+      const tier: CameraShakeTier = spec.size === 'huge' || spec.power >= 80
+        ? 'medium'
+        : 'weak';
+      requestCameraShake(scene, tier, 1.25);
+    }
     if (emitHit) ctx.onHit?.({ kind: 'point', x, y }, spec);
     trail.stop();
     subTrail?.stop();
@@ -331,7 +376,6 @@ function castBeam(ctx: CastContext, spec: SpellSpec): void {
     width,
   }, spec);
   impactBurst(scene, end.x, end.y, spec);
-  scene.cameras.main.shake(100, 0.0025 * scale);
   scene.time.delayedCall(holdDurationMs, () => {
     if (!beam.active) return;
     scene.tweens.add({
@@ -474,7 +518,6 @@ function castNova(ctx: CastContext, spec: SpellSpec): void {
     y: from.y,
     radius: SPELL_DAMAGE_CONFIG.novaBaseRadius + spec.power,
   }, spec);
-  scene.cameras.main.shake(200, 0.004 * scale);
   scene.time.delayedCall(700, () => burst.destroy());
 }
 
@@ -686,6 +729,5 @@ function impactBurst(scene: Phaser.Scene, x: number, y: number, spec: SpellSpec)
     emitting: false,
   });
   burst.explode();
-  scene.cameras.main.shake(120, 0.003 * scale);
   scene.time.delayedCall(500, () => burst.destroy());
 }

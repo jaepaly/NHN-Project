@@ -28,6 +28,9 @@
     "test:growth": "esbuild scripts/growth-feedback-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-growth-feedback-regression.mjs && node node_modules/.cache/incant-growth-feedback-regression.mjs",
     "test:escalation": "esbuild scripts/run-escalation-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-run-escalation-regression.mjs && node node_modules/.cache/incant-run-escalation-regression.mjs",
     "test:active-mana": "esbuild scripts/active-mana-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-active-mana-regression.mjs && node node_modules/.cache/incant-active-mana-regression.mjs",
+    "test:hitstop": "esbuild scripts/hit-stop-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-hit-stop-regression.mjs && node node_modules/.cache/incant-hit-stop-regression.mjs",
+    "test:camera-shake": "esbuild scripts/camera-shake-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-camera-shake-regression.mjs && node node_modules/.cache/incant-camera-shake-regression.mjs",
+    "test:knockback": "esbuild scripts/knockback-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-knockback-regression.mjs && node node_modules/.cache/incant-knockback-regression.mjs",
     "snapshot:quality": "esbuild scripts/spell-quality-snapshot.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-quality-snapshot.mjs && node node_modules/.cache/incant-spell-quality-snapshot.mjs",
     "preview": "vite preview",
     "test:boss-core": "esbuild scripts/boss-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-boss-regression.mjs && node node_modules/.cache/incant-boss-regression.mjs"
