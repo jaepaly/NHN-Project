@@ -5,8 +5,12 @@ import type { BossCounterStrategy } from '../../spell/bossMemoryContract';
 import { ELEMENT_PALETTES } from '../../render/palette';
 import { BOSS_CONFIG } from './bossConfig';
 import type { CombatEnemy, EnemyShotRequest } from '../enemies/combatEnemy';
+import { createSpriteLayers, addLayersRotation } from '../../render/spriteLayers';
 
 export type BossProfile = 'legacy' | 'stage' | 'memory';
+
+/** AI 스프라이트(코어만). 무채색으로 저장돼 있어 색은 틴트로 입힌다. */
+const BOSS_SPRITE_KEY = 'enemy-boss-core';
 
 export const BOSS_CHARGE_SPEED = 720;
 export const BOSS_CHARGE_DURATION_SECONDS = 0.35;
@@ -33,7 +37,13 @@ export class BossEnemy implements CombatEnemy {
   private chargeRemaining = 0;
   private readonly chargeVelocity = new Phaser.Math.Vector2();
 
-  private readonly core: Phaser.GameObjects.Polygon;
+  /** 재질+발광 두 겹 — 회전을 함께 받아야 하므로 묶어둔다. */
+  private readonly coreLayers: Array<Phaser.GameObjects.Polygon | Phaser.GameObjects.Image>;
+  /** 코어 이미지에 건 셰이더 발광 — 페이즈가 오를수록 강해지고 돌진 때 터진다. */
+  private glowFx: Phaser.FX.Glow | null = null;
+  private glowPulse: Phaser.Tweens.Tween | null = null;
+  private lastPhase: 1 | 2 | 3 = 1;
+
   private readonly ring: Phaser.GameObjects.Arc;
   private readonly secondaryResistanceRing: Phaser.GameObjects.Arc;
   private readonly healthFill: Phaser.GameObjects.Rectangle;
@@ -57,8 +67,13 @@ export class BossEnemy implements CombatEnemy {
       const angle = (Math.PI / 3) * i - Math.PI / 2;
       hexPoints.push(Math.cos(angle) * 34, Math.sin(angle) * 34);
     }
-    this.core = scene.add.polygon(0, 0, hexPoints, 0x2a1245, 0.95)
-      .setStrokeStyle(3, 0xb44dff, 1);
+    // AI 스프라이트는 코어만 잘라 쓴다. 원본에는 글리프 링이 그려져 있지만, 이 보스의
+    // ring/secondaryResistanceRing은 **저항 원소를 색으로 알려주는 정보**라 절차적으로
+    // 유지해야 한다. 스프라이트 링을 얹으면 그 정보와 겹쳐 읽기 어려워진다.
+    this.coreLayers = scene.textures.exists(BOSS_SPRITE_KEY)
+      ? createSpriteLayers(scene, BOSS_SPRITE_KEY, 72, 0xb44dff)
+      : [scene.add.polygon(0, 0, hexPoints, 0x2a1245, 0.95)
+        .setStrokeStyle(3, 0xb44dff, 1)];
     this.ring = scene.add.circle(0, 0, 48, 0x000000, 0)
       .setStrokeStyle(2, 0xd0a8ff, 0.7)
       .setBlendMode(Phaser.BlendModes.ADD);
@@ -76,10 +91,53 @@ export class BossEnemy implements CombatEnemy {
       glow,
       this.ring,
       this.secondaryResistanceRing,
-      this.core,
+      ...this.coreLayers,
       healthBack,
       this.healthFill,
     ]);
+
+    // 코어 이미지 자체에 셰이더 발광을 건다. preFX는 오브젝트마다 렌더 패스가 붙어
+    // 다수 몹에는 부담이지만, 보스는 단일 객체라 문제되지 않는다.
+    const [coreSprite] = this.coreLayers;
+    this.glowFx = coreSprite.preFX?.addGlow(0xb44dff, 3.5, 0, false) ?? null;
+    if (this.glowFx) {
+      this.glowPulse = scene.tweens.add({
+        targets: this.glowFx,
+        outerStrength: { from: 2.6, to: 5.2 },
+        yoyo: true,
+        repeat: -1,
+        duration: 1800,
+        ease: 'Sine.easeInOut',
+      });
+    }
+  }
+
+  /** 페이즈가 오를수록 발광을 키운다 — 장식이 아니라 "더 위험해졌다"는 정보다. */
+  private applyPhaseGlow(): void {
+    if (!this.glowFx || !this.glowPulse) return;
+    const peak = this.lastPhase === 3 ? 9.5 : this.lastPhase === 2 ? 7.2 : 5.2;
+    this.glowPulse.stop();
+    this.glowPulse = this.view.scene.tweens.add({
+      targets: this.glowFx,
+      outerStrength: { from: peak * 0.5, to: peak },
+      yoyo: true,
+      repeat: -1,
+      duration: this.lastPhase === 3 ? 900 : 1400, // 후반일수록 빨라져 조급해 보인다
+      ease: 'Sine.easeInOut',
+    });
+  }
+
+  /** 돌진 예고 — 위험한 행동이라 이미지가 확 타오르게 한다. */
+  private flareGlow(): void {
+    if (!this.glowFx) return;
+    this.glowPulse?.pause();
+    this.view.scene.tweens.add({
+      targets: this.glowFx,
+      outerStrength: { from: 14, to: 3.2 },
+      duration: 520,
+      ease: 'Quad.easeOut',
+      onComplete: () => this.glowPulse?.resume(),
+    });
   }
 
   get x(): number {
@@ -109,6 +167,7 @@ export class BossEnemy implements CombatEnemy {
     this.chargeVelocity.copy(direction.normalize().scale(BOSS_CHARGE_SPEED));
     const safeDistance = Number.isFinite(distance) ? Math.max(0, distance) : BOSS_CHARGE_DISTANCE;
     this.chargeRemaining = safeDistance / BOSS_CHARGE_SPEED;
+    this.flareGlow();
   }
 
   /** 기억 기반 내성 원소를 시각화 (링 색 = 내성 원소 팔레트) — GDD §4.1 "명시적 표시" */
@@ -154,7 +213,11 @@ export class BossEnemy implements CombatEnemy {
     );
     this.ring.rotation += 0.9 * deltaSeconds;
     this.secondaryResistanceRing.rotation -= 0.7 * deltaSeconds;
-    this.core.rotation -= 0.25 * deltaSeconds;
+    addLayersRotation(this.coreLayers, -0.25 * deltaSeconds);
+    if (this.phase !== this.lastPhase) {
+      this.lastPhase = this.phase;
+      this.applyPhaseGlow();
+    }
 
     if (this.chargeRemaining > 0) {
       const chargeDelta = Math.min(deltaSeconds, this.chargeRemaining);

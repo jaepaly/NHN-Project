@@ -2,6 +2,7 @@
 import Phaser from 'phaser';
 import { SPLITTER_CONFIG } from '../combat/combatConfig';
 import type { CombatEnemy, EnemyShotRequest } from './combatEnemy';
+import { createSpriteLayers, addLayersRotation } from '../../render/spriteLayers';
 
 export class SplitterEnemy implements CombatEnemy {
   readonly view: Phaser.GameObjects.Container;
@@ -15,7 +16,8 @@ export class SplitterEnemy implements CombatEnemy {
   alive = true;
   contactDamageCooldownRemaining = 0;
 
-  private readonly body: Phaser.GameObjects.Polygon;
+  /** 재질+발광 두 겹 — 스핀을 함께 받아야 하므로 묶어둔다. */
+  private readonly bodyLayers: Array<Phaser.GameObjects.Polygon | Phaser.GameObjects.Image>;
   private readonly healthFill: Phaser.GameObjects.Rectangle;
   private readonly speed: number;
 
@@ -39,10 +41,15 @@ export class SplitterEnemy implements CombatEnemy {
     const color = small ? 0xc56cff : 0x9f4dff;
     const glow = scene.add.circle(0, 0, config.radius + 7, color, 0.15)
       .setBlendMode(Phaser.BlendModes.ADD);
-    this.body = scene.add.polygon(0, 0, points, color)
-      // 점 좌표가 (0, 0)을 중심으로 하므로 Polygon의 표시·회전 원점도 맞춘다.
-      .setDisplayOrigin(0, 0)
-      .setStrokeStyle(2, 0xe0b3ff, 0.9);
+    // AI 스프라이트가 있으면 사용한다. 대/소가 같은 클래스라 텍스처도 크기별로 가른다.
+    // 무채색이라 타입 색을 틴트로 입히고, 알파를 딴 이미지라 일반 블렌딩으로 그린다.
+    const spriteKey = small ? 'enemy-small-splitter' : 'enemy-splitter';
+    this.bodyLayers = scene.textures.exists(spriteKey)
+      ? createSpriteLayers(scene, spriteKey, config.radius * 2.3, color)
+      : [scene.add.polygon(0, 0, points, color)
+        // 점 좌표가 (0, 0)을 중심으로 하므로 Polygon의 표시·회전 원점도 맞춘다.
+        .setDisplayOrigin(0, 0)
+        .setStrokeStyle(2, 0xe0b3ff, 0.9)];
     const barWidth = small ? 26 : 36;
     const barY = -(config.radius + 10);
     const healthBack = scene.add.rectangle(-barWidth / 2, barY, barWidth, 4, 0x24102f, 0.9)
@@ -50,7 +57,7 @@ export class SplitterEnemy implements CombatEnemy {
     this.healthFill = scene.add.rectangle(-barWidth / 2, barY, barWidth, 4, 0x72f1b8, 1)
       .setOrigin(0, 0.5);
 
-    this.view = scene.add.container(x, y, [glow, this.body, healthBack, this.healthFill]);
+    this.view = scene.add.container(x, y, [glow, ...this.bodyLayers, healthBack, this.healthFill]);
   }
 
   get kind(): 'splitter' | 'small-splitter' {
@@ -92,7 +99,7 @@ export class SplitterEnemy implements CombatEnemy {
     const moveScale = safeMovementMultiplier(movementMultiplier);
     this.view.x += direction.x * this.speed * deltaSeconds * moveScale;
     this.view.y += direction.y * this.speed * deltaSeconds * moveScale;
-    this.body.rotation += (this.small ? 1.8 : 0.9) * deltaSeconds;
+    addLayersRotation(this.bodyLayers, (this.small ? 1.8 : 0.9) * deltaSeconds);
     return [];
   }
 

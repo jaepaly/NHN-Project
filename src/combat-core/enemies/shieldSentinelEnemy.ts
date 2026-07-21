@@ -1,5 +1,10 @@
 import Phaser from 'phaser';
 import type { CombatEnemy, EnemyShotRequest } from './combatEnemy';
+import { createSpriteLayers, setLayersRotation } from '../../render/spriteLayers';
+
+const SENTINEL_COLOR = 0x557799;
+/** AI 스프라이트(코어만). 무채색으로 저장돼 있어 타입 색을 틴트로 입힌다. */
+const SENTINEL_SPRITE_KEY = 'enemy-shield-sentinel-core';
 
 const CONFIG = {
   maxHp: 60,
@@ -24,7 +29,8 @@ export class ShieldSentinelEnemy implements CombatEnemy {
   hp: number = this.maxHp;
   alive = true;
   private contactDamageCooldownRemaining = 0;
-  private readonly body: Phaser.GameObjects.Rectangle;
+  /** 재질+발광 두 겹 — 회전을 함께 받아야 하므로 묶어둔다. */
+  private readonly bodyLayers: Array<Phaser.GameObjects.Rectangle | Phaser.GameObjects.Image>;
   private readonly shieldRing: Phaser.GameObjects.Graphics;
   private readonly healthFill: Phaser.GameObjects.Rectangle;
 
@@ -34,8 +40,13 @@ export class ShieldSentinelEnemy implements CombatEnemy {
     this.shieldRing.beginPath();
     this.shieldRing.arc(0, 0, 31, -Math.PI * 5 / 24, Math.PI * 29 / 24, false);
     this.shieldRing.strokePath();
-    this.body = scene.add.rectangle(0, 0, 31, 31, 0x557799)
-      .setStrokeStyle(2, 0xb9efff, 0.9);
+    // AI 스프라이트는 코어만 잘라 쓴다. 원본에는 닫힌 육각 방패 링이 그려져 있는데,
+    // 이 적의 방패는 회전하며 틈이 생기고 그 틈으로만 공격이 통하는 게임 메커닉이라
+    // 링은 위 shieldRing(절차적)이 계속 담당해야 한다.
+    this.bodyLayers = scene.textures.exists(SENTINEL_SPRITE_KEY)
+      ? createSpriteLayers(scene, SENTINEL_SPRITE_KEY, 38, SENTINEL_COLOR)
+      : [scene.add.rectangle(0, 0, 31, 31, SENTINEL_COLOR)
+        .setStrokeStyle(2, 0xb9efff, 0.9)];
     const healthBack = scene.add.rectangle(-22, -35, 44, 5, 0x152431, 0.9)
       .setOrigin(0, 0.5);
     this.healthFill = scene.add.rectangle(-22, -35, 44, 5, 0x72f1b8)
@@ -43,7 +54,7 @@ export class ShieldSentinelEnemy implements CombatEnemy {
     this.view = scene.add.container(
       x,
       y,
-      [this.shieldRing, this.body, healthBack, this.healthFill],
+      [this.shieldRing, ...this.bodyLayers, healthBack, this.healthFill],
     );
   }
 
@@ -68,7 +79,7 @@ export class ShieldSentinelEnemy implements CombatEnemy {
     const multiplier = Number.isFinite(movementMultiplier) ? Math.max(0, movementMultiplier) : 1;
     this.view.x += direction.x * CONFIG.speed * deltaSeconds * multiplier;
     this.view.y += direction.y * CONFIG.speed * deltaSeconds * multiplier;
-    this.body.rotation = direction.angle();
+    setLayersRotation(this.bodyLayers, direction.angle());
     return [];
   }
 

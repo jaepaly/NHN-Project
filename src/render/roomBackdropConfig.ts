@@ -9,7 +9,8 @@ export interface RoomBackdropPalette {
 export const ROOM_BACKDROP_PALETTES = {
   stage1: { base: 0x050711, grid: 0x24366f, gridAlpha: 0.42, bgTint: 0xffffff },
   stage2: { base: 0x0b0718, grid: 0x4b2b70, gridAlpha: 0.48, bgTint: 0xd0b8ff },
-  boss: { base: 0x17060d, grid: 0x7a2341, gridAlpha: 0.58, bgTint: 0xffbcbc },
+  // 보스는 전용 배경(bg-boss)이 있으므로 틴트를 걸지 않고 아트 그대로 보여준다
+  boss: { base: 0x17060d, grid: 0x7a2341, gridAlpha: 0.58, bgTint: 0xffffff },
 } as const satisfies Record<string, RoomBackdropPalette>;
 
 export function backdropPaletteForEncounter(
