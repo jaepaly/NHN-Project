@@ -237,6 +237,9 @@ export class ProtoScene extends Phaser.Scene {
   private playerRingOuter!: Phaser.GameObjects.Graphics;
   private playerRingInner!: Phaser.GameObjects.Graphics;
   private playerHalo!: Phaser.GameObjects.Arc;
+  /** 스프라이트 자체에 건 셰이더 발광 — 세기를 트윈해 이미지가 숨 쉬게 한다. */
+  private playerGlowFx: Phaser.FX.Glow | null = null;
+  private playerGlowPulse: Phaser.Tweens.Tween | null = null;
   /** 피격 플래시 대상 — 적과 같은 playHitReact를 쓴다. */
   private playerBody!: Phaser.GameObjects.Image | Phaser.GameObjects.Arc;
   private playerState = new PlayerCombatState();
@@ -940,6 +943,28 @@ export class ProtoScene extends Phaser.Scene {
       ? createSpriteLayers(this, 'player-invoker', 40, 0x8fa4ff)
       : [this.add.circle(0, 0, 14, 0x8fa4ff).setBlendMode(Phaser.BlendModes.ADD)];
     [this.playerBody] = bodyLayers;
+    // 이미지 자체에 셰이더 발광을 건다. 주변 링만 돌면 정작 인물은 굳은 채로 남는다.
+    // preFX는 GameObject 전용이라 Container(this.player)가 아니라 스프라이트에 건다.
+    this.playerGlowFx = this.playerBody.preFX?.addGlow(0x8fa4ff, 3, 0, false) ?? null;
+    if (this.playerGlowFx) {
+      // 발광 세기 자체를 호흡시킨다 — 이미지가 숨 쉬는 것처럼 보인다.
+      this.playerGlowPulse = this.tweens.add({
+        targets: this.playerGlowFx,
+        outerStrength: { from: 2.2, to: 4.6 },
+        yoyo: true, repeat: -1, duration: 1500, ease: 'Sine.easeInOut',
+      });
+    }
+    // 미세한 크기 호흡. setDisplaySize가 이미 스케일을 잡아놨으므로 절대값이 아니라
+    // 현재 스케일 기준으로 트윈해야 한다(1로 넣으면 원본 256px로 튄다).
+    for (const layer of bodyLayers) {
+      const baseScale = layer.scaleX;
+      this.tweens.add({
+        targets: layer,
+        scaleX: { from: baseScale, to: baseScale * 1.05 },
+        scaleY: { from: baseScale, to: baseScale * 1.05 },
+        yoyo: true, repeat: -1, duration: 1700, ease: 'Sine.easeInOut',
+      });
+    }
     this.playerHalo = this.add.circle(0, 0, 22, 0x4c66ff, 0.25)
       .setBlendMode(Phaser.BlendModes.ADD);
     this.player = this.add.container(
@@ -995,6 +1020,18 @@ export class ProtoScene extends Phaser.Scene {
         duration: 260,
         ease: 'Quad.easeOut',
         onComplete: () => { if (ring.active) ring.setScale(1).setAlpha(1); },
+      });
+    }
+    // 이미지의 발광도 함께 터뜨린다. 호흡 루프는 죽이지 않고 잠시 멈췄다 되살린다
+    // (kill하면 이후 호흡이 영영 사라진다).
+    if (this.playerGlowFx) {
+      this.playerGlowPulse?.pause();
+      this.tweens.add({
+        targets: this.playerGlowFx,
+        outerStrength: { from: 9, to: 2.6 },
+        duration: 420,
+        ease: 'Quad.easeOut',
+        onComplete: () => this.playerGlowPulse?.resume(),
       });
     }
   }
