@@ -835,8 +835,11 @@ export class ProtoScene extends Phaser.Scene {
     // AI 생성 배경을 base 위·grid 아래에 깔아 도형 데모 느낌을 벗는다.
     // 방별 색조는 tint로 준다 (전용 stage2/보스 배경 생성 전까지 한 이미지 재사용).
     if (this.textures.exists('bg-stage1')) {
-      this.backdropImage = this.add.image(width / 2, height / 2, 'bg-stage1')
-        .setDisplaySize(width, height)
+      // 카메라 고정·화면 전체 — 월드(화면 2배)에 깔면 1/4만 확대돼 보이므로,
+      // 스크롤 안 하는 화면 크기 배경으로 전체 아레나가 항상 보이게 한다.
+      this.backdropImage = this.add.image(this.scale.width / 2, this.scale.height / 2, 'bg-stage1')
+        .setScrollFactor(0)
+        .setDisplaySize(this.scale.width, this.scale.height)
         .setDepth(-99.5)
         .setTint(initial.bgTint);
     }
