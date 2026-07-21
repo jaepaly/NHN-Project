@@ -2,7 +2,7 @@
 import Phaser from 'phaser';
 import { SHOOTER_CONFIG } from '../combat/combatConfig';
 import type { CombatEnemy, EnemyDestroyOptions, EnemyShotRequest } from './combatEnemy';
-import { playHitReact, playAttackLunge, playDeathPop } from './enemyJuice';
+import { playHitFlash, playAttackLunge, playDeathPop } from './enemyJuice';
 import { createSpriteLayers, setLayersRotation } from '../../render/spriteLayers';
 
 const SHOOTER_COLOR = 0xffa62b;
@@ -116,7 +116,7 @@ export class ShooterEnemy implements CombatEnemy {
     this.hp = Math.max(0, this.hp - Math.max(0, amount));
     this.healthFill.setScale(this.hp / this.maxHp, 1);
     if (this.hp > 0) {
-      playHitReact(this.view.scene, this.view, this.body, SHOOTER_COLOR); // 맞는 순간 플래시+squash
+      playHitFlash(this.view.scene, this.body, SHOOTER_COLOR);
       return false;
     }
 

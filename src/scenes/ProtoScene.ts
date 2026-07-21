@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { createSpriteLayers } from '../render/spriteLayers';
-import { playHitReact } from '../combat-core/enemies/enemyJuice';
+import { playHitReact, playImpactSquash } from '../combat-core/enemies/enemyJuice';
 import type { SpellJudge } from '../spell/judge';
 import { createJudge } from '../spell/createJudge';
 import type { SpellElement, SpellSpec } from '../spell/types';
@@ -53,6 +53,17 @@ import {
   spellPowerWithAffinity,
   spellShieldFromPower,
 } from '../combat-core/combat/combatConfig';
+import {
+  EnemyHitStopController,
+  enemyHitStopSeconds,
+} from '../combat-core/combat/hitStopConfig';
+import type { HitStopKind } from '../combat-core/combat/hitStopConfig';
+import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
+import { requestCameraShake, resetCameraShake } from '../render/cameraShake';
+import {
+  KNOCKBACK_CONFIG,
+  knockbackDistanceForForm,
+} from '../combat-core/combat/knockbackConfig';
 import { firstBoltCollision } from '../combat-core/combat/boltCollision';
 import type { BoltCollision } from '../combat-core/combat/boltCollision';
 import {
@@ -158,10 +169,17 @@ interface FriendlyMissile {
   element?: SpellElement;
   speed: number;
   hitDistance: number;
+  knockbackDistance: number;
 }
 
 interface CastFeedbackState {
   resistanceNoticeShown: boolean;
+}
+
+interface EnemyKnockbackState {
+  velocityX: number;
+  velocityY: number;
+  remainingSeconds: number;
 }
 
 /** 씬 보상 추첨과 각인 카드 치환이 한 런에서 재현 가능한 순서를 공유한다. */
@@ -181,6 +199,7 @@ interface EnemyProjectile {
   halo: Phaser.GameObjects.Arc;
   velocity: Phaser.Math.Vector2;
   lifetimeRemaining: number;
+  hitShakeTier: CameraShakeTier;
 }
 
 interface ActiveWall {
@@ -323,9 +342,12 @@ export class ProtoScene extends Phaser.Scene {
   private incanting = false;
   private casting = false;
   private timeScale = 1;
+  private readonly enemyHitStop = new EnemyHitStopController<CombatEnemy>();
+  private readonly enemyKnockbacks = new Map<CombatEnemy, EnemyKnockbackState>();
   private basicAttackCooldownRemaining = 0;
   private friendlyMissiles: FriendlyMissile[] = [];
   private activeSummon: SummonedOrb | null = null;
+  private activeSummonKnockbackDistance = 0;
   private activeWall: ActiveWall | null = null;
   private activeOrbit: ActiveOrbit | null = null;
   /** 성장 누적 표식 (룬 링·친화 오라) — 보상 선택 때 갱신, 매 프레임 플레이어 추종 */
@@ -660,6 +682,9 @@ export class ProtoScene extends Phaser.Scene {
 
   private startRoom(roomIndex: number): void {
     const encounter = this.combatRunController.state;
+    this.enemyHitStop.clear();
+    this.enemyKnockbacks.clear();
+    resetCameraShake(this);
     // 약화 안내는 방마다 다시 한 번씩 — 새 방에서 상황을 상기시키되 도배하지 않는다
     this.escalationNoticed.clear();
     this.roomClearPending = false;
@@ -732,6 +757,7 @@ export class ProtoScene extends Phaser.Scene {
     }
     this.enemies.push(boss);
     this.audio.playSfx('boss-appear');
+    requestCameraShake(this, 'medium');
 
     this.announceSystemMessage('보스의 방', '#ff6b86');
     // 오프닝 대사 — R2 /boss-line (프록시 생성 우선, 템플릿 폴백 내장)
@@ -757,6 +783,8 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private clearCombatRoom(): void {
+    this.enemyHitStop.clear();
+    this.enemyKnockbacks.clear();
     this.clearBossPatternEffects();
     this.clearEnemyControls();
     for (const enemy of this.enemies) enemy.destroy({ animate: false });
@@ -1060,9 +1088,10 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   /** 플레이어 피격 반응 — 적과 동일한 규칙(흰 플래시 + squash)을 그대로 쓴다. */
-  private playPlayerHit(): void {
+  private playPlayerHit(shakeTier: CameraShakeTier = 'weak'): void {
     if (!this.player?.active || !this.playerBody) return;
     playHitReact(this, this.player, this.playerBody, 0x8fa4ff);
+    requestCameraShake(this, shakeTier);
   }
 
   private spawnWave(definition: WaveDefinition): void {
@@ -1192,7 +1221,6 @@ if (applied) this.playPlayerHit();
       this.announceIncomingDamage(applied.hpDamage, applied.shieldDamage);
       hazard.onDamage?.();
       hazard.damageCooldown = 0.75;
-      this.cameras.main.shake(70, 0.002);
     }
   }
 
@@ -1265,7 +1293,13 @@ if (applied) this.playPlayerHit();
   private updateEnemies(deltaSeconds: number): void {
     if (!this.playerState.alive) return;
 
+    const stoppedEnemies = new Set<CombatEnemy>();
     for (const enemy of this.enemies) {
+      this.updateEnemyKnockback(enemy, deltaSeconds);
+      if (this.enemyHitStop.advance(enemy, deltaSeconds)) {
+        stoppedEnemies.add(enemy);
+        continue;
+      }
       const previous = { x: enemy.x, y: enemy.y };
       const wasCharging = enemy instanceof BossEnemy && enemy.charging;
       const movementMultiplier = enemy instanceof BossEnemy
@@ -1283,7 +1317,10 @@ if (applied) this.playPlayerHit();
       }
       if (enemy instanceof BossEnemy) {
         if (wasCharging || enemy.charging) this.updateBossChargeTrail(enemy, deltaSeconds);
-        if (wasCharging && !enemy.charging) this.showBossChargeShockwave(enemy.x, enemy.y, 0xd0a8ff);
+        if (wasCharging && !enemy.charging) {
+          this.showBossChargeShockwave(enemy.x, enemy.y, 0xd0a8ff);
+          requestCameraShake(this, 'medium');
+        }
       }
       enemy.view.x = Phaser.Math.Clamp(
         enemy.view.x,
@@ -1300,11 +1337,13 @@ if (applied) this.playPlayerHit();
         for (const shot of shots) this.spawnEnemyProjectile(shot);
       }
     }
-    this.updateBossPattern(deltaSeconds);
+    const bossStopped = [...stoppedEnemies].some((enemy) => enemy instanceof BossEnemy);
+    if (!bossStopped) this.updateBossPattern(deltaSeconds);
 
     let totalHpDamage = 0;
     let totalShieldDamage = 0;
     for (const enemy of this.enemies) {
+      if (stoppedEnemies.has(enemy)) continue;
       const touching = Phaser.Math.Distance.Between(
         enemy.x,
         enemy.y,
@@ -1314,7 +1353,9 @@ if (applied) this.playPlayerHit();
       if (!touching || !enemy.canDealContactDamage) continue;
 
       const applied = this.playerState.takeDamage(enemy.contactDamage);
-if (applied) this.playPlayerHit();
+if (applied) this.playPlayerHit(
+        enemy instanceof BossEnemy && enemy.charging ? 'strong' : 'weak',
+      );
       enemy.startContactDamageCooldown();
       totalHpDamage += applied.hpDamage;
       totalShieldDamage += applied.shieldDamage;
@@ -1330,8 +1371,27 @@ if (applied) this.playPlayerHit();
     }
   }
 
+  private updateEnemyKnockback(enemy: CombatEnemy, deltaSeconds: number): void {
+    const state = this.enemyKnockbacks.get(enemy);
+    if (!state || !enemy.alive) return;
+    const step = Math.min(Math.max(0, deltaSeconds), state.remainingSeconds);
+    enemy.view.x = Phaser.Math.Clamp(
+      enemy.view.x + state.velocityX * step,
+      this.worldBounds.left + enemy.collisionRadius,
+      this.worldBounds.right - enemy.collisionRadius,
+    );
+    enemy.view.y = Phaser.Math.Clamp(
+      enemy.view.y + state.velocityY * step,
+      this.worldBounds.top + enemy.collisionRadius,
+      this.worldBounds.bottom - enemy.collisionRadius,
+    );
+    state.remainingSeconds = Math.max(0, state.remainingSeconds - step);
+    if (state.remainingSeconds === 0) this.enemyKnockbacks.delete(enemy);
+  }
+
   private handleBossPhaseChanged(boss: BossEnemy): void {
     this.activeBossPhase = boss.phase;
+    requestCameraShake(this, 'medium');
     this.clearEnemyProjectiles();
     this.bossChargeTelegraph?.destroy();
     this.bossChargeTelegraph = null;
@@ -1399,6 +1459,7 @@ if (applied) this.playPlayerHit();
         );
         break;
       case 'volley-start':
+        requestCameraShake(this, 'medium');
         this.spawnBossVolley(boss, this.bossVolleyAngles);
         this.bossVolleyTelegraph?.destroy();
         this.bossVolleyTelegraph = null;
@@ -1408,6 +1469,7 @@ if (applied) this.playPlayerHit();
         this.spawnBossMinions(boss);
         break;
       case 'summon-elite':
+        requestCameraShake(this, 'medium');
         this.spawnBossEliteMinion(boss);
         break;
       case 'charge-telegraph':
@@ -1415,6 +1477,7 @@ if (applied) this.playPlayerHit();
         break;
       case 'charge-start':
         if (this.bossChargeTarget) {
+          requestCameraShake(this, 'weak');
           this.showBossChargeShockwave(boss.x, boss.y, 0xff5370);
           this.bossChargeTrailCooldown = 0;
           boss.startCharge(
@@ -1428,9 +1491,11 @@ if (applied) this.playPlayerHit();
         this.bossChargeTarget = null;
         break;
       case 'surround':
+        requestCameraShake(this, 'weak');
         this.spawnBossSurroundMinions();
         break;
       case 'hazard':
+        requestCameraShake(this, 'medium');
         this.spawnBossHazard(boss);
         break;
     }
@@ -1773,6 +1838,7 @@ if (applied) this.playPlayerHit();
       halo,
       velocity,
       lifetimeRemaining: SHOOTER_CONFIG.bulletLifetimeSeconds,
+      hitShakeTier: (request.speedMultiplier ?? 1) >= 4 ? 'medium' : 'weak',
     });
   }
 
@@ -1819,7 +1885,7 @@ if (applied) this.playPlayerHit();
       ) <= SHOOTER_CONFIG.bulletHitDistance;
       if (hitPlayer) {
         const applied = this.playerState.takeDamage(SHOOTER_CONFIG.bulletDamage);
-if (applied) this.playPlayerHit();
+if (applied) this.playPlayerHit(projectile.hitShakeTier);
         totalHpDamage += applied.hpDamage;
         totalShieldDamage += applied.shieldDamage;
         this.destroyEnemyProjectile(projectile);
@@ -1885,6 +1951,7 @@ if (applied) this.playPlayerHit();
     element?: SpellElement;
     speed: number;
     hitDistance: number;
+    knockbackDistance?: number;
     coreColor: number;
     glowColor: number;
   }): void {
@@ -1901,6 +1968,7 @@ if (applied) this.playPlayerHit();
       element: options.element,
       speed: options.speed,
       hitDistance: options.hitDistance,
+      knockbackDistance: options.knockbackDistance ?? 0,
     });
   }
 
@@ -1925,7 +1993,16 @@ if (applied) this.playPlayerHit();
         const damage = missile.element
           ? this.elementalDamageAgainst(missile.target, missile.element, missile.damage)
           : missile.damage;
-        this.damageEnemy(missile.target, damage, missile.element, sourceX, sourceY);
+        this.damageEnemy(
+          missile.target,
+          damage,
+          missile.element,
+          sourceX,
+          sourceY,
+          false,
+          'standard',
+          missile.knockbackDistance,
+        );
         continue;
       }
 
@@ -2170,7 +2247,7 @@ if (applied) this.playPlayerHit();
       return;
     }
     if (spec.effect === 'control') {
-      this.castControlSpell(from, spec);
+      this.castControlSpell(from, spec, auto);
       return;
     }
     if (spec.effect === 'summon') {
@@ -2191,7 +2268,9 @@ if (applied) this.playPlayerHit();
     const to = this.spellTargetPoint(from, spec, target);
     let lockedTarget = lockedPointTargetForForm(spec.form, target);
     const hitEnemies = new Set<CombatEnemy>();
-    const castFeedback: CastFeedbackState = { resistanceNoticeShown: false };
+    const castFeedback: CastFeedbackState = {
+      resistanceNoticeShown: false,
+    };
     const chainOrigins = chainTargets.map((enemy) => ({ x: enemy.x, y: enemy.y }));
     const castRoomIndex = this.combatRunController.state.roomIndex;
     castSpell({
@@ -2199,6 +2278,7 @@ if (applied) this.playPlayerHit();
       from,
       to,
       chainPath: chainTargets,
+      allowCameraShake: !auto,
       resolveBoltCollision: (fromX, fromY, toX, toY, projectileRadius) => {
         const collision = this.findBoltCollision(
           fromX,
@@ -2381,12 +2461,24 @@ if (applied) this.playPlayerHit();
         orbit.lastHitAt.set(enemy, orbit.elapsedSeconds);
         if (orbit.spec.effect === 'control') {
           this.applyControl(enemy, orbit.spec.power, { kind: 'point', x: point.x, y: point.y });
+          this.applyStatusKnockback(enemy, orbit.spec, this.player.x, this.player.y);
         } else {
           const damage = spellImpactDamageFromPower(
             orbit.spec.power,
             ORBIT_CONFIG.damageMultiplier,
           );
-          this.damageEnemy(enemy, this.spellDamageAgainst(enemy, orbit.spec, damage));
+          this.damageEnemy(
+            enemy,
+            this.spellDamageAgainst(enemy, orbit.spec, damage),
+            undefined,
+            this.player.x,
+            this.player.y,
+            false,
+            'persistent',
+            orbit.spec.status.includes('knockback')
+              ? knockbackDistanceForForm('orbit')
+              : 0,
+          );
         }
       }
     });
@@ -2426,11 +2518,23 @@ if (applied) this.playPlayerHit();
     if (wall.spec.effect === 'control') {
       if (enemy.kind !== 'boss') {
         this.applyControl(enemy, wall.spec.power, { kind: 'point', x: enemy.x, y: enemy.y });
+        this.applyStatusKnockback(enemy, wall.spec, this.player.x, this.player.y);
       }
       return;
     }
     const damage = spellImpactDamageFromPower(wall.spec.power, WALL_CONFIG.damageMultiplier);
-    this.damageEnemy(enemy, this.spellDamageAgainst(enemy, wall.spec, damage));
+    this.damageEnemy(
+      enemy,
+      this.spellDamageAgainst(enemy, wall.spec, damage),
+      undefined,
+      this.player.x,
+      this.player.y,
+      false,
+      'standard',
+      wall.spec.status.includes('knockback')
+        ? knockbackDistanceForForm('wall')
+        : 0,
+    );
   }
 
   private clearActiveWall(): void {
@@ -2811,7 +2915,9 @@ if (applied) this.playPlayerHit();
     castOrigin = new Phaser.Math.Vector2(this.player.x, this.player.y),
     chainOrigins: readonly { x: number; y: number }[] = [],
     auto = false,
-    castFeedback: CastFeedbackState = { resistanceNoticeShown: false },
+    castFeedback: CastFeedbackState = {
+      resistanceNoticeShown: false,
+    },
   ): void {
     // Zone ticks may damage the same enemy again. Rain strikes share one cast-level
     // hit set so overlapping landing circles cannot multiply damage on one target.
@@ -2833,6 +2939,29 @@ if (applied) this.playPlayerHit();
       }
       return adjustedDamage;
     };
+    const applyDamage = (
+      enemy: CombatEnemy,
+      sourceX: number,
+      sourceY: number,
+      bypassDirectionalShield = false,
+    ): void => {
+      const hitStopKind: HitStopKind = spec.form === 'zone'
+        ? 'persistent'
+        : 'standard';
+      const knockbackDistance = spec.status.includes('knockback')
+        ? knockbackDistanceForForm(spec.form)
+        : 0;
+      this.damageEnemy(
+        enemy,
+        damageAgainst(enemy),
+        spec.element_primary,
+        sourceX,
+        sourceY,
+        bypassDirectionalShield,
+        hitStopKind,
+        knockbackDistance,
+      );
+    };
     if (impact.kind === 'point') {
       if (impact.chainIndex !== undefined) {
         const chainTarget = chainTargets[impact.chainIndex];
@@ -2840,24 +2969,12 @@ if (applied) this.playPlayerHit();
           const chainSource = impact.chainIndex === 0
             ? castOrigin
             : chainOrigins[impact.chainIndex - 1] ?? castOrigin;
-          this.damageEnemy(
-            chainTarget,
-            damageAgainst(chainTarget),
-            spec.element_primary,
-            chainSource.x,
-            chainSource.y,
-          );
+          applyDamage(chainTarget, chainSource.x, chainSource.y);
         }
         return;
       }
       if (lockedTarget?.alive) {
-        this.damageEnemy(
-          lockedTarget,
-          damageAgainst(lockedTarget),
-          spec.element_primary,
-          castOrigin.x,
-          castOrigin.y,
-        );
+        applyDamage(lockedTarget, castOrigin.x, castOrigin.y);
       }
       return;
     }
@@ -2882,11 +2999,11 @@ if (applied) this.playPlayerHit();
       const bypassDirectionalShield = spec.form === 'zone' || spec.form === 'rain';
       const impactSource = impact.kind === 'line'
         ? { x: impact.fromX, y: impact.fromY }
-        : castOrigin;
-      this.damageEnemy(
+        : impact.kind === 'circle'
+          ? { x: impact.x, y: impact.y }
+          : castOrigin;
+      applyDamage(
         enemy,
-        damageAgainst(enemy),
-        spec.element_primary,
         impactSource.x,
         impactSource.y,
         bypassDirectionalShield,
@@ -2950,6 +3067,9 @@ if (applied) this.playPlayerHit();
       spec.element_primary,
       spec.power,
     );
+    this.activeSummonKnockbackDistance = spec.status.includes('knockback')
+      ? knockbackDistanceForForm('summon')
+      : 0;
     this.announceSystemMessage(
       `소환 · ${this.activeSummon.state.durationSeconds.toFixed(1)}초`,
       paletteColorToCss(ELEMENT_PALETTES[spec.element_primary].core),
@@ -2982,6 +3102,7 @@ if (applied) this.playPlayerHit();
       element: summon.element,
       speed: SUMMON_CONFIG.projectileSpeed,
       hitDistance: SUMMON_CONFIG.projectileHitDistance,
+      knockbackDistance: this.activeSummonKnockbackDistance,
       coreColor: palette.core,
       glowColor: palette.glow,
     });
@@ -2990,9 +3111,10 @@ if (applied) this.playPlayerHit();
   private clearSummon(): void {
     this.activeSummon?.destroy();
     this.activeSummon = null;
+    this.activeSummonKnockbackDistance = 0;
   }
 
-  private castControlSpell(from: Phaser.Math.Vector2, spec: SpellSpec): void {
+  private castControlSpell(from: Phaser.Math.Vector2, spec: SpellSpec, auto = false): void {
     const chainTargets = spec.form === 'chain'
       ? selectChainTargets(
         from.x,
@@ -3012,6 +3134,7 @@ if (applied) this.playPlayerHit();
       from,
       to,
       chainPath: chainTargets,
+      allowCameraShake: !auto,
       resolveBoltCollision: (fromX, fromY, toX, toY, projectileRadius) => {
         const collision = this.findBoltCollision(
           fromX,
@@ -3040,16 +3163,25 @@ if (applied) this.playPlayerHit();
     chainTargets: readonly CombatEnemy[] = [],
   ): void {
     if (impact.hitGroup !== undefined && spec.form !== 'rain') affectedEnemies.clear();
+    const source = impact.kind === 'line'
+      ? { x: impact.fromX, y: impact.fromY }
+      : impact.kind === 'circle'
+        ? { x: impact.x, y: impact.y }
+        : { x: this.player.x, y: this.player.y };
+    const applyControlImpact = (enemy: CombatEnemy): void => {
+      this.applyControl(enemy, spec.power, impact);
+      this.applyStatusKnockback(enemy, spec, source.x, source.y);
+    };
     if (impact.kind === 'point') {
       if (impact.chainIndex !== undefined) {
         const chainTarget = chainTargets[impact.chainIndex];
         if (chainTarget?.alive) {
-          this.applyControl(chainTarget, spec.power, impact);
+          applyControlImpact(chainTarget);
         }
         return;
       }
       if (lockedTarget?.alive) {
-        this.applyControl(lockedTarget, spec.power, impact);
+        applyControlImpact(lockedTarget);
       }
       return;
     }
@@ -3070,8 +3202,34 @@ if (applied) this.playPlayerHit();
       if (!isHit) continue;
 
       affectedEnemies.add(enemy);
-      this.applyControl(enemy, spec.power, impact);
+      applyControlImpact(enemy);
     }
+  }
+
+  private applyStatusKnockback(
+    enemy: CombatEnemy,
+    spec: SpellSpec,
+    sourceX: number,
+    sourceY: number,
+  ): void {
+    if (!spec.status.includes('knockback') || enemy.kind === 'boss') return;
+    const direction = new Phaser.Math.Vector2(enemy.x - sourceX, enemy.y - sourceY);
+    if (direction.lengthSq() === 0) direction.set(0, -1);
+    direction.normalize();
+    const persistent = spec.form === 'zone' || spec.form === 'orbit';
+    playImpactSquash(
+      this,
+      enemy.view,
+      direction.x,
+      direction.y,
+      persistent ? 'persistent' : 'knockback',
+    );
+    this.requestEnemyKnockback(
+      enemy,
+      direction.x,
+      direction.y,
+      knockbackDistanceForForm(spec.form),
+    );
   }
 
   private applyControl(enemy: CombatEnemy, power: number, impact: SpellImpact): void {
@@ -3211,8 +3369,10 @@ if (applied) this.playPlayerHit();
     sourceX = this.player.x,
     sourceY = this.player.y,
     bypassDirectionalShield = false,
-  ): void {
-    if (damage <= 0 || !enemy.alive) return;
+    hitStopKind: HitStopKind = 'standard',
+    knockbackDistance = 0,
+  ): boolean {
+    if (damage <= 0 || !enemy.alive) return false;
     const underlyingEnemy = enemy instanceof EliteEnemy ? enemy.baseEnemy : enemy;
     const bossHpBefore = underlyingEnemy instanceof BossEnemy ? underlyingEnemy.hp : null;
     let defeated: boolean;
@@ -3220,13 +3380,34 @@ if (applied) this.playPlayerHit();
       const result = enemy.takeMechanicDamage(damage, sourceX, sourceY);
       if (result.blocked) {
         this.showShieldBlockEffect(enemy, sourceX, sourceY);
-        return;
+        return false;
       }
       defeated = result.defeated;
     } else {
       defeated = enemy.takeDamage(damage);
     }
     this.audio.playSfx('hit');
+    if (!defeated) {
+      const direction = new Phaser.Math.Vector2(enemy.x - sourceX, enemy.y - sourceY);
+      if (direction.lengthSq() === 0) direction.set(0, -1);
+      direction.normalize();
+      const squashKind = underlyingEnemy instanceof BossEnemy
+        ? 'boss'
+        : knockbackDistance > 0
+          ? 'knockback'
+          : hitStopKind === 'persistent'
+            ? 'persistent'
+            : 'standard';
+      playImpactSquash(this, enemy.view, direction.x, direction.y, squashKind);
+      if (!(underlyingEnemy instanceof BossEnemy) && knockbackDistance > 0) {
+        this.requestEnemyKnockback(enemy, direction.x, direction.y, knockbackDistance);
+      }
+      this.requestEnemyHitStop(
+        enemy,
+        hitStopKind,
+        underlyingEnemy instanceof BossEnemy,
+      );
+    }
     if (bossHpBefore !== null) {
       this.dropCrossedBossManaCrystals(underlyingEnemy as BossEnemy, bossHpBefore);
     }
@@ -3235,7 +3416,7 @@ if (applied) this.playPlayerHit();
       if (enemy instanceof BossEnemy && enemy.consumeMinionTrigger()) {
         this.spawnBossMinions(enemy);
       }
-      return;
+      return true;
     }
     this.audio.playSfx('enemy-defeat');
 
@@ -3245,8 +3426,12 @@ if (applied) this.playPlayerHit();
     const wasBoss = baseEnemy instanceof BossEnemy;
     const shouldSplit = baseEnemy instanceof SplitterEnemy && baseEnemy.canSplit;
     const wasUnstable = enemy.eliteModifier === 'unstable';
+    if (wasBoss) requestCameraShake(this, 'strong');
+    else if (enemy instanceof EliteEnemy) requestCameraShake(this, 'weak');
     const droppedMana = manaDropAmount(enemy instanceof EliteEnemy, enemy.kind);
     this.removeEnemyControl(enemy);
+    this.enemyHitStop.remove(enemy);
+    this.enemyKnockbacks.delete(enemy);
     enemy.destroy();
     this.enemies = this.enemies.filter((candidate) => candidate !== enemy);
     if (wasBoss) {
@@ -3274,13 +3459,13 @@ if (applied) this.playPlayerHit();
     if (wasUnstable && this.enemies.length > 0) {
       this.scheduleUnstableExplosion(splitX, splitY);
     }
-    if (this.enemies.length > 0) return;
+    if (this.enemies.length > 0) return true;
 
     this.clearEnemyProjectiles();
     // 보스방은 웨이브 흐름 없이 전멸(보스+하수인) 즉시 방 클리어
     if (this.isBossEncounter()) {
       this.scheduleRoomClearAfterManaSweep();
-      return;
+      return true;
     }
     const completedWave = this.waveManager.currentWaveNumber;
     this.waveManager.notifyEnemiesCleared();
@@ -3289,6 +3474,32 @@ if (applied) this.playPlayerHit();
     } else {
       this.announceSystemMessage(`웨이브 ${completedWave} 완료`);
     }
+    return true;
+  }
+
+  private requestEnemyHitStop(
+    enemy: CombatEnemy,
+    kind: HitStopKind,
+    boss: boolean,
+  ): void {
+    if (!this.isCombatActive()) return;
+    this.enemyHitStop.request(enemy, enemyHitStopSeconds(kind, boss));
+  }
+
+  private requestEnemyKnockback(
+    enemy: CombatEnemy,
+    directionX: number,
+    directionY: number,
+    distance: number,
+  ): void {
+    const safeDistance = Number.isFinite(distance) ? Math.max(0, distance) : 0;
+    if (safeDistance === 0 || enemy.kind === 'boss') return;
+    const duration = KNOCKBACK_CONFIG.durationSeconds;
+    this.enemyKnockbacks.set(enemy, {
+      velocityX: directionX * safeDistance / duration,
+      velocityY: directionY * safeDistance / duration,
+      remainingSeconds: duration,
+    });
   }
 
   private updateManaPotion(deltaSeconds: number): void {
@@ -3701,9 +3912,10 @@ if (applied) this.playPlayerHit();
           });
         },
       });
+      requestCameraShake(this, 'medium');
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, x, y) <= radius) {
         const applied = this.playerState.takeDamage(30);
-if (applied) this.playPlayerHit();
+if (applied) this.playPlayerHit('strong');
         this.announceIncomingDamage(applied.hpDamage, applied.shieldDamage);
       }
     });
