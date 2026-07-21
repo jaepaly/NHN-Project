@@ -347,6 +347,11 @@ export class ProtoScene extends Phaser.Scene {
 
   preload(): void {
     GameAudio.preload(this);
+    // Phase 5 프로토타입 — AI 생성 스테이지 배경 (도형 데모 탈피)
+    this.load.image(
+      'bg-stage1',
+      `${import.meta.env.BASE_URL}assets/backgrounds/arena-stage1.png`,
+    );
   }
 
   create(): void {
@@ -826,8 +831,16 @@ export class ProtoScene extends Phaser.Scene {
       initial.base,
     ).setDepth(-100);
 
+    // AI 생성 배경을 base 위·grid 아래에 깔아 도형 데모 느낌을 벗는다 (프로토타입)
+    if (this.textures.exists('bg-stage1')) {
+      this.add.image(width / 2, height / 2, 'bg-stage1')
+        .setDisplaySize(width, height)
+        .setDepth(-99.5);
+    }
     this.backdropGrid = this.add.graphics().setDepth(-99);
     this.redrawBackdropDetails(initial);
+    // 리치 배경 위라 네온 그리드는 은은한 텍스처로만 남긴다
+    this.backdropGrid.setAlpha(0.28);
   }
 
   private applyRoomBackdrop(_roomIndex: number): void {
