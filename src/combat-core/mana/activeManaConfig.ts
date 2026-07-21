@@ -1,10 +1,12 @@
 export const ACTIVE_MANA_CONFIG = {
+  // 시전 중심 방향(총괄 결정) — 방당 수동 시전 ~2회→더 자주 되게 드롭값 ~1.6× 상향.
+  // 실측 기준: 웨이브(처키4)=20→32 마나. 최종은 적 HP·웨이브 밀도와 함께 플레이테스트로 미세조정.
   passiveRegenPerSecond: 0.5,
-  normalDropMana: 5,
-  smallSplitterDropMana: 2,
-  shieldSentinelDropMana: 7,
-  eliteDropMana: 10,
-  bossThresholdMana: 3,
+  normalDropMana: 8,
+  smallSplitterDropMana: 3,
+  shieldSentinelDropMana: 11,
+  eliteDropMana: 16,
+  bossThresholdMana: 5,
   bossThresholdRatios: [
     0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1,
   ],
@@ -12,7 +14,7 @@ export const ACTIVE_MANA_CONFIG = {
   pickupRadius: 34,
   attractionRadius: 120,
   attractionSpeed: 260,
-  potionMana: 12,
+  potionMana: 18,
   potionSpawnDelayMinSeconds: 10,
   potionSpawnDelayMaxSeconds: 15,
   potionLifetimeSeconds: 8,
