@@ -41,3 +41,9 @@ export type { BossLine, BossLineRequest } from './bossLine';
 //   동일 요청은 캐시로 같은 이름 재사용(원소 순서 무관). 실패해도 항상 유효한 이름 반환(throw 없음).
 export { getEvolvedName, templateEvolvedName, sanitizeName, evolveCacheKey } from './evolveName';
 export type { EvolveNameRequest } from './evolveName';
+
+// ── 런 반복 격상 (#77) — 회차(clears) 기반 격상 프로필 (전투·방·보스가 소비) ──
+//   runEscalationProfile(runMemory) → { tier, weakenedElements, weakenMultiplier, gimmicksUnlocked, bossDualResistance }
+//   weakenMultiplier: 시전 위력에 적용(과의존 원소 약화) / 플래그: R1·보스가 방기믹·이중저항에 적용
+export { runEscalationTier, runEscalationProfile, RUN_ESCALATION_CONFIG } from './runEscalation';
+export type { RunEscalationProfile } from './runEscalation';

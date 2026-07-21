@@ -107,6 +107,7 @@ import {
   getBossLine,
   loadRunMemory,
   longTermResistedElement,
+  runEscalationProfile,
   saveRunMemory,
   summarizeRun,
   updateRunMemory,
@@ -2075,10 +2076,23 @@ if (applied) this.playPlayerHit();
       this.engraveManager.rememberManualCast(historyEntry.normalized, spec);
       const affinityBonus = this.combatRunController.state
         .elementalAffinity[spec.element_primary] ?? 0;
+      // 런 반복 격상(#77): 회차가 쌓이면 과의존한 원소가 이번 런 전체에서 약화된다.
+      const escalation = runEscalationProfile(loadRunMemory());
+      const escalationWeaken = escalation.weakenedElements.includes(spec.element_primary)
+        ? escalation.weakenMultiplier
+        : 1;
       const effectiveSpec: SpellSpec = {
         ...spec,
-        power: spellPowerWithAffinity(historyEntry.power, affinityBonus),
+        power: Math.round(
+          spellPowerWithAffinity(historyEntry.power, affinityBonus) * escalationWeaken,
+        ),
       };
+      if (escalationWeaken < 1) {
+        this.announceSystemMessage(
+          `${ELEMENT_LABELS[spec.element_primary]} 약화 ${Math.round((1 - escalationWeaken) * 100)}% · 세계가 네 수를 읽었다`,
+          '#b18cff',
+        );
+      }
       if (historyEntry.power < historyEntry.basePower) {
         // 반복 패널티를 원인과 함께 표시 — 다양성 유도가 게임의 핵심 경험 (PHASE_2 R3 P1)
         const penaltyPct = Math.round(
