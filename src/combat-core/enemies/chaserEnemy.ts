@@ -5,6 +5,8 @@ import type { CombatEnemy, EnemyDestroyOptions, EnemyShotRequest } from './comba
 import { playHitReact, playAttackLunge, playDeathPop } from './enemyJuice';
 
 const CHASER_COLOR = 0xff4d6d;
+/** AI 생성 스프라이트 키. 무채색으로 저장돼 있어 타입 색을 틴트로 입힌다. */
+const CHASER_SPRITE_KEY = 'enemy-chaser';
 
 export class ChaserEnemy implements CombatEnemy {
   readonly kind = 'chaser' as const;
@@ -19,14 +21,24 @@ export class ChaserEnemy implements CombatEnemy {
   contactDamageCooldownRemaining = 0;
   private dying = false;
 
-  private readonly body: Phaser.GameObjects.Triangle;
+  private readonly body: Phaser.GameObjects.Triangle | Phaser.GameObjects.Image;
+  /** 스프라이트는 오른쪽을 향해 그려져 있고(회전 0 = 우), 폴백 삼각형은 위를 향한다. */
+  private readonly bodyAngleOffset: number;
   private readonly healthFill: Phaser.GameObjects.Rectangle;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     const glow = scene.add.circle(0, 0, 19, 0xff4d6d, 0.16)
       .setBlendMode(Phaser.BlendModes.ADD);
-    this.body = scene.add.triangle(0, 0, 0, 24, 12, 0, 24, 24, 0xff4d6d)
-      .setStrokeStyle(2, 0xff8fa3, 0.9);
+    // AI 스프라이트가 있으면 사용한다. 무채색이라 타입 색을 틴트로 입혀 색 구분 체계를
+    // 지키고, 알파를 딴 이미지라 일반 블렌딩으로 불투명하게 그린다.
+    const sprite = scene.textures.exists(CHASER_SPRITE_KEY);
+    this.bodyAngleOffset = sprite ? 0 : Math.PI / 2;
+    this.body = sprite
+      ? scene.add.image(0, 0, CHASER_SPRITE_KEY)
+        .setDisplaySize(42, 42)
+        .setTint(CHASER_COLOR)
+      : scene.add.triangle(0, 0, 0, 24, 12, 0, 24, 24, CHASER_COLOR)
+        .setStrokeStyle(2, 0xff8fa3, 0.9);
     const healthBack = scene.add.rectangle(-16, -25, 32, 4, 0x30121c, 0.9)
       .setOrigin(0, 0.5);
     this.healthFill = scene.add.rectangle(-16, -25, 32, 4, 0x72f1b8, 1)
@@ -63,7 +75,7 @@ export class ChaserEnemy implements CombatEnemy {
     const moveScale = safeMovementMultiplier(movementMultiplier);
     this.view.x += direction.x * CHASER_CONFIG.speed * deltaSeconds * moveScale;
     this.view.y += direction.y * CHASER_CONFIG.speed * deltaSeconds * moveScale;
-    this.body.rotation = direction.angle() + Math.PI / 2;
+    this.body.rotation = direction.angle() + this.bodyAngleOffset;
     return [];
   }
 
