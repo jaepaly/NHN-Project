@@ -4,16 +4,26 @@
  * 이동과 충돌하지 않는다. 도형이든 나중의 스프라이트든 그대로 동작한다.
  */
 import Phaser from 'phaser';
+import { weakTint } from '../../render/spriteLayers';
 
 type Container = Phaser.GameObjects.Container;
 type Shape = Phaser.GameObjects.Shape;
 /** 피격 플래시 대상 — 도형과 스프라이트를 모두 받는다 (색 교체 API가 서로 다르다). */
 type FlashTarget = Shape | Phaser.GameObjects.Image;
 
-/** 도형이면 채움색, 스프라이트면 틴트로 동일한 "색 교체" 효과를 낸다. */
-function applyFlashColor(target: FlashTarget, color: number): void {
-  if (target instanceof Phaser.GameObjects.Image) target.setTint(color);
-  else target.setFillStyle(color);
+/**
+ * 피격 순간엔 흰색으로 덮고, 끝나면 원래 색으로 되돌린다.
+ * 스프라이트는 setTintFill로 픽셀을 통째로 흰색 실루엣으로 만들어야 플래시가 보인다
+ * (setTint는 곱셈이라 어두운 재질에서는 거의 티가 나지 않는다).
+ * 복구할 때는 바탕에 걸려 있던 약한 틴트를 다시 씌운다.
+ */
+function applyFlashColor(target: FlashTarget, baseColor: number, flashing: boolean): void {
+  if (target instanceof Phaser.GameObjects.Image) {
+    if (flashing) target.setTintFill(0xffffff);
+    else target.setTint(weakTint(baseColor));
+    return;
+  }
+  target.setFillStyle(flashing ? 0xffffff : baseColor);
 }
 
 function resetScaleTween(scene: Phaser.Scene, view: Container): void {
@@ -40,9 +50,9 @@ export function playHitReact(
       if (view.active) view.setScale(1);
     },
   });
-  applyFlashColor(flashShape, 0xffffff);
+  applyFlashColor(flashShape, baseColor, true);
   scene.time.delayedCall(80, () => {
-    if (flashShape.active) applyFlashColor(flashShape, baseColor);
+    if (flashShape.active) applyFlashColor(flashShape, baseColor, false);
   });
 }
 

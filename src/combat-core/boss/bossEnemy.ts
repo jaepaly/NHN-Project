@@ -5,6 +5,7 @@ import type { BossCounterStrategy } from '../../spell/bossMemoryContract';
 import { ELEMENT_PALETTES } from '../../render/palette';
 import { BOSS_CONFIG } from './bossConfig';
 import type { CombatEnemy, EnemyShotRequest } from '../enemies/combatEnemy';
+import { createSpriteLayers, addLayersRotation } from '../../render/spriteLayers';
 
 export type BossProfile = 'legacy' | 'stage' | 'memory';
 
@@ -36,7 +37,8 @@ export class BossEnemy implements CombatEnemy {
   private chargeRemaining = 0;
   private readonly chargeVelocity = new Phaser.Math.Vector2();
 
-  private readonly core: Phaser.GameObjects.Polygon | Phaser.GameObjects.Image;
+  /** 재질+발광 두 겹 — 회전을 함께 받아야 하므로 묶어둔다. */
+  private readonly coreLayers: Array<Phaser.GameObjects.Polygon | Phaser.GameObjects.Image>;
   private readonly ring: Phaser.GameObjects.Arc;
   private readonly secondaryResistanceRing: Phaser.GameObjects.Arc;
   private readonly healthFill: Phaser.GameObjects.Rectangle;
@@ -63,12 +65,10 @@ export class BossEnemy implements CombatEnemy {
     // AI 스프라이트는 코어만 잘라 쓴다. 원본에는 글리프 링이 그려져 있지만, 이 보스의
     // ring/secondaryResistanceRing은 **저항 원소를 색으로 알려주는 정보**라 절차적으로
     // 유지해야 한다. 스프라이트 링을 얹으면 그 정보와 겹쳐 읽기 어려워진다.
-    this.core = scene.textures.exists(BOSS_SPRITE_KEY)
-      ? scene.add.image(0, 0, BOSS_SPRITE_KEY)
-        .setDisplaySize(72, 72)
-        .setTint(0xb44dff)
-      : scene.add.polygon(0, 0, hexPoints, 0x2a1245, 0.95)
-        .setStrokeStyle(3, 0xb44dff, 1);
+    this.coreLayers = scene.textures.exists(BOSS_SPRITE_KEY)
+      ? createSpriteLayers(scene, BOSS_SPRITE_KEY, 72, 0xb44dff)
+      : [scene.add.polygon(0, 0, hexPoints, 0x2a1245, 0.95)
+        .setStrokeStyle(3, 0xb44dff, 1)];
     this.ring = scene.add.circle(0, 0, 48, 0x000000, 0)
       .setStrokeStyle(2, 0xd0a8ff, 0.7)
       .setBlendMode(Phaser.BlendModes.ADD);
@@ -86,7 +86,7 @@ export class BossEnemy implements CombatEnemy {
       glow,
       this.ring,
       this.secondaryResistanceRing,
-      this.core,
+      ...this.coreLayers,
       healthBack,
       this.healthFill,
     ]);
@@ -164,7 +164,7 @@ export class BossEnemy implements CombatEnemy {
     );
     this.ring.rotation += 0.9 * deltaSeconds;
     this.secondaryResistanceRing.rotation -= 0.7 * deltaSeconds;
-    this.core.rotation -= 0.25 * deltaSeconds;
+    addLayersRotation(this.coreLayers, -0.25 * deltaSeconds);
 
     if (this.chargeRemaining > 0) {
       const chargeDelta = Math.min(deltaSeconds, this.chargeRemaining);

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { createSpriteLayers } from '../render/spriteLayers';
 import type { SpellJudge } from '../spell/judge';
 import { createJudge } from '../spell/createJudge';
 import type { SpellElement, SpellSpec } from '../spell/types';
@@ -367,11 +368,14 @@ export class ProtoScene extends Phaser.Scene {
     );
     // 적 스프라이트 — 무채색으로 저장해두고 타입 색은 인게임 틴트로 입힌다
     // 파수꾼·보스는 코어만 잘라낸 버전 — 방패 링/저항 링은 정보를 담고 있어 절차적으로 남긴다.
+    // 각 스프라이트는 재질(<key>)과 발광(<key>-glow) 두 장이다. 통째로 틴트하면 재질감이
+    // 죽어 단색 덩어리가 되므로, 타입 색은 발광 레이어가 전담한다 (render/spriteLayers).
     for (const key of [
       'enemy-shooter', 'enemy-chaser', 'enemy-splitter', 'enemy-small-splitter',
       'enemy-shield-sentinel-core', 'enemy-boss-core', 'player-invoker',
     ]) {
       this.load.image(key, `${import.meta.env.BASE_URL}assets/sprites/${key}.png`);
+      this.load.image(`${key}-glow`, `${import.meta.env.BASE_URL}assets/sprites/${key}-glow.png`);
     }
     // 로드 실패가 조용히 묻히지 않게 — 실패 시 원인·URL을 남기고 그리드 배경으로 폴백한다.
     this.load.on('loaderror', (file: Phaser.Loader.File) => {
@@ -924,15 +928,12 @@ export class ProtoScene extends Phaser.Scene {
     magicCircle.strokeCircle(0, 0, 44);
     // AI 스프라이트(인물만). 원본에는 마법진이 함께 그려져 있었지만 위 magicCircle과
     // 중복되고, 링이 에워싼 안쪽 배경이 누끼로 안 빠져서 인물만 잘라 쓴다.
-    const body = this.textures.exists('player-invoker')
-      ? this.add.image(0, 0, 'player-invoker')
-        .setDisplaySize(40, 40)
-        .setTint(0x8fa4ff)
-      : this.add.circle(0, 0, 14, 0x8fa4ff)
-        .setBlendMode(Phaser.BlendModes.ADD);
+    const bodyLayers = this.textures.exists('player-invoker')
+      ? createSpriteLayers(this, 'player-invoker', 40, 0x8fa4ff)
+      : [this.add.circle(0, 0, 14, 0x8fa4ff).setBlendMode(Phaser.BlendModes.ADD)];
     const halo = this.add.circle(0, 0, 22, 0x4c66ff, 0.25)
       .setBlendMode(Phaser.BlendModes.ADD);
-    this.player = this.add.container(x, y, [magicCircle, halo, body]);
+    this.player = this.add.container(x, y, [magicCircle, halo, ...bodyLayers]);
     this.tweens.add({
       targets: halo, scale: { from: 1, to: 1.25 },
       yoyo: true, repeat: -1, duration: 900, ease: 'Sine.easeInOut',

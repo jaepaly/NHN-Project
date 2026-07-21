@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 import { SHOOTER_CONFIG } from '../combat/combatConfig';
 import type { CombatEnemy, EnemyDestroyOptions, EnemyShotRequest } from './combatEnemy';
 import { playHitReact, playAttackLunge, playDeathPop } from './enemyJuice';
+import { createSpriteLayers, setLayersRotation } from '../../render/spriteLayers';
 
 const SHOOTER_COLOR = 0xffa62b;
 /** AI 생성 스프라이트 키. 무채색으로 저장돼 있어 타입 색을 틴트로 입힌다. */
@@ -22,29 +23,28 @@ export class ShooterEnemy implements CombatEnemy {
   private dying = false;
 
   private readonly body: Phaser.GameObjects.Rectangle | Phaser.GameObjects.Image;
+  /** 재질+발광 두 겹 — 회전을 함께 받아야 하므로 묶어둔다. */
+  private readonly bodyLayers: Array<Phaser.GameObjects.Rectangle | Phaser.GameObjects.Image>;
   private readonly healthFill: Phaser.GameObjects.Rectangle;
   private attackCooldownRemaining: number = SHOOTER_CONFIG.attackIntervalSeconds;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     const glow = scene.add.rectangle(0, 0, 34, 34, 0xffb347, 0.14)
       .setBlendMode(Phaser.BlendModes.ADD);
-    // AI 스프라이트가 로드돼 있으면 사용한다. 스프라이트는 무채색이라 타입 색을 틴트로
-    // 입혀 적 색 구분 체계(추격자=핑크/사수=주황/분열체=보라)를 그대로 지킨다.
-    // 알파를 딴 이미지이므로 일반 블렌딩으로 불투명하게 그린다 — ADD로 얹으면 배경
-    // 아레나의 균열·글리프가 몸통을 관통해 유령처럼 보였다.
+    // AI 스프라이트는 재질 + 발광 두 겹으로 그린다(spriteLayers 참고). 통째로 틴트하면
+    // 재질감이 죽어 단색 덩어리가 되므로, 타입 색은 코어(발광)가 전담한다.
     // 텍스처가 없으면 기존 도형으로 폴백해 게임은 항상 돌아간다.
-    this.body = scene.textures.exists(SHOOTER_SPRITE_KEY)
-      ? scene.add.image(0, 0, SHOOTER_SPRITE_KEY)
-        .setDisplaySize(46, 46)
-        .setTint(SHOOTER_COLOR)
-      : scene.add.rectangle(0, 0, 24, 24, SHOOTER_COLOR)
-        .setStrokeStyle(2, 0xffd08a, 0.95);
+    this.bodyLayers = scene.textures.exists(SHOOTER_SPRITE_KEY)
+      ? createSpriteLayers(scene, SHOOTER_SPRITE_KEY, 46, SHOOTER_COLOR)
+      : [scene.add.rectangle(0, 0, 24, 24, SHOOTER_COLOR)
+        .setStrokeStyle(2, 0xffd08a, 0.95)];
+    [this.body] = this.bodyLayers;
     const healthBack = scene.add.rectangle(-16, -25, 32, 4, 0x30200e, 0.9)
       .setOrigin(0, 0.5);
     this.healthFill = scene.add.rectangle(-16, -25, 32, 4, 0x72f1b8, 1)
       .setOrigin(0, 0.5);
 
-    this.view = scene.add.container(x, y, [glow, this.body, healthBack, this.healthFill]);
+    this.view = scene.add.container(x, y, [glow, ...this.bodyLayers, healthBack, this.healthFill]);
   }
 
   get x(): number {
@@ -87,7 +87,7 @@ export class ShooterEnemy implements CombatEnemy {
       this.view.x -= direction.x * SHOOTER_CONFIG.speed * deltaSeconds * moveScale;
       this.view.y -= direction.y * SHOOTER_CONFIG.speed * deltaSeconds * moveScale;
     }
-    this.body.rotation = direction.angle();
+    setLayersRotation(this.bodyLayers, direction.angle());
 
     if (
       this.attackCooldownRemaining > 0
