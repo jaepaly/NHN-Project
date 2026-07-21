@@ -64,8 +64,19 @@ export interface BossMemoryProfile {
 
 /** 반복 패널티 규칙 (테스트로 고정) */
 export const REPEAT_PENALTY = {
-  /** 재사용 1회마다 곱해지는 배수 */
+  /** 같은 문장 재사용 1회마다 곱해지는 배수 (명백한 복붙) */
   perReuse: 0.8,
+  /**
+   * 문장은 다르지만 **판정 결과가 같은 주문** 재사용 1회마다 곱해지는 배수.
+   *
+   * 문자열 일치만 보면 "파이어볼" → "파이어볼v2" → "파이어 볼"로 패널티를 공짜로 우회할 수
+   * 있다(전부 fire/bolt/damage로 판정되는데도). 그러면 "매번 새로운 주문을 창작한다"는
+   * 핵심 기믹이 무력해진다. LLM이 이미 분류해 준 스펙으로 재면 표기 장난이 통하지 않는다.
+   *
+   * 복붙(0.8)보다 약하게 둔 이유: 같은 원소를 다르게 상상한 표현까지 똑같이 벌하면
+   * 창작 의욕을 꺾는다. **표현을 바꾸면 덜 손해, 진짜 다른 마법이어야 최대 위력**이 되게 한다.
+   */
+  perSimilarReuse: 0.9,
   /** 배수 하한 (아무리 반복해도 이 밑으로는 안 내려감) */
   floor: 0.3,
 } as const;
@@ -73,6 +84,17 @@ export const REPEAT_PENALTY = {
 /** 문장 정규화 — 양끝 공백 제거 · 소문자화 · 내부 연속 공백 1칸. 반복 판정의 기준. */
 export function normalizeSpellText(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * 주문의 정체 서명 — `effect:원소:폼`.
+ *
+ * 이 셋이 같으면 문장이 달라도 게임 안에서는 **같은 마법**이다(같은 이펙트·같은 판정).
+ * 보조 원소·크기·속도는 뺐다: 그걸 포함하면 "화염구에 뇌전 한 방울" 식으로 서명만
+ * 흔들어 다시 우회할 수 있다.
+ */
+export function spellSignature(spell: Pick<SpellSpec, 'effect' | 'element_primary' | 'form'>): string {
+  return `${spell.effect}:${spell.element_primary}:${spell.form}`;
 }
 
 export class SpellHistory {
@@ -84,7 +106,8 @@ export class SpellHistory {
    */
   record(input: RecordSpellInput): SpellHistoryEntry {
     const normalized = normalizeSpellText(input.rawText);
-    const multiplier = this.repeatMultiplier(input.rawText); // push 전 = 이번 캐스팅의 배수
+    // push 전 = 이번 캐스팅의 배수. 스펙을 함께 넘겨 표기만 바꾼 재사용도 잡는다.
+    const multiplier = this.repeatMultiplier(input.rawText, input.spell);
     const basePower = input.spell.power;
     const entry: SpellHistoryEntry = {
       rawText: input.rawText,
@@ -112,13 +135,33 @@ export class SpellHistory {
   }
 
   /**
-   * 반복 패널티 배수. 처음(기록 없음)이면 1.0, 재사용부터 `perReuse^재사용횟수` (floor 하한).
+   * **문장은 다르지만** 판정 결과가 같은 주문이 기록된 횟수.
+   * 같은 문장은 countOf가 이미 세므로 여기서 제외해 이중 계산을 막는다.
+   */
+  countOfSimilar(rawText: string, spell: Parameters<typeof spellSignature>[0]): number {
+    const key = normalizeSpellText(rawText);
+    const signature = spellSignature(spell);
+    return this.entries.reduce(
+      (n, e) => (e.normalized !== key && spellSignature(toSignatureInput(e)) === signature ? n + 1 : n),
+      0,
+    );
+  }
+
+  /**
+   * 반복 패널티 배수. 처음이면 1.0.
+   *
+   * 두 축을 곱한다 — 같은 문장 재사용(0.8^n)과 표기만 바꾼 같은 주문 재사용(0.9^m).
+   * `spell`을 넘기지 않으면 문장 축만 적용한다(구 호출부 호환).
    * 엔진(R1)이 이 값을 판정 power에 곱해 실제 효과 수치를 계산한다.
    */
-  repeatMultiplier(rawText: string): number {
+  repeatMultiplier(rawText: string, spell?: Parameters<typeof spellSignature>[0]): number {
     const reuse = this.countOf(rawText); // 기존 기록 수 = 이번이 몇 번째 재사용인지
-    if (reuse === 0) return 1;
-    return Math.max(REPEAT_PENALTY.floor, REPEAT_PENALTY.perReuse ** reuse);
+    const similarReuse = spell ? this.countOfSimilar(rawText, spell) : 0;
+    if (reuse === 0 && similarReuse === 0) return 1;
+    return Math.max(
+      REPEAT_PENALTY.floor,
+      REPEAT_PENALTY.perReuse ** reuse * REPEAT_PENALTY.perSimilarReuse ** similarReuse,
+    );
   }
 
   /** 최근 n건 (최신이 뒤). R3 표시·요약용. */
@@ -150,6 +193,15 @@ export class SpellHistory {
   reset(): void {
     this.entries = [];
   }
+}
+
+/** 기록 항목을 서명 계산 입력 형태로 (필드명이 SpellSpec과 달라 변환이 필요하다) */
+function toSignatureInput(entry: SpellHistoryEntry): Parameters<typeof spellSignature>[0] {
+  return {
+    effect: entry.effect,
+    element_primary: entry.elementPrimary,
+    form: entry.form,
+  };
 }
 
 /** 최빈값 (동률이면 먼저 최다에 도달한 값). 비어 있으면 null. */
