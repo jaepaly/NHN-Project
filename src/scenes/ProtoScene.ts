@@ -334,6 +334,7 @@ export class ProtoScene extends Phaser.Scene {
   private audio!: GameAudio;
   private backdropBase!: Phaser.GameObjects.Rectangle;
   private backdropGrid!: Phaser.GameObjects.Graphics;
+  private backdropImage: Phaser.GameObjects.Image | null = null;
   private backdropColor: number = ROOM_BACKDROP_PALETTES.stage1.base;
 
   constructor() {
@@ -347,6 +348,11 @@ export class ProtoScene extends Phaser.Scene {
 
   preload(): void {
     GameAudio.preload(this);
+    // Phase 5 프로토타입 — AI 생성 스테이지 배경 (도형 데모 탈피)
+    this.load.image(
+      'bg-stage1',
+      `${import.meta.env.BASE_URL}assets/backgrounds/arena-stage1.webp`,
+    );
   }
 
   create(): void {
@@ -826,8 +832,18 @@ export class ProtoScene extends Phaser.Scene {
       initial.base,
     ).setDepth(-100);
 
+    // AI 생성 배경을 base 위·grid 아래에 깔아 도형 데모 느낌을 벗는다.
+    // 방별 색조는 tint로 준다 (전용 stage2/보스 배경 생성 전까지 한 이미지 재사용).
+    if (this.textures.exists('bg-stage1')) {
+      this.backdropImage = this.add.image(width / 2, height / 2, 'bg-stage1')
+        .setDisplaySize(width, height)
+        .setDepth(-99.5)
+        .setTint(initial.bgTint);
+    }
     this.backdropGrid = this.add.graphics().setDepth(-99);
     this.redrawBackdropDetails(initial);
+    // 리치 배경 위라 네온 그리드는 은은한 텍스처로만 남긴다
+    this.backdropGrid.setAlpha(0.28);
   }
 
   private applyRoomBackdrop(_roomIndex: number): void {
@@ -851,6 +867,7 @@ export class ProtoScene extends Phaser.Scene {
       },
     });
     this.redrawBackdropDetails(palette);
+    this.backdropImage?.setTint(palette.bgTint); // 방별 배경 색조
     this.backdropColor = palette.base;
   }
 
