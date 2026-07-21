@@ -30,12 +30,13 @@ export class ShooterEnemy implements CombatEnemy {
       .setBlendMode(Phaser.BlendModes.ADD);
     // AI 스프라이트가 로드돼 있으면 사용한다. 스프라이트는 무채색이라 타입 색을 틴트로
     // 입혀 적 색 구분 체계(추격자=핑크/사수=주황/분열체=보라)를 그대로 지킨다.
+    // 알파를 딴 이미지이므로 일반 블렌딩으로 불투명하게 그린다 — ADD로 얹으면 배경
+    // 아레나의 균열·글리프가 몸통을 관통해 유령처럼 보였다.
     // 텍스처가 없으면 기존 도형으로 폴백해 게임은 항상 돌아간다.
     this.body = scene.textures.exists(SHOOTER_SPRITE_KEY)
       ? scene.add.image(0, 0, SHOOTER_SPRITE_KEY)
         .setDisplaySize(46, 46)
         .setTint(SHOOTER_COLOR)
-        .setBlendMode(Phaser.BlendModes.ADD)
       : scene.add.rectangle(0, 0, 24, 24, SHOOTER_COLOR)
         .setStrokeStyle(2, 0xffd08a, 0.95);
     const healthBack = scene.add.rectangle(-16, -25, 32, 4, 0x30200e, 0.9)
