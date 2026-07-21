@@ -560,7 +560,9 @@ export class ProtoScene extends Phaser.Scene {
 
   private persistRunMemory(result: 'win' | 'lose'): void {
     saveRunMemory(updateRunMemory(loadRunMemory(), summarizeRun(this.spellHistory, result)));
-    // 주문서 기록 — 승패 무관. 이번 런의 최고 공격 주문이 다음 런의 유산 후보가 된다.
+    // 주문서 유산 기록 — 런을 클리어(승리)했을 때만. 큰 주문 하나 쓰고 자살해 유산을 파밍하는
+    // 치즈를 막고, 유산 각인을 "클리어 보상"으로 만든다. (보스 기억은 위에서 승패 무관 유지)
+    if (result !== 'win') return;
     const best = bestEntryFromRun(this.spellHistory, result);
     if (best) {
       const updated = addEntry(loadGrimoire(), best);
