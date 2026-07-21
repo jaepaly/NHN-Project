@@ -26,6 +26,7 @@
     "test:evolvefuse": "esbuild scripts/evolve-fuse-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-evolve-fuse-regression.mjs && node node_modules/.cache/incant-evolve-fuse-regression.mjs",
     "test:grimoire": "esbuild scripts/grimoire-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-grimoire-regression.mjs && node node_modules/.cache/incant-grimoire-regression.mjs",
     "test:growth": "esbuild scripts/growth-feedback-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-growth-feedback-regression.mjs && node node_modules/.cache/incant-growth-feedback-regression.mjs",
+    "test:active-mana": "esbuild scripts/active-mana-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-active-mana-regression.mjs && node node_modules/.cache/incant-active-mana-regression.mjs",
     "snapshot:quality": "esbuild scripts/spell-quality-snapshot.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-quality-snapshot.mjs && node node_modules/.cache/incant-spell-quality-snapshot.mjs",
     "preview": "vite preview",
     "test:boss-core": "esbuild scripts/boss-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-boss-regression.mjs && node node_modules/.cache/incant-boss-regression.mjs"

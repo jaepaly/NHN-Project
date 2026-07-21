@@ -37,8 +37,8 @@ assert.equal(
 );
 assert.equal(
   gainLabelFor(option({ kind: 'mana-surge' })).text,
-  `마나 재생 +${Math.round(RUN_REWARD_CONFIG.manaSurgeBonus * 100)}%`,
-  '마나 재생',
+  `마나 획득 +${Math.round(RUN_REWARD_CONFIG.manaSurgeGainBonus * 100)}% · 흡수 범위 증가`,
+  '마나 획득과 흡수 범위',
 );
 assert.equal(
   gainLabelFor(option({ kind: 'ward-start' })).text,

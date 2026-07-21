@@ -1,9 +1,12 @@
+import { ACTIVE_MANA_CONFIG } from '../mana/activeManaConfig';
+
 /** R1 전투 코어의 플레이어 HP·마나·쿨다운 상태. */
 export const PLAYER_COMBAT_CONFIG = {
   maxHp: 100,
   maxMana: 100,
   // 임시값: 플레이테스트와 팀 논의 후 조정한다 (GDD에는 초당 n으로 표기).
-  manaRegenPerSecond: 10,
+  // Issue #53 C prototype: passive recovery is only a soft-lock safeguard.
+  manaRegenPerSecond: ACTIVE_MANA_CONFIG.passiveRegenPerSecond,
   globalCooldownSeconds: 3,
   /** 신속 영창을 아무리 쌓아도 이 밑으로는 안 내려감 (PROGRESSION_DESIGN §1) */
   globalCooldownFloorSeconds: 1,
@@ -14,6 +17,8 @@ export class PlayerCombatState {
   private maxManaValue: number = PLAYER_COMBAT_CONFIG.maxMana;
   private cooldownReductionSeconds = 0;
   private manaRegenMultiplierValue = 1;
+  private manaGainMultiplierValue = 1;
+  private manaPickupRadiusMultiplierValue = 1;
 
   hp: number = this.maxHpValue;
   mana: number = this.maxManaValue;
@@ -38,6 +43,14 @@ export class PlayerCombatState {
 
   get manaRegenMultiplier(): number {
     return this.manaRegenMultiplierValue;
+  }
+
+  get manaGainMultiplier(): number {
+    return this.manaGainMultiplierValue;
+  }
+
+  get manaPickupRadiusMultiplier(): number {
+    return this.manaPickupRadiusMultiplierValue;
   }
 
   get alive(): boolean {
@@ -69,6 +82,10 @@ export class PlayerCombatState {
     this.cooldownRemaining = this.globalCooldownSeconds;
   }
 
+  startInputLock(seconds: number): void {
+    this.cooldownRemaining = Math.max(this.cooldownRemaining, safePositiveAmount(seconds));
+  }
+
   /** 신속 영창 보상 — 글로벌 쿨다운 감소 (하한은 globalCooldownSeconds getter가 보장) */
   addCooldownReduction(seconds: number): number {
     const amount = safePositiveAmount(seconds);
@@ -83,12 +100,26 @@ export class PlayerCombatState {
     return amount;
   }
 
+  addManaGainMultiplier(bonus: number): number {
+    const amount = safePositiveAmount(bonus);
+    this.manaGainMultiplierValue += amount;
+    return amount;
+  }
+
+  addManaPickupRadiusMultiplier(bonus: number): number {
+    const amount = safePositiveAmount(bonus);
+    this.manaPickupRadiusMultiplierValue += amount;
+    return amount;
+  }
+
   /** 새 런 시작 시 기본 수치로 초기화 (보상으로 늘어난 최대치 포함) */
   reset(): void {
     this.maxHpValue = PLAYER_COMBAT_CONFIG.maxHp;
     this.maxManaValue = PLAYER_COMBAT_CONFIG.maxMana;
     this.cooldownReductionSeconds = 0;
     this.manaRegenMultiplierValue = 1;
+    this.manaGainMultiplierValue = 1;
+    this.manaPickupRadiusMultiplierValue = 1;
     this.hp = this.maxHpValue;
     this.mana = this.maxManaValue;
     this.shield = 0;
@@ -133,7 +164,10 @@ export class PlayerCombatState {
   restoreMana(amount: number): number {
     if (!this.alive) return 0;
     const previous = this.mana;
-    this.mana = Math.min(this.maxMana, this.mana + Math.max(0, amount));
+    this.mana = Math.min(
+      this.maxMana,
+      this.mana + Math.max(0, amount) * this.manaGainMultiplierValue,
+    );
     return this.mana - previous;
   }
 }

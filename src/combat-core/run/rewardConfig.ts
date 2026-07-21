@@ -2,6 +2,7 @@ import { ELEMENTS } from '../../spell/types';
 import type { SpellElement } from '../../spell/types';
 import type { RewardKind, RewardOption } from '../../run/runContract';
 import { ELEMENT_LABELS } from '../../render/palette';
+import { ACTIVE_MANA_CONFIG } from '../mana/activeManaConfig';
 
 /** Phase 2 R1 임시 런·보상 수치. 플레이테스트와 팀 합의 후 조정한다. */
 export const RUN_REWARD_CONFIG = {
@@ -15,7 +16,8 @@ export const RUN_REWARD_CONFIG = {
   affinityBonus: 0.15,
   // Phase 3.5 신규 패시브 (PROGRESSION_DESIGN §1)
   swiftIncantReduction: 0.4,
-  manaSurgeBonus: 0.5,
+  manaSurgeGainBonus: ACTIVE_MANA_CONFIG.surgeManaGainBonus,
+  manaSurgePickupRadiusBonus: ACTIVE_MANA_CONFIG.surgePickupRadiusBonus,
   wardStartShield: 30,
 } as const;
 
@@ -68,7 +70,7 @@ function buildOption(
         id: `room-${roomIndex}-mana-surge`,
         kind,
         title: '마나 격류',
-        description: `마나 재생 +${Math.round(RUN_REWARD_CONFIG.manaSurgeBonus * 100)}%`,
+        description: `마나 획득 +${Math.round(RUN_REWARD_CONFIG.manaSurgeGainBonus * 100)}% · 수정 흡수 범위 +${Math.round(RUN_REWARD_CONFIG.manaSurgePickupRadiusBonus * 100)}%`,
       };
     case 'ward-start':
       return {
@@ -82,7 +84,8 @@ function buildOption(
 
 /** 시드 랜덤 추첨이 뽑는 카드 풀 (PROGRESSION_DESIGN §1 — 각인·정령은 ②③에서 추가) */
 const REWARD_POOL: readonly StaticRewardKind[] = [
-  'max-hp', 'max-mana', 'affinity', 'swift-incant', 'mana-surge', 'ward-start',
+  // Issue #53 C prototype has no global cast cooldown, so swift-incant is a dead reward here.
+  'max-hp', 'max-mana', 'affinity', 'mana-surge', 'ward-start',
 ];
 
 /**

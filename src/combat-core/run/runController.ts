@@ -190,7 +190,10 @@ export class CombatRunController implements RunController {
         this.playerState.addCooldownReduction(RUN_REWARD_CONFIG.swiftIncantReduction);
         break;
       case 'mana-surge':
-        this.playerState.addManaRegenMultiplier(RUN_REWARD_CONFIG.manaSurgeBonus);
+        this.playerState.addManaGainMultiplier(RUN_REWARD_CONFIG.manaSurgeGainBonus);
+        this.playerState.addManaPickupRadiusMultiplier(
+          RUN_REWARD_CONFIG.manaSurgePickupRadiusBonus,
+        );
         break;
       case 'ward-start':
         this.wardOnRoomStart += RUN_REWARD_CONFIG.wardStartShield;
