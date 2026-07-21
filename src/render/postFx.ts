@@ -3,14 +3,13 @@ import Phaser from 'phaser';
 /**
  * 전장 카메라 네온 후처리 — Phase 5 프레젠테이션 승격 (Track C).
  *
- * 도형 프리미티브의 ADD 발광을 블룸으로 묶어 프리미엄 룩을 만들고,
- * 비네트로 가장자리를 눌러 시선을 중앙 전장으로 모은다.
- * 수치는 여기 상수로 모아 화면에서 밸런스와 함께 조정한다 (과하면 흰색 blowout → 원소 색 손실).
+ * 블룸은 "뿌옇다↔어둡다" 딜레마(1.25=뿌옇/0.35=어둡) 끝에 제거(사용자 피드백, 이도원·총괄 독립 확인).
+ * 도형의 ADD 발광은 블룸과 별개로 유지되므로 색이 더 또렷하다.
+ * 마스터·블룸·비네트를 독립 토글로 분리 — 언제든 재활성 가능.
  */
 export const WORLD_FX = {
   enabled: true,
   // addBloom(color, offsetX, offsetY, blurStrength, strength, steps)
-  // strength 1.25는 너무 뿌옇다(사용자 피드백) — 은은한 잔광만 남게 완화(총괄 실측 확정). steps↓로 번짐 폭도 축소.
   bloom: {
     enabled: false,
     color: 0xffffff,
@@ -20,18 +19,18 @@ export const WORLD_FX = {
     strength: 0.35,
     steps: 5,
   },
-  // addVignette(x, y, radius, strength) — radius 클수록·strength 작을수록 은은
-  vignette: { enabled: true, x: 0.5, y: 0.5, radius: 0.86, strength: 0.34 },
+  // addVignette(x, y, radius, strength) — 블룸 제거로 어두워진 만큼 비네트도 완화
+  vignette: { enabled: true, x: 0.5, y: 0.5, radius: 0.9, strength: 0.22 },
 } as const;
 
 /**
- * WebGL 카메라에 블룸+비네트를 한 겹 얹는다.
+ * WebGL 카메라에 (선택적 블룸 +) 비네트를 얹는다.
  * Canvas 폴백 렌더러엔 postFX 파이프라인이 없으므로 조용히 무시한다.
  */
 export function applyWorldFx(camera: Phaser.Cameras.Scene2D.Camera): void {
   if (!WORLD_FX.enabled) return;
   const postFX = camera.postFX;
-  if (!postFX || typeof postFX.addBloom !== 'function') return;
+  if (!postFX || typeof postFX.addVignette !== 'function') return;
   const { bloom: b, vignette: v } = WORLD_FX;
   if (b.enabled) {
     postFX.addBloom(b.color, b.offsetX, b.offsetY, b.blurStrength, b.strength, b.steps);

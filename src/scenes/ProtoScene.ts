@@ -28,6 +28,12 @@ import { ShooterEnemy } from '../combat-core/enemies/shooterEnemy';
 import { SplitterEnemy } from '../combat-core/enemies/splitterEnemy';
 import { ShieldSentinelEnemy } from '../combat-core/enemies/shieldSentinelEnemy';
 import { EliteEnemy } from '../combat-core/enemies/eliteEnemy';
+import {
+  ACTIVE_MANA_CONFIG,
+  crossedBossManaThresholds,
+  manaDropAmount,
+  manaPotionSpawnDelay,
+} from '../combat-core/mana/activeManaConfig';
 import type {
   CombatEnemy,
   EnemyKind,
@@ -204,6 +210,18 @@ interface UnstableWarning {
   timers: Phaser.Time.TimerEvent[];
 }
 
+interface ManaCrystal {
+  view: Phaser.GameObjects.Container;
+  amount: number;
+}
+
+interface ManaPotion {
+  view: Phaser.GameObjects.Container;
+  lifetimeRemaining: number;
+  collectable: boolean;
+  fullNoticeShown: boolean;
+}
+
 /**
  * 기술검증 프로토타입 씬 — W1 목표 (SUBMISSION_PLAN W1)
  * 검증 대상: 입력 → 판정(SpellJudge) → JSON → 파츠 조합 렌더링 1사이클
@@ -256,6 +274,12 @@ export class ProtoScene extends Phaser.Scene {
   private hazardZones: HazardZone[] = [];
   private hazardDecorations: Phaser.GameObjects.GameObject[] = [];
   private unstableWarnings: UnstableWarning[] = [];
+  private manaCrystals: ManaCrystal[] = [];
+  private readonly triggeredBossManaThresholds = new WeakMap<CombatEnemy, Set<number>>();
+  private manaPotion: ManaPotion | null = null;
+  private manaPotionSpawnRemaining = 0;
+  private manaPotionSpawnedThisRoom = false;
+  private roomClearPending = false;
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private statusText!: Phaser.GameObjects.Text;
   private hpText!: Phaser.GameObjects.Text;
@@ -390,6 +414,8 @@ export class ProtoScene extends Phaser.Scene {
       this.updateSpirits(d);
       this.updateSummon(d);
       this.updateFriendlyMissiles(d);
+      this.updateManaCrystals(d);
+      this.updateManaPotion(d);
       this.updateWaveFlow(d);
     }
     // 성장 표식은 전투 정지 중(보상 선택·전환)에도 플레이어를 따라간다
@@ -564,6 +590,9 @@ export class ProtoScene extends Phaser.Scene {
 
   private startRoom(roomIndex: number): void {
     const encounter = this.combatRunController.state;
+    this.roomClearPending = false;
+    this.manaPotionSpawnedThisRoom = false;
+    this.manaPotionSpawnRemaining = manaPotionSpawnDelay(Math.random());
     this.eliteSpawnIndex = 0;
     this.eliteModifierAssignments = [];
     this.clearCombatRoom();
@@ -662,6 +691,8 @@ export class ProtoScene extends Phaser.Scene {
     this.enemies = [];
     for (const decoration of this.hazardDecorations) decoration.destroy();
     this.hazardDecorations = [];
+    this.clearManaCrystals();
+    this.clearManaPotion();
     this.clearTransientCombatObjects();
   }
 
@@ -1889,11 +1920,11 @@ export class ProtoScene extends Phaser.Scene {
         );
       }
 
-      this.playerState.startGlobalCooldown();
       this.audio.playCast(effectiveSpec.element_primary);
       this.applySpellPalette(effectiveSpec);
       this.announceSpell(effectiveSpec);
       this.applySpellEffect(effectiveSpec);
+      this.playerState.startInputLock(ACTIVE_MANA_CONFIG.castInputLockSeconds);
     } finally {
       this.finishCastingUx();
     }
@@ -2973,6 +3004,8 @@ export class ProtoScene extends Phaser.Scene {
     bypassDirectionalShield = false,
   ): void {
     if (damage <= 0 || !enemy.alive) return;
+    const underlyingEnemy = enemy instanceof EliteEnemy ? enemy.baseEnemy : enemy;
+    const bossHpBefore = underlyingEnemy instanceof BossEnemy ? underlyingEnemy.hp : null;
     let defeated: boolean;
     if (enemy instanceof ShieldSentinelEnemy && !bypassDirectionalShield) {
       const result = enemy.takeMechanicDamage(damage, sourceX, sourceY);
@@ -2985,6 +3018,9 @@ export class ProtoScene extends Phaser.Scene {
       defeated = enemy.takeDamage(damage);
     }
     this.audio.playSfx('hit');
+    if (bossHpBefore !== null) {
+      this.dropCrossedBossManaCrystals(underlyingEnemy as BossEnemy, bossHpBefore);
+    }
     if (!defeated) {
       // 보스는 HP 임계 통과 시 하수인을 부른다
       if (enemy instanceof BossEnemy && enemy.consumeMinionTrigger()) {
@@ -3000,9 +3036,15 @@ export class ProtoScene extends Phaser.Scene {
     const wasBoss = baseEnemy instanceof BossEnemy;
     const shouldSplit = baseEnemy instanceof SplitterEnemy && baseEnemy.canSplit;
     const wasUnstable = enemy.eliteModifier === 'unstable';
+    const droppedMana = manaDropAmount(enemy instanceof EliteEnemy, enemy.kind);
     this.removeEnemyControl(enemy);
     enemy.destroy();
     this.enemies = this.enemies.filter((candidate) => candidate !== enemy);
+    if (wasBoss) {
+      this.spawnManaCrystal(splitX, splitY, this.playerState.maxMana, true);
+    } else {
+      this.spawnManaCrystal(splitX, splitY, droppedMana);
+    }
     if (wasBoss) this.clearBossPatternEffects();
     if (shouldSplit) {
       for (let i = 0; i < SPLITTER_CONFIG.splitCount; i++) {
@@ -3028,16 +3070,317 @@ export class ProtoScene extends Phaser.Scene {
     this.clearEnemyProjectiles();
     // 보스방은 웨이브 흐름 없이 전멸(보스+하수인) 즉시 방 클리어
     if (this.isBossEncounter()) {
-      this.combatRunController.notifyRoomCleared();
+      this.scheduleRoomClearAfterManaSweep();
       return;
     }
     const completedWave = this.waveManager.currentWaveNumber;
     this.waveManager.notifyEnemiesCleared();
     if (this.waveManager.phase === 'room-clear') {
-      this.combatRunController.notifyRoomCleared();
+      this.scheduleRoomClearAfterManaSweep();
     } else {
       this.announceSystemMessage(`웨이브 ${completedWave} 완료`);
     }
+  }
+
+  private updateManaPotion(deltaSeconds: number): void {
+    if (this.roomClearPending) return;
+    if (!this.manaPotionSpawnedThisRoom) {
+      this.manaPotionSpawnRemaining -= deltaSeconds;
+      if (this.manaPotionSpawnRemaining <= 0) this.spawnManaPotion();
+      return;
+    }
+    const potion = this.manaPotion;
+    if (!potion?.collectable) return;
+
+    potion.lifetimeRemaining -= deltaSeconds;
+    const withinPickupRange = Phaser.Math.Distance.Between(
+      potion.view.x,
+      potion.view.y,
+      this.player.x,
+      this.player.y,
+    ) <= ACTIVE_MANA_CONFIG.potionPickupRadius;
+    if (withinPickupRange) {
+      if (this.playerState.mana < this.playerState.maxMana) {
+        const restored = this.playerState.restoreMana(ACTIVE_MANA_CONFIG.potionMana);
+        this.showManaPickupFeedback(potion.view.x, potion.view.y, restored);
+        this.clearManaPotion();
+        return;
+      }
+      if (!potion.fullNoticeShown) {
+        potion.fullNoticeShown = true;
+        this.showManaPickupFeedback(potion.view.x, potion.view.y, 0);
+      }
+    } else {
+      potion.fullNoticeShown = false;
+    }
+    if (potion.lifetimeRemaining <= 0) this.expireManaPotion(potion);
+  }
+
+  private spawnManaPotion(): void {
+    const position = this.manaPotionSpawnPosition();
+    if (!position) {
+      this.manaPotionSpawnRemaining = 1;
+      return;
+    }
+    this.manaPotionSpawnedThisRoom = true;
+    const warning = this.add.circle(0, 0, 25, 0x5ee7ff, 0.08)
+      .setStrokeStyle(2, 0x8eeeff, 0.85);
+    const bottle = this.add.graphics();
+    bottle.fillStyle(0x8eeeff, 0.95);
+    bottle.fillRoundedRect(-8, -10, 16, 20, 5);
+    bottle.fillStyle(0xd3faff, 1);
+    bottle.fillRect(-4, -15, 8, 6);
+    bottle.lineStyle(2, 0x143b5a, 0.9);
+    bottle.strokeRoundedRect(-8, -10, 16, 20, 5);
+    bottle.setAlpha(0).setScale(0.55);
+    const view = this.add.container(position.x, position.y, [warning, bottle])
+      .setDepth(-0.4);
+    const potion: ManaPotion = {
+      view,
+      lifetimeRemaining: ACTIVE_MANA_CONFIG.potionLifetimeSeconds,
+      collectable: false,
+      fullNoticeShown: false,
+    };
+    this.manaPotion = potion;
+    this.tweens.add({
+      targets: warning,
+      alpha: { from: 0.15, to: 0.65 },
+      scale: { from: 0.75, to: 1.2 },
+      duration: 220,
+      yoyo: true,
+      repeat: 1,
+    });
+    this.time.delayedCall(ACTIVE_MANA_CONFIG.potionTelegraphSeconds * 1000, () => {
+      if (this.manaPotion !== potion || !view.active) return;
+      potion.collectable = true;
+      this.tweens.add({
+        targets: bottle,
+        alpha: 1,
+        scale: 1,
+        duration: 180,
+        ease: 'Back.easeOut',
+      });
+      this.tweens.add({
+        targets: warning,
+        alpha: { from: 0.35, to: 0.12 },
+        scale: { from: 1, to: 1.12 },
+        duration: 650,
+        yoyo: true,
+        repeat: -1,
+      });
+    });
+  }
+
+  private manaPotionSpawnPosition(): Phaser.Math.Vector2 | null {
+    let best: Phaser.Math.Vector2 | null = null;
+    let bestDistance = -1;
+    const cameraView = this.cameras.main.worldView;
+    const margin = ACTIVE_MANA_CONFIG.potionCameraMargin;
+    const minX = Math.max(this.worldBounds.left + 40, cameraView.left + margin);
+    const maxX = Math.min(this.worldBounds.right - 40, cameraView.right - margin);
+    const minY = Math.max(this.worldBounds.top + 40, cameraView.top + margin);
+    const maxY = Math.min(this.worldBounds.bottom - 40, cameraView.bottom - margin);
+    if (minX >= maxX || minY >= maxY) return null;
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const distance = Phaser.Math.Between(
+        ACTIVE_MANA_CONFIG.potionSpawnDistanceMin,
+        ACTIVE_MANA_CONFIG.potionSpawnDistanceMax,
+      );
+      const candidate = new Phaser.Math.Vector2(
+        Phaser.Math.Clamp(
+          this.player.x + Math.cos(angle) * distance,
+          minX,
+          maxX,
+        ),
+        Phaser.Math.Clamp(
+          this.player.y + Math.sin(angle) * distance,
+          minY,
+          maxY,
+        ),
+      );
+      const candidateDistance = candidate.distance(new Phaser.Math.Vector2(this.player.x, this.player.y));
+      if (candidateDistance < ACTIVE_MANA_CONFIG.potionSpawnDistanceMin * 0.8) continue;
+      if (!this.isManaPotionPositionSafe(candidate.x, candidate.y)) continue;
+      if (candidateDistance <= bestDistance) continue;
+      best = candidate;
+      bestDistance = candidateDistance;
+    }
+    return best;
+  }
+
+  private isManaPotionPositionSafe(x: number, y: number): boolean {
+    const clearance = ACTIVE_MANA_CONFIG.potionPickupRadius;
+    const samples = [
+      [0, 0],
+      [clearance, 0],
+      [-clearance, 0],
+      [0, clearance],
+      [0, -clearance],
+    ] as const;
+    return !this.hazardZones.some((hazard) => samples.some(
+      ([offsetX, offsetY]) => hazard.contains(x + offsetX, y + offsetY),
+    ));
+  }
+
+  private expireManaPotion(potion: ManaPotion): void {
+    potion.collectable = false;
+    this.tweens.add({
+      targets: potion.view,
+      alpha: 0,
+      scale: 0.65,
+      duration: 300,
+      ease: 'Cubic.easeIn',
+      onComplete: () => {
+        if (this.manaPotion === potion) this.clearManaPotion();
+      },
+    });
+  }
+
+  private clearManaPotion(): void {
+    if (this.manaPotion?.view.active) this.manaPotion.view.destroy(true);
+    this.manaPotion = null;
+  }
+
+  private spawnManaCrystal(x: number, y: number, amount: number, large = false): void {
+    const size = large ? 1.65 : 1;
+    const glow = this.add.circle(0, 0, 12 * size, 0x5ee7ff, 0.18)
+      .setStrokeStyle(large ? 3 : 2, 0xa8f4ff, 0.75);
+    const core = this.add.rectangle(0, 0, 10 * size, 10 * size, large ? 0xd3faff : 0x8eeeff, 1)
+      .setRotation(Math.PI / 4);
+    // Keep drops below enemy bodies so the defeat animation reads before the reward appears.
+    const view = this.add.container(x, y, [glow, core])
+      .setDepth(-0.5)
+      .setAlpha(0)
+      .setScale(0.65);
+    this.tweens.add({
+      targets: view,
+      alpha: 1,
+      scale: 1,
+      duration: 180,
+      ease: 'Back.easeOut',
+    });
+    this.tweens.add({
+      targets: core,
+      angle: 405,
+      duration: 1800,
+      repeat: -1,
+      ease: 'Linear',
+    });
+    this.tweens.add({
+      targets: glow,
+      alpha: { from: 0.16, to: 0.48 },
+      scale: { from: 0.9, to: 1.18 },
+      duration: 650,
+      yoyo: true,
+      repeat: -1,
+    });
+    this.manaCrystals.push({ view, amount });
+  }
+
+  private dropCrossedBossManaCrystals(boss: BossEnemy, previousHp: number): void {
+    const triggered = this.triggeredBossManaThresholds.get(boss) ?? new Set<number>();
+    this.triggeredBossManaThresholds.set(boss, triggered);
+    for (const threshold of crossedBossManaThresholds(previousHp, boss.hp, boss.maxHp)) {
+      if (triggered.has(threshold)) continue;
+      triggered.add(threshold);
+      const angle = threshold * Math.PI * 4;
+      const x = Phaser.Math.Clamp(
+        boss.x + Math.cos(angle) * ACTIVE_MANA_CONFIG.bossDropOffset,
+        this.worldBounds.left + 24,
+        this.worldBounds.right - 24,
+      );
+      const y = Phaser.Math.Clamp(
+        boss.y + Math.sin(angle) * ACTIVE_MANA_CONFIG.bossDropOffset,
+        this.worldBounds.top + 24,
+        this.worldBounds.bottom - 24,
+      );
+      this.spawnManaCrystal(x, y, ACTIVE_MANA_CONFIG.bossThresholdMana);
+    }
+  }
+
+  private updateManaCrystals(deltaSeconds: number): void {
+    if (this.roomClearPending) return;
+    for (let i = this.manaCrystals.length - 1; i >= 0; i--) {
+      const crystal = this.manaCrystals[i];
+      const distance = Phaser.Math.Distance.Between(
+        crystal.view.x,
+        crystal.view.y,
+        this.player.x,
+        this.player.y,
+      );
+      if (distance <= ACTIVE_MANA_CONFIG.pickupRadius * this.playerState.manaPickupRadiusMultiplier) {
+        const restored = this.playerState.restoreMana(crystal.amount);
+        this.showManaPickupFeedback(crystal.view.x, crystal.view.y, restored);
+        crystal.view.destroy(true);
+        this.manaCrystals.splice(i, 1);
+        continue;
+      }
+      if (
+        distance > ACTIVE_MANA_CONFIG.attractionRadius * this.playerState.manaPickupRadiusMultiplier
+        || distance === 0
+      ) continue;
+      const step = Math.min(distance, ACTIVE_MANA_CONFIG.attractionSpeed * deltaSeconds);
+      crystal.view.x += ((this.player.x - crystal.view.x) / distance) * step;
+      crystal.view.y += ((this.player.y - crystal.view.y) / distance) * step;
+    }
+  }
+
+  private showManaPickupFeedback(x: number, y: number, restored: number): void {
+    const text = this.add.text(
+      x,
+      y - 12,
+      restored > 0 ? `+${Math.round(restored)} MANA` : 'MANA FULL',
+      {
+        fontFamily: 'Consolas, monospace',
+        fontSize: '14px',
+        color: restored > 0 ? '#8eeeff' : '#8fa4b8',
+        stroke: '#07111e',
+        strokeThickness: 3,
+      },
+    ).setOrigin(0.5).setDepth(110);
+    this.tweens.add({
+      targets: text,
+      y: y - 38,
+      alpha: 0,
+      duration: 650,
+      ease: 'Cubic.easeOut',
+      onComplete: () => text.destroy(),
+    });
+  }
+
+  private clearManaCrystals(): void {
+    for (const crystal of this.manaCrystals) crystal.view.destroy(true);
+    this.manaCrystals = [];
+  }
+
+  private scheduleRoomClearAfterManaSweep(): void {
+    if (this.roomClearPending) return;
+    this.roomClearPending = true;
+    const sweepDurationMs = 550;
+
+    for (const crystal of [...this.manaCrystals]) {
+      this.tweens.add({
+        targets: crystal.view,
+        x: this.player.x,
+        y: this.player.y,
+        scale: 0.35,
+        alpha: 0.35,
+        duration: sweepDurationMs - 80,
+        ease: 'Cubic.easeIn',
+        onComplete: () => {
+          if (!crystal.view.active) return;
+          const restored = this.playerState.restoreMana(crystal.amount);
+          this.showManaPickupFeedback(this.player.x, this.player.y, restored);
+          crystal.view.destroy(true);
+          this.manaCrystals = this.manaCrystals.filter((entry) => entry !== crystal);
+        },
+      });
+    }
+
+    this.time.delayedCall(sweepDurationMs, () => {
+      this.combatRunController.notifyRoomCleared();
+    });
   }
 
   private showShieldBlockEffect(
