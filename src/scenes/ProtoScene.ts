@@ -360,6 +360,11 @@ export class ProtoScene extends Phaser.Scene {
       'bg-stage1',
       `${import.meta.env.BASE_URL}assets/backgrounds/arena-stage1.jpg`,
     );
+    // 보스방 전용 AI 배경 — 탑다운 소환진 아레나 (일반 방과 확실히 구분되는 결전 공간)
+    this.load.image(
+      'bg-boss',
+      `${import.meta.env.BASE_URL}assets/backgrounds/arena-boss.jpg`,
+    );
     // 로드 실패가 조용히 묻히지 않게 — 실패 시 원인·URL을 남기고 그리드 배경으로 폴백한다.
     this.load.on('loaderror', (file: Phaser.Loader.File) => {
       if (file.key === 'bg-stage1') {
@@ -882,6 +887,17 @@ export class ProtoScene extends Phaser.Scene {
       },
     });
     this.redrawBackdropDetails(palette);
+    // 보스방은 전용 배경으로 교체한다. setTexture가 표시 크기를 리셋하므로 월드 크기를 다시 준다.
+    const bgKey = this.isBossEncounter() ? 'bg-boss' : 'bg-stage1';
+    if (
+      this.backdropImage
+      && this.textures.exists(bgKey)
+      && this.backdropImage.texture.key !== bgKey
+    ) {
+      this.backdropImage
+        .setTexture(bgKey)
+        .setDisplaySize(this.worldBounds.width, this.worldBounds.height);
+    }
     this.backdropImage?.setTint(palette.bgTint); // 방별 배경 색조
     this.backdropColor = palette.base;
   }
