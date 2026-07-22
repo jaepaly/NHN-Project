@@ -65,6 +65,26 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
+/** 상태창 표시 문자열 — "가속 +54% 3.2s" / "무적 1.5s" / "철벽 −50% 2.0s" */
+export function formatSelfBuffStatus(
+  kind: SelfBuffKind,
+  multiplier: number,
+  remaining: number,
+): string {
+  const t = Math.max(0, remaining).toFixed(1);
+  if (kind === 'ward') {
+    return multiplier <= 0
+      ? `무적 ${t}s`
+      : `${LABELS.ward} −${Math.round((1 - multiplier) * 100)}% ${t}s`;
+  }
+  return `${LABELS[kind]} +${Math.round((multiplier - 1) * 100)}% ${t}s`;
+}
+
+/** 버프 종류별 표시 색 (상태창 색상용) */
+export function selfBuffColor(kind: SelfBuffKind): number {
+  return SELF_BUFF_CONFIG[kind].color;
+}
+
 /**
  * buff 스펙 → 실제 자기 강화. 주문명 키워드가 원소 기본값보다 우선한다
  * (유저가 "돌진"이라 말하면 원소와 무관하게 돌진).

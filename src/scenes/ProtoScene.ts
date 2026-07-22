@@ -100,7 +100,9 @@ import { ELITE_MODIFIERS } from '../combat-core/run/encounterConfig';
 import { drawRewardOptions } from '../combat-core/run/rewardConfig';
 import { ENGRAVE_CONFIG, EngraveManager } from '../combat-core/engrave/engraveManager';
 import { SpiritManager, SPIRIT_CONFIG } from '../combat-core/spirit/spiritManager';
-import { resolveSelfBuff, SELF_BUFF_CONFIG } from '../combat-core/player/selfBuffConfig';
+import {
+  resolveSelfBuff, SELF_BUFF_CONFIG, formatSelfBuffStatus, selfBuffColor,
+} from '../combat-core/player/selfBuffConfig';
 import { SpiritOrbView } from '../combat-core/spirit/spiritOrbView';
 import { buildEvolveOption, injectEvolveReward } from '../combat-core/evolve/evolveRewards';
 import {
@@ -327,6 +329,8 @@ export class ProtoScene extends Phaser.Scene {
   private waveText!: Phaser.GameObjects.Text;
   /** 빌드 패널 — 각인·정령·주문서 보유 현황 (우하단 상시 표시) */
   private buildHudText!: Phaser.GameObjects.Text;
+  /** 활성 자기 강화 표시 (종류·세기·남은 시간) */
+  private buffStatusText!: Phaser.GameObjects.Text;
   /** 주문서 보유 수 캐시 — HUD는 매 프레임 갱신되므로 localStorage를 직접 읽지 않는다 */
   private grimoireCount = 0;
   /**
@@ -865,6 +869,13 @@ export class ProtoScene extends Phaser.Scene {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
       color: '#8fa4ff',
+    }).setScrollFactor(0).setDepth(100);
+    // 활성 자기 강화 — 종류·세기·남은 시간 (버프 없으면 빈 줄)
+    this.buffStatusText = this.add.text(34, 179, '', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: '#c7f9e0',
     }).setScrollFactor(0).setDepth(100);
 
     this.waveText = this.add.text(width - 34, 72, '', {
@@ -2751,6 +2762,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.manaText.setText(`MANA  ${mana.toString().padStart(3)} / ${this.playerState.maxMana}`);
     this.shieldText.setText(`SHIELD ${shield.toString().padStart(3)} / ${this.playerState.maxHp}`);
     this.buildHudText.setText(this.buildSummaryLines());
+    // 활성 자기 강화 — 매 프레임 남은 시간 갱신, 없으면 빈 줄
+    const buffs = this.playerState.activeBuffs();
+    if (buffs.length === 0) {
+      this.buffStatusText.setText('');
+    } else {
+      this.buffStatusText
+        .setText(buffs.map((b) => formatSelfBuffStatus(b.kind, b.multiplier, b.remaining)).join('  '))
+        .setColor(paletteColorToCss(selfBuffColor(buffs[0].kind)));
+    }
     this.drawHudBars();
     if (runState.phase === 'run-over') {
       this.waveText.setText('RUN COMPLETE');

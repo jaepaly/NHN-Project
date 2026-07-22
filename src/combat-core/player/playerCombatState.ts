@@ -58,8 +58,10 @@ export class PlayerCombatState {
   }
 
   /** HUD·연출용 활성 버프 스냅샷 */
-  activeBuffs(): { kind: SelfBuffKind; remaining: number }[] {
-    return [...this.buffs.entries()].map(([kind, b]) => ({ kind, remaining: b.remaining }));
+  activeBuffs(): { kind: SelfBuffKind; remaining: number; multiplier: number }[] {
+    return [...this.buffs.entries()].map(([kind, b]) => ({
+      kind, remaining: b.remaining, multiplier: b.multiplier,
+    }));
   }
 
   get maxHp(): number {
