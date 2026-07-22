@@ -734,6 +734,16 @@ export class ProtoScene extends Phaser.Scene {
           counterStrategy: this.bossResistance.counterStrategy,
         };
         this.activeBossResistances.set(longTerm, BOSS_CONFIG.longTermResistMultiplier);
+        // 런 반복 격상 티어4(#77): 회차가 쌓이면 보스가 두 번째 원소까지 학습한다.
+        // 최근 과의존 원소 중 1차와 다른 것을 골라 이중 저항으로 건다. activeBossResistances가
+        // 링 색·실제 데미지·알림의 단일 소스라, 여기 넣으면 셋 다 이중으로 반영된다.
+        // 캐시(this.runEscalation) 대신 이 시점 runMemory로 직접 판정 — 새 런의 clears를 확실히 반영.
+        if (runEscalationProfile(runMemory).bossDualResistance) {
+          const secondary = runMemory.recentDominantElements.find((element) => element !== longTerm);
+          if (secondary) {
+            this.addBossResistance(secondary, BOSS_CONFIG.longTermResistMultiplier);
+          }
+        }
       }
     }
 
@@ -768,14 +778,17 @@ export class ProtoScene extends Phaser.Scene {
         this.announceSystemMessage(`"${line.text}"`, '#d0a8ff', 2800);
       });
     });
-    if (this.bossResistance.resistedElement) {
-      const resisted = this.bossResistance.resistedElement;
-      const label = ELEMENT_LABELS[resisted];
+    // 저항 알림은 activeBossResistances(단일 소스)에서 뽑는다 — 격상 이중 저항이면 두 원소를
+    // 함께 알려야 플레이어가 대응할 수 있다. 단일 저항이면 기존과 동일하게 한 원소만 나온다.
+    const resistedElements = this.sortedBossResistanceElements();
+    if (resistedElements.length > 0) {
+      const [primary] = resistedElements;
+      const labels = resistedElements.map((element) => ELEMENT_LABELS[element]).join('·');
       this.time.delayedCall(1500, () => {
         if (!isCurrentBossRoom()) return;
         this.announceSystemMessage(
-          `보스가 ${label}에 대비했다 — ${label} 피해 대폭 감소`,
-          paletteColorToCss(ELEMENT_PALETTES[resisted].core),
+          `보스가 ${labels}에 대비했다 — 해당 원소 피해 대폭 감소`,
+          paletteColorToCss(ELEMENT_PALETTES[primary].core),
           2800,
         );
       });
