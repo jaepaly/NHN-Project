@@ -33,10 +33,15 @@ const h = new SpellHistory();
 h.record({ rawText: 'a', spell: spell({ name: '약불', element_primary: 'fire', power: 30 }), source: 'gemini', castAt: now() });
 h.record({ rawText: 'b', spell: spell({ name: '강불', element_primary: 'fire', power: 90 }), source: 'gemini', castAt: now() });
 h.record({ rawText: 'c', spell: spell({ name: '물', element_primary: 'water', power: 50 }), source: 'gemini', castAt: now() });
-const o1 = summarizeRun(h, 'win');
+const o1 = summarizeRun(h, 'win', 4321);
 assert.equal(o1.dominantElement, 'fire', 'fire 2 > water 1');
 assert.equal(o1.topSpellName, '강불');
 assert.equal(o1.topSpellPower, 90);
+assert.deepEqual(o1.curseBehavior, {
+  movementDistance: 4321,
+  manualCastCount: 3,
+  lightFireCastCount: 2,
+});
 
 // 2) updateRunMemory — 승패 카운트·favorite·top 유지·recent 누적
 let m: RunMemory = { ...EMPTY_RUN_MEMORY };

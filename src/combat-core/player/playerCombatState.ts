@@ -122,6 +122,14 @@ export class PlayerCombatState {
     return true;
   }
 
+  /** 저주·환경 효과용 강제 마나 감소. 획득 배율의 영향을 받지 않고 0에서 멈춘다. */
+  drainMana(amount: number): number {
+    if (!this.alive) return 0;
+    const previous = this.mana;
+    this.mana = Math.max(0, this.mana - safePositiveAmount(amount));
+    return previous - this.mana;
+  }
+
   startGlobalCooldown(): void {
     this.cooldownRemaining = this.globalCooldownSeconds;
   }
