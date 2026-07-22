@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test:spell": "esbuild scripts/spell-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-regression.mjs && node node_modules/.cache/incant-spell-regression.mjs",
+    "test:judge-fallback": "esbuild scripts/gemini-fizzle-fallback-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-gemini-fizzle-fallback-regression.mjs && node node_modules/.cache/incant-gemini-fizzle-fallback-regression.mjs",
     "test:history": "esbuild scripts/spell-history-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-history-regression.mjs && node node_modules/.cache/incant-spell-history-regression.mjs",
     "test:run": "esbuild scripts/run-controller-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-run-controller-regression.mjs && node node_modules/.cache/incant-run-controller-regression.mjs",
     "test:control": "esbuild scripts/control-effects-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-control-effects-regression.mjs && node node_modules/.cache/incant-control-effects-regression.mjs",
