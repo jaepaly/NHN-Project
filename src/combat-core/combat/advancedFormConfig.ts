@@ -66,6 +66,35 @@ export function selectChainTargets<T extends ChainCandidate>(
   return selected;
 }
 
+/** Continue a chain from an already locked first target without selecting it again. */
+export function selectChainTargetsFromFirst<T extends ChainCandidate>(
+  first: T,
+  candidates: readonly T[],
+  jumpRadius = CHAIN_CONFIG.jumpRadius,
+  maxAdditionalJumps = CHAIN_CONFIG.maxAdditionalJumps,
+): T[] {
+  if (first.alive === false) return [];
+  const available = candidates.filter((candidate) => candidate.alive !== false);
+  const selected = [first];
+  const used = new Set<T>(selected);
+  const safeJumps = Number.isFinite(maxAdditionalJumps)
+    ? Math.max(0, Math.floor(maxAdditionalJumps))
+    : 0;
+  while (selected.length <= safeJumps) {
+    const previous = selected[selected.length - 1];
+    const next = nearestWithin(
+      previous.x,
+      previous.y,
+      available.filter((candidate) => !used.has(candidate)),
+      jumpRadius,
+    );
+    if (!next) break;
+    selected.push(next);
+    used.add(next);
+  }
+  return selected;
+}
+
 function nearestWithin<T extends ChainCandidate>(
   fromX: number,
   fromY: number,

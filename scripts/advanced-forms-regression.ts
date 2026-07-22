@@ -3,6 +3,7 @@ import {
   CHAIN_CONFIG,
   lockedPointTargetForForm,
   selectChainTargets,
+  selectChainTargetsFromFirst,
 } from '../src/combat-core/combat/advancedFormConfig';
 
 interface Target {
@@ -76,5 +77,12 @@ assert.equal(lockedPointTargetForForm('cage', null), null);
 // 8) 충돌 또는 별도 경로로 대상을 정하는 폼은 point 대상을 미리 고정하지 않는다.
 assert.equal(lockedPointTargetForForm('bolt', cageTarget), null);
 assert.equal(lockedPointTargetForForm('chain', cageTarget), null);
+
+// 9) A sequence lock-on remains the first chain target even when another enemy is nearer.
+const locked = fourTargets[2];
+assert.deepEqual(
+  selectChainTargetsFromFirst(locked, fourTargets).map(({ id }) => id),
+  ['c', 'b', 'a', 'd'],
+);
 
 console.log('advanced forms regression: chain 6군 + cage 단일 대상 고정 2군 통과');

@@ -77,6 +77,10 @@ export interface CastContext {
   ) => { x: number; y: number } | null;
   /** Prevents delayed projectiles from resolving after their combat room has ended. */
   shouldResolveImpact?: () => boolean;
+  /** Optional bounded modifiers used by sequence showcase tuning. */
+  damageScale?: number;
+  rangeScale?: number;
+  radiusScale?: number;
 }
 
 /** 파티클용 원형 글로우 텍스처를 1회 생성 */
@@ -379,7 +383,8 @@ function castBeam(ctx: CastContext, spec: SpellSpec): void {
   const { scene, from } = ctx;
   const pal = ELEMENT_PALETTES[spec.element_primary];
   const scale = SIZE_SCALE[spec.size];
-  const end = endpointInDirection(from, ctx.to, SPELL_DAMAGE_CONFIG.beamRange);
+  const range = SPELL_DAMAGE_CONFIG.beamRange * (ctx.rangeScale ?? 1);
+  const end = endpointInDirection(from, ctx.to, range);
   const width = SPELL_DAMAGE_CONFIG.beamBaseWidth * scale;
   const holdDurationMs = spec.speed === 'fast' ? 200 : spec.speed === 'slow' ? 400 : 300;
   const fadeDurationMs = spec.speed === 'fast' ? 400 : spec.speed === 'slow' ? 650 : 500;
@@ -405,6 +410,7 @@ function castBeam(ctx: CastContext, spec: SpellSpec): void {
     toX: end.x,
     toY: end.y,
     width,
+    damageMultiplier: ctx.damageScale ?? 1,
   }, spec);
   impactBurst(scene, end.x, end.y, spec);
   scene.time.delayedCall(holdDurationMs, () => {
@@ -566,7 +572,8 @@ function explodeNova(ctx: CastContext, spec: SpellSpec, x: number, y: number): v
   const { scene } = ctx;
   const pal = ELEMENT_PALETTES[spec.element_primary];
   const scale = SIZE_SCALE[spec.size];
-  const radius = 120 * scale + spec.power;
+  const radiusScale = ctx.radiusScale ?? 1;
+  const radius = (120 * scale + spec.power) * radiusScale;
 
   if (ctx.allowCameraShake !== false) {
     requestCameraShake(scene, 'strong', 1.45);
@@ -617,7 +624,8 @@ function explodeNova(ctx: CastContext, spec: SpellSpec, x: number, y: number): v
     kind: 'circle',
     x,
     y,
-    radius: SPELL_DAMAGE_CONFIG.novaBaseRadius + spec.power,
+    radius: (SPELL_DAMAGE_CONFIG.novaBaseRadius + spec.power) * radiusScale,
+    damageMultiplier: ctx.damageScale ?? 1,
   }, spec);
   scene.time.delayedCall(700, () => burst.destroy());
 }

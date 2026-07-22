@@ -75,6 +75,7 @@ import {
   CAGE_CONFIG,
   lockedPointTargetForForm,
   selectChainTargets,
+  selectChainTargetsFromFirst,
 } from '../combat-core/combat/advancedFormConfig';
 import {
   ORBIT_CONFIG,
@@ -158,6 +159,18 @@ import { EnemyControlState } from '../combat-core/control/enemyControlState';
 import { SUMMON_CONFIG, summonGroupPlan } from '../combat-core/summons/summonConfig';
 import { SummonedOrb } from '../combat-core/summons/summonedOrb';
 import { GameAudio } from '../audio/gameAudio';
+import {
+  debugSpellPlan,
+  resolveSpellPlan,
+  SEQUENCE_PLAN_LIMITS,
+  tuningScale,
+} from '../spell/sequencePlan';
+import type {
+  FormBehavior,
+  MoveBehavior,
+  ResolvedSpellPlan,
+} from '../spell/sequencePlan';
+import { sequenceEngraveCandidate } from '../spell/sequenceEngraveCandidate';
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;
@@ -194,6 +207,22 @@ interface CastFeedbackState {
   resistanceNoticeShown: boolean;
 }
 
+interface SequenceTargetState {
+  lockedEnemy: CombatEnemy | null;
+  lastTargetPoint: Phaser.Math.Vector2 | null;
+}
+
+interface SpellExecutionOptions {
+  sequenceTarget?: SequenceTargetState;
+  onAffectEnemy?: (enemy: CombatEnemy) => void;
+  damageScale?: number;
+  rangeScale?: number;
+  radiusScale?: number;
+  controlDurationScale?: number;
+  controlStrengthScale?: number;
+  shieldAmountScale?: number;
+}
+
 interface EnemyKnockbackState {
   velocityX: number;
   velocityY: number;
@@ -227,6 +256,7 @@ interface ActiveWall {
   remainingSeconds: number;
   contactedEnemies: Set<CombatEnemy>;
   slowedBosses: Set<CombatEnemy>;
+  options?: SpellExecutionOptions;
 }
 
 interface ActiveOrbit {
@@ -235,6 +265,9 @@ interface ActiveOrbit {
   elapsedSeconds: number;
   angle: number;
   lastHitAt: Map<CombatEnemy, number>;
+  durationSeconds: number;
+  radiusScale: number;
+  options?: SpellExecutionOptions;
 }
 
 interface HazardZone {
@@ -345,6 +378,12 @@ export class ProtoScene extends Phaser.Scene {
   private buildHudText!: Phaser.GameObjects.Text;
   /** 활성 자기 강화 표시 (종류·세기·남은 시간) */
   private buffStatusText!: Phaser.GameObjects.Text;
+  private sequenceProgressGraphics!: Phaser.GameObjects.Graphics;
+  private sequenceProgressText!: Phaser.GameObjects.Text;
+  private sequenceProgressStartedAt = 0;
+  private sequenceProgressDurationMs = 0;
+  private sequenceProgressName = '';
+  private sequenceProgressBoundaries: number[] = [];
   /** 주문서 보유 수 캐시 — HUD는 매 프레임 갱신되므로 localStorage를 직접 읽지 않는다 */
   private grimoireCount = 0;
   /**
@@ -365,6 +404,7 @@ export class ProtoScene extends Phaser.Scene {
   private incantChargeLabel!: HTMLElement;
   private incanting = false;
   private casting = false;
+  private activeSequenceMove: Phaser.Tweens.Tween | null = null;
   /** 영창 연 횟수 — 온보딩 예시 placeholder를 순환시키는 인덱스 */
   private incantOpenCount = 0;
   /** 첫 영창 안내를 이미 띄웠는지 (localStorage로 재플레이엔 생략) */
@@ -532,6 +572,7 @@ export class ProtoScene extends Phaser.Scene {
     // 성장 표식은 전투 정지 중(보상 선택·전환)에도 플레이어를 따라간다
     this.growthMarks.follow(this.player.x, this.player.y);
     this.updateStatusText();
+    this.updateSequenceProgress();
   }
 
   private isCombatActive(): boolean {
@@ -943,6 +984,18 @@ export class ProtoScene extends Phaser.Scene {
       fontSize: '12px',
       color: '#59679d',
     }).setScrollFactor(0).setDepth(100);
+
+    this.sequenceProgressGraphics = this.add.graphics()
+      .setScrollFactor(0)
+      .setDepth(101)
+      .setVisible(false);
+    this.sequenceProgressText = this.add.text(width / 2, height - 82, '', {
+      fontFamily: 'Consolas, "Malgun Gothic", monospace',
+      fontSize: '12px',
+      fontStyle: 'bold',
+      color: '#dce4ff',
+      align: 'center',
+    }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(102).setVisible(false);
   }
 
   /** Phase 5 트레일 — 이동 중 잔상 스폰 간격 타이머 (Track C 아트 디렉션). */
@@ -2253,6 +2306,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
   private finishCastingUx(): void {
     this.casting = false;
+    this.clearSequenceProgress();
     this.timeScale = 1;
     this.input.keyboard!.enableGlobalCapture();
     this.incantWrap.classList.remove('active', 'judging');
@@ -2264,6 +2318,56 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private async castFromText(text: string): Promise<void> {
     this.casting = true;
     try {
+      const debugPlan = import.meta.env.DEV ? debugSpellPlan(text) : null;
+      if (debugPlan) {
+        const plan = resolveSpellPlan(debugPlan);
+        if (!this.playerState.trySpendMana(plan.manaCost)) {
+          this.audio.playSfx('fizzle');
+          this.announceSystemMessage(`마나 부족 · 필요 ${plan.manaCost}`, '#ffd166');
+          return;
+        }
+        const sequenceHistoryEntry = this.spellHistory.recordSequence({
+          rawText: text,
+          name: plan.name,
+          power: plan.power,
+          cost: plan.manaCost,
+          source: 'local',
+          castAt: Date.now(),
+        });
+        const engraveCandidate = sequenceEngraveCandidate(plan);
+        if (engraveCandidate) {
+          this.engraveManager.rememberManualCast(
+            sequenceHistoryEntry.normalized,
+            engraveCandidate,
+          );
+        }
+        this.markOnboarded();
+        this.beginSequenceExecutionUx(plan);
+        if (sequenceHistoryEntry.power < sequenceHistoryEntry.basePower) {
+          const penaltyPct = Math.round(
+            (1 - sequenceHistoryEntry.power / sequenceHistoryEntry.basePower) * 100,
+          );
+          this.announceSystemMessage(
+            `REPEAT -${penaltyPct}% · 같은 영창은 힘을 잃는다`,
+            '#ff9f43',
+          );
+        }
+        await this.executeSpellSequencePlan(
+          plan,
+          plan.power > 0 ? sequenceHistoryEntry.power / plan.power : 1,
+        );
+        return;
+      }
+      if (import.meta.env.DEV && text.toLowerCase().startsWith('#seq ')) {
+        this.audio.playSfx('fizzle');
+        this.announceSystemMessage(
+          'SEQ fixture not found · enter a showcase name or a valid #seq key',
+          '#ffd166',
+          4200,
+        );
+        return;
+      }
+
       const judgement = await this.judge.judge(text);
       if (!this.playerState.alive || !this.isCombatActive()) {
         this.announceSystemMessage('행동 불가');
@@ -2302,7 +2406,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ? this.runEscalation.weakenMultiplier
         : 1;
       // 다양성 보너스(당근, #92): 최근과 다른 원소·폼이면 데미지↑. basePower 불변, 여기서만 곱한다.
-      const priorCasts = this.spellHistory.all.slice(0, -1); // 방금 기록한 이번 시전 제외
+      const priorCasts = this.spellHistory.allBehaviorUsages.slice(0, -1); // 방금 기록한 이번 행동 제외
       const diversity = diversityBonus(
         { element: spec.element_primary, form: spec.form },
         priorCasts.map((e) => ({ element: e.elementPrimary, form: e.form })),
@@ -2351,11 +2455,315 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
   }
 
+  private beginSequenceExecutionUx(plan: ResolvedSpellPlan): void {
+    this.timeScale = 1;
+    this.input.keyboard!.enableGlobalCapture();
+    this.incantWrap.classList.remove('active', 'judging');
+    this.incantWrap.setAttribute('aria-hidden', 'true');
+    this.incantBar.disabled = false;
+    this.incantBar.blur();
+    this.announceSequencePlan(plan);
+    this.playCastFlare();
+  }
+
+  private announceSequencePlan(plan: ResolvedSpellPlan): void {
+    const forms = plan.sequences.flatMap((sequence) => (
+      sequence.behaviors.filter((behavior): behavior is FormBehavior => behavior.type === 'form')
+    ));
+    const elements = [...new Set(forms.flatMap((behavior) => (
+      behavior.spec.element_secondary
+        ? [behavior.spec.element_primary, behavior.spec.element_secondary]
+        : [behavior.spec.element_primary]
+    )))];
+    const primary = forms[0]?.spec.element_primary ?? null;
+    const { width, height } = this.scale;
+    const colorHex = primary
+      ? paletteColorToCss(ELEMENT_PALETTES[primary].core)
+      : '#b7c8ff';
+    const elementLabel = elements.length > 0 ? elements.join('+') : '무속성';
+    const label = this.add.text(width / 2, height * 0.32, plan.name, {
+      fontFamily: '"Noto Serif KR", "Malgun Gothic", serif',
+      fontSize: '42px',
+      fontStyle: 'bold',
+      color: colorHex,
+      stroke: '#05060f',
+      strokeThickness: 6,
+      align: 'center',
+      wordWrap: { width: width - 80, useAdvancedWrap: true },
+    }).setOrigin(0.5).setAlpha(0).setScrollFactor(0).setDepth(100)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const meta = this.add.text(
+      width / 2,
+      height * 0.32 + 36,
+      `${elementLabel} · sequence ${plan.sequences.length} · power ${plan.power} · [local fixture]`,
+      { fontSize: '14px', color: '#8fa4ff' },
+    ).setOrigin(0.5).setAlpha(0).setScrollFactor(0).setDepth(100);
+    this.tweens.add({
+      targets: [label, meta],
+      alpha: { from: 0, to: 1 },
+      scale: { from: 1.4, to: 1 },
+      duration: 250,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: [label, meta],
+          alpha: 0,
+          delay: 900,
+          duration: 400,
+          onComplete: () => { label.destroy(); meta.destroy(); },
+        });
+      },
+    });
+  }
+
+  private async executeSpellSequencePlan(
+    plan: ResolvedSpellPlan,
+    repeatPowerScale = 1,
+  ): Promise<void> {
+    const targetState: SequenceTargetState = {
+      lockedEnemy: null,
+      lastTargetPoint: null,
+    };
+    const totalDurationMs = plan.sequences.reduce(
+      (sum, sequence) => sum + sequence.durationMs,
+      0,
+    );
+    this.beginSequenceProgress(plan, totalDurationMs);
+    this.playerState.applyInvulnerability(totalDurationMs / 1000);
+
+    for (const sequence of plan.sequences) {
+      if (!this.playerState.alive || !this.isCombatActive()) break;
+      this.refreshSequenceTarget(targetState);
+      for (const behavior of sequence.behaviors) {
+        if (behavior.type === 'move') {
+          this.executeSequenceMove(behavior, sequence.durationMs, targetState);
+        } else if (behavior.type === 'form') {
+          this.executeSequenceForm(behavior, targetState, repeatPowerScale);
+        }
+      }
+      if (sequence.durationMs > 0) {
+        await new Promise<void>((resolve) => {
+          this.time.delayedCall(sequence.durationMs, resolve);
+        });
+      }
+    }
+
+    this.activeSequenceMove?.stop();
+    this.activeSequenceMove = null;
+    this.clearSequenceProgress();
+  }
+
+  private beginSequenceProgress(plan: ResolvedSpellPlan, durationMs: number): void {
+    this.sequenceProgressStartedAt = this.time.now;
+    this.sequenceProgressDurationMs = Math.max(0, durationMs);
+    this.sequenceProgressName = plan.name;
+    let elapsed = 0;
+    this.sequenceProgressBoundaries = plan.sequences.slice(0, -1).map((sequence) => {
+      elapsed += sequence.durationMs;
+      return durationMs > 0 ? elapsed / durationMs : 0;
+    });
+    this.sequenceProgressGraphics.setVisible(durationMs > 0);
+    this.sequenceProgressText.setVisible(durationMs > 0);
+    this.updateSequenceProgress();
+  }
+
+  private clearSequenceProgress(): void {
+    this.sequenceProgressDurationMs = 0;
+    this.sequenceProgressBoundaries = [];
+    this.sequenceProgressGraphics?.clear().setVisible(false);
+    this.sequenceProgressText?.setVisible(false);
+  }
+
+  private updateSequenceProgress(): void {
+    if (!this.sequenceProgressGraphics || this.sequenceProgressDurationMs <= 0) return;
+    const elapsedMs = Math.max(0, this.time.now - this.sequenceProgressStartedAt);
+    const remainingMs = Math.max(0, this.sequenceProgressDurationMs - elapsedMs);
+    const remainingRatio = Phaser.Math.Clamp(
+      remainingMs / this.sequenceProgressDurationMs,
+      0,
+      1,
+    );
+    const width = 420;
+    const height = 10;
+    const x = this.scale.width / 2 - width / 2;
+    const y = this.scale.height - 70;
+    const g = this.sequenceProgressGraphics.clear();
+    g.fillStyle(0x06091a, 0.92).fillRoundedRect(x - 4, y - 4, width + 8, height + 8, 8);
+    g.lineStyle(1, 0x596ba8, 0.8).strokeRoundedRect(x - 4, y - 4, width + 8, height + 8, 8);
+    g.fillStyle(0x20294f, 1).fillRoundedRect(x, y, width, height, 5);
+    if (remainingRatio > 0) {
+      const fillColor = remainingRatio <= 0.2 ? 0xf7d774 : 0x8fa4ff;
+      g.fillStyle(fillColor, 1).fillRoundedRect(x, y, width * remainingRatio, height, 5);
+    }
+    g.lineStyle(1, 0xdce4ff, 0.5);
+    for (const boundary of this.sequenceProgressBoundaries) {
+      const boundaryX = x + width * boundary;
+      g.lineBetween(boundaryX, y - 2, boundaryX, y + height + 2);
+    }
+    this.sequenceProgressText.setText(
+      `${this.sequenceProgressName} · 영창 유지 ${Math.max(0, remainingMs / 1000).toFixed(1)}초`,
+    );
+    if (remainingMs <= 0) this.clearSequenceProgress();
+  }
+
+  private refreshSequenceTarget(state: SequenceTargetState): void {
+    if (state.lockedEnemy?.alive) {
+      state.lastTargetPoint = new Phaser.Math.Vector2(state.lockedEnemy.x, state.lockedEnemy.y);
+      return;
+    }
+    if (!state.lockedEnemy) return;
+    const point = state.lastTargetPoint
+      ?? new Phaser.Math.Vector2(state.lockedEnemy.x, state.lockedEnemy.y);
+    state.lockedEnemy = this.nearestEnemyFrom(point.x, point.y);
+    if (state.lockedEnemy) {
+      state.lastTargetPoint = new Phaser.Math.Vector2(state.lockedEnemy.x, state.lockedEnemy.y);
+    }
+  }
+
+  private executeSequenceForm(
+    behavior: FormBehavior,
+    targetState: SequenceTargetState,
+    repeatPowerScale: number,
+  ): void {
+    const { spec: baseSpec, tuning } = behavior;
+    const priorUsages = this.spellHistory.allBehaviorUsages;
+    const affinityBonus = this.combatRunController.state
+      .elementalAffinity[baseSpec.element_primary] ?? 0;
+    const escalationWeaken = this.runEscalation.weakenedElements.includes(
+      baseSpec.element_primary,
+    ) ? this.runEscalation.weakenMultiplier : 1;
+    const diversity = diversityBonus(
+      { element: baseSpec.element_primary, form: baseSpec.form },
+      priorUsages.map((entry) => ({ element: entry.elementPrimary, form: entry.form })),
+    );
+    const spec: SpellSpec = {
+      ...baseSpec,
+      status: [...baseSpec.status],
+      power: Math.round(
+        spellPowerWithAffinity(baseSpec.power * repeatPowerScale, affinityBonus)
+        * escalationWeaken
+        * diversity
+        * this.playerState.damageOutMultiplier,
+      ),
+    };
+    this.spellHistory.recordBehaviorUsage(baseSpec, Date.now());
+    if (escalationWeaken < 1 && !this.escalationNoticed.has(baseSpec.element_primary)) {
+      this.escalationNoticed.add(baseSpec.element_primary);
+      this.announceSystemMessage(
+        `${ELEMENT_LABELS[baseSpec.element_primary]} 약화 ${Math.round((1 - escalationWeaken) * 100)}% · 세계가 네 수를 읽었다`,
+        '#b18cff',
+      );
+    }
+    this.audio.playCast(spec.element_primary);
+    this.applySpellPalette(spec);
+    const options: SpellExecutionOptions = {
+      sequenceTarget: targetState,
+      damageScale: tuningScale(tuning, 'damage'),
+      rangeScale: tuningScale(tuning, 'range'),
+      radiusScale: tuningScale(tuning, 'radius'),
+      controlDurationScale: tuningScale(tuning, 'duration'),
+      controlStrengthScale: tuningScale(tuning, 'strength'),
+      shieldAmountScale: tuningScale(tuning, 'amount'),
+      onAffectEnemy: (enemy) => {
+        if (targetState.lockedEnemy?.alive) return;
+        targetState.lockedEnemy = enemy;
+        targetState.lastTargetPoint = new Phaser.Math.Vector2(enemy.x, enemy.y);
+      },
+    };
+    this.applySpellEffect(spec, undefined, false, 0, options);
+  }
+
+  private executeSequenceMove(
+    behavior: MoveBehavior,
+    durationMs: number,
+    targetState: SequenceTargetState,
+  ): void {
+    const from = new Phaser.Math.Vector2(this.player.x, this.player.y);
+    const livingEnemies = this.enemies.filter((enemy) => enemy.alive);
+    const targetEnemy = targetState.lockedEnemy?.alive
+      ? targetState.lockedEnemy
+      : behavior.destination === 'random-enemy' && livingEnemies.length > 0
+        ? Phaser.Utils.Array.GetRandom(livingEnemies)
+        : this.nearestEnemy();
+    const targetPoint = targetEnemy
+      ? new Phaser.Math.Vector2(targetEnemy.x, targetEnemy.y)
+      : from.clone().add(this.lastMoveDir.clone().scale(180));
+    const baseDirection = targetPoint.clone().subtract(from);
+    if (baseDirection.lengthSq() === 0) baseDirection.copy(this.lastMoveDir);
+    if (baseDirection.lengthSq() === 0) baseDirection.set(0, -1);
+    baseDirection.normalize();
+
+    let destination: Phaser.Math.Vector2;
+    const requestedDistance = Math.min(
+      SEQUENCE_PLAN_LIMITS.maxDirectionalMoveDistance,
+      Math.max(0, behavior.distance ?? 180),
+    );
+    switch (behavior.destination) {
+      case 'cast-point':
+      case 'random-enemy':
+        destination = targetPoint;
+        break;
+      case 'arena-center':
+        destination = new Phaser.Math.Vector2(
+          this.worldBounds.centerX,
+          this.worldBounds.centerY,
+        );
+        break;
+      case 'random-direction':
+        destination = from.clone().add(new Phaser.Math.Vector2(1, 0)
+          .rotate(Phaser.Math.FloatBetween(-Math.PI, Math.PI))
+          .scale(requestedDistance));
+        break;
+      case 'custom-vector':
+        destination = from.clone().add(baseDirection.clone()
+          .rotate(Phaser.Math.DegToRad(behavior.angle ?? 0))
+          .scale(requestedDistance));
+        break;
+      case 'away-from-target':
+        destination = from.clone().subtract(baseDirection.clone().scale(requestedDistance));
+        break;
+      case 'cast-direction':
+      case 'target-direction':
+      default:
+        destination = from.clone().add(baseDirection.scale(requestedDistance));
+        break;
+    }
+    destination.set(
+      Phaser.Math.Clamp(destination.x, this.worldBounds.left + 22, this.worldBounds.right - 22),
+      Phaser.Math.Clamp(destination.y, this.worldBounds.top + 22, this.worldBounds.bottom - 22),
+    );
+
+    this.lastMoveDir.copy(destination).subtract(from).normalize();
+
+    this.activeSequenceMove?.stop();
+    if (durationMs <= 0) {
+      this.player.setPosition(destination.x, destination.y);
+      return;
+    }
+    this.activeSequenceMove = this.tweens.add({
+      targets: this.player,
+      x: destination.x,
+      y: destination.y,
+      duration: durationMs,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        if (!this.playerState.alive || !this.isCombatActive()) tween.stop();
+      },
+      onComplete: () => {
+        this.activeSequenceMove = null;
+      },
+      onStop: () => {
+        this.activeSequenceMove = null;
+      },
+    });
+  }
+
   private applySpellEffect(
     spec: SpellSpec,
     origin?: Phaser.Math.Vector2,
     auto = false,
     vfxTierReduction = 0,
+    options?: SpellExecutionOptions,
   ): void {
     const from = origin?.clone()
       ?? new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
@@ -2365,7 +2773,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       return;
     }
     if (spec.effect === 'shield') {
-      const shielded = this.playerState.addShield(spellShieldFromPower(spec.power));
+      const shielded = this.playerState.addShield(
+        spellShieldFromPower(spec.power) * (options?.shieldAmountScale ?? 1),
+      );
       this.announceSystemMessage(`보호막 +${Math.round(shielded)}`, '#72d8ff');
       return;
     }
@@ -2374,15 +2784,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       return;
     }
     if (spec.form === 'wall' && (spec.effect === 'damage' || spec.effect === 'control')) {
-      this.createWall(from, spec);
+      this.createWall(from, spec, options);
       return;
     }
     if (spec.form === 'orbit' && (spec.effect === 'damage' || spec.effect === 'control')) {
-      this.createOrbit(spec);
+      this.createOrbit(spec, options);
       return;
     }
     if (spec.effect === 'control') {
-      this.castControlSpell(from, spec, auto, vfxTierReduction);
+      this.castControlSpell(from, spec, auto, vfxTierReduction, options);
       return;
     }
     if (spec.effect === 'summon') {
@@ -2390,17 +2800,21 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       return;
     }
 
+    const preferredTarget = options?.sequenceTarget?.lockedEnemy?.alive
+      ? options.sequenceTarget.lockedEnemy
+      : null;
+    const chainCandidates = this.enemies.filter((enemy) => enemy.alive);
     const chainTargets = spec.form === 'chain'
-      ? selectChainTargets(
-        from.x,
-        from.y,
-        this.enemies.filter((enemy) => enemy.alive),
-      )
+      ? preferredTarget
+        ? selectChainTargetsFromFirst(preferredTarget, chainCandidates)
+        : selectChainTargets(from.x, from.y, chainCandidates)
       : [];
     const target = spec.form === 'chain'
       ? chainTargets[0] ?? null
-      : this.nearestEnemy();
-    const to = this.spellTargetPoint(from, spec, target);
+      : preferredTarget ?? this.nearestEnemy();
+    const to = preferredTarget
+      ? new Phaser.Math.Vector2(preferredTarget.x, preferredTarget.y)
+      : this.spellTargetPoint(from, spec, target);
     let lockedTarget = lockedPointTargetForForm(spec.form, target);
     const hitEnemies = new Set<CombatEnemy>();
     const castFeedback: CastFeedbackState = {
@@ -2414,6 +2828,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       to,
       chainPath: chainTargets,
       allowCameraShake: !auto,
+      damageScale: options?.damageScale,
+      rangeScale: options?.rangeScale,
+      radiusScale: options?.radiusScale,
       // 친화 격상 연출(영창가 빌드 동기) — 위력·판정 불변, 순수 오버레이
       vfxTier: reducedAffinityVfxTier(
         this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
@@ -2449,6 +2866,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           auto,
           castFeedback,
           vfxTierReduction,
+          options?.onAffectEnemy,
         );
       },
     }, spec);
@@ -2608,7 +3026,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.spiritViews.clear();
   }
 
-  private createWall(from: Phaser.Math.Vector2, spec: SpellSpec): void {
+  private createWall(
+    from: Phaser.Math.Vector2,
+    spec: SpellSpec,
+    options?: SpellExecutionOptions,
+  ): void {
     this.clearActiveWall();
     const target = spec.target === 'self'
       ? this.nearestEnemy()
@@ -2623,6 +3045,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       from,
       target ? { x: target.x, y: target.y } : null,
       spec.size,
+      options?.rangeScale,
     );
     const palette = ELEMENT_PALETTES[spec.element_primary];
     const vectors = points.map((point) => new Phaser.Math.Vector2(point.x, point.y));
@@ -2634,13 +3057,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       spec: { ...spec, status: [...spec.status] },
       points,
       view,
-      remainingSeconds: wallDurationSeconds(spec.speed),
+      remainingSeconds: wallDurationSeconds(spec.speed)
+        * (options?.controlDurationScale ?? 1),
       contactedEnemies: new Set(),
       slowedBosses: new Set(),
+      options,
     };
   }
 
-  private createOrbit(spec: SpellSpec): void {
+  private createOrbit(spec: SpellSpec, options?: SpellExecutionOptions): void {
     this.clearActiveOrbit();
     const palette = ELEMENT_PALETTES[spec.element_primary];
     const count = orbitCount(spec.size);
@@ -2658,6 +3083,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       elapsedSeconds: 0,
       angle: -Math.PI / 2,
       lastHitAt: new Map(),
+      durationSeconds: ORBIT_CONFIG.durationSeconds * (options?.controlDurationScale ?? 1),
+      radiusScale: options?.radiusScale ?? 1,
+      options,
     };
   }
 
@@ -2671,14 +3099,20 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const orbit = this.activeOrbit;
     if (!orbit) return;
     orbit.elapsedSeconds += deltaSeconds;
-    if (orbit.elapsedSeconds >= ORBIT_CONFIG.durationSeconds) {
+    if (orbit.elapsedSeconds >= orbit.durationSeconds) {
       this.clearActiveOrbit();
       return;
     }
     orbit.angle += orbitAngularVelocity(orbit.spec.speed) * deltaSeconds;
     const center = { x: this.player.x, y: this.player.y - 8 };
     orbit.views.forEach((view, index) => {
-      const point = orbitPoint(center, orbit.angle, index, orbit.views.length);
+      const point = orbitPoint(
+        center,
+        orbit.angle,
+        index,
+        orbit.views.length,
+        orbit.radiusScale,
+      );
       view.setPosition(point.x, point.y);
       for (const enemy of [...this.enemies]) {
         if (!enemy.alive) continue;
@@ -2687,14 +3121,19 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         if (!repeatHitReady(orbit.lastHitAt.get(enemy), orbit.elapsedSeconds)) continue;
         orbit.lastHitAt.set(enemy, orbit.elapsedSeconds);
         if (orbit.spec.effect === 'control') {
-          this.applyControl(enemy, orbit.spec.power, { kind: 'point', x: point.x, y: point.y });
-          this.applyStatusKnockback(enemy, orbit.spec, this.player.x, this.player.y);
+          this.applyPersistentControl(
+            enemy,
+            orbit.spec,
+            orbit.options,
+            this.player.x,
+            this.player.y,
+          );
         } else {
           const damage = spellImpactDamageFromPower(
             orbit.spec.power,
-            ORBIT_CONFIG.damageMultiplier,
+            ORBIT_CONFIG.damageMultiplier * (orbit.options?.damageScale ?? 1),
           );
-          this.damageEnemy(
+          const damaged = this.damageEnemy(
             enemy,
             this.spellDamageAgainst(enemy, orbit.spec, damage),
             undefined,
@@ -2706,6 +3145,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
               ? knockbackDistanceForForm('orbit')
               : 0,
           );
+          if (damaged) orbit.options?.onAffectEnemy?.(enemy);
           this.applyOnHitStatuses(enemy, orbit.spec);
         }
       }
@@ -2737,21 +3177,35 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.applySlow(
         enemy,
         wall.spec.power,
-        WALL_CONFIG.bossSlowDurationSeconds,
-        WALL_CONFIG.bossSlowMovementMultiplier,
+        WALL_CONFIG.bossSlowDurationSeconds * (wall.options?.controlDurationScale ?? 1),
+        Phaser.Math.Clamp(
+          WALL_CONFIG.bossSlowMovementMultiplier
+            / (wall.options?.controlStrengthScale ?? 1),
+          0.2,
+          0.9,
+        ),
       );
     }
     if (wall.contactedEnemies.has(enemy)) return;
     wall.contactedEnemies.add(enemy);
     if (wall.spec.effect === 'control') {
       if (enemy.kind !== 'boss') {
-        this.applyControl(enemy, wall.spec.power, { kind: 'point', x: enemy.x, y: enemy.y });
-        this.applyStatusKnockback(enemy, wall.spec, this.player.x, this.player.y);
+        this.applyPersistentControl(
+          enemy,
+          wall.spec,
+          wall.options,
+          this.player.x,
+          this.player.y,
+        );
       }
+      wall.options?.onAffectEnemy?.(enemy);
       return;
     }
-    const damage = spellImpactDamageFromPower(wall.spec.power, WALL_CONFIG.damageMultiplier);
-    this.damageEnemy(
+    const damage = spellImpactDamageFromPower(
+      wall.spec.power,
+      WALL_CONFIG.damageMultiplier * (wall.options?.damageScale ?? 1),
+    );
+    const damaged = this.damageEnemy(
       enemy,
       this.spellDamageAgainst(enemy, wall.spec, damage),
       undefined,
@@ -2763,6 +3217,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ? knockbackDistanceForForm('wall')
         : 0,
     );
+    if (damaged) wall.options?.onAffectEnemy?.(enemy);
     this.applyOnHitStatuses(enemy, wall.spec);
   }
 
@@ -2844,6 +3299,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     else if (runState.phase === 'run-over') actionState = 'RUN COMPLETE';
     else if (runState.phase === 'reward-select') actionState = 'REWARD SELECT';
     else if (runState.phase === 'room-transition') actionState = 'NEXT ROOM';
+    else if (this.casting && this.sequenceProgressDurationMs > 0) actionState = 'SEQUENCE';
     else if (this.casting) actionState = 'JUDGING';
     else if (this.incanting) actionState = 'INCANTING';
     else if (this.playerState.cooldownRemaining > 0) {
@@ -3157,6 +3613,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       resistanceNoticeShown: false,
     },
     vfxTierReduction = 0,
+    onAffectEnemy?: (enemy: CombatEnemy) => void,
   ): void {
     // Zone ticks may damage the same enemy again. Rain strikes share one cast-level
     // hit set so overlapping landing circles cannot multiply damage on one target.
@@ -3200,6 +3657,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         hitStopKind,
         knockbackDistance,
       );
+      onAffectEnemy?.(enemy);
       if (damaged && (spec.form === 'beam' || spec.form === 'wave')) {
         const tier = reducedAffinityVfxTier(
           this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
@@ -3392,18 +3850,23 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     spec: SpellSpec,
     auto = false,
     vfxTierReduction = 0,
+    options?: SpellExecutionOptions,
   ): void {
+    const preferredTarget = options?.sequenceTarget?.lockedEnemy?.alive
+      ? options.sequenceTarget.lockedEnemy
+      : null;
+    const chainCandidates = this.enemies.filter((enemy) => enemy.alive);
     const chainTargets = spec.form === 'chain'
-      ? selectChainTargets(
-        from.x,
-        from.y,
-        this.enemies.filter((enemy) => enemy.alive),
-      )
+      ? preferredTarget
+        ? selectChainTargetsFromFirst(preferredTarget, chainCandidates)
+        : selectChainTargets(from.x, from.y, chainCandidates)
       : [];
     const target = spec.form === 'chain'
       ? chainTargets[0] ?? null
-      : this.nearestEnemy();
-    const to = this.spellTargetPoint(from, spec, target);
+      : preferredTarget ?? this.nearestEnemy();
+    const to = preferredTarget
+      ? new Phaser.Math.Vector2(preferredTarget.x, preferredTarget.y)
+      : this.spellTargetPoint(from, spec, target);
     let lockedTarget = lockedPointTargetForForm(spec.form, target);
     const affectedEnemies = new Set<CombatEnemy>();
     const castRoomIndex = this.combatRunController.state.roomIndex;
@@ -3413,6 +3876,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       to,
       chainPath: chainTargets,
       allowCameraShake: !auto,
+      damageScale: options?.damageScale,
+      rangeScale: options?.rangeScale,
+      radiusScale: options?.radiusScale,
       // 친화 격상 연출(영창가 빌드 동기) — 위력·판정 불변, 순수 오버레이
       vfxTier: reducedAffinityVfxTier(
         this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
@@ -3437,7 +3903,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const currentRunState = this.combatRunController.state;
         if (currentRunState.phase !== 'combat'
           || currentRunState.roomIndex !== castRoomIndex) return;
-        this.onControlHit(impact, spec, lockedTarget, affectedEnemies, chainTargets);
+        this.onControlHit(
+          impact,
+          spec,
+          lockedTarget,
+          affectedEnemies,
+          chainTargets,
+          options,
+        );
       },
     }, spec);
   }
@@ -3448,6 +3921,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     lockedTarget: CombatEnemy | null,
     affectedEnemies: Set<CombatEnemy>,
     chainTargets: readonly CombatEnemy[] = [],
+    options?: SpellExecutionOptions,
   ): void {
     if (impact.hitGroup !== undefined && spec.form !== 'rain') affectedEnemies.clear();
     const source = impact.kind === 'line'
@@ -3456,8 +3930,25 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ? { x: impact.x, y: impact.y }
         : { x: this.player.x, y: this.player.y };
     const applyControlImpact = (enemy: CombatEnemy): void => {
-      this.applyControl(enemy, spec.power, impact);
+      const durationScale = options?.controlDurationScale ?? 1;
+      const strengthScale = options?.controlStrengthScale ?? 1;
+      if (impact.controlMode === 'root') {
+        this.applyRoot(
+          enemy,
+          (impact.controlDurationSeconds ?? CAGE_CONFIG.rootDurationSeconds) * durationScale,
+        );
+      } else {
+        const duration = (impact.controlDurationSeconds ?? slowSecondsFromPower(spec.power))
+          * durationScale;
+        const movementMultiplier = Phaser.Math.Clamp(
+          CONTROL_CONFIG.slowMovementMultiplier / strengthScale,
+          0.2,
+          0.9,
+        );
+        this.applySlow(enemy, spec.power, duration, movementMultiplier);
+      }
       this.applyStatusKnockback(enemy, spec, source.x, source.y);
+      options?.onAffectEnemy?.(enemy);
     };
     if (impact.kind === 'point') {
       if (impact.chainIndex !== undefined) {
@@ -3519,12 +4010,23 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     );
   }
 
-  private applyControl(enemy: CombatEnemy, power: number, impact: SpellImpact): void {
-    if (impact.controlMode === 'root') {
-      this.applyRoot(enemy, impact.controlDurationSeconds ?? CAGE_CONFIG.rootDurationSeconds);
-      return;
-    }
-    this.applySlow(enemy, power, impact.controlDurationSeconds);
+  private applyPersistentControl(
+    enemy: CombatEnemy,
+    spec: SpellSpec,
+    options: SpellExecutionOptions | undefined,
+    sourceX: number,
+    sourceY: number,
+  ): void {
+    const duration = slowSecondsFromPower(spec.power)
+      * (options?.controlDurationScale ?? 1);
+    const movementMultiplier = Phaser.Math.Clamp(
+      CONTROL_CONFIG.slowMovementMultiplier / (options?.controlStrengthScale ?? 1),
+      0.2,
+      0.9,
+    );
+    this.applySlow(enemy, spec.power, duration, movementMultiplier);
+    options?.onAffectEnemy?.(enemy);
+    this.applyStatusKnockback(enemy, spec, sourceX, sourceY);
   }
 
   private applySlow(
