@@ -8,10 +8,13 @@
  */
 
 const GEMINI_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent';
+  // 모델 핀 고정(2026-07-22): `-latest` 자동 갱신으로 요청 규격이 바뀌는 문제 방지.
+  // Gemini 3.5부터 temperature/thinkingBudget가 폐기되어 아래 요청에서도 제거했다.
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent';
 
-// 간이 레이트리밋 (IP당 분당 요청 수, 인메모리 — 무료 플랜용 최소 구현)
-const RATE_LIMIT_PER_MIN = 20;
+// Gemini 3.5 Flash-Lite 무료 등급의 15 RPM에 맞춘 간이 보호막.
+// IP별·Worker 인스턴스별 인메모리 제한이므로 프로젝트 전체 쿼터를 보장하지는 않는다.
+const RATE_LIMIT_PER_MIN = 15;
 const hits = new Map();
 
 const JUDGE_PROMPT = `당신은 자유 텍스트 마법 게임의 의미 판정관이다. 반드시 JSON 하나만 출력한다.
@@ -123,9 +126,7 @@ async function bossLine(request, env, cors) {
     body: JSON.stringify({
       contents: [{ parts: [{ text: `${BOSS_LINE_PROMPT}\n${JSON.stringify(summary).slice(0, 300)}` }] }],
       generationConfig: {
-        temperature: 0.9, // 대사는 창의적으로
         maxOutputTokens: 200,
-        thinkingConfig: { thinkingBudget: 0 },
       },
     }),
   });
@@ -179,9 +180,7 @@ async function evolveName(request, env, cors) {
     body: JSON.stringify({
       contents: [{ parts: [{ text: `${EVOLVE_NAME_PROMPT}\n${JSON.stringify(req).slice(0, 200)}` }] }],
       generationConfig: {
-        temperature: 0.9,
         maxOutputTokens: 100,
-        thinkingConfig: { thinkingBudget: 0 },
       },
     }),
   });
@@ -226,7 +225,10 @@ export default {
 
     const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
     if (rateLimited(ip)) {
-      return new Response(JSON.stringify({ error: 'rate limited' }), { status: 429, headers: cors });
+      return new Response(JSON.stringify({ error: 'rate limited', limit: RATE_LIMIT_PER_MIN }), {
+        status: 429,
+        headers: { ...cors, 'Retry-After': '60' },
+      });
     }
 
     // 경로 라우팅: /boss-line 보스 대사, /evolve-name 진화·융합 작명, 그 외(/) 주문 판정
@@ -263,12 +265,8 @@ export default {
       body: JSON.stringify({
         contents: [{ parts: [{ text: `${JUDGE_PROMPT}\n"${text}"` }] }],
         generationConfig: {
-          temperature: 0.6,
-          // gemini-flash-latest는 thinking 모델 — 추론 토큰이 출력 예산을 함께 먹는다.
-          // thinkingBudget:0이 안 먹히는 경우가 있어 출력 예산을 넉넉히 잡아 잘림을 방지.
           maxOutputTokens: 2048,
           responseMimeType: 'application/json',
-          thinkingConfig: { thinkingBudget: 0 },
         },
       }),
     });
