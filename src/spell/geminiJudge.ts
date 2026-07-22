@@ -10,14 +10,14 @@ import { MockJudge, precheckText } from './mockJudge';
  *   1) localStorage 캐시 조회 (동일 문장 = 동일 판정 → 재현성·속도·호출량 절감)
  *   2) 프록시로 판정 요청 (2.5초 타임아웃)
  *   3) validateJudgement 재검증 — 스키마 밖 값은 거부 (LLM을 신뢰하지 않음)
- *   4) 실패/타임아웃/무효 → MockJudge 폴백 (게임은 절대 멈추지 않는다)
+ *   4) 실패/타임아웃/무효/의미 입력의 원격 fizzle → MockJudge 폴백
  *
  * 프롬프트·API 키는 서버(worker.js)에 고정 — 클라이언트는 { text }만 보낸다.
  * 인터페이스 계약상 judge()는 throw하지 않고 항상 SpellJudgement를 반환한다.
  */
 
 export const JUDGE_SCHEMA_VERSION = 2;
-export const JUDGE_PROMPT_VERSION = 'meaning-v2.3';
+export const JUDGE_PROMPT_VERSION = 'meaning-v2.4';
 const CACHE_PREFIX = `incant:judge:v${JUDGE_SCHEMA_VERSION}:${JUDGE_PROMPT_VERSION}:`;
 const TIMEOUT_MS = 2500;
 
@@ -53,8 +53,8 @@ export class GeminiJudge implements SpellJudge {
     try {
       const raw = await this.fetchWithTimeout(key);
       const judgement = validateJudgement(raw);
-      if (judgement) {
-        // 유효 결과는 재현성을 위해 캐시하되, 장애 폴백은 캐시하지 않는다.
+      if (judgement && judgement.disposition !== 'fizzle') {
+        // cast/blocked만 캐시한다. 모델 드리프트가 만든 fizzle은 캐시에 고착시키지 않는다.
         this.writeCache(key, judgement);
         this.lastSource = 'gemini';
         return judgement;
@@ -63,7 +63,8 @@ export class GeminiJudge implements SpellJudge {
       // 네트워크 오류·타임아웃·비정상 응답 — 아래 폴백으로 처리
     }
 
-    // 4) 폴백 — 무중단 보장
+    // 4) 폴백 — 로컬 사전검사를 통과한 입력은 원격 fizzle도 모델 오류로 간주한다.
+    // 명백한 키보드 매시·금칙어는 위 precheckText에서 이미 fizzle/blocked 처리됐다.
     this.lastSource = 'fallback';
     return this.fallback.judge(text);
   }
@@ -90,7 +91,9 @@ export class GeminiJudge implements SpellJudge {
     try {
       const hit = localStorage.getItem(CACHE_PREFIX + text);
       if (!hit) return null;
-      return validateJudgement(JSON.parse(hit)); // 캐시도 재검증 (스키마 변경 대비)
+      const judgement = validateJudgement(JSON.parse(hit));
+      // v2.4 정책상 fizzle 캐시는 신뢰하지 않는다. 부분 배포·수동 주입에도 안전하게 무시한다.
+      return judgement?.disposition === 'fizzle' ? null : judgement;
     } catch {
       return null;
     }
