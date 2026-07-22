@@ -10,6 +10,13 @@ export const SPIRIT_CONFIG = {
   /** 공격 정령 한 슬롯은 수동 지속 DPS의 7.5%를 사용한다. */
   attackPowerScale: 0.15,
   attackIntervals: [6, 4.5, 4.5],
+  /**
+   * 레벨별 DPS 성장 (총괄 결정 2026-07-22) — 정령 투자가 실제 화력이 되게.
+   * Lv1은 기본 게이트(오토 40%) 그대로, 강화할수록 오토 비중이 올라간다.
+   * 풀투자(2정령 Lv3 + 신속 하한 0.5) = 각인 25% + 정령 15%×1.4×2 = 오토 ~67%
+   * — 어떤 빌드로도 수동 기본(100%)은 넘지 않는다(새 불변식, 회귀 고정).
+   */
+  levelDpsGrowth: [1, 1.2, 1.4],
   utilityIntervals: [8, 7, 6],
   healAmounts: [10, 15, 22],
   guardAmounts: [12, 18, 26],
@@ -205,7 +212,7 @@ export class SpiritManager {
       spirit.remainingSeconds -= delta;
       const interval = intervalFor(spirit) * this.hasteMultiplier;
       while (spirit.remainingSeconds <= 0) {
-        requests.push(pulseFor(spirit, this.hasteMultiplier));
+        requests.push(pulseFor(spirit));
         spirit.remainingSeconds += interval;
       }
     }
@@ -266,34 +273,35 @@ export function spiritInterval(role: SpiritRole, level: SpiritLevel): number {
 
 export function spiritAttackPower(level: SpiritLevel): number {
   const intervalRatio = spiritInterval('attack', level) / SPIRIT_CONFIG.attackIntervals[0];
-  return SPIRIT_CONFIG.attackBasePower * SPIRIT_CONFIG.attackPowerScale * intervalRatio;
+  return SPIRIT_CONFIG.attackBasePower * SPIRIT_CONFIG.attackPowerScale * intervalRatio
+    * SPIRIT_CONFIG.levelDpsGrowth[level - 1];
 }
 
 function intervalFor(spirit: Pick<SpiritState, 'role' | 'level'>): number {
   return spiritInterval(spirit.role, spirit.level);
 }
 
-function pulseFor(spirit: SpiritState, haste = 1): SpiritPulseRequest {
-  // 신속 정령: 주기와 같은 배율을 양·위력에도 곱해 초당 예산을 유지한다(난사 = 빈도 체감).
+function pulseFor(spirit: SpiritState): SpiritPulseRequest {
+  // 신속 정령은 순수 빈도 증가다(위력 보정 없음) — 스택할수록 실질 DPS/HPS가 오른다.
+  // 이것이 소환사 빌드의 투자 축(총괄 결정): 정령 카드를 쌓으면 오토 비중이 40%를 넘어간다.
   if (spirit.role === 'heal') {
     return {
       kind: 'heal',
       spiritId: spirit.spiritId,
-      amount: SPIRIT_CONFIG.healAmounts[spirit.level - 1] * haste,
+      amount: SPIRIT_CONFIG.healAmounts[spirit.level - 1],
     };
   }
   if (spirit.role === 'guard') {
     return {
       kind: 'guard',
       spiritId: spirit.spiritId,
-      amount: SPIRIT_CONFIG.guardAmounts[spirit.level - 1] * haste,
+      amount: SPIRIT_CONFIG.guardAmounts[spirit.level - 1],
     };
   }
-  const spell = attackSpell(spirit.element ?? 'light', spirit.level, spirit);
   return {
     kind: 'attack',
     spiritId: spirit.spiritId,
-    spell: { ...spell, power: spell.power * haste },
+    spell: attackSpell(spirit.element ?? 'light', spirit.level, spirit),
   };
 }
 

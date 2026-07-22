@@ -184,8 +184,10 @@ function spiritReward(spiritId: string, role: 'attack' | 'heal' | 'guard', level
   const engraveDps = scaledPowerForLevel(SPIRIT_CONFIG.attackBasePower, 3)
     * shotCountForLevel(3) / intervalForLevel(3) * ENGRAVE_CONFIG.maxSlots; // 진화 = Lv3와 동일 예산
   const fusedDps = (spiritAttackPower(3) * 2) / spiritInterval('attack', 3); // 융합 = 2슬롯 예산
-  assert.ok((engraveDps + fusedDps) / manualDps <= 0.4 + Number.EPSILON, '진화+융합 총합 ≤ 40%');
-  assert.equal(Math.round(((engraveDps + fusedDps) / manualDps) * 100), 40, '정확히 40%');
+  // 게이트 재정의(총괄 2026-07-22): 융합은 Lv3 예산 — 각인 25% + 정령 15%×성장(1.4) = 46%.
+  const expected = Math.round((0.25 + 0.15 * SPIRIT_CONFIG.levelDpsGrowth[2]) * 100);
+  assert.equal(Math.round(((engraveDps + fusedDps) / manualDps) * 100), expected, '진화+융합 = Lv3 성장 반영');
+  assert.ok((engraveDps + fusedDps * 2) / manualDps < 1, '신속 풀스택에도 수동 기본 미만');
 }
 
 // 6) 실피해 정합 (PR #39 R1 리뷰) — 오토 시전은 반올림·최소 피해 1 없이 정확값을 쓴다.

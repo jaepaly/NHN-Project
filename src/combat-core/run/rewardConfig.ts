@@ -16,8 +16,8 @@ export const RUN_REWARD_CONFIG = {
   affinityBonus: 0.15,
   // Phase 3.5 신규 패시브 (PROGRESSION_DESIGN §1)
   swiftIncantReduction: 0.4,
-  // 신속 정령 — 주기·발당 위력을 같은 배로 줄여 DPS 예산 불변(각인 레벨 원칙과 동일).
-  // 난사 체감은 시전 빈도에서 온다. 하한 0.5 = 최대 2배 속사(3스택).
+  // 신속 정령 — 순수 빈도 증가(스택당 실질 DPS ×1.25). 소환사 빌드의 투자 축.
+  // 하한 0.5 = 최대 2배 속사. 풀투자 오토 상한은 spiritManager.levelDpsGrowth 주석 참조.
   spiritHasteScale: 0.8,
   spiritHasteFloorMultiplier: 0.5,
   manaSurgeGainBonus: ACTIVE_MANA_CONFIG.surgeManaGainBonus,
@@ -81,7 +81,7 @@ function buildOption(
         id: `room-${roomIndex}-spirit-haste`,
         kind: 'spirit-haste',
         title: '신속 정령',
-        description: `정령 시전 주기 -${Math.round((1 - RUN_REWARD_CONFIG.spiritHasteScale) * 100)}% · 총 화력 유지 (중첩 가능)`,
+        description: `정령 시전 주기 -${Math.round((1 - RUN_REWARD_CONFIG.spiritHasteScale) * 100)}% (중첩 가능 · 소환사 빌드)`,
       };
     case 'ward-start':
       return {
