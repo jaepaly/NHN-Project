@@ -3239,6 +3239,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           orbitRadius: plan.orbitRadius,
           damageScale: plan.damageScale,
           attackIntervalScale: plan.attackIntervalScale,
+          behavior: spec.behavior, // L3(#101) — validateSpec을 통과한 것만 도달
         },
       ));
     }
@@ -3259,8 +3260,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     const survivors: SummonedOrb[] = [];
     for (const summon of this.activeSummons) {
-      summon.updatePosition(this.player.x, this.player.y, deltaSeconds);
+      // L3 행동(돌진·추적 등)은 표적 좌표가 필요하므로 이동 전에 찾는다
       const target = this.nearestEnemyFrom(summon.x, summon.y, SUMMON_CONFIG.attackRange);
+      summon.updatePosition(
+        this.player.x, this.player.y, deltaSeconds,
+        target?.x, target?.y,
+      );
       const tick = summon.state.update(deltaSeconds, target !== null);
       if (tick.expired) {
         summon.destroy();

@@ -3,6 +3,8 @@
  * LLM(또는 MockJudge)의 출력은 반드시 이 스키마를 통과해야 렌더러에 도달한다.
  */
 
+import type { SummonBehavior } from './summonBehavior';
+
 export const ELEMENTS = [
   'fire', 'water', 'lightning', 'ice', 'earth', 'wind', 'light', 'dark',
 ] as const;
@@ -57,6 +59,11 @@ export interface SpellSpec {
   cost: number;
   /** 짧은 플레이버 텍스트 (옵션) */
   flavor?: string;
+  /**
+   * 소환수 행동 프로그램 (L3, #101 — 옵션). LLM이 설계한 스텝 시퀀스.
+   * validateSpec이 validateSummonBehavior로 검증한 것만 통과한다.
+   */
+  behavior?: SummonBehavior;
 }
 
 export type SpellRejectionReason = 'nonsense' | 'unsafe';
