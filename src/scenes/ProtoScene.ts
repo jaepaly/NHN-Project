@@ -103,6 +103,14 @@ import { SpiritManager, SPIRIT_CONFIG } from '../combat-core/spirit/spiritManage
 import {
   resolveSelfBuff, SELF_BUFF_CONFIG, formatSelfBuffStatus, selfBuffColor,
 } from '../combat-core/player/selfBuffConfig';
+import { EnemyAilmentState } from '../combat-core/status/enemyAilmentState';
+import {
+  AILMENT_CONFIG,
+  burnDpsFromPower,
+  freezeSecondsFromPower,
+  slowSecondsFromPower,
+  weakenMultiplierFromPower,
+} from '../combat-core/status/ailmentConfig';
 import { SpiritOrbView } from '../combat-core/spirit/spiritOrbView';
 import { buildEvolveOption, injectEvolveReward } from '../combat-core/evolve/evolveRewards';
 import {
@@ -367,6 +375,10 @@ export class ProtoScene extends Phaser.Scene {
   private readonly spiritViews = new Map<string, SpiritOrbView>();
   private spiritOrbitAngle = -Math.PI / 2;
   private readonly enemyControlState = new EnemyControlState();
+  /** 적별 지속 상태이상 — burn(지속피해)·weaken(취약). freeze/slow는 enemyControlState. */
+  private readonly enemyAilments = new EnemyAilmentState();
+  /** 연쇄 감전 남발 방지 — 적별 마지막 발동 시각 */
+  private readonly shockCooldowns = new Map<CombatEnemy, number>();
   private readonly controlIndicators = new Map<CombatEnemy, Phaser.GameObjects.Arc>();
   /** 보스방 진입 시 주문 히스토리로 계산 — R2 내성 모듈이 오면 계산부만 교체 */
   private bossResistance: BossResistanceProfile = { ...NO_BOSS_RESISTANCE };
@@ -677,6 +689,8 @@ export class ProtoScene extends Phaser.Scene {
     this.deathHandled = false;
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.activeBossResistances.clear();
+    this.enemyAilments.clear();
+    this.shockCooldowns.clear();
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
     this.engraveManager.reset();
@@ -1324,6 +1338,11 @@ if (applied) this.playPlayerHit();
 
   private updateEnemies(deltaSeconds: number): void {
     if (!this.playerState.alive) return;
+
+    // burn(지속피해) 0.5초 펄스 — persistent 킨드로 가벼운 연출, 방향 보호막 무시.
+    this.enemyAilments.update(deltaSeconds, (enemy, damage) => {
+      this.damageEnemy(enemy, damage, undefined, enemy.x, enemy.y, true, 'persistent', 0);
+    });
 
     const stoppedEnemies = new Set<CombatEnemy>();
     for (const enemy of this.enemies) {
@@ -2606,6 +2625,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
               ? knockbackDistanceForForm('orbit')
               : 0,
           );
+          this.applyOnHitStatuses(enemy, orbit.spec);
         }
       }
     });
@@ -2662,6 +2682,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ? knockbackDistanceForForm('wall')
         : 0,
     );
+    this.applyOnHitStatuses(enemy, wall.spec);
   }
 
   private clearActiveWall(): void {
@@ -3097,6 +3118,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         hitStopKind,
         knockbackDistance,
       );
+      this.applyOnHitStatuses(enemy, spec);
     };
     if (impact.kind === 'point') {
       if (impact.chainIndex !== undefined) {
@@ -3154,10 +3176,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     baseDamage: number,
     showResistanceNotice = true,
   ): number {
+    // weaken(취약)은 받는 피해를 증폭한다 — 저주로 약해진 적이 더 아프게 맞는다.
+    const amplified = baseDamage * this.enemyAilments.damageTakenMultiplierFor(enemy);
     return this.elementalDamageAgainst(
       enemy,
       spec.element_primary,
-      baseDamage,
+      amplified,
       showResistanceNotice,
     );
   }
@@ -3496,6 +3520,49 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const nearestX = startX + projection * segmentX;
     const nearestY = startY + projection * segmentY;
     return Phaser.Math.Distance.Between(pointX, pointY, nearestX, nearestY);
+  }
+
+  /**
+   * 피격 시 주문의 상태이상을 적에게 적용한다(#97 상태이상 완성).
+   * burn=지속피해, freeze=경직(root), slow=둔화, weaken=취약, shock=인접 연쇄.
+   * knockback은 기존 applyStatusKnockback이 별도 처리. 지속 폼이 매 틱 불러도
+   * 각 효과는 갱신(비중첩)이라 안전하고, shock만 쿨다운으로 남발을 막는다.
+   */
+  private applyOnHitStatuses(enemy: CombatEnemy, spec: SpellSpec): void {
+    if (!enemy.alive) return;
+    for (const status of spec.status) {
+      if (status === 'burn') {
+        this.enemyAilments.applyBurn(enemy, burnDpsFromPower(spec.power), AILMENT_CONFIG.burn.seconds);
+      } else if (status === 'freeze') {
+        this.enemyControlState.applyRoot(enemy, freezeSecondsFromPower(spec.power));
+      } else if (status === 'slow') {
+        this.enemyControlState.applySlow(
+          enemy, spec.power, slowSecondsFromPower(spec.power), AILMENT_CONFIG.slow.movementMultiplier,
+        );
+      } else if (status === 'weaken') {
+        this.enemyAilments.applyWeaken(enemy, weakenMultiplierFromPower(spec.power), AILMENT_CONFIG.weaken.seconds);
+      } else if (status === 'shock') {
+        this.applyShockChain(enemy, spec);
+      }
+    }
+  }
+
+  /** 연쇄 감전 — 맞은 적 주변으로 피해 일부를 튀긴다(상태이상 전이는 없음, 쿨다운 제한). */
+  private applyShockChain(source: CombatEnemy, spec: SpellSpec): void {
+    const now = this.time.now;
+    if (now - (this.shockCooldowns.get(source) ?? -Infinity) < AILMENT_CONFIG.shock.cooldownSeconds * 1000) return;
+    this.shockCooldowns.set(source, now);
+    const zap = spellImpactDamageFromPower(spec.power, AILMENT_CONFIG.shock.damageMultiplier);
+    const targets = this.enemies
+      .filter((e) => e.alive && e !== source
+        && Phaser.Math.Distance.Between(e.x, e.y, source.x, source.y) <= AILMENT_CONFIG.shock.radius)
+      .slice(0, AILMENT_CONFIG.shock.maxTargets);
+    for (const target of targets) {
+      const arc = this.add.line(0, 0, source.x, source.y, target.x, target.y, 0xfff07a, 0.9)
+        .setOrigin(0, 0).setLineWidth(2).setDepth(6).setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({ targets: arc, alpha: 0, duration: 180, onComplete: () => arc.destroy() });
+      this.damageEnemy(target, this.spellDamageAgainst(target, spec, zap), spec.element_primary, source.x, source.y);
+    }
   }
 
   private damageEnemy(
