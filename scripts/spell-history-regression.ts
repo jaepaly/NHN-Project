@@ -42,18 +42,23 @@ assert.equal(e1.basePower, 40);
 assert.equal(e1.power, 40, '첫 시전은 배수 1.0');
 assert.equal(e1.source, 'gemini');
 
-// 3) 반복 패널티: 2번째 ×0.8, 3번째 ×0.64 (엔진이 곱해 적용할 값 = 기록 power)
-assert.equal(h.repeatMultiplier('화염구'), REPEAT_PENALTY.perReuse, '1회 기록 후 = 0.8');
+// 3) 반복 패널티: 2번째 ×perReuse, 3번째 ×perReuse² (엔진이 곱해 적용할 값 = 기록 power)
+//    값은 상수에서 심볼릭으로 — #92 완화(0.9)든 뭐든 상수만 따라간다.
+assert.equal(h.repeatMultiplier('화염구'), REPEAT_PENALTY.perReuse, '1회 기록 후 = perReuse');
 const e2 = h.record({ rawText: '화염구', spell: spell(), source: 'cache', castAt: nextTime() });
-assert.equal(e2.power, Math.round(40 * 0.8), '2번째 = 32');
+assert.equal(e2.power, Math.round(40 * REPEAT_PENALTY.perReuse), '2번째 = ×perReuse');
 const e3 = h.record({ rawText: '화염구', spell: spell(), source: 'cache', castAt: nextTime() });
-assert.equal(e3.power, Math.round(40 * 0.64), '3번째 = 26');
+assert.equal(
+  e3.power,
+  Math.round(40 * Math.max(REPEAT_PENALTY.floor, REPEAT_PENALTY.perReuse ** 2)),
+  '3번째 = ×perReuse² (floor 적용)',
+);
 
 // 4) 정규화 기준 반복 판정 (대소문자·공백 무시)
 const h2 = new SpellHistory();
 h2.record({ rawText: 'Fire Ball', spell: spell(), source: 'gemini', castAt: nextTime() });
 assert.equal(h2.countOf('  fire   ball '), 1, '정규화하면 같은 문장으로 셈');
-assert.equal(h2.repeatMultiplier('FIRE BALL'), 0.8, '정규화 반복도 패널티');
+assert.equal(h2.repeatMultiplier('FIRE BALL'), REPEAT_PENALTY.perReuse, '정규화 반복도 패널티');
 
 // 5) 패널티 하한(floor) — 아무리 반복해도 floor 밑으로 안 감
 const h3 = new SpellHistory();
@@ -101,14 +106,14 @@ assert.equal(h4.bossMemory().dominantElement, null, '비면 null');
   assert.equal(
     second.power,
     Math.round(second.basePower * REPEAT_PENALTY.perSimilarReuse),
-    '유사 재사용 1회 = 0.9배',
+    '유사 재사용 1회 = ×perSimilarReuse',
   );
 
   const third = bypass.record({ rawText: '파이어 볼', spell: fireBolt(), source: 'mock', castAt: nextTime() });
   assert.equal(
     third.power,
     Math.round(third.basePower * REPEAT_PENALTY.perSimilarReuse ** 2),
-    '유사 재사용 2회 = 0.81배',
+    '유사 재사용 2회 = ×perSimilarReuse²',
   );
 
   // 같은 문장 재사용은 여전히 더 강하게 벌한다 (복붙 > 표기 변주)
