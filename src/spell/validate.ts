@@ -2,6 +2,7 @@ import {
   EFFECTS, ELEMENTS, FORMS, SIZES, SPEEDS, STATUSES, TARGETS,
   FALLBACK_SPELL,
 } from './types';
+import { validateSummonBehavior } from './summonBehavior';
 import type { SpellJudgement, SpellSpec, SpellStatus } from './types';
 
 const MAX_SPELL_NAME_LENGTH = 30;
@@ -65,6 +66,7 @@ export function validateSpec(raw: unknown, powerCap = 100): SpellSpec | null {
     power,
     cost,
     flavor: typeof o.flavor === 'string' ? o.flavor.slice(0, 60) : undefined,
+    behavior: validateSummonBehavior(o.behavior) ?? undefined,
   };
 }
 

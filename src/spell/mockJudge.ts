@@ -96,6 +96,9 @@ const CONTROL_KEYWORDS = [
 ];
 const SUMMON_KEYWORDS = [
   '소환', '불러', '정령', '사역마', '친구',
+  // 소환 다양성(#97 ②) — 분신·포탑·군체가 summon으로 판정되게
+  '분신', '도플', '복제', '포탑', '포대', '터렛', '군체', '군단', '무리떼',
+  'clone', 'turret', 'swarm', 'horde', 'sentry',
   '서먼', '스피릿', '패밀리어', '골렘',
   'summon', 'spirit', 'familiar', 'golem',
 ];
@@ -196,6 +199,38 @@ function findMatch<K extends string>(
   return best;
 }
 
+/**
+ * L3(#101) — 문장의 행동 동사를 **등장 순서대로** 스텝 시퀀스로 조합한다.
+ * "지그재그로 접근하다가 돌진" → [zigzag, dash]. 동사가 없으면 null(기본 행동).
+ * 실제 Gemini는 프록시 프롬프트(R2)가 summonBehavior.ts 스키마로 직접 출력한다.
+ */
+const MOVE_VERB_KEYWORDS: Record<string, string[]> = {
+  dash: ['돌진', '쇄도', '들이받', '박치', '돌격', 'dash', 'charge', 'rush'],
+  zigzag: ['지그재그', '갈지자', '지그재로', 'zigzag'],
+  orbit: ['맴돌', '선회', '주위를 돌', '빙글', 'circle'],
+  hold: ['제자리', '대기', '멈춰 서', '지키게', 'stay', 'hold'],
+  retreat: ['후퇴', '물러나', '도망', 'retreat', 'flee'],
+  chase: ['쫓아', '추격', '따라가', 'chase', 'pursue'],
+};
+
+function composeBehaviorFromText(text: string): unknown {
+  const found: { kind: string; index: number }[] = [];
+  for (const [kind, keywords] of Object.entries(MOVE_VERB_KEYWORDS)) {
+    let best = Number.POSITIVE_INFINITY;
+    for (const kw of keywords) {
+      const idx = text.indexOf(kw);
+      if (idx !== -1 && idx < best) best = idx;
+    }
+    if (best !== Number.POSITIVE_INFINITY) found.push({ kind, index: best });
+  }
+  if (found.length === 0) return undefined;
+  found.sort((a, b) => a.index - b.index);
+  return {
+    steps: found.map(({ kind }) => ({ kind, seconds: 2 })),
+    loop: true,
+  };
+}
+
 /** 문자열 해시 (결정론적 변주용) */
 function hash(text: string): number {
   let h = 2166136261;
@@ -240,6 +275,10 @@ export class MockJudge implements SpellJudge {
       .filter((s) => STATUS_KEYWORDS[s].some((kw) => t.includes(kw)))
       .slice(0, 2);
 
+    // L3(#101) 흉내: 소환 주문이면 문장의 행동 동사를 등장 순서대로 스텝 시퀀스로 조합.
+    // 실제 Gemini는 프록시 프롬프트(R2)가 같은 스키마로 출력한다.
+    const behavior = effect === 'summon' ? composeBehaviorFromText(t) : undefined;
+
     // 구체성 보상 흉내: 길이 + 원소 조합 + 상태이상 다양성으로 power 산출
     const h = hash(t);
     const semanticCap = findMatch(ELEMENT_KEYWORDS, t) ? 100 : 40;
@@ -252,6 +291,7 @@ export class MockJudge implements SpellJudge {
     const size = power > 75 ? 'huge' : power > 55 ? 'large' : power > 35 ? 'medium' : 'small';
 
     const spec = validateSpec({
+      behavior,
       // 이름 길이 제한은 모든 판정 결과가 거치는 validateSpec에서 일관되게 적용한다.
       name: text.trim(),
       effect,
