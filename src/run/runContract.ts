@@ -19,6 +19,7 @@ export type RewardKind =
   | 'swift-incant'
   | 'mana-surge'
   | 'ward-start'
+  | 'spirit-haste'
   | 'engrave'
   | 'spirit'
   | 'evolve';

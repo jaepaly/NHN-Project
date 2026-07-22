@@ -87,6 +87,8 @@ const DEFINITIONS: readonly SpiritDefinition[] = [
 /** Phaser와 분리된 정령 슬롯·보상·자동 발동 관리자. */
 export class SpiritManager {
   private slots: SpiritState[] = [];
+  /** 신속 정령 보상 — 주기·발당 위력에 함께 곱한다(예산 중립). 1=기본, 0.5=2배 속사 하한 */
+  private hasteMultiplier = 1;
 
   injectReward(
     options: readonly RewardOption[],
@@ -117,7 +119,10 @@ export class SpiritManager {
       const expected = Math.min(SPIRIT_CONFIG.maxLevel, existing.level + 1);
       if (existing.level >= SPIRIT_CONFIG.maxLevel || option.spirit.level !== expected) return null;
       existing.level = expected as SpiritLevel;
-      existing.remainingSeconds = Math.min(existing.remainingSeconds, intervalFor(existing));
+      existing.remainingSeconds = Math.min(
+        existing.remainingSeconds,
+        intervalFor(existing) * this.hasteMultiplier,
+      );
       return snapshot(existing);
     }
 
@@ -125,7 +130,7 @@ export class SpiritManager {
     const created: SpiritState = {
       ...definition,
       level: 1,
-      remainingSeconds: intervalFor({ ...definition, level: 1 }),
+      remainingSeconds: intervalFor({ ...definition, level: 1 }) * this.hasteMultiplier,
       slotWeight: 1,
     };
     this.slots.push(created);
@@ -165,7 +170,8 @@ export class SpiritManager {
       element: first.element,
       elementSecondary: second.element,
       level: SPIRIT_CONFIG.maxLevel as SpiritLevel,
-      remainingSeconds: spiritInterval('attack', SPIRIT_CONFIG.maxLevel as SpiritLevel),
+      remainingSeconds: spiritInterval('attack', SPIRIT_CONFIG.maxLevel as SpiritLevel)
+        * this.hasteMultiplier,
       slotWeight: 2,
       fusedName: name,
     };
@@ -178,6 +184,18 @@ export class SpiritManager {
     return this.slots.reduce((sum, slot) => sum + slot.slotWeight, 0);
   }
 
+  /** 신속 정령 적용 — 현재 배율을 돌려준다 (HUD·안내용). */
+  applyHaste(scale: number, floorMultiplier: number): number {
+    const safeScale = Number.isFinite(scale) ? Math.min(1, Math.max(0.1, scale)) : 1;
+    const floor = Number.isFinite(floorMultiplier) ? Math.max(0.1, floorMultiplier) : 0.5;
+    this.hasteMultiplier = Math.max(floor, this.hasteMultiplier * safeScale);
+    return this.hasteMultiplier;
+  }
+
+  get haste(): number {
+    return this.hasteMultiplier;
+  }
+
   update(deltaSeconds: number): readonly SpiritPulseRequest[] {
     const delta = Number.isFinite(deltaSeconds) ? Math.max(0, deltaSeconds) : 0;
     if (delta === 0) return [];
@@ -185,9 +203,9 @@ export class SpiritManager {
     const requests: SpiritPulseRequest[] = [];
     for (const spirit of this.slots) {
       spirit.remainingSeconds -= delta;
-      const interval = intervalFor(spirit);
+      const interval = intervalFor(spirit) * this.hasteMultiplier;
       while (spirit.remainingSeconds <= 0) {
-        requests.push(pulseFor(spirit));
+        requests.push(pulseFor(spirit, this.hasteMultiplier));
         spirit.remainingSeconds += interval;
       }
     }
@@ -200,6 +218,7 @@ export class SpiritManager {
 
   reset(): void {
     this.slots = [];
+    this.hasteMultiplier = 1;
   }
 
   private createRewardOption(roomIndex: number, rand: () => number): RewardOption | null {
@@ -254,25 +273,27 @@ function intervalFor(spirit: Pick<SpiritState, 'role' | 'level'>): number {
   return spiritInterval(spirit.role, spirit.level);
 }
 
-function pulseFor(spirit: SpiritState): SpiritPulseRequest {
+function pulseFor(spirit: SpiritState, haste = 1): SpiritPulseRequest {
+  // 신속 정령: 주기와 같은 배율을 양·위력에도 곱해 초당 예산을 유지한다(난사 = 빈도 체감).
   if (spirit.role === 'heal') {
     return {
       kind: 'heal',
       spiritId: spirit.spiritId,
-      amount: SPIRIT_CONFIG.healAmounts[spirit.level - 1],
+      amount: SPIRIT_CONFIG.healAmounts[spirit.level - 1] * haste,
     };
   }
   if (spirit.role === 'guard') {
     return {
       kind: 'guard',
       spiritId: spirit.spiritId,
-      amount: SPIRIT_CONFIG.guardAmounts[spirit.level - 1],
+      amount: SPIRIT_CONFIG.guardAmounts[spirit.level - 1] * haste,
     };
   }
+  const spell = attackSpell(spirit.element ?? 'light', spirit.level, spirit);
   return {
     kind: 'attack',
     spiritId: spirit.spiritId,
-    spell: attackSpell(spirit.element ?? 'light', spirit.level, spirit),
+    spell: { ...spell, power: spell.power * haste },
   };
 }
 

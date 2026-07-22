@@ -97,7 +97,7 @@ import {
 import type { WaveDefinition } from '../combat-core/waves/waveManager';
 import { CombatRunController } from '../combat-core/run/runController';
 import { ELITE_MODIFIERS } from '../combat-core/run/encounterConfig';
-import { drawRewardOptions } from '../combat-core/run/rewardConfig';
+import { drawRewardOptions, RUN_REWARD_CONFIG } from '../combat-core/run/rewardConfig';
 import { ENGRAVE_CONFIG, EngraveManager } from '../combat-core/engrave/engraveManager';
 import { SpiritManager, SPIRIT_CONFIG } from '../combat-core/spirit/spiritManager';
 import {
@@ -552,6 +552,18 @@ export class ProtoScene extends Phaser.Scene {
       if (chosen.kind === 'evolve' && chosen.evolve) {
         // 진화·융합은 LLM 작명이 필요해 비동기 — 작명은 반드시 성공하므로(폴백) 미완료 상태가 없다
         void this.applyEvolution(chosen.evolve);
+        console.info('[Run] reward-applied', chosen, state);
+        return;
+      }
+      if (chosen.kind === 'spirit-haste') {
+        const rate = this.spiritManager.applyHaste(
+          RUN_REWARD_CONFIG.spiritHasteScale,
+          RUN_REWARD_CONFIG.spiritHasteFloorMultiplier,
+        );
+        this.announceSystemMessage(
+          `신속 정령 · 시전 ${(1 / rate).toFixed(2)}배 속도`,
+          '#ffd166',
+        );
         console.info('[Run] reward-applied', chosen, state);
         return;
       }

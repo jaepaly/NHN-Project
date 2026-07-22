@@ -198,6 +198,9 @@ export class CombatRunController implements RunController {
       case 'ward-start':
         this.wardOnRoomStart += RUN_REWARD_CONFIG.wardStartShield;
         break;
+      case 'spirit-haste':
+        // 정령 관리자는 씬 소유 — reward-applied 이벤트에서 적용한다.
+        break;
       case 'engrave':
         // 각인은 전투 스탯 보상이 아니다. 씬이 reward-applied 이벤트에서 적용한다.
         break;

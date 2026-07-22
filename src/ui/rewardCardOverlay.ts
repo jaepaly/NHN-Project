@@ -86,6 +86,7 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   'swift-incant': 'TEMPO',
   'mana-surge': 'FLOW',
   'ward-start': 'WARD',
+  'spirit-haste': 'TEMPO',
   engrave: 'ENGRAVE',
   spirit: 'SPIRIT',
   evolve: 'EVOLVE',

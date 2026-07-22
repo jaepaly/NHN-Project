@@ -24,6 +24,7 @@ const KIND_COLORS: Partial<Record<RewardOption['kind'], number>> = {
   'swift-incant': 0xffd166,
   'mana-surge': 0x91b7ff,
   'ward-start': 0x72d8ff,
+  'spirit-haste': 0x8fa4ff,
   engrave: 0xffd166,
   spirit: 0x8fa4ff,
   evolve: 0xffd166,
@@ -51,6 +52,11 @@ export function gainLabelFor(option: RewardOption): GainLabel {
       };
     case 'ward-start':
       return { text: `방 개막 보호막 +${RUN_REWARD_CONFIG.wardStartShield}`, color };
+    case 'spirit-haste':
+      return {
+        text: `정령 시전 주기 -${Math.round((1 - RUN_REWARD_CONFIG.spiritHasteScale) * 100)}%`,
+        color,
+      };
     case 'engrave':
       return { text: `각인 Lv${option.engrave?.level ?? 1}`, color };
     case 'spirit':

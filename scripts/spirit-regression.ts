@@ -124,4 +124,28 @@ for (const level of [1, 2, 3] as const) {
   assert.equal(Math.round(((engraveDps + spiritDps) / manualDps) * 100), 40);
 }
 
-console.log('Spirit regression: 보상 공존·2슬롯·8원소 폼·유틸 펄스·자동 DPS 40% 게이트 5군 통과');
+// 6) 신속 정령 — 주기·발당 양이 같은 배로 줄어 예산(DPS/HPS) 불변, reset 복구
+{
+  const hasted = new SpiritManager();
+  const rate = hasted.applyHaste(0.8, 0.5);
+  assert.ok(Math.abs(rate - 0.8) < 1e-9, '1스택 = 0.8배');
+  hasted.applyReward(reward('attack-fire', 'attack', 1)); // haste 후 계약 — 첫 주기부터 신속
+  const base = new SpiritManager();
+  base.applyReward(reward('attack-fire', 'attack', 1));
+  // 긴 창(100주기) + 비율 허용오차 — 창 경계의 부동소수점 펄스 절단에 안전
+  const seconds = spiritInterval('attack', 1) * 100;
+  const sum = (pulses: readonly { kind: string; spell?: { power: number } }[]) =>
+    pulses.reduce((total, pulse) => total + (pulse.kind === 'attack' ? pulse.spell!.power : 0), 0);
+  const basePulses = base.update(seconds);
+  const hastedPulses = hasted.update(seconds);
+  assert.ok(hastedPulses.length > basePulses.length, '신속: 펄스 더 자주 (125 vs 100)');
+  const budgetDrift = Math.abs(sum(hastedPulses) - sum(basePulses)) / sum(basePulses);
+  assert.ok(budgetDrift < 0.02, `총 power 예산 불변 ±2% (drift ${(budgetDrift * 100).toFixed(2)}%)`);
+  // 하한: 여러 번 쌓아도 0.5 밑으로 안 감
+  for (let i = 0; i < 10; i += 1) hasted.applyHaste(0.8, 0.5);
+  assert.ok(Math.abs(hasted.haste - 0.5) < 1e-9, '하한 0.5 (2배 속사)');
+  hasted.reset();
+  assert.equal(hasted.haste, 1, 'reset이 haste 복구');
+}
+
+console.log('Spirit regression: 보상 공존·2슬롯·8원소 폼·유틸 펄스·40% 게이트·신속예산중립 6군 통과');
