@@ -96,6 +96,9 @@ const CONTROL_KEYWORDS = [
 ];
 const SUMMON_KEYWORDS = [
   '소환', '불러', '정령', '사역마', '친구',
+  // 소환 다양성(#97 ②) — 분신·포탑·군체가 summon으로 판정되게
+  '분신', '도플', '복제', '포탑', '포대', '터렛', '군체', '군단', '무리떼',
+  'clone', 'turret', 'swarm', 'horde', 'sentry',
   '서먼', '스피릿', '패밀리어', '골렘',
   'summon', 'spirit', 'familiar', 'golem',
 ];

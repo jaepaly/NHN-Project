@@ -16,11 +16,14 @@ export class SummonCombatState {
   remainingSeconds: number;
   private attackCooldownRemaining = 0;
 
-  constructor(power: number) {
+  private readonly attackInterval: number;
+
+  constructor(power: number, damageScale = 1, attackIntervalScale = 1) {
     const stats = summonStatsFromPower(power);
-    this.damage = stats.damage;
+    this.damage = Math.max(1, Math.round(stats.damage * damageScale)); // 군체=분할, 포탑=강타
     this.durationSeconds = stats.durationSeconds;
     this.remainingSeconds = stats.durationSeconds;
+    this.attackInterval = SUMMON_CONFIG.attackIntervalSeconds * Math.max(0.1, attackIntervalScale);
   }
 
   update(deltaSeconds: number, hasTarget: boolean): SummonTickResult {
@@ -35,7 +38,7 @@ export class SummonCombatState {
       return { expired: false, shouldAttack: false };
     }
 
-    this.attackCooldownRemaining = SUMMON_CONFIG.attackIntervalSeconds;
+    this.attackCooldownRemaining = this.attackInterval;
     return { expired: false, shouldAttack: true };
   }
 }

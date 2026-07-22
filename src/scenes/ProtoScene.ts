@@ -149,7 +149,7 @@ import {
 } from '../spell/grimoire';
 import { CONTROL_CONFIG } from '../combat-core/control/controlConfig';
 import { EnemyControlState } from '../combat-core/control/enemyControlState';
-import { SUMMON_CONFIG } from '../combat-core/summons/summonConfig';
+import { SUMMON_CONFIG, summonGroupPlan } from '../combat-core/summons/summonConfig';
 import { SummonedOrb } from '../combat-core/summons/summonedOrb';
 import { GameAudio } from '../audio/gameAudio';
 
@@ -364,7 +364,8 @@ export class ProtoScene extends Phaser.Scene {
   private readonly enemyKnockbacks = new Map<CombatEnemy, EnemyKnockbackState>();
   private basicAttackCooldownRemaining = 0;
   private friendlyMissiles: FriendlyMissile[] = [];
-  private activeSummon: SummonedOrb | null = null;
+  /** 활성 소환체들 — 분신 1 / 군체 N / 포탑 1 / 기본 오브 1 (#97 ②) */
+  private activeSummons: SummonedOrb[] = [];
   private activeSummonKnockbackDistance = 0;
   private activeWall: ActiveWall | null = null;
   private activeOrbit: ActiveOrbit | null = null;
@@ -3220,57 +3221,74 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
   private createSummon(spec: SpellSpec): void {
     this.clearSummon();
-    this.activeSummon = new SummonedOrb(
-      this,
-      this.player.x,
-      this.player.y,
-      spec.element_primary,
-      spec.power,
-    );
+    // 종류(분신·군체·포탑·오브)를 주문명·원소로 가른다(#97 ②).
+    const plan = summonGroupPlan(spec.element_primary, spec.name);
     this.activeSummonKnockbackDistance = spec.status.includes('knockback')
       ? knockbackDistanceForForm('summon')
       : 0;
+    for (let i = 0; i < plan.count; i += 1) {
+      const offset = (Math.PI * 2 * i) / plan.count;
+      // 포탑은 시전 위치 주변에 고정 배치, 나머지는 플레이어 궤도에 오프셋으로 분산.
+      const spawnX = plan.stationary ? this.player.x + Math.cos(offset) * 34 : this.player.x;
+      const spawnY = plan.stationary ? this.player.y + Math.sin(offset) * 34 : this.player.y;
+      this.activeSummons.push(new SummonedOrb(
+        this, spawnX, spawnY, spec.element_primary, spec.power,
+        {
+          orbitOffset: offset,
+          stationary: plan.stationary,
+          orbitRadius: plan.orbitRadius,
+          damageScale: plan.damageScale,
+          attackIntervalScale: plan.attackIntervalScale,
+        },
+      ));
+    }
+    const label = plan.count > 1 ? `${plan.label} ×${plan.count}` : plan.label;
+    const duration = this.activeSummons[0]?.state.durationSeconds ?? 0;
     this.announceSystemMessage(
-      `소환 · ${this.activeSummon.state.durationSeconds.toFixed(1)}초`,
+      `${label} · ${duration.toFixed(1)}초`,
       paletteColorToCss(ELEMENT_PALETTES[spec.element_primary].core),
     );
   }
 
   private updateSummon(deltaSeconds: number): void {
-    const summon = this.activeSummon;
-    if (!summon) return;
+    if (this.activeSummons.length === 0) return;
     if (!this.playerState.alive) {
       this.clearSummon();
       return;
     }
 
-    summon.updatePosition(this.player.x, this.player.y, deltaSeconds);
-    const target = this.nearestEnemyFrom(summon.x, summon.y, SUMMON_CONFIG.attackRange);
-    const tick = summon.state.update(deltaSeconds, target !== null);
-    if (tick.expired) {
-      this.clearSummon();
-      return;
-    }
-    if (!tick.shouldAttack || !target) return;
+    const survivors: SummonedOrb[] = [];
+    for (const summon of this.activeSummons) {
+      summon.updatePosition(this.player.x, this.player.y, deltaSeconds);
+      const target = this.nearestEnemyFrom(summon.x, summon.y, SUMMON_CONFIG.attackRange);
+      const tick = summon.state.update(deltaSeconds, target !== null);
+      if (tick.expired) {
+        summon.destroy();
+        continue;
+      }
+      survivors.push(summon);
+      if (!tick.shouldAttack || !target) continue;
 
-    const palette = ELEMENT_PALETTES[summon.element];
-    this.fireFriendlyMissile({
-      fromX: summon.x,
-      fromY: summon.y,
-      target,
-      damage: summon.state.damage,
-      element: summon.element,
-      speed: SUMMON_CONFIG.projectileSpeed,
-      hitDistance: SUMMON_CONFIG.projectileHitDistance,
-      knockbackDistance: this.activeSummonKnockbackDistance,
-      coreColor: palette.core,
-      glowColor: palette.glow,
-    });
+      const palette = ELEMENT_PALETTES[summon.element];
+      this.fireFriendlyMissile({
+        fromX: summon.x,
+        fromY: summon.y,
+        target,
+        damage: summon.state.damage,
+        element: summon.element,
+        speed: SUMMON_CONFIG.projectileSpeed,
+        hitDistance: SUMMON_CONFIG.projectileHitDistance,
+        knockbackDistance: this.activeSummonKnockbackDistance,
+        coreColor: palette.core,
+        glowColor: palette.glow,
+      });
+    }
+    this.activeSummons = survivors;
   }
 
   private clearSummon(): void {
-    this.activeSummon?.destroy();
-    this.activeSummon = null;
+    for (const summon of this.activeSummons) summon.destroy();
+    this.activeSummons = [];
     this.activeSummonKnockbackDistance = 0;
   }
 
