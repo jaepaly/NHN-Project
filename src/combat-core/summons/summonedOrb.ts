@@ -11,6 +11,8 @@ export class SummonedOrb {
   readonly state: SummonCombatState;
 
   private orbitAngle = -Math.PI / 2;
+  private readonly stationary: boolean;
+  private readonly orbitRadius: number;
 
   constructor(
     scene: Phaser.Scene,
@@ -18,9 +20,19 @@ export class SummonedOrb {
     playerY: number,
     element: SpellElement,
     power: number,
+    options: {
+      orbitOffset?: number;
+      stationary?: boolean;
+      orbitRadius?: number;
+      damageScale?: number;
+      attackIntervalScale?: number;
+    } = {},
   ) {
     this.element = element;
-    this.state = new SummonCombatState(power);
+    this.state = new SummonCombatState(power, options.damageScale, options.attackIntervalScale);
+    this.stationary = options.stationary ?? false;
+    this.orbitRadius = options.orbitRadius ?? SUMMON_CONFIG.orbitRadius;
+    this.orbitAngle = -Math.PI / 2 + (options.orbitOffset ?? 0);
     const palette = ELEMENT_PALETTES[element];
     const ring = scene.add.circle(0, 0, 14, palette.glow, 0.12)
       .setStrokeStyle(2, palette.accent, 0.85)
@@ -42,11 +54,12 @@ export class SummonedOrb {
   }
 
   updatePosition(playerX: number, playerY: number, deltaSeconds: number): void {
+    if (this.stationary) return; // 포탑 — 시전 위치 고정
     const delta = Number.isFinite(deltaSeconds) ? Math.max(0, deltaSeconds) : 0;
     this.orbitAngle += SUMMON_CONFIG.orbitAngularSpeed * delta;
     this.view.setPosition(
-      playerX + Math.cos(this.orbitAngle) * SUMMON_CONFIG.orbitRadius,
-      playerY + Math.sin(this.orbitAngle) * SUMMON_CONFIG.orbitRadius,
+      playerX + Math.cos(this.orbitAngle) * this.orbitRadius,
+      playerY + Math.sin(this.orbitAngle) * this.orbitRadius,
     );
   }
 

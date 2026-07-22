@@ -36,7 +36,8 @@
     "preview": "vite preview",
     "test:boss-core": "esbuild scripts/boss-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-boss-regression.mjs && node node_modules/.cache/incant-boss-regression.mjs",
     "test:selfbuff": "esbuild scripts/self-buff-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-self-buff-regression.mjs && node node_modules/.cache/incant-self-buff-regression.mjs",
-    "test:ailment": "esbuild scripts/ailment-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-ailment-regression.mjs && node node_modules/.cache/incant-ailment-regression.mjs"
+    "test:ailment": "esbuild scripts/ailment-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-ailment-regression.mjs && node node_modules/.cache/incant-ailment-regression.mjs",
+    "test:summonvariety": "esbuild scripts/summon-variety-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-summon-variety-regression.mjs && node node_modules/.cache/incant-summon-variety-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
