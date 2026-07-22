@@ -115,6 +115,7 @@ import { BossPatternController } from '../combat-core/boss/bossPatternController
 import type { BossPatternAction } from '../combat-core/boss/bossPatternController';
 import {
   computeResistance,
+  diversityBonus,
   getBossLine,
   loadRunMemory,
   longTermResistedElement,
@@ -2193,10 +2194,16 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const escalationWeaken = this.runEscalation.weakenedElements.includes(spec.element_primary)
         ? this.runEscalation.weakenMultiplier
         : 1;
+      // 다양성 보너스(당근, #92): 최근과 다른 원소·폼이면 데미지↑. basePower 불변, 여기서만 곱한다.
+      const priorCasts = this.spellHistory.all.slice(0, -1); // 방금 기록한 이번 시전 제외
+      const diversity = diversityBonus(
+        { element: spec.element_primary, form: spec.form },
+        priorCasts.map((e) => ({ element: e.elementPrimary, form: e.form })),
+      );
       const effectiveSpec: SpellSpec = {
         ...spec,
         power: Math.round(
-          spellPowerWithAffinity(historyEntry.power, affinityBonus) * escalationWeaken,
+          spellPowerWithAffinity(historyEntry.power, affinityBonus) * escalationWeaken * diversity,
         ),
       };
       // 같은 원소를 계속 쓰면 매 시전 반복되므로 방마다 원소별 1회만 알린다
@@ -2215,6 +2222,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         this.announceSystemMessage(
           `REPEAT -${penaltyPct}% · 같은 주문은 힘을 잃는다`,
           '#ffa94d',
+        );
+      } else if (diversity > 1) {
+        // 다양성 보상 — 최근과 다른 마법이면 더 크게 터진다 (당근, #92)
+        const comboPct = Math.round((diversity - 1) * 100);
+        this.announceSystemMessage(
+          `COMBO +${comboPct}% · 낯선 마법이 세계를 뒤흔든다`,
+          '#63e6be',
         );
       }
 

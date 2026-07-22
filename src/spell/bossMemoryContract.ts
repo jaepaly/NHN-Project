@@ -47,3 +47,9 @@ export type { EvolveNameRequest } from './evolveName';
 //   weakenMultiplier: 시전 위력에 적용(과의존 원소 약화) / 플래그: R1·보스가 방기믹·이중저항에 적용
 export { runEscalationTier, runEscalationProfile, RUN_ESCALATION_CONFIG } from './runEscalation';
 export type { RunEscalationProfile } from './runEscalation';
+
+// ── 다양성 보너스 (당근, #92) — 런 내 반복 억제를 "벌"이 아닌 "다양성 보상"으로 ──
+//   diversityBonus(이번 시전, 최근 시전들) → 데미지 배율(≥1.0). basePower 불변, 피해 계산 시 곱함.
+//   R2=순수함수 / R1=곱하는 위치·수치 튜닝(세면 maxBonus 낮춤, HP 인플레 금지).
+export { diversityBonus, DIVERSITY_CONFIG } from './spellDiversity';
+export type { DiversityCast } from './spellDiversity';
