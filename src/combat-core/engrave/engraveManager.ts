@@ -1,5 +1,6 @@
 import type { GrowthLevel, RewardOption } from '../../run/runContract';
 import type { SpellSize, SpellSpec } from '../../spell/types';
+import { ELEMENT_LABELS, FORM_LABELS } from '../../render/palette';
 
 /**
  * 각인 v1 임시 밸런스.
@@ -195,11 +196,14 @@ export class EngraveManager {
     const currentLevel = this.slots.find((slot) => slot.spellKey === spellKey)?.level ?? 0;
     const nextLevel = Math.min(ENGRAVE_CONFIG.maxLevel, currentLevel + 1) as EngraveLevel;
     const isNew = nextLevel === 1;
+    // 주문 이름만으론 어떤 마법이었는지 기억이 안 난다(플레이 피드백) — 원소·형태·위력을
+    // 카드에 명시해 "내가 썼던 그 주문"을 알아보게 한다.
+    const identity = `${ELEMENT_LABELS[spell.element_primary]} ${FORM_LABELS[spell.form]} · 위력 ${Math.round(spell.power)}`;
     const description = nextLevel === 1
-      ? `${ENGRAVE_CONFIG.baseIntervalSeconds}초마다 위력 ${Math.round(ENGRAVE_CONFIG.powerScale * 100)}% 자동 시전`
+      ? `${identity}\n${ENGRAVE_CONFIG.baseIntervalSeconds}초마다 위력 ${Math.round(ENGRAVE_CONFIG.powerScale * 100)}% 자동 시전`
       : nextLevel === 2
-        ? `Lv2 · 발수 +1 (${ENGRAVE_CONFIG.secondShotDelaySeconds}초 간격)`
-        : `Lv3 · 주기 ${ENGRAVE_CONFIG.level3IntervalSeconds}초 · 크기 한 단계 상승`;
+        ? `${identity}\nLv2 · 발수 +1 (${ENGRAVE_CONFIG.secondShotDelaySeconds}초 간격)`
+        : `${identity}\nLv3 · 주기 ${ENGRAVE_CONFIG.level3IntervalSeconds}초 · 크기 한 단계 상승`;
 
     return {
       id: `room-${roomIndex}-engrave-${hashKey(spellKey)}-lv${nextLevel}`,

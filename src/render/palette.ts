@@ -1,4 +1,4 @@
-import type { SpellElement, SpellSize } from '../spell/types';
+import type { SpellElement, SpellForm, SpellSize } from '../spell/types';
 
 /**
  * 원소별 네온 팔레트 — GDD §7 아트 디렉션
@@ -19,6 +19,22 @@ export const ELEMENT_LABELS: Record<SpellElement, string> = {
   wind: '질풍',
   light: '광휘',
   dark: '암영',
+};
+
+/** 폼(주문 형태) 한글 라벨 — 보상 카드에서 "무슨 주문이었는지" 상기시키는 용도 */
+export const FORM_LABELS: Record<SpellForm, string> = {
+  bolt: '투사체',
+  beam: '광선',
+  wave: '파도',
+  nova: '폭발',
+  rain: '낙하',
+  wall: '벽',
+  cage: '속박',
+  orbit: '궤도',
+  summon: '소환',
+  buff: '강화',
+  zone: '장판',
+  chain: '연쇄',
 };
 
 // Phase 5 재정비 — 코어는 채도 높게(블룸이 흰 후광을 얹도록), 원소 간 색상(hue)은 멀게.
