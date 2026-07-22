@@ -8,7 +8,9 @@
  */
 
 const GEMINI_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent';
+  // 모델 핀 고정(2026-07-22): `-latest` 자동 갱신으로 요청 규격이 바뀌는 문제 방지.
+  // Gemini 3.5부터 temperature/thinkingBudget가 폐기되어 아래 요청에서도 제거했다.
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent';
 
 // 간이 레이트리밋 (IP당 분당 요청 수, 인메모리 — 무료 플랜용 최소 구현)
 const RATE_LIMIT_PER_MIN = 20;
@@ -123,9 +125,7 @@ async function bossLine(request, env, cors) {
     body: JSON.stringify({
       contents: [{ parts: [{ text: `${BOSS_LINE_PROMPT}\n${JSON.stringify(summary).slice(0, 300)}` }] }],
       generationConfig: {
-        temperature: 0.9, // 대사는 창의적으로
         maxOutputTokens: 200,
-        thinkingConfig: { thinkingBudget: 0 },
       },
     }),
   });
@@ -179,9 +179,7 @@ async function evolveName(request, env, cors) {
     body: JSON.stringify({
       contents: [{ parts: [{ text: `${EVOLVE_NAME_PROMPT}\n${JSON.stringify(req).slice(0, 200)}` }] }],
       generationConfig: {
-        temperature: 0.9,
         maxOutputTokens: 100,
-        thinkingConfig: { thinkingBudget: 0 },
       },
     }),
   });
@@ -263,12 +261,8 @@ export default {
       body: JSON.stringify({
         contents: [{ parts: [{ text: `${JUDGE_PROMPT}\n"${text}"` }] }],
         generationConfig: {
-          temperature: 0.6,
-          // gemini-flash-latest는 thinking 모델 — 추론 토큰이 출력 예산을 함께 먹는다.
-          // thinkingBudget:0이 안 먹히는 경우가 있어 출력 예산을 넉넉히 잡아 잘림을 방지.
           maxOutputTokens: 2048,
           responseMimeType: 'application/json',
-          thinkingConfig: { thinkingBudget: 0 },
         },
       }),
     });
