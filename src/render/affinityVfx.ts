@@ -17,11 +17,11 @@ export const AFFINITY_VFX_CONFIG = {
   /** 티어별 시전 플러리시: 확장 링 수 */
   ringsPerTier: [0, 1, 2, 3],
   /** 티어별 스파크 파티클 양 */
-  sparksPerTier: [0, 6, 12, 20],
+  sparksPerTier: [0, 18, 24, 36],
   /** 티어별 링 최대 반경 배율 */
-  ringRadius: [0, 42, 54, 68],
+  ringRadius: [0, 88, 100, 118],
   /** 티어 3 전용 — 잔광 엠버(원소색 불씨가 잠시 떠오름) */
-  emberCountAtMax: 8,
+  emberCountAtMax: 10,
 } as const;
 
 /** 친화 보너스(0.15/스택) → VFX 티어 (0=기본, 3=최대) */
@@ -29,4 +29,10 @@ export function affinityVfxTier(affinityBonus: number): number {
   const bonus = Number.isFinite(affinityBonus) ? Math.max(0, affinityBonus) : 0;
   const stacks = Math.round(bonus / RUN_REWARD_CONFIG.affinityBonus);
   return Math.min(AFFINITY_VFX_CONFIG.maxTier, stacks);
+}
+
+/** 자동 시전처럼 시각적 우선순위를 낮출 때 사용하는 0 하한 티어 계산. */
+export function reducedAffinityVfxTier(affinityBonus: number, reduction: number): number {
+  const safeReduction = Number.isFinite(reduction) ? Math.max(0, Math.floor(reduction)) : 0;
+  return Math.max(0, affinityVfxTier(affinityBonus) - safeReduction);
 }

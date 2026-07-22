@@ -6,7 +6,11 @@ import { createJudge } from '../spell/createJudge';
 import type { SpellElement, SpellSpec } from '../spell/types';
 import { SpellHistory } from '../spell/spellHistory';
 import type { JudgeSource } from '../spell/spellHistory';
-import { castSpell, ensureParticleTexture } from '../render/spellRenderer';
+import {
+  castSpell,
+  ensureParticleTexture,
+  playAffinityImpactFlourish,
+} from '../render/spellRenderer';
 import type { SpellImpact } from '../render/spellRenderer';
 import type {
   EliteModifier, EvolveRewardData, RewardOption, RunController,
@@ -60,7 +64,7 @@ import {
 import type { HitStopKind } from '../combat-core/combat/hitStopConfig';
 import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
 import { requestCameraShake, resetCameraShake } from '../render/cameraShake';
-import { affinityVfxTier } from '../render/affinityVfx';
+import { reducedAffinityVfxTier } from '../render/affinityVfx';
 import {
   KNOCKBACK_CONFIG,
   knockbackDistanceForForm,
@@ -2299,6 +2303,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     spec: SpellSpec,
     origin?: Phaser.Math.Vector2,
     auto = false,
+    vfxTierReduction = 0,
   ): void {
     const from = origin?.clone()
       ?? new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
@@ -2325,7 +2330,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       return;
     }
     if (spec.effect === 'control') {
-      this.castControlSpell(from, spec, auto);
+      this.castControlSpell(from, spec, auto, vfxTierReduction);
       return;
     }
     if (spec.effect === 'summon') {
@@ -2358,8 +2363,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       chainPath: chainTargets,
       allowCameraShake: !auto,
       // 친화 격상 연출(영창가 빌드 동기) — 위력·판정 불변, 순수 오버레이
-      vfxTier: affinityVfxTier(
+      vfxTier: reducedAffinityVfxTier(
         this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
+        vfxTierReduction,
       ),
       resolveBoltCollision: (fromX, fromY, toX, toY, projectileRadius) => {
         const collision = this.findBoltCollision(
@@ -2386,6 +2392,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           chainOrigins,
           auto,
           castFeedback,
+          vfxTierReduction,
         );
       },
     }, spec);
@@ -2482,7 +2489,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         if (!this.playerState.alive
           || state.phase !== 'combat'
           || state.roomIndex !== roomIndex) return;
-        this.applySpellEffect(request.spell, undefined, true);
+        this.applySpellEffect(request.spell, undefined, true, 1);
       };
       if (request.delaySeconds === 0) cast();
       else this.time.delayedCall(request.delaySeconds * 1000, cast);
@@ -2512,7 +2519,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const origin = view
           ? new Phaser.Math.Vector2(view.x, view.y)
           : new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
-        this.applySpellEffect(request.spell, origin, true);
+        this.applySpellEffect(request.spell, origin, true, 1);
         continue;
       }
       if (request.kind === 'heal') {
@@ -3093,6 +3100,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     castFeedback: CastFeedbackState = {
       resistanceNoticeShown: false,
     },
+    vfxTierReduction = 0,
   ): void {
     // Zone ticks may damage the same enemy again. Rain strikes share one cast-level
     // hit set so overlapping landing circles cannot multiply damage on one target.
@@ -3126,7 +3134,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const knockbackDistance = spec.status.includes('knockback')
         ? knockbackDistanceForForm(spec.form)
         : 0;
-      this.damageEnemy(
+      const damaged = this.damageEnemy(
         enemy,
         damageAgainst(enemy),
         spec.element_primary,
@@ -3136,6 +3144,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         hitStopKind,
         knockbackDistance,
       );
+      if (damaged && (spec.form === 'beam' || spec.form === 'wave')) {
+        const tier = reducedAffinityVfxTier(
+          this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
+          vfxTierReduction,
+        );
+        if (tier > 0) {
+          playAffinityImpactFlourish(this, enemy.x, enemy.y, spec, tier);
+        }
+      }
       this.applyOnHitStatuses(enemy, spec);
     };
     if (impact.kind === 'point') {
@@ -3314,7 +3331,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.activeSummonKnockbackDistance = 0;
   }
 
-  private castControlSpell(from: Phaser.Math.Vector2, spec: SpellSpec, auto = false): void {
+  private castControlSpell(
+    from: Phaser.Math.Vector2,
+    spec: SpellSpec,
+    auto = false,
+    vfxTierReduction = 0,
+  ): void {
     const chainTargets = spec.form === 'chain'
       ? selectChainTargets(
         from.x,
@@ -3336,8 +3358,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       chainPath: chainTargets,
       allowCameraShake: !auto,
       // 친화 격상 연출(영창가 빌드 동기) — 위력·판정 불변, 순수 오버레이
-      vfxTier: affinityVfxTier(
+      vfxTier: reducedAffinityVfxTier(
         this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
+        vfxTierReduction,
       ),
       resolveBoltCollision: (fromX, fromY, toX, toY, projectileRadius) => {
         const collision = this.findBoltCollision(
