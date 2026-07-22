@@ -11,7 +11,10 @@ assert.equal(manaDropAmount(false), 8, 'normal enemy restores 8 mana');
 assert.equal(manaDropAmount(true), 16, 'elite enemy restores 16 mana');
 assert.equal(manaDropAmount(false, 'small-splitter'), 3, 'small splitter has a reduced drop');
 assert.equal(manaDropAmount(false, 'shield-sentinel'), 11, 'shield sentinel has a larger drop');
-assert.ok(ACTIVE_MANA_CONFIG.passiveRegenPerSecond < 1, 'passive regen remains a safeguard');
+assert.ok(
+  ACTIVE_MANA_CONFIG.passiveRegenPerSecond > 0 && ACTIVE_MANA_CONFIG.passiveRegenPerSecond <= 4,
+  'passive regen is a trickle floor (>0), not a primary source (<=4) — kills still dominate',
+);
 assert.equal(manaPotionSpawnDelay(0), 10);
 assert.equal(manaPotionSpawnDelay(0.5), 12.5);
 assert.equal(manaPotionSpawnDelay(1), 15);
@@ -28,7 +31,7 @@ assert.equal(player.trySpendMana(100), true);
 player.update(1);
 assert.equal(player.mana, ACTIVE_MANA_CONFIG.passiveRegenPerSecond);
 assert.equal(player.restoreMana(manaDropAmount(false)), 8);
-assert.equal(player.mana, 8.5);
+assert.equal(player.mana, ACTIVE_MANA_CONFIG.passiveRegenPerSecond + 8);
 player.startInputLock(ACTIVE_MANA_CONFIG.castInputLockSeconds);
 assert.equal(player.cooldownRemaining, 0.4);
 

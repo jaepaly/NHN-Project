@@ -14,6 +14,7 @@ import type {
 import {
   ELEMENT_LABELS,
   ELEMENT_PALETTES,
+  FORM_LABELS,
   SIZE_SCALE,
   paletteColorToCss,
 } from '../render/palette';
@@ -99,7 +100,7 @@ import { CombatRunController } from '../combat-core/run/runController';
 import { ELITE_MODIFIERS } from '../combat-core/run/encounterConfig';
 import { drawRewardOptions } from '../combat-core/run/rewardConfig';
 import { ENGRAVE_CONFIG, EngraveManager } from '../combat-core/engrave/engraveManager';
-import { SpiritManager } from '../combat-core/spirit/spiritManager';
+import { SpiritManager, SPIRIT_CONFIG } from '../combat-core/spirit/spiritManager';
 import { SpiritOrbView } from '../combat-core/spirit/spiritOrbView';
 import { buildEvolveOption, injectEvolveReward } from '../combat-core/evolve/evolveRewards';
 import {
@@ -625,7 +626,8 @@ export class ProtoScene extends Phaser.Scene {
           id: `legacy-${entry.normalized}`,
           kind: 'engrave' as const,
           title: `유산 · ${entry.name}`,
-          description: `지난 런의 주문 (위력 ${Math.round(entry.power)}) — Lv1 각인으로 시작`
+          description: `${ELEMENT_LABELS[entry.element]} ${FORM_LABELS[entry.form]} · 위력 ${Math.round(entry.power)}`
+            + ` — 지난 런의 주문, Lv1 각인으로 시작`
             + (weakened ? `\n⚠ ${ELEMENT_LABELS[entry.element]} 약화 −${weakenPercent}%` : ''),
           element: entry.element,
           engrave: { spellKey: entry.normalized, level: 1 },
@@ -2710,8 +2712,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     const spirits = this.spiritManager.entries;
     const spiritLabel = spirits.length === 0
-      ? '정령 0/2'
-      : `정령 ${this.spiritManager.slotCount()}/2 · ${spirits
+      ? `정령 0/${SPIRIT_CONFIG.maxSlots}`
+      : `정령 ${this.spiritManager.slotCount()}/${SPIRIT_CONFIG.maxSlots} · ${spirits
         .map((e) => (e.fusedName
           ? `『${e.fusedName}』`
           : `${this.spiritName(e.role, e.element)} Lv${e.level}`))
