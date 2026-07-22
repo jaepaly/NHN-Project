@@ -12,6 +12,7 @@ import {
   zoneDurationSeconds,
 } from '../combat-core/combat/areaSpellConfig';
 import { ELEMENT_PALETTES, SIZE_SCALE } from './palette';
+import { AFFINITY_VFX_CONFIG } from './affinityVfx';
 import { requestCameraShake } from './cameraShake';
 import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
 
@@ -57,6 +58,11 @@ export interface CastContext {
   chainPath?: readonly { x: number; y: number }[];
   /** Automated spirit/engrave casts keep impact VFX but never move the camera. */
   allowCameraShake?: boolean;
+  /**
+   * 원소 친화 VFX 티어(0~3) — 친화를 쌓은 원소일수록 시전 연출이 화려해진다.
+   * 판정 영역과 무관한 오버레이만 격상한다(affinityVfx.ts). 위력·적중 불변.
+   */
+  vfxTier?: number;
   /** 렌더러가 만든 실제 형상의 적중 영역을 전투 씬에 전달 */
   onHit?: (impact: SpellImpact, spec: SpellSpec) => void;
   /** Checks a bolt's latest movement segment against live combat targets. */
@@ -86,6 +92,7 @@ export function ensureParticleTexture(scene: Phaser.Scene): void {
 export function castSpell(ctx: CastContext, spec: SpellSpec): void {
   ensureParticleTexture(ctx.scene);
   requestCastCameraShake(ctx, spec);
+  playAffinityFlourish(ctx, spec);
   switch (spec.form) {
     case 'beam':
       castBeam(ctx, spec);
@@ -730,4 +737,70 @@ function impactBurst(scene: Phaser.Scene, x: number, y: number, spec: SpellSpec)
   });
   burst.explode();
   scene.time.delayedCall(500, () => burst.destroy());
+}
+
+/**
+ * 친화 격상 플러리시 — 시전 원점에서 원소색 링·스파크·엠버가 티어만큼 쌓인다.
+ * 순수 오버레이(짧은 수명, 판정 무관). 티어 0이면 아무것도 하지 않는다.
+ */
+function playAffinityFlourish(ctx: CastContext, spec: SpellSpec): void {
+  const tier = Math.max(0, Math.min(AFFINITY_VFX_CONFIG.maxTier, Math.floor(ctx.vfxTier ?? 0)));
+  if (tier === 0) return;
+  const { scene, from } = ctx;
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+
+  // 확장 링 — 티어 수만큼, 바깥 링일수록 크고 옅게 (시간차로 물결처럼)
+  const rings = AFFINITY_VFX_CONFIG.ringsPerTier[tier];
+  const maxRadius = AFFINITY_VFX_CONFIG.ringRadius[tier];
+  for (let i = 0; i < rings; i += 1) {
+    const ring = scene.add.circle(from.x, from.y, 10, 0x000000, 0)
+      .setStrokeStyle(3 - i * 0.5, i === 0 ? pal.core : i === 1 ? pal.glow : pal.accent, 0.85)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(7);
+    scene.tweens.add({
+      targets: ring,
+      radius: maxRadius * (1 + i * 0.35),
+      alpha: 0,
+      delay: i * 70,
+      duration: 340,
+      ease: 'Cubic.easeOut',
+      onUpdate: () => ring.setRadius(ring.radius),
+      onComplete: () => ring.destroy(),
+    });
+  }
+
+  // 스파크 버스트 — 양이 티어에 비례
+  const sparks = scene.add.particles(from.x, from.y, 'particle', {
+    speed: { min: 60, max: 160 + tier * 40 },
+    scale: { start: 0.34, end: 0 },
+    lifespan: 320,
+    quantity: AFFINITY_VFX_CONFIG.sparksPerTier[tier],
+    tint: [pal.core, pal.accent],
+    blendMode: Phaser.BlendModes.ADD,
+    emitting: false,
+  }).setDepth(7);
+  sparks.explode(AFFINITY_VFX_CONFIG.sparksPerTier[tier]);
+  scene.time.delayedCall(400, () => sparks.destroy());
+
+  // 티어 3 전용 — 원소 불씨가 잠시 떠오르는 잔광 (마스터리의 표식)
+  if (tier >= AFFINITY_VFX_CONFIG.maxTier) {
+    for (let i = 0; i < AFFINITY_VFX_CONFIG.emberCountAtMax; i += 1) {
+      const angle = (Math.PI * 2 * i) / AFFINITY_VFX_CONFIG.emberCountAtMax;
+      const ember = scene.add.circle(
+        from.x + Math.cos(angle) * 26,
+        from.y + Math.sin(angle) * 26,
+        2.5,
+        pal.accent,
+        0.9,
+      ).setBlendMode(Phaser.BlendModes.ADD).setDepth(7);
+      scene.tweens.add({
+        targets: ember,
+        y: ember.y - 34 - Math.random() * 18,
+        alpha: 0,
+        duration: 520 + Math.random() * 200,
+        ease: 'Sine.easeOut',
+        onComplete: () => ember.destroy(),
+      });
+    }
+  }
 }

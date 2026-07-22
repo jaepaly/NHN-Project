@@ -59,7 +59,7 @@ function buildOption(
         id: `room-${roomIndex}-affinity-${element}`,
         kind,
         title: `${ELEMENT_LABELS[element]} 친화`,
-        description: `${ELEMENT_LABELS[element]} 원소 위력 +${affinityPercent}%`,
+        description: `${ELEMENT_LABELS[element]} 원소 위력 +${affinityPercent}% · 이펙트 격상 (3단계까지)`,
         element,
       };
     case 'swift-incant':

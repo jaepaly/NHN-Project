@@ -60,6 +60,7 @@ import {
 import type { HitStopKind } from '../combat-core/combat/hitStopConfig';
 import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
 import { requestCameraShake, resetCameraShake } from '../render/cameraShake';
+import { affinityVfxTier } from '../render/affinityVfx';
 import {
   KNOCKBACK_CONFIG,
   knockbackDistanceForForm,
@@ -2356,6 +2357,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       to,
       chainPath: chainTargets,
       allowCameraShake: !auto,
+      // 친화 격상 연출(영창가 빌드 동기) — 위력·판정 불변, 순수 오버레이
+      vfxTier: affinityVfxTier(
+        this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
+      ),
       resolveBoltCollision: (fromX, fromY, toX, toY, projectileRadius) => {
         const collision = this.findBoltCollision(
           fromX,
@@ -3330,6 +3335,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       to,
       chainPath: chainTargets,
       allowCameraShake: !auto,
+      // 친화 격상 연출(영창가 빌드 동기) — 위력·판정 불변, 순수 오버레이
+      vfxTier: affinityVfxTier(
+        this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
+      ),
       resolveBoltCollision: (fromX, fromY, toX, toY, projectileRadius) => {
         const collision = this.findBoltCollision(
           fromX,
