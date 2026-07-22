@@ -12,8 +12,9 @@ const GEMINI_URL =
   // Gemini 3.5부터 temperature/thinkingBudget가 폐기되어 아래 요청에서도 제거했다.
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent';
 
-// 간이 레이트리밋 (IP당 분당 요청 수, 인메모리 — 무료 플랜용 최소 구현)
-const RATE_LIMIT_PER_MIN = 20;
+// Gemini 3.5 Flash-Lite 무료 등급의 15 RPM에 맞춘 간이 보호막.
+// IP별·Worker 인스턴스별 인메모리 제한이므로 프로젝트 전체 쿼터를 보장하지는 않는다.
+const RATE_LIMIT_PER_MIN = 15;
 const hits = new Map();
 
 const JUDGE_PROMPT = `당신은 자유 텍스트 마법 게임의 의미 판정관이다. 반드시 JSON 하나만 출력한다.
@@ -224,7 +225,10 @@ export default {
 
     const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
     if (rateLimited(ip)) {
-      return new Response(JSON.stringify({ error: 'rate limited' }), { status: 429, headers: cors });
+      return new Response(JSON.stringify({ error: 'rate limited', limit: RATE_LIMIT_PER_MIN }), {
+        status: 429,
+        headers: { ...cors, 'Retry-After': '60' },
+      });
     }
 
     // 경로 라우팅: /boss-line 보스 대사, /evolve-name 진화·융합 작명, 그 외(/) 주문 판정
