@@ -79,7 +79,7 @@ const remoteJudge = new GeminiJudge('https://invalid.example');
 assert.equal((await remoteJudge.judge('ㅁㄴㅇㄹ')).disposition, 'fizzle');
 assert.equal(remoteJudge.lastSource, 'local');
 assert.equal(JUDGE_SCHEMA_VERSION, 2);
-assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.2');
+assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.3'); // v2.3: 소환 behavior DSL 추가 (#101)
 
 assert.equal(validateJudgement({ element_primary: 'fire', form: 'bolt' }), null,
   'v1 responses must not pass v2 validation');
