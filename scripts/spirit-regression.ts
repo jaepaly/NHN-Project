@@ -109,7 +109,8 @@ catchUp.reset();
 assert.equal(catchUp.entries.length, 0);
 assert.equal(catchUp.update(60).length, 0);
 
-// 5) 각인 2슬롯 + 공격 정령 2슬롯의 단일 대상 자동 DPS 합계는 수동의 40% 이하이다.
+// 5) 오토 게이트 (재정의, 총괄 2026-07-22) — 무투자(Lv1) = 40%, 정령 투자로 성장,
+//    풀투자(Lv3 + 신속 하한 0.5)도 수동 기본(100%)을 절대 넘지 않는다.
 for (const level of [1, 2, 3] as const) {
   const manualPower = SPIRIT_CONFIG.attackBasePower;
   const manualDps = manualPower / 3;
@@ -120,8 +121,44 @@ for (const level of [1, 2, 3] as const) {
   const spiritDps = spiritAttackPower(level)
     / spiritInterval('attack', level)
     * SPIRIT_CONFIG.maxSlots;
-  assert.ok((engraveDps + spiritDps) / manualDps <= 0.4 + Number.EPSILON);
-  assert.equal(Math.round(((engraveDps + spiritDps) / manualDps) * 100), 40);
+  // 각인 25% 고정 + 정령 15%×성장 → Lv1 40 / Lv2 43 / Lv3 46
+  const expected = Math.round(
+    (0.25 + 0.15 * SPIRIT_CONFIG.levelDpsGrowth[level - 1]) * 100,
+  );
+  assert.equal(Math.round(((engraveDps + spiritDps) / manualDps) * 100), expected);
+  if (level === 1) {
+    assert.ok((engraveDps + spiritDps) / manualDps <= 0.4 + Number.EPSILON, '무투자 = 40% 기본 게이트');
+  }
+  // 풀투자 상한: 신속 하한(0.5) = 정령 빈도 2배 — 그래도 수동 기본 미만
+  const fullInvestRatio = (engraveDps + spiritDps * 2) / manualDps;
+  assert.ok(fullInvestRatio < 1, `풀투자 오토 < 수동 기본 (Lv${level}: ${(fullInvestRatio * 100).toFixed(0)}%)`);
 }
 
-console.log('Spirit regression: 보상 공존·2슬롯·8원소 폼·유틸 펄스·자동 DPS 40% 게이트 5군 통과');
+// 6) 신속 정령 — 순수 빈도 증가(소환사 투자 축): 같은 시간에 더 많이·발당 위력 그대로
+{
+  const hasted = new SpiritManager();
+  const rate = hasted.applyHaste(0.8, 0.5);
+  assert.ok(Math.abs(rate - 0.8) < 1e-9, '1스택 = 0.8배');
+  hasted.applyReward(reward('attack-fire', 'attack', 1)); // haste 후 계약 — 첫 주기부터 신속
+  const base = new SpiritManager();
+  base.applyReward(reward('attack-fire', 'attack', 1));
+  // 긴 창(100주기) + 비율 허용오차 — 창 경계의 부동소수점 펄스 절단에 안전
+  const seconds = spiritInterval('attack', 1) * 100;
+  const sum = (pulses: readonly { kind: string; spell?: { power: number } }[]) =>
+    pulses.reduce((total, pulse) => total + (pulse.kind === 'attack' ? pulse.spell!.power : 0), 0);
+  const basePulses = base.update(seconds);
+  const hastedPulses = hasted.update(seconds);
+  assert.ok(hastedPulses.length > basePulses.length, '신속: 펄스 더 자주 (125 vs 100)');
+  const dpsGain = sum(hastedPulses) / sum(basePulses);
+  assert.ok(
+    dpsGain > 1.2 && dpsGain < 1.3,
+    `1스택 = 실질 DPS ~×1.25 (실측 ×${dpsGain.toFixed(2)})`,
+  );
+  // 하한: 여러 번 쌓아도 0.5 밑으로 안 감
+  for (let i = 0; i < 10; i += 1) hasted.applyHaste(0.8, 0.5);
+  assert.ok(Math.abs(hasted.haste - 0.5) < 1e-9, '하한 0.5 (2배 속사)');
+  hasted.reset();
+  assert.equal(hasted.haste, 1, 'reset이 haste 복구');
+}
+
+console.log('Spirit regression: 보상 공존·2슬롯·8원소 폼·유틸 펄스·투자성장 게이트·신속DPS성장 6군 통과');

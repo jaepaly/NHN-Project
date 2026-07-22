@@ -10,6 +10,13 @@ export const SPIRIT_CONFIG = {
   /** 공격 정령 한 슬롯은 수동 지속 DPS의 7.5%를 사용한다. */
   attackPowerScale: 0.15,
   attackIntervals: [6, 4.5, 4.5],
+  /**
+   * 레벨별 DPS 성장 (총괄 결정 2026-07-22) — 정령 투자가 실제 화력이 되게.
+   * Lv1은 기본 게이트(오토 40%) 그대로, 강화할수록 오토 비중이 올라간다.
+   * 풀투자(2정령 Lv3 + 신속 하한 0.5) = 각인 25% + 정령 15%×1.4×2 = 오토 ~67%
+   * — 어떤 빌드로도 수동 기본(100%)은 넘지 않는다(새 불변식, 회귀 고정).
+   */
+  levelDpsGrowth: [1, 1.2, 1.4],
   utilityIntervals: [8, 7, 6],
   healAmounts: [10, 15, 22],
   guardAmounts: [12, 18, 26],
@@ -87,6 +94,8 @@ const DEFINITIONS: readonly SpiritDefinition[] = [
 /** Phaser와 분리된 정령 슬롯·보상·자동 발동 관리자. */
 export class SpiritManager {
   private slots: SpiritState[] = [];
+  /** 신속 정령 보상 — 주기·발당 위력에 함께 곱한다(예산 중립). 1=기본, 0.5=2배 속사 하한 */
+  private hasteMultiplier = 1;
 
   injectReward(
     options: readonly RewardOption[],
@@ -117,7 +126,10 @@ export class SpiritManager {
       const expected = Math.min(SPIRIT_CONFIG.maxLevel, existing.level + 1);
       if (existing.level >= SPIRIT_CONFIG.maxLevel || option.spirit.level !== expected) return null;
       existing.level = expected as SpiritLevel;
-      existing.remainingSeconds = Math.min(existing.remainingSeconds, intervalFor(existing));
+      existing.remainingSeconds = Math.min(
+        existing.remainingSeconds,
+        intervalFor(existing) * this.hasteMultiplier,
+      );
       return snapshot(existing);
     }
 
@@ -125,7 +137,7 @@ export class SpiritManager {
     const created: SpiritState = {
       ...definition,
       level: 1,
-      remainingSeconds: intervalFor({ ...definition, level: 1 }),
+      remainingSeconds: intervalFor({ ...definition, level: 1 }) * this.hasteMultiplier,
       slotWeight: 1,
     };
     this.slots.push(created);
@@ -165,7 +177,8 @@ export class SpiritManager {
       element: first.element,
       elementSecondary: second.element,
       level: SPIRIT_CONFIG.maxLevel as SpiritLevel,
-      remainingSeconds: spiritInterval('attack', SPIRIT_CONFIG.maxLevel as SpiritLevel),
+      remainingSeconds: spiritInterval('attack', SPIRIT_CONFIG.maxLevel as SpiritLevel)
+        * this.hasteMultiplier,
       slotWeight: 2,
       fusedName: name,
     };
@@ -178,6 +191,18 @@ export class SpiritManager {
     return this.slots.reduce((sum, slot) => sum + slot.slotWeight, 0);
   }
 
+  /** 신속 정령 적용 — 현재 배율을 돌려준다 (HUD·안내용). */
+  applyHaste(scale: number, floorMultiplier: number): number {
+    const safeScale = Number.isFinite(scale) ? Math.min(1, Math.max(0.1, scale)) : 1;
+    const floor = Number.isFinite(floorMultiplier) ? Math.max(0.1, floorMultiplier) : 0.5;
+    this.hasteMultiplier = Math.max(floor, this.hasteMultiplier * safeScale);
+    return this.hasteMultiplier;
+  }
+
+  get haste(): number {
+    return this.hasteMultiplier;
+  }
+
   update(deltaSeconds: number): readonly SpiritPulseRequest[] {
     const delta = Number.isFinite(deltaSeconds) ? Math.max(0, deltaSeconds) : 0;
     if (delta === 0) return [];
@@ -185,7 +210,7 @@ export class SpiritManager {
     const requests: SpiritPulseRequest[] = [];
     for (const spirit of this.slots) {
       spirit.remainingSeconds -= delta;
-      const interval = intervalFor(spirit);
+      const interval = intervalFor(spirit) * this.hasteMultiplier;
       while (spirit.remainingSeconds <= 0) {
         requests.push(pulseFor(spirit));
         spirit.remainingSeconds += interval;
@@ -200,6 +225,7 @@ export class SpiritManager {
 
   reset(): void {
     this.slots = [];
+    this.hasteMultiplier = 1;
   }
 
   private createRewardOption(roomIndex: number, rand: () => number): RewardOption | null {
@@ -247,7 +273,8 @@ export function spiritInterval(role: SpiritRole, level: SpiritLevel): number {
 
 export function spiritAttackPower(level: SpiritLevel): number {
   const intervalRatio = spiritInterval('attack', level) / SPIRIT_CONFIG.attackIntervals[0];
-  return SPIRIT_CONFIG.attackBasePower * SPIRIT_CONFIG.attackPowerScale * intervalRatio;
+  return SPIRIT_CONFIG.attackBasePower * SPIRIT_CONFIG.attackPowerScale * intervalRatio
+    * SPIRIT_CONFIG.levelDpsGrowth[level - 1];
 }
 
 function intervalFor(spirit: Pick<SpiritState, 'role' | 'level'>): number {
@@ -255,6 +282,8 @@ function intervalFor(spirit: Pick<SpiritState, 'role' | 'level'>): number {
 }
 
 function pulseFor(spirit: SpiritState): SpiritPulseRequest {
+  // 신속 정령은 순수 빈도 증가다(위력 보정 없음) — 스택할수록 실질 DPS/HPS가 오른다.
+  // 이것이 소환사 빌드의 투자 축(총괄 결정): 정령 카드를 쌓으면 오토 비중이 40%를 넘어간다.
   if (spirit.role === 'heal') {
     return {
       kind: 'heal',

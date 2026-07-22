@@ -16,6 +16,10 @@ export const RUN_REWARD_CONFIG = {
   affinityBonus: 0.15,
   // Phase 3.5 신규 패시브 (PROGRESSION_DESIGN §1)
   swiftIncantReduction: 0.4,
+  // 신속 정령 — 순수 빈도 증가(스택당 실질 DPS ×1.25). 소환사 빌드의 투자 축.
+  // 하한 0.5 = 최대 2배 속사. 풀투자 오토 상한은 spiritManager.levelDpsGrowth 주석 참조.
+  spiritHasteScale: 0.8,
+  spiritHasteFloorMultiplier: 0.5,
   manaSurgeGainBonus: ACTIVE_MANA_CONFIG.surgeManaGainBonus,
   manaSurgePickupRadiusBonus: ACTIVE_MANA_CONFIG.surgePickupRadiusBonus,
   wardStartShield: 30,
@@ -55,7 +59,7 @@ function buildOption(
         id: `room-${roomIndex}-affinity-${element}`,
         kind,
         title: `${ELEMENT_LABELS[element]} 친화`,
-        description: `${ELEMENT_LABELS[element]} 원소 위력 +${affinityPercent}%`,
+        description: `${ELEMENT_LABELS[element]} 원소 위력 +${affinityPercent}% · 이펙트 격상 (3단계까지)`,
         element,
       };
     case 'swift-incant':
@@ -72,6 +76,13 @@ function buildOption(
         title: '마나 격류',
         description: `마나 획득 +${Math.round(RUN_REWARD_CONFIG.manaSurgeGainBonus * 100)}% · 수정 흡수 범위 +${Math.round(RUN_REWARD_CONFIG.manaSurgePickupRadiusBonus * 100)}%`,
       };
+    case 'spirit-haste':
+      return {
+        id: `room-${roomIndex}-spirit-haste`,
+        kind: 'spirit-haste',
+        title: '신속 정령',
+        description: `정령 시전 주기 -${Math.round((1 - RUN_REWARD_CONFIG.spiritHasteScale) * 100)}% (중첩 가능 · 소환사 빌드)`,
+      };
     case 'ward-start':
       return {
         id: `room-${roomIndex}-ward-start`,
@@ -85,7 +96,7 @@ function buildOption(
 /** 시드 랜덤 추첨이 뽑는 카드 풀 (PROGRESSION_DESIGN §1 — 각인·정령은 ②③에서 추가) */
 const REWARD_POOL: readonly StaticRewardKind[] = [
   // Issue #53 C prototype has no global cast cooldown, so swift-incant is a dead reward here.
-  'max-hp', 'max-mana', 'affinity', 'mana-surge', 'ward-start',
+  'max-hp', 'max-mana', 'affinity', 'mana-surge', 'ward-start', 'spirit-haste',
 ];
 
 /**
