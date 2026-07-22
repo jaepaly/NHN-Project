@@ -1,4 +1,10 @@
 import { ACTIVE_MANA_CONFIG } from '../mana/activeManaConfig';
+import type { SelfBuffKind } from './selfBuffConfig';
+
+interface ActiveBuff {
+  multiplier: number;
+  remaining: number;
+}
 
 /** R1 전투 코어의 플레이어 HP·마나·쿨다운 상태. */
 export const PLAYER_COMBAT_CONFIG = {
@@ -24,6 +30,39 @@ export class PlayerCombatState {
   mana: number = this.maxManaValue;
   shield: number = 0;
   cooldownRemaining: number = 0;
+
+  /** 자기 강화(buff) 타이머 — haste=이동, empower=주는피해, ward=받는피해 */
+  private readonly buffs = new Map<SelfBuffKind, ActiveBuff>();
+
+  private buffMultiplier(kind: SelfBuffKind, neutral = 1): number {
+    return this.buffs.get(kind)?.multiplier ?? neutral;
+  }
+
+  /** 이동속도 배율 (haste 버프). 1=평소 */
+  get moveSpeedMultiplier(): number { return this.buffMultiplier('haste'); }
+  /** 주는 피해 배율 (empower 버프). 1=평소 */
+  get damageOutMultiplier(): number { return this.buffMultiplier('empower'); }
+  /** 받는 피해 배율 (ward 버프). 1=평소, 0=무적 */
+  get damageInMultiplier(): number { return this.buffMultiplier('ward'); }
+
+  /** 자기 강화 적용 — 같은 종류는 더 강한 효과와 더 긴 시간으로 갱신한다. */
+  applyTimedBuff(kind: SelfBuffKind, multiplier: number, seconds: number): void {
+    const stronger = kind === 'ward'
+      ? Math.min(this.buffMultiplier(kind), multiplier) // ward는 낮을수록 강함
+      : Math.max(this.buffMultiplier(kind), multiplier);
+    const existing = this.buffs.get(kind);
+    this.buffs.set(kind, {
+      multiplier: stronger,
+      remaining: Math.max(existing?.remaining ?? 0, Math.max(0, seconds)),
+    });
+  }
+
+  /** HUD·연출용 활성 버프 스냅샷 */
+  activeBuffs(): { kind: SelfBuffKind; remaining: number; multiplier: number }[] {
+    return [...this.buffs.entries()].map(([kind, b]) => ({
+      kind, remaining: b.remaining, multiplier: b.multiplier,
+    }));
+  }
 
   get maxHp(): number {
     return this.maxHpValue;
@@ -60,6 +99,11 @@ export class PlayerCombatState {
   update(deltaSeconds: number): void {
     const delta = Math.max(0, deltaSeconds);
     this.cooldownRemaining = Math.max(0, this.cooldownRemaining - delta);
+
+    for (const [kind, buff] of this.buffs) {
+      buff.remaining -= delta;
+      if (buff.remaining <= 0) this.buffs.delete(kind);
+    }
 
     if (this.alive) {
       this.mana = Math.min(
@@ -124,6 +168,7 @@ export class PlayerCombatState {
     this.mana = this.maxManaValue;
     this.shield = 0;
     this.cooldownRemaining = 0;
+    this.buffs.clear();
   }
 
   increaseMaxHp(amount: number): number {
@@ -139,7 +184,8 @@ export class PlayerCombatState {
   }
 
   takeDamage(amount: number): { hpDamage: number; shieldDamage: number } {
-    const damage = Math.max(0, amount);
+    // ward 버프(무적 포함)는 받는 피해를 여기서 중앙 감쇠한다 — 모든 피격 경로에 일괄 적용.
+    const damage = Math.max(0, amount) * this.damageInMultiplier;
     const shieldDamage = Math.min(this.shield, damage);
     this.shield -= shieldDamage;
     const hpDamage = Math.min(this.hp, damage - shieldDamage);

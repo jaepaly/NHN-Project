@@ -47,7 +47,6 @@ import {
   SPELL_DAMAGE_CONFIG,
   SHOOTER_CONFIG,
   SPLITTER_CONFIG,
-  spellBuffManaFromPower,
   spellHealFromPower,
   autoSpellImpactDamageFromPower,
   spellImpactDamageFromPower,
@@ -101,6 +100,9 @@ import { ELITE_MODIFIERS } from '../combat-core/run/encounterConfig';
 import { drawRewardOptions } from '../combat-core/run/rewardConfig';
 import { ENGRAVE_CONFIG, EngraveManager } from '../combat-core/engrave/engraveManager';
 import { SpiritManager, SPIRIT_CONFIG } from '../combat-core/spirit/spiritManager';
+import {
+  resolveSelfBuff, SELF_BUFF_CONFIG, formatSelfBuffStatus, selfBuffColor,
+} from '../combat-core/player/selfBuffConfig';
 import { SpiritOrbView } from '../combat-core/spirit/spiritOrbView';
 import { buildEvolveOption, injectEvolveReward } from '../combat-core/evolve/evolveRewards';
 import {
@@ -265,6 +267,10 @@ export class ProtoScene extends Phaser.Scene {
   private playerGlowPulse: Phaser.Tweens.Tween | null = null;
   /** 피격 플래시 대상 — 적과 같은 playHitReact를 쓴다. */
   private playerBody!: Phaser.GameObjects.Image | Phaser.GameObjects.Arc;
+  /** 최근 이동 방향 — 돌진(dash) 방향 결정에 쓴다. */
+  private readonly lastMoveDir = new Phaser.Math.Vector2(0, 0);
+  /** 활성 자기 강화 오라 (한 번에 하나) */
+  private buffAura: Phaser.GameObjects.Arc | null = null;
   private playerState = new PlayerCombatState();
   private readonly spellHistory = new SpellHistory();
   private readonly engraveManager = new EngraveManager();
@@ -323,6 +329,8 @@ export class ProtoScene extends Phaser.Scene {
   private waveText!: Phaser.GameObjects.Text;
   /** 빌드 패널 — 각인·정령·주문서 보유 현황 (우하단 상시 표시) */
   private buildHudText!: Phaser.GameObjects.Text;
+  /** 활성 자기 강화 표시 (종류·세기·남은 시간) */
+  private buffStatusText!: Phaser.GameObjects.Text;
   /** 주문서 보유 수 캐시 — HUD는 매 프레임 갱신되므로 localStorage를 직접 읽지 않는다 */
   private grimoireCount = 0;
   /**
@@ -862,6 +870,13 @@ export class ProtoScene extends Phaser.Scene {
       fontSize: '11px',
       color: '#8fa4ff',
     }).setScrollFactor(0).setDepth(100);
+    // 활성 자기 강화 — 종류·세기·남은 시간 (버프 없으면 빈 줄)
+    this.buffStatusText = this.add.text(34, 179, '', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: '#c7f9e0',
+    }).setScrollFactor(0).setDepth(100);
 
     this.waveText = this.add.text(width - 34, 72, '', {
       fontFamily: 'Consolas, monospace',
@@ -903,7 +918,8 @@ export class ProtoScene extends Phaser.Scene {
     );
     if (direction.lengthSq() === 0) return;
 
-      const speed = 220;
+      this.lastMoveDir.copy(direction).normalize(); // 돌진 방향용
+      const speed = 220 * this.playerState.moveSpeedMultiplier; // haste 버프 반영
       direction.normalize().scale(speed * deltaSeconds);
       const previousX = this.player.x;
       const previousY = this.player.y;
@@ -2205,7 +2221,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const effectiveSpec: SpellSpec = {
         ...spec,
         power: Math.round(
-          spellPowerWithAffinity(historyEntry.power, affinityBonus) * escalationWeaken * diversity,
+          spellPowerWithAffinity(historyEntry.power, affinityBonus)
+          * escalationWeaken * diversity * this.playerState.damageOutMultiplier, // empower 버프
         ),
       };
       // 같은 원소를 계속 쓰면 매 시전 반복되므로 방마다 원소별 1회만 알린다
@@ -2263,8 +2280,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       return;
     }
     if (spec.effect === 'buff') {
-      const restored = this.playerState.restoreMana(spellBuffManaFromPower(spec.power));
-      this.announceSystemMessage(`강화 · MANA +${Math.round(restored)}`, '#c7a6ff');
+      this.castSelfBuff(spec);
       return;
     }
     if (spec.form === 'wall' && (spec.effect === 'damage' || spec.effect === 'control')) {
@@ -2336,6 +2352,88 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         );
       },
     }, spec);
+  }
+
+  /**
+   * 자기 강화(buff) — "이동속도 빠르게"·"무적"·"돌진" 등 자기 대상 표현을 실제 효과로.
+   * 원소·주문명·위력으로 버프 종류/세기를 정한다(selfBuffConfig, 순수 함수).
+   */
+  private castSelfBuff(spec: SpellSpec): void {
+    const outcome = resolveSelfBuff(spec.element_primary, spec.name, spec.power);
+    if (outcome.kind === 'dash') {
+      this.performDash(outcome.distance);
+      this.announceSystemMessage(
+        `${outcome.label}!`,
+        paletteColorToCss(ELEMENT_PALETTES[spec.element_primary].core),
+      );
+      return;
+    }
+    this.playerState.applyTimedBuff(outcome.buff, outcome.multiplier, outcome.seconds);
+    this.showBuffAura(outcome.color, outcome.seconds);
+    const magnitude = outcome.buff === 'ward'
+      ? (outcome.multiplier <= 0 ? '무적' : `피해 −${Math.round((1 - outcome.multiplier) * 100)}%`)
+      : `+${Math.round((outcome.multiplier - 1) * 100)}%`;
+    this.announceSystemMessage(
+      `${outcome.label} · ${magnitude} · ${outcome.seconds.toFixed(1)}s`,
+      paletteColorToCss(outcome.color),
+    );
+  }
+
+  /** 돌진 — 최근 이동 방향(없으면 가까운 적)으로 순간 이동 + 짧은 무적. */
+  private performDash(distance: number): void {
+    const dir = this.lastMoveDir.clone();
+    if (dir.lengthSq() === 0) {
+      const enemy = this.nearestEnemy();
+      if (enemy) dir.set(enemy.x - this.player.x, enemy.y - this.player.y);
+      else dir.set(0, -1);
+    }
+    if (dir.lengthSq() === 0) dir.set(0, -1);
+    dir.normalize();
+    const targetX = Phaser.Math.Clamp(
+      this.player.x + dir.x * distance,
+      this.worldBounds.left + 22,
+      this.worldBounds.right - 22,
+    );
+    const targetY = Phaser.Math.Clamp(
+      this.player.y + dir.y * distance,
+      this.worldBounds.top + 22,
+      this.worldBounds.bottom - 22,
+    );
+    // 돌진 관통감 — 짧은 무적(ward 0배)
+    this.playerState.applyTimedBuff('ward', 0, SELF_BUFF_CONFIG.dash.iframeSeconds);
+    for (let i = 1; i <= 5; i += 1) {
+      const t = i / 6;
+      spawnTrailGhost(
+        this,
+        Phaser.Math.Linear(this.player.x, targetX, t),
+        Phaser.Math.Linear(this.player.y, targetY, t),
+        12,
+        0x8fa4ff,
+        this.player.depth - 1,
+      );
+    }
+    this.tweens.add({
+      targets: this.player, x: targetX, y: targetY, duration: 120, ease: 'Quad.easeOut',
+    });
+    requestCameraShake(this, 'weak');
+  }
+
+  /** 활성 버프 오라 — 플레이어 컨테이너 뒤에 색으로 표시, 지속시간 후 소멸. */
+  private showBuffAura(color: number, seconds: number): void {
+    this.buffAura?.destroy();
+    const aura = this.add.circle(0, 0, 28, color, 0.22).setBlendMode(Phaser.BlendModes.ADD);
+    this.player.addAt(aura, 0);
+    this.buffAura = aura;
+    this.tweens.add({
+      targets: aura,
+      scale: { from: 1, to: 1.28 },
+      alpha: { from: 0.3, to: 0.12 },
+      yoyo: true, repeat: -1, duration: 650, ease: 'Sine.easeInOut',
+    });
+    this.time.delayedCall(seconds * 1000, () => {
+      if (aura.active) aura.destroy();
+      if (this.buffAura === aura) this.buffAura = null;
+    });
   }
 
   /** 마나·글로벌 쿨다운·히스토리·발동음 없이 축소 주문만 자동 시전한다. */
@@ -2664,6 +2762,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.manaText.setText(`MANA  ${mana.toString().padStart(3)} / ${this.playerState.maxMana}`);
     this.shieldText.setText(`SHIELD ${shield.toString().padStart(3)} / ${this.playerState.maxHp}`);
     this.buildHudText.setText(this.buildSummaryLines());
+    // 활성 자기 강화 — 매 프레임 남은 시간 갱신, 없으면 빈 줄
+    const buffs = this.playerState.activeBuffs();
+    if (buffs.length === 0) {
+      this.buffStatusText.setText('');
+    } else {
+      this.buffStatusText
+        .setText(buffs.map((b) => formatSelfBuffStatus(b.kind, b.multiplier, b.remaining)).join('  '))
+        .setColor(paletteColorToCss(selfBuffColor(buffs[0].kind)));
+    }
     this.drawHudBars();
     if (runState.phase === 'run-over') {
       this.waveText.setText('RUN COMPLETE');

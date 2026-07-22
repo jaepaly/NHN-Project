@@ -85,6 +85,9 @@ const BUFF_KEYWORDS = [
   // '오라'는 "다크 오라"처럼 공격 주문명에도 흔해 effect 판정을 흐린다 — 제외
   '버프', '헤이스트', '블레스', '파워업',
   'buff', 'strengthen', 'haste', 'bless', 'empower',
+  // 자기 강화 확장 — 가속·무적·돌진 (selfBuffConfig가 종류를 가른다)
+  '신속', '가속', '질주', '무적', '불멸', '철벽', '돌진', '대시', '쇄도',
+  'swift', 'speed', 'invincible', 'immortal', 'dash', 'charge', 'rush',
 ];
 const CONTROL_KEYWORDS = [
   '묶어', '멈춰', '속박', '가둬', '잠재워', '얼려',
