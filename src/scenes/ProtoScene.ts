@@ -148,6 +148,7 @@ import {
   saveGrimoire,
   specFromEntry,
 } from '../spell/grimoire';
+import { onboardingPlaceholderAt } from '../spell/onboardingExamples';
 import { CONTROL_CONFIG } from '../combat-core/control/controlConfig';
 import { EnemyControlState } from '../combat-core/control/enemyControlState';
 import { SUMMON_CONFIG, summonGroupPlan } from '../combat-core/summons/summonConfig';
@@ -360,6 +361,10 @@ export class ProtoScene extends Phaser.Scene {
   private incantChargeLabel!: HTMLElement;
   private incanting = false;
   private casting = false;
+  /** 영창 연 횟수 — 온보딩 예시 placeholder를 순환시키는 인덱스 */
+  private incantOpenCount = 0;
+  /** 첫 영창 안내를 이미 띄웠는지 (localStorage로 재플레이엔 생략) */
+  private onboardingHintShown = false;
   private timeScale = 1;
   private readonly enemyHitStop = new EnemyHitStopController<CombatEnemy>();
   private readonly enemyKnockbacks = new Map<CombatEnemy, EnemyKnockbackState>();
@@ -746,6 +751,8 @@ export class ProtoScene extends Phaser.Scene {
     this.audio.playBgm('combat');
     this.spawnWave(this.waveManager.start());
     this.announceSystemMessage(`방 ${roomIndex}`, '#8fa4ff');
+    // 첫 방 진입 시, 아직 한 번도 영창해본 적 없는 플레이어에게 조작을 안내한다.
+    if (roomIndex === 1) this.maybeShowOnboardingHint();
   }
 
   /** 마지막 방 = 보스방 관례 (rewardConfig.maxRooms 참조) */
@@ -2137,6 +2144,45 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.openIncant();
   }
 
+  /**
+   * 첫 영창 안내 — "무엇을 눌러 무엇을 입력하는가"를 처음 켠 사람에게 알린다.
+   * 한 번이라도 성공적으로 영창했으면(localStorage) 다시는 뜨지 않는다.
+   * 실패해도 이번 세션 재시작마다 다시 떠서, 놓쳐도 다음 기회에 안내한다.
+   */
+  private maybeShowOnboardingHint(): void {
+    if (this.onboardingHintShown || this.hasOnboarded()) return;
+    this.onboardingHintShown = true;
+    // "방 1" 안내가 지나간 뒤 떠서, 조작 안내가 또렷하게 남도록 한다.
+    this.time.delayedCall(900, () => {
+      if (this.hasOnboarded() || this.incanting || this.casting) return;
+      this.announceSystemMessage(
+        '⌨  ENTER 를 눌러 영창\n떠오르는 한 문장을 그대로 적으면, 그게 곧 마법이 된다',
+        '#9ecbff',
+        5200,
+      );
+    });
+  }
+
+  private static readonly ONBOARDED_KEY = 'incant:onboarded:v1';
+
+  private hasOnboarded(): boolean {
+    try {
+      if (typeof localStorage === 'undefined') return false;
+      return localStorage.getItem(ProtoScene.ONBOARDED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  private markOnboarded(): void {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      localStorage.setItem(ProtoScene.ONBOARDED_KEY, '1');
+    } catch {
+      /* localStorage 불가(사생활 모드 등) — 안내가 매번 떠도 치명적이지 않다 */
+    }
+  }
+
   private openIncant(): void {
     this.audio.playSfx('incant-enter');
     this.incanting = true;
@@ -2147,6 +2193,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.incantWrap.setAttribute('aria-hidden', 'false');
     this.incantBar.disabled = false;
     this.incantBar.value = '';
+    // 온보딩: 열 때마다 예시 문장을 순환해 "이렇게 쓰면 된다"를 보여준다
+    this.incantBar.placeholder = onboardingPlaceholderAt(this.incantOpenCount);
+    this.incantOpenCount += 1;
     this.incantState.textContent = '시간 흐름 10%';
     this.incantHint.textContent = 'Enter 발동 · Esc 취소';
     this.updateIncantCharge();
@@ -2230,6 +2279,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         this.announceSystemMessage('마나 부족');
         return;
       }
+
+      // 첫 성공 영창 — 이후 온보딩 안내는 다시 뜨지 않는다.
+      this.markOnboarded();
 
       const historyEntry = this.spellHistory.record({
         rawText: text,
