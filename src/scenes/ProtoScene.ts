@@ -65,6 +65,7 @@ import type { HitStopKind } from '../combat-core/combat/hitStopConfig';
 import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
 import { requestCameraShake, resetCameraShake } from '../render/cameraShake';
 import { reducedAffinityVfxTier } from '../render/affinityVfx';
+import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import {
   KNOCKBACK_CONFIG,
   knockbackDistanceForForm,
@@ -2325,9 +2326,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 온보딩: 열 때마다 예시 문장을 순환해 "이렇게 쓰면 된다"를 보여준다
     this.incantBar.placeholder = onboardingPlaceholderAt(this.incantOpenCount);
     this.incantOpenCount += 1;
-    // 영창은 마나 예산 결정의 순간 — 보유량을 창 안에서 바로 보이게 한다
+    // 영창은 마나 예산 결정의 순간 — 보유량과 요금표를 창 안에서 바로 보이게 한다.
+    // 요금표는 비용 공식(max(5, power×0.6))의 체감 구간 — 말의 크기를 고르는 기준.
     this.incantState.textContent = `시간 흐름 10% · 마나 ${Math.floor(this.playerState.mana)}`;
-    this.incantHint.textContent = 'Enter 발동 · Esc 취소';
+    this.incantHint.textContent = '속삭임 ~10 · 영창 ~25 · 외침 40+ — Enter 발동 · Esc 취소';
     this.updateIncantCharge();
     this.focusIncantBar();
   }
@@ -2455,11 +2457,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
 
       const spec = judgement.spell;
-      if (!this.playerState.trySpendMana(spec.cost)) {
+      // 감쇠 시전 — 마나 부족은 거부가 아니라 잦아든 주문 (바닥 미만일 때만 거부)
+      const castPlan = degradedCastPlan(spec.cost, this.playerState.mana);
+      if (!castPlan) {
         this.audio.playSfx('fizzle');
         this.announceManaShortage(spec.cost);
         return;
       }
+      this.playerState.trySpendMana(castPlan.spend);
 
       // 첫 성공 영창 — 이후 온보딩 안내는 다시 뜨지 않는다.
       this.markOnboarded();
@@ -2488,9 +2493,17 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ...spec,
         power: Math.round(
           spellPowerWithAffinity(historyEntry.power, affinityBonus)
-          * escalationWeaken * diversity * this.playerState.damageOutMultiplier, // empower 버프
+          * escalationWeaken * diversity * this.playerState.damageOutMultiplier // empower 버프
+          * castPlan.ratio, // 감쇠 시전 — 모자란 마나만큼 잦아든다
         ),
       };
+      if (castPlan.ratio < 1) {
+        this.announceSystemMessage(
+          `마나가 모자라 주문이 잦아들었다 · 위력 ${Math.round(castPlan.ratio * 100)}%`,
+          '#ffd166',
+          2600,
+        );
+      }
       // 같은 원소를 계속 쓰면 매 시전 반복되므로 방마다 원소별 1회만 알린다
       if (escalationWeaken < 1 && !this.escalationNoticed.has(spec.element_primary)) {
         this.escalationNoticed.add(spec.element_primary);
