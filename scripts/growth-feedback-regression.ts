@@ -32,7 +32,7 @@ assert.equal(
 );
 assert.equal(
   gainLabelFor(option({ kind: 'swift-incant' })).text,
-  `영창 쿨다운 -${RUN_REWARD_CONFIG.swiftIncantReduction}s`,
+  `영창 딜레이 -${RUN_REWARD_CONFIG.swiftIncantLockReduction}s`,
   '쿨다운 감소',
 );
 assert.equal(

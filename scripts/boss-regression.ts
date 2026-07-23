@@ -69,7 +69,7 @@ import { BossPatternController } from '../src/combat-core/boss/bossPatternContro
   player.takeDamage(50);
   player.addShield(15);
   player.trySpendMana(30);
-  player.startGlobalCooldown();
+  player.startCastLock();
 
   player.reset();
   assert.equal(player.maxHp, PLAYER_COMBAT_CONFIG.maxHp);

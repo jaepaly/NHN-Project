@@ -13,15 +13,14 @@ export const PLAYER_COMBAT_CONFIG = {
   // 임시값: 플레이테스트와 팀 논의 후 조정한다 (GDD에는 초당 n으로 표기).
   // Issue #53 C prototype: passive recovery is only a soft-lock safeguard.
   manaRegenPerSecond: ACTIVE_MANA_CONFIG.passiveRegenPerSecond,
-  globalCooldownSeconds: 3,
-  /** 신속 영창을 아무리 쌓아도 이 밑으로는 안 내려감 (PROGRESSION_DESIGN §1) */
-  globalCooldownFloorSeconds: 1,
+  /** 신속 영창을 아무리 쌓아도 입력락이 이 밑으로는 안 내려감 (GATE_DECISION_0728 #67) */
+  castInputLockFloorSeconds: 0.15,
 } as const;
 
 export class PlayerCombatState {
   private maxHpValue: number = PLAYER_COMBAT_CONFIG.maxHp;
   private maxManaValue: number = PLAYER_COMBAT_CONFIG.maxMana;
-  private cooldownReductionSeconds = 0;
+  private castLockReductionSeconds = 0;
   private manaRegenMultiplierValue = 1;
   private manaGainMultiplierValue = 1;
   private manaPickupRadiusMultiplierValue = 1;
@@ -83,11 +82,11 @@ export class PlayerCombatState {
     return this.maxManaValue;
   }
 
-  /** 신속 영창 반영 후 실제 글로벌 쿨다운 (하한 적용) */
-  get globalCooldownSeconds(): number {
+  /** 신속 영창 반영 후 실제 영창 입력락 (하한 적용) — C 경제엔 글로벌 쿨다운이 없다 */
+  get castInputLockSeconds(): number {
     return Math.max(
-      PLAYER_COMBAT_CONFIG.globalCooldownFloorSeconds,
-      PLAYER_COMBAT_CONFIG.globalCooldownSeconds - this.cooldownReductionSeconds,
+      PLAYER_COMBAT_CONFIG.castInputLockFloorSeconds,
+      ACTIVE_MANA_CONFIG.castInputLockSeconds - this.castLockReductionSeconds,
     );
   }
 
@@ -134,18 +133,19 @@ export class PlayerCombatState {
     return true;
   }
 
-  startGlobalCooldown(): void {
-    this.cooldownRemaining = this.globalCooldownSeconds;
+  /** 시전 후 입력락 시작 — 신속 영창 감소분이 반영된 실제 값 사용 */
+  startCastLock(): void {
+    this.startInputLock(this.castInputLockSeconds);
   }
 
   startInputLock(seconds: number): void {
     this.cooldownRemaining = Math.max(this.cooldownRemaining, safePositiveAmount(seconds));
   }
 
-  /** 신속 영창 보상 — 글로벌 쿨다운 감소 (하한은 globalCooldownSeconds getter가 보장) */
-  addCooldownReduction(seconds: number): number {
+  /** 신속 영창 보상 — 영창 입력락 감소 (하한은 castInputLockSeconds getter가 보장) */
+  addCastLockReduction(seconds: number): number {
     const amount = safePositiveAmount(seconds);
-    this.cooldownReductionSeconds += amount;
+    this.castLockReductionSeconds += amount;
     return amount;
   }
 
@@ -172,7 +172,7 @@ export class PlayerCombatState {
   reset(): void {
     this.maxHpValue = PLAYER_COMBAT_CONFIG.maxHp;
     this.maxManaValue = PLAYER_COMBAT_CONFIG.maxMana;
-    this.cooldownReductionSeconds = 0;
+    this.castLockReductionSeconds = 0;
     this.manaRegenMultiplierValue = 1;
     this.manaGainMultiplierValue = 1;
     this.manaPickupRadiusMultiplierValue = 1;
