@@ -87,7 +87,7 @@ import {
   orbitPoint,
   repeatHitReady,
   sweepIntersectsPolyline,
-  wallArcPoints,
+  shapedWallPoints,
   wallDurationSeconds,
 } from '../combat-core/combat/persistentFormConfig';
 import type { FormPoint } from '../combat-core/combat/persistentFormConfig';
@@ -3128,11 +3128,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         WALL_CONFIG.targetingHalfWidth,
         this.enemies.filter((enemy) => enemy.alive),
       ) ?? this.nearestEnemy();
-    const points = wallArcPoints(
+    // 형상 DSL(L3 확장) — LLM이 모양을 설계하면 그대로, 없으면 기존 원호
+    const points = shapedWallPoints(
       from,
       target ? { x: target.x, y: target.y } : null,
       spec.size,
       options?.rangeScale,
+      spec.shape,
     );
     const palette = ELEMENT_PALETTES[spec.element_primary];
     const vectors = points.map((point) => new Phaser.Math.Vector2(point.x, point.y));

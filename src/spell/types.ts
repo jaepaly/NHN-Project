@@ -4,6 +4,7 @@
  */
 
 import type { SummonBehavior } from './summonBehavior';
+import type { SpellShape } from './spellShape';
 
 export const ELEMENTS = [
   'fire', 'water', 'lightning', 'ice', 'earth', 'wind', 'light', 'dark',
@@ -64,6 +65,8 @@ export interface SpellSpec {
    * validateSpec이 validateSummonBehavior로 검증한 것만 통과한다.
    */
   behavior?: SummonBehavior;
+  /** L3 확장: LLM이 설계한 형상(벽 등). 없으면 형태별 기본형 */
+  shape?: SpellShape;
 }
 
 export type SpellRejectionReason = 'nonsense' | 'unsafe';
