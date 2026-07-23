@@ -33,10 +33,40 @@ const h = new SpellHistory();
 h.record({ rawText: 'a', spell: spell({ name: '약불', element_primary: 'fire', power: 30 }), source: 'gemini', castAt: now() });
 h.record({ rawText: 'b', spell: spell({ name: '강불', element_primary: 'fire', power: 90 }), source: 'gemini', castAt: now() });
 h.record({ rawText: 'c', spell: spell({ name: '물', element_primary: 'water', power: 50 }), source: 'gemini', castAt: now() });
-const o1 = summarizeRun(h, 'win');
+const o1 = summarizeRun(h, 'win', 4321);
 assert.equal(o1.dominantElement, 'fire', 'fire 2 > water 1');
 assert.equal(o1.topSpellName, '강불');
 assert.equal(o1.topSpellPower, 90);
+assert.deepEqual(o1.curseBehavior, {
+  movementDistance: 4321,
+  manualCastCount: 3,
+  lightFireCastCount: 2,
+});
+
+const sequenceAwareHistory = new SpellHistory();
+sequenceAwareHistory.recordSequence({
+  rawText: '빛과 번개로 돌진한다',
+  name: '빛과 번개로 돌진한다',
+  elements: ['light', 'lightning'],
+  power: 70,
+  cost: 42,
+  source: 'local',
+  castAt: 2000,
+});
+sequenceAwareHistory.recordSequence({
+  rawText: '허공답보',
+  name: '허공답보',
+  elements: [],
+  power: 20,
+  cost: 12,
+  source: 'local',
+  castAt: 3000,
+});
+assert.deepEqual(summarizeRun(sequenceAwareHistory, 'win').curseBehavior, {
+  movementDistance: 0,
+  manualCastCount: 2,
+  lightFireCastCount: 1,
+}, 'sequence plans count once while any matching behavior element qualifies the cast');
 
 // 2) updateRunMemory — 승패 카운트·favorite·top 유지·recent 누적
 let m: RunMemory = { ...EMPTY_RUN_MEMORY };

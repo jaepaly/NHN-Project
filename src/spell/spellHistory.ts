@@ -58,6 +58,8 @@ export interface SpellCastRecord {
   rawText: string;
   normalized: string;
   name: string;
+  /** 한 번의 수동 영창에서 실제 사용하도록 판정된 고유 원소 집합. */
+  elements: readonly SpellElement[];
   basePower: number;
   power: number;
   cost: number;
@@ -79,6 +81,8 @@ export interface SpellBehaviorUsageEntry {
 export interface RecordSequenceInput {
   rawText: string;
   name: string;
+  /** plan 내부 behavior 전체의 고유 원소 집합. */
+  elements: readonly SpellElement[];
   power: number;
   cost: number;
   source: JudgeSource;
@@ -165,6 +169,10 @@ export class SpellHistory {
       rawText: entry.rawText,
       normalized: entry.normalized,
       name: entry.name,
+      elements: uniqueElements([
+        entry.elementPrimary,
+        ...(entry.elementSecondary ? [entry.elementSecondary] : []),
+      ]),
       basePower: entry.basePower,
       power: entry.power,
       cost: entry.cost,
@@ -182,6 +190,7 @@ export class SpellHistory {
       rawText: input.rawText,
       normalized: normalizeSpellText(input.rawText),
       name: input.name,
+      elements: uniqueElements(input.elements),
       basePower: input.power,
       power: Math.round(input.power * multiplier),
       cost: input.cost,
@@ -275,6 +284,10 @@ export class SpellHistory {
     this.casts = [];
     this.behaviorUsages = [];
   }
+}
+
+function uniqueElements(elements: readonly SpellElement[]): SpellElement[] {
+  return [...new Set(elements)];
 }
 
 function toBehaviorUsage(spell: SpellSpec, castAt: number): SpellBehaviorUsageEntry {

@@ -4,6 +4,7 @@ import { SpellHistory } from '../src/spell/spellHistory';
 import { SEQUENCE_FIXTURE_CATALOG } from '../src/spell/sequenceFixtureCatalog';
 import { sequenceEngraveCandidate } from '../src/spell/sequenceEngraveCandidate';
 import {
+  behaviorUsesAnyElement,
   debugSpellPlan,
   maxSequenceDurationMs,
   resolveSpellPlan,
@@ -168,6 +169,35 @@ assert.deepEqual(retreatPlan.sequences[0].behaviors[0], {
   element: 'wind',
   distance: 180,
 });
+assert.equal(
+  behaviorUsesAnyElement(retreatPlan.sequences[0].behaviors[0], ['wind']),
+  true,
+  'elemental move behaviors qualify for element-affinity curse effects',
+);
+assert.equal(
+  behaviorUsesAnyElement(retreatPlan.sequences[0].behaviors[0], ['light', 'fire']),
+  false,
+  'unrelated move elements do not trigger another affinity',
+);
+assert.equal(
+  behaviorUsesAnyElement({ type: 'wait' }, ['wind']),
+  false,
+  'wait behaviors never carry an elemental affinity',
+);
+
+const rainbowSpear = resolveSpellPlan(debugSpellPlan('#seq rainbow-spear')!);
+const rainbowBehavior = rainbowSpear.sequences[0].behaviors[0];
+assert.equal(rainbowBehavior.type, 'form');
+assert.equal(
+  behaviorUsesAnyElement(rainbowBehavior, ['lightning']),
+  true,
+  'secondary form elements qualify for element-affinity curse effects',
+);
+assert.equal(
+  behaviorUsesAnyElement(rainbowBehavior, ['light']),
+  true,
+  'primary form elements continue to qualify for element-affinity curse effects',
+);
 
 const sequenceHistory = new SpellHistory();
 const phoenix = resolveSpellPlan(debugSpellPlan('불사조의 낙화')!);
@@ -179,6 +209,7 @@ const phoenixBehaviors = phoenix.sequences.flatMap((sequence) => (
 sequenceHistory.recordSequence({
   rawText: '불사조의 낙화',
   name: phoenix.name,
+  elements: ['fire', 'wind'],
   power: phoenix.power,
   cost: phoenix.manaCost,
   source: 'local',
@@ -196,6 +227,7 @@ const movementOnly = resolveSpellPlan(debugSpellPlan('허공답보')!);
 sequenceHistory.recordSequence({
   rawText: '허공답보',
   name: movementOnly.name,
+  elements: [],
   power: movementOnly.power,
   cost: movementOnly.manaCost,
   source: 'local',

@@ -28,6 +28,11 @@ assert.deepEqual(
 assert.deepEqual(crossedBossManaThresholds(9, 0, 100), [], 'no threshold remains below 10%');
 
 const player = new PlayerCombatState();
+assert.equal(player.drainMana(7), 7, '환경 마나 감소량 반환');
+assert.equal(player.mana, 93, '환경 마나 감소 적용');
+assert.equal(player.drainMana(999), 93, '마나 0 하한');
+assert.equal(player.mana, 0);
+player.restoreMana(100);
 assert.equal(player.trySpendMana(100), true);
 player.update(1);
 assert.equal(player.mana, ACTIVE_MANA_CONFIG.passiveRegenPerSecond);

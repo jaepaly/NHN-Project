@@ -104,7 +104,17 @@ import {
 } from '../combat-core/waves/waveManager';
 import type { WaveDefinition } from '../combat-core/waves/waveManager';
 import { CombatRunController } from '../combat-core/run/runController';
-import { ELITE_MODIFIERS } from '../combat-core/run/encounterConfig';
+import { ELITE_MODIFIERS, RUN_ENCOUNTERS } from '../combat-core/run/encounterConfig';
+import {
+  createRoomCursePlan,
+  curseForRoom,
+  ROOM_CURSE_CONFIG,
+  silenceManaDrainPerSecond,
+} from '../combat-core/run/roomCurse';
+import type {
+  RoomCurseAssignment,
+  RoomCursePlan,
+} from '../combat-core/run/roomCurse';
 import { drawRewardOptions, RUN_REWARD_CONFIG } from '../combat-core/run/rewardConfig';
 import { ENGRAVE_CONFIG, EngraveManager } from '../combat-core/engrave/engraveManager';
 import { SpiritManager, SPIRIT_CONFIG } from '../combat-core/spirit/spiritManager';
@@ -162,6 +172,8 @@ import { SUMMON_CONFIG, summonGroupPlan } from '../combat-core/summons/summonCon
 import { SummonedOrb } from '../combat-core/summons/summonedOrb';
 import { GameAudio } from '../audio/gameAudio';
 import {
+  behaviorElements,
+  behaviorUsesAnyElement,
   debugSpellPlan,
   resolveSpellPlan,
   SEQUENCE_PLAN_LIMITS,
@@ -174,6 +186,9 @@ import type {
   SpellPlan,
 } from '../spell/sequencePlan';
 import { sequenceEngraveCandidate } from '../spell/sequenceEngraveCandidate';
+import { SilenceCurseField } from '../render/silenceCurseField';
+import { BlackoutCurseField } from '../render/blackoutCurseField';
+import { showRoomCurseBanner } from '../render/roomCurseBanner';
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;
@@ -407,6 +422,16 @@ export class ProtoScene extends Phaser.Scene {
    * 시전마다 loadRunMemory()로 localStorage를 읽지 않도록 런 시작에 1회만 계산한다.
    */
   private runEscalation: RunEscalationProfile = runEscalationProfile(EMPTY_RUN_MEMORY);
+  /** 격상 Tier 3부터 스테이지별 일부 방에 배정되는 결정적 저주 계획. */
+  private roomCursePlan: RoomCursePlan = {
+    selectedKinds: {},
+    curseWeights: { silence: 0.5, blackout: 0.5 },
+    assignments: [],
+  };
+  private activeRoomCurse: RoomCurseAssignment | null = null;
+  private silenceCurseField: SilenceCurseField | null = null;
+  private blackoutCurseField: BlackoutCurseField | null = null;
+  private activeCurseBanner: Phaser.GameObjects.Container | null = null;
   /** 약화 안내를 이미 띄운 원소 — 방마다 비워 같은 경고가 시전마다 반복되지 않게 한다 */
   private readonly escalationNoticed = new Set<SpellElement>();
   private waveManager = new WaveManager();
@@ -567,6 +592,7 @@ export class ProtoScene extends Phaser.Scene {
     }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
     this.createHud(width, height);
     this.setupRunFlow();
+    this.prepareRunEscalation();
     this.startRoom(this.combatRunController.state.roomIndex);
     this.updateStatusText();
 
@@ -587,6 +613,7 @@ export class ProtoScene extends Phaser.Scene {
       this.playerState.update(d);
       this.basicAttackCooldownRemaining = Math.max(0, this.basicAttackCooldownRemaining - d);
       this.updatePlayerMovement(delta / 1000);
+      this.updateRoomCurse(delta / 1000, d);
       this.updatePlayerAura(d);
       this.updateEnemyControls(d);
       this.updateEnemies(d);
@@ -729,11 +756,6 @@ export class ProtoScene extends Phaser.Scene {
    * 이전 런의 주문 중 하나를 Lv1 각인으로 장착하고 출발한다. 주문서가 비면 조용히 넘어간다.
    */
   private async offerLegacyEngrave(): Promise<void> {
-    // 런 시작 시점에 격상 프로필을 확정한다 (이후 시전 경로는 이 캐시만 읽는다)
-    const memory = loadRunMemory();
-    this.runEscalation = runEscalationProfile(memory);
-    this.escalationNoticed.clear();
-
     const book = loadGrimoire();
     this.grimoireCount = book.length; // 런 시작마다 1회 — HUD 캐시 갱신
     const offers = offerEntries(book);
@@ -772,11 +794,17 @@ export class ProtoScene extends Phaser.Scene {
       }
     } finally {
       this.legacySelecting = false;
+      if (this.activeRoomCurse && !this.activeCurseBanner?.active) {
+        this.scheduleRoomCurseBanner(this.activeRoomCurse);
+      }
     }
   }
 
   private persistRunMemory(result: 'win' | 'lose'): void {
-    saveRunMemory(updateRunMemory(loadRunMemory(), summarizeRun(this.spellHistory, result)));
+    saveRunMemory(updateRunMemory(
+      loadRunMemory(),
+      summarizeRun(this.spellHistory, result, this.runMovementDistance),
+    ));
     // 주문서 유산 기록 — 런을 클리어(승리)했을 때만. 큰 주문 하나 쓰고 자살해 유산을 파밍하는
     // 치즈를 막고, 유산 각인을 "클리어 보상"으로 만든다. (보스 기억은 위에서 승패 무관 유지)
     if (result !== 'win') return;
@@ -826,9 +854,29 @@ export class ProtoScene extends Phaser.Scene {
     this.spiritOrbitAngle = -Math.PI / 2;
     this.engraveRewardRand = createRunRandom(Date.now());
     this.playerState.reset();
+    this.runMovementDistance = 0;
+    this.prepareRunEscalation();
     this.combatRunController.reset();
     // 새 런에도 유산 선택 — 직전 런에서 기록된 주문이 곧바로 후보가 된다
     void this.offerLegacyEngrave();
+  }
+
+  /** 런 시작 시 한 번만 격상과 저주방 계획을 확정한다. */
+  private prepareRunEscalation(): void {
+    const memory = loadRunMemory();
+    this.runEscalation = runEscalationProfile(memory);
+    this.escalationNoticed.clear();
+    // 승패 누계 기반 시드: 같은 런 기억에서는 같은 방을 뽑아 재현 가능하고,
+    // 런이 끝나 기억이 갱신되면 다음 계획이 달라진다.
+    const curseSeed = Math.imul(memory.clears + 1, 0x9e3779b1)
+      ^ Math.imul(memory.deaths + 1, 0x85ebca6b);
+    this.roomCursePlan = createRoomCursePlan(
+      RUN_ENCOUNTERS,
+      this.runEscalation.gimmicksUnlocked,
+      createRunRandom(curseSeed),
+      undefined,
+      memory.lastCurseBehavior,
+    );
   }
 
   private startRoom(roomIndex: number): void {
@@ -848,6 +896,7 @@ export class ProtoScene extends Phaser.Scene {
     this.basicAttackCooldownRemaining = 0;
     this.player.setPosition(this.worldBounds.centerX, this.worldBounds.centerY);
     this.cameras.main.centerOn(this.player.x, this.player.y);
+    this.activateRoomCurse(roomIndex);
     if (this.isBossEncounter()) {
       this.startBossRoom(encounter.encounterKind === 'memory-boss');
       return;
@@ -959,7 +1008,84 @@ export class ProtoScene extends Phaser.Scene {
     this.hazardDecorations = [];
     this.clearManaCrystals();
     this.clearManaPotion();
+    this.clearRoomCurse();
     this.clearTransientCombatObjects();
+  }
+
+  private activateRoomCurse(roomIndex: number): void {
+    const assignment = curseForRoom(this.roomCursePlan, roomIndex);
+    this.activeRoomCurse = assignment;
+    if (!assignment) return;
+
+    if (assignment.kind === 'silence') {
+      this.silenceCurseField = new SilenceCurseField(
+        this,
+        this.worldBounds.centerX,
+        this.worldBounds.centerY,
+        this.worldBounds,
+      );
+    } else if (assignment.kind === 'blackout') {
+      this.blackoutCurseField = new BlackoutCurseField(
+        this,
+        this.worldBounds,
+        this.player.x,
+        this.player.y,
+      );
+    }
+    this.scheduleRoomCurseBanner(assignment);
+  }
+
+  /** 유산 선택 UI가 먼저 뜬 경우, 선택이 끝난 뒤 저주 규칙을 반드시 한 번 안내한다. */
+  private scheduleRoomCurseBanner(assignment: RoomCurseAssignment): void {
+    this.time.delayedCall(250, () => {
+      if (this.activeRoomCurse !== assignment) return;
+      if (this.legacySelecting) return;
+      if (!this.isCombatActive()) return;
+      if (assignment.kind === 'silence') {
+        const drainPercent = Math.round(
+          ROOM_CURSE_CONFIG.silenceManaDrainRatio * 100,
+        );
+        this.activeCurseBanner = showRoomCurseBanner(this, {
+          title: '저주: 침묵',
+          subtitle: '공허가 전장을 잠식했습니다',
+          rule: `중앙 결계 밖: 영창 불가 · 최대 마나 ${drainPercent}%/초 감소`,
+          color: 0xdb73ff,
+        });
+      } else if (assignment.kind === 'blackout') {
+        this.activeCurseBanner = showRoomCurseBanner(this, {
+          title: '저주: 암전',
+          subtitle: '어둠이 시야를 삼킵니다',
+          rule: '빛/불꽃 기술을 쓰면 밝아집니다',
+          color: 0x8d7dff,
+        });
+      }
+    });
+  }
+
+  private updateRoomCurse(realDeltaSeconds: number, combatDeltaSeconds: number): void {
+    const field = this.silenceCurseField;
+    field?.update(realDeltaSeconds, this.player.x, this.player.y);
+    this.blackoutCurseField?.update(combatDeltaSeconds, this.player.x, this.player.y);
+    if (
+      field
+      && this.activeRoomCurse?.kind === 'silence'
+      && !field.contains(this.player.x, this.player.y)
+    ) {
+      this.playerState.drainMana(
+        silenceManaDrainPerSecond(this.playerState.maxMana)
+          * realDeltaSeconds,
+      );
+    }
+  }
+
+  private clearRoomCurse(): void {
+    if (this.activeCurseBanner?.active) this.activeCurseBanner.destroy(true);
+    this.activeCurseBanner = null;
+    this.silenceCurseField?.destroy();
+    this.silenceCurseField = null;
+    this.blackoutCurseField?.destroy();
+    this.blackoutCurseField = null;
+    this.activeRoomCurse = null;
   }
 
   private clearTransientCombatObjects(): void {
@@ -1062,7 +1188,8 @@ export class ProtoScene extends Phaser.Scene {
 
   /** Phase 5 트레일 — 이동 중 잔상 스폰 간격 타이머 (Track C 아트 디렉션). */
   private playerTrailCooldown = 0;
-
+  /** 다음 런 저주 후보 가중치에 사용할 실제 WASD 이동 거리. */
+  private runMovementDistance = 0;
   private updatePlayerMovement(deltaSeconds: number): void {
     if (this.incanting || this.casting || !this.playerState.alive) return;
 
@@ -1090,7 +1217,12 @@ export class ProtoScene extends Phaser.Scene {
 
       const actuallyMoved = this.player.x !== previousX || this.player.y !== previousY;
       if (!actuallyMoved) return;
-
+      this.runMovementDistance += Phaser.Math.Distance.Between(
+        previousX,
+        previousY,
+        this.player.x,
+        this.player.y,
+      );
       // 이동 중 잔상 트레일 (네온 잔광). 스폰 간격으로 오브젝트 폭증을 억제한다.
     this.playerTrailCooldown -= deltaSeconds;
     if (this.playerTrailCooldown <= 0) {
@@ -1697,6 +1829,11 @@ if (applied) this.playPlayerHit(
     }
   }
 
+  /** 암전에서도 회피에 필수인 위험 예고만 어둠 위에 남긴다. */
+  private dangerTelegraphDepth(): number {
+    return this.blackoutCurseField ? 10 : -1;
+  }
+
   private showBossVolleyTelegraph(boss: BossEnemy, projectileCount: number): void {
     this.bossVolleyTelegraph?.destroy();
     const offset = Math.random() * Math.PI * 2;
@@ -1704,7 +1841,9 @@ if (applied) this.playPlayerHit(
       { length: projectileCount },
       (_, index) => offset + (Math.PI * 2 * index) / projectileCount,
     );
-    const warning = this.add.graphics().setDepth(-1).setBlendMode(Phaser.BlendModes.ADD);
+    const warning = this.add.graphics()
+      .setDepth(this.dangerTelegraphDepth())
+      .setBlendMode(Phaser.BlendModes.ADD);
     warning.lineStyle(3, 0xff8f70, 0.72);
     for (const angle of this.bossVolleyAngles) {
       const direction = new Phaser.Math.Vector2(Math.cos(angle), Math.sin(angle));
@@ -1794,7 +1933,7 @@ if (applied) this.playPlayerHit(
         arrowRight.x,
         arrowRight.y,
       )
-      .setDepth(-1);
+      .setDepth(this.dangerTelegraphDepth());
     this.tweens.add({
       targets: this.bossChargeTelegraph,
       alpha: { from: 0.5, to: 1 },
@@ -1889,7 +2028,7 @@ if (applied) this.playPlayerHit(
     const outerRing = this.add.circle(0, 0, radius, 0xff5370, 0.06)
       .setStrokeStyle(4, 0xff5370, 0.92)
       .setBlendMode(Phaser.BlendModes.ADD);
-    const warning = this.add.container(x, y, [outerRing]).setDepth(-1);
+    const warning = this.add.container(x, y, [outerRing]).setDepth(this.dangerTelegraphDepth());
     this.bossHazardWarnings.push(warning);
     this.tweens.add({
       targets: outerRing,
@@ -2263,6 +2402,18 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceSystemMessage('행동 불가');
       return;
     }
+    if (
+      this.activeRoomCurse?.kind === 'silence'
+      && this.silenceCurseField
+      && !this.silenceCurseField.contains(this.player.x, this.player.y)
+    ) {
+      this.audio.playSfx('fizzle');
+      this.announceSystemMessage(
+        '침묵 · 중앙의 결계 안에서만 영창할 수 있습니다',
+        '#d0a8ff',
+      );
+      return;
+    }
     if (this.playerState.cooldownRemaining > 0) {
       this.announceSystemMessage(
         `쿨다운 ${this.playerState.cooldownRemaining.toFixed(1)}초`,
@@ -2425,6 +2576,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const sequenceHistoryEntry = this.spellHistory.recordSequence({
       rawText: text,
       name: plan.name,
+      elements: [...new Set(plan.sequences.flatMap((sequence) => (
+        sequence.behaviors.flatMap(behaviorElements)
+      )))],
       power: plan.power,
       cost: plan.manaCost,
       source,
@@ -2593,6 +2747,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         );
       }
 
+      if (
+        this.activeRoomCurse?.kind === 'blackout'
+        && this.blackoutCurseField
+        && (effectiveSpec.element_primary === 'light' || effectiveSpec.element_primary === 'fire')
+      ) {
+        this.blackoutCurseField.illuminate();
+      }
       this.audio.playCast(effectiveSpec.element_primary);
       this.applySpellPalette(effectiveSpec);
       this.announceSpell(effectiveSpec);
@@ -2679,11 +2840,21 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     );
     this.beginSequenceProgress(plan, totalDurationMs);
     this.playerState.applyInvulnerability(totalDurationMs / 1000);
+    let blackoutIlluminated = false;
 
     for (const sequence of plan.sequences) {
       if (!this.playerState.alive || !this.isCombatActive()) break;
       this.refreshSequenceTarget(targetState);
       for (const behavior of sequence.behaviors) {
+        if (
+          !blackoutIlluminated
+          && this.activeRoomCurse?.kind === 'blackout'
+          && this.blackoutCurseField
+          && behaviorUsesAnyElement(behavior, ['light', 'fire'])
+        ) {
+          this.blackoutCurseField.illuminate();
+          blackoutIlluminated = true;
+        }
         if (behavior.type === 'move') {
           this.executeSequenceMove(behavior, sequence.durationMs, targetState);
         } else if (behavior.type === 'form') {

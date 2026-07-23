@@ -14,6 +14,21 @@ const STORAGE_KEY = 'incant:runmemory:v1:profile';
 /** 장기 기억은 최근 이만큼의 런만 반영 (오래된 취향은 잊음 → 모든 원소 내성 방지) */
 const RECENT_WINDOW = 5;
 
+export interface CurseBehaviorMemory {
+  /** 한 런에서 실제로 이동한 월드 거리(px). */
+  movementDistance: number;
+  /** 자동 발동을 제외한 성공 직접 영창 수. */
+  manualCastCount: number;
+  /** 직접 영창 중 주 원소가 빛 또는 불꽃인 횟수. */
+  lightFireCastCount: number;
+}
+
+export const EMPTY_CURSE_BEHAVIOR: CurseBehaviorMemory = {
+  movementDistance: 0,
+  manualCastCount: 0,
+  lightFireCastCount: 0,
+};
+
 export interface RunMemory {
   deaths: number;
   clears: number;
@@ -24,6 +39,8 @@ export interface RunMemory {
   lastResult: 'win' | 'lose' | null;
   /** 최근 런들의 최다 원소 (최신이 뒤, 최대 RECENT_WINDOW) */
   recentDominantElements: SpellElement[];
+  /** 직전 런의 저주 후보별 가중치 계산에 사용하는 행동 요약. */
+  lastCurseBehavior: CurseBehaviorMemory;
 }
 
 export const EMPTY_RUN_MEMORY: RunMemory = {
@@ -34,6 +51,7 @@ export const EMPTY_RUN_MEMORY: RunMemory = {
   topSpellPower: 0,
   lastResult: null,
   recentDominantElements: [],
+  lastCurseBehavior: { ...EMPTY_CURSE_BEHAVIOR },
 };
 
 /** 한 런의 결과 요약 (히스토리 + 승패에서 추출) */
@@ -42,10 +60,15 @@ export interface RunOutcome {
   dominantElement: SpellElement | null;
   topSpellName: string | null;
   topSpellPower: number;
+  curseBehavior?: CurseBehaviorMemory;
 }
 
 /** 이번 런 히스토리에서 요약 추출. 승패는 호출측(런 컨트롤러)이 판단해 전달. */
-export function summarizeRun(history: SpellHistory, result: 'win' | 'lose'): RunOutcome {
+export function summarizeRun(
+  history: SpellHistory,
+  result: 'win' | 'lose',
+  movementDistance = 0,
+): RunOutcome {
   let topSpellName: string | null = null;
   let topSpellPower = 0;
   for (const e of history.allCasts) {
@@ -62,6 +85,13 @@ export function summarizeRun(history: SpellHistory, result: 'win' | 'lose'): Run
     dominantElement: history.bossMemory().dominantElement,
     topSpellName,
     topSpellPower,
+    curseBehavior: {
+      movementDistance: finiteNonNegative(movementDistance),
+      manualCastCount: history.allCasts.length,
+      lightFireCastCount: history.allCasts.filter(
+        (cast) => cast.elements.includes('light') || cast.elements.includes('fire'),
+      ).length,
+    },
   };
 }
 
@@ -79,6 +109,9 @@ export function updateRunMemory(prev: RunMemory, outcome: RunOutcome): RunMemory
     topSpellPower: beatsTop ? outcome.topSpellPower : prev.topSpellPower,
     lastResult: outcome.result,
     recentDominantElements: recent,
+    lastCurseBehavior: normalizeCurseBehavior(
+      outcome.curseBehavior ?? EMPTY_CURSE_BEHAVIOR,
+    ),
   };
 }
 
@@ -142,7 +175,22 @@ function normalize(raw: unknown): RunMemory {
     topSpellPower: num(o.topSpellPower, 0),
     lastResult: o.lastResult === 'win' || o.lastResult === 'lose' ? o.lastResult : null,
     recentDominantElements: recent,
+    lastCurseBehavior: normalizeCurseBehavior(o.lastCurseBehavior),
   };
+}
+
+function normalizeCurseBehavior(raw: unknown): CurseBehaviorMemory {
+  if (typeof raw !== 'object' || raw === null) return { ...EMPTY_CURSE_BEHAVIOR };
+  const value = raw as Record<string, unknown>;
+  return {
+    movementDistance: finiteNonNegative(value.movementDistance),
+    manualCastCount: Math.floor(finiteNonNegative(value.manualCastCount)),
+    lightFireCastCount: Math.floor(finiteNonNegative(value.lightFireCastCount)),
+  };
+}
+
+function finiteNonNegative(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
 /** 최빈값 (동률이면 먼저 최다 도달한 값). 비어 있으면 null. */

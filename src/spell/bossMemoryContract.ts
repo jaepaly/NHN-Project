@@ -23,13 +23,14 @@ export type { BossResistanceProfile, BossCounterStrategy } from './bossMemory';
 // ── ② 런 간 기억 (장기) — 초기 저항·대사 재료 ──
 export {
   EMPTY_RUN_MEMORY,
+  EMPTY_CURSE_BEHAVIOR,
   summarizeRun,
   updateRunMemory,
   longTermResistedElement,
   loadRunMemory,
   saveRunMemory,
 } from './runMemory';
-export type { RunMemory, RunOutcome, StorageLike } from './runMemory';
+export type { CurseBehaviorMemory, RunMemory, RunOutcome, StorageLike } from './runMemory';
 
 // ── ③ 보스 대사 — 프록시 우선, 템플릿 폴백 ──
 export { getBossLine, templateBossLine, sanitizeLine, toBossLineRequest } from './bossLine';
