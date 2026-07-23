@@ -35,4 +35,18 @@ assert.equal(player.mana, ACTIVE_MANA_CONFIG.passiveRegenPerSecond + 8);
 player.startInputLock(ACTIVE_MANA_CONFIG.castInputLockSeconds);
 assert.equal(player.cooldownRemaining, 0.4);
 
-console.log('active mana regression: passive safeguard + normal/elite drops passed');
+// 영창 환류 — 수동 주문 킬 환급. 킬 가치의 주는 여전히 크리스탈 드롭이어야 한다.
+assert.ok(
+  ACTIVE_MANA_CONFIG.spellKillRefundMana > 0
+  && ACTIVE_MANA_CONFIG.spellKillRefundMana <= ACTIVE_MANA_CONFIG.normalDropMana,
+  'spell-kill refund stays a bonus (>0), never exceeding the normal crystal drop',
+);
+const refundPlayer = new PlayerCombatState();
+refundPlayer.trySpendMana(100);
+assert.equal(
+  refundPlayer.restoreMana(ACTIVE_MANA_CONFIG.spellKillRefundMana),
+  ACTIVE_MANA_CONFIG.spellKillRefundMana,
+  'refund lands as instant mana (no pickup travel)',
+);
+
+console.log('active mana regression: passive safeguard + normal/elite drops + spell-kill refund passed');

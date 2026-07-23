@@ -423,6 +423,9 @@ export class ProtoScene extends Phaser.Scene {
   private basicAttackCooldownRemaining = 0;
   private friendlyMissiles: FriendlyMissile[] = [];
 
+  /** 속삭임 힌트 최근 노출 시각 — 15초 쿨다운 (announceManaShortage) */
+  private lastWhisperHintAt = 0;
+
   /** 런 누적 피해 귀속 원장 — restartRun에서 리셋, 방·런 종료 시 리포트 */
   private damageLedger: Record<DamageSource, number> = {
     manual: 0, auto: 0, basic: 0, status: 0,
@@ -2289,6 +2292,26 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
   }
 
+  /**
+   * 마나 부족 안내 — 실제 비용을 공개해 가격 감각을 만들고,
+   * 쿨다운마다 속삭임(저비용 영창) 존재를 가르친다. "약한 말은 싸다"는
+   * 이 게임의 답인데 발견되지 않으면 없는 기능이다.
+   */
+  private announceManaShortage(cost: number): void {
+    const held = Math.floor(this.playerState.mana);
+    const hintDue = this.time.now - this.lastWhisperHintAt > 15000;
+    if (hintDue) {
+      this.lastWhisperHintAt = this.time.now;
+      this.announceSystemMessage(
+        `마나 부족 · 비용 ${cost} / 보유 ${held} — 작은 주문을 속삭여 보라`,
+        '#ffd166',
+        3000,
+      );
+      return;
+    }
+    this.announceSystemMessage(`마나 부족 · 비용 ${cost} / 보유 ${held}`, '#ffd166');
+  }
+
   private openIncant(): void {
     this.audio.playSfx('incant-enter');
     this.incanting = true;
@@ -2302,7 +2325,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 온보딩: 열 때마다 예시 문장을 순환해 "이렇게 쓰면 된다"를 보여준다
     this.incantBar.placeholder = onboardingPlaceholderAt(this.incantOpenCount);
     this.incantOpenCount += 1;
-    this.incantState.textContent = '시간 흐름 10%';
+    // 영창은 마나 예산 결정의 순간 — 보유량을 창 안에서 바로 보이게 한다
+    this.incantState.textContent = `시간 흐름 10% · 마나 ${Math.floor(this.playerState.mana)}`;
     this.incantHint.textContent = 'Enter 발동 · Esc 취소';
     this.updateIncantCharge();
     this.focusIncantBar();
@@ -2372,7 +2396,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const plan = resolveSpellPlan(debugPlan);
         if (!this.playerState.trySpendMana(plan.manaCost)) {
           this.audio.playSfx('fizzle');
-          this.announceSystemMessage(`마나 부족 · 필요 ${plan.manaCost}`, '#ffd166');
+          this.announceManaShortage(plan.manaCost);
           return;
         }
         const sequenceHistoryEntry = this.spellHistory.recordSequence({
@@ -2433,7 +2457,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const spec = judgement.spell;
       if (!this.playerState.trySpendMana(spec.cost)) {
         this.audio.playSfx('fizzle');
-        this.announceSystemMessage('마나 부족');
+        this.announceManaShortage(spec.cost);
         return;
       }
 
@@ -3891,6 +3915,25 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.activeSummons = survivors;
   }
 
+  /** 환류 부상 텍스트 — 킬 지점에서 마나색 "+N"이 떠오른다 */
+  private showManaRefundFloat(x: number, y: number, amount: number): void {
+    const label = this.add.text(x, y - 18, `+${Math.round(amount)}`, {
+      fontSize: '13px',
+      fontStyle: 'bold',
+      color: '#91b7ff',
+      stroke: '#05060f',
+      strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(8).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: label,
+      y: y - 44,
+      alpha: 0,
+      duration: 620,
+      ease: 'Cubic.Out',
+      onComplete: () => label.destroy(),
+    });
+  }
+
   private clearSummon(): void {
     for (const summon of this.activeSummons) summon.destroy();
     this.activeSummons = [];
@@ -4308,6 +4351,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       return true;
     }
     this.audio.playSfx('enemy-defeat');
+
+    // 영창 환류 — 수동 주문 킬만 즉시 환급 (오토 게이트 무관, activeManaConfig 주석 참조)
+    if (source === 'manual') {
+      const refunded = this.playerState.restoreMana(ACTIVE_MANA_CONFIG.spellKillRefundMana);
+      if (refunded > 0) this.showManaRefundFloat(enemy.x, enemy.y, refunded);
+    }
 
     const splitX = enemy.x;
     const splitY = enemy.y;
@@ -4864,7 +4913,8 @@ if (applied) this.playPlayerHit('strong');
       : '';
     const meta = this.add.text(width / 2, height * 0.32 + 36,
       `${spec.element_primary}${spec.element_secondary ? '+' + spec.element_secondary : ''}`
-      + ` · ${spec.effect}/${spec.target} · ${spec.form} · power ${spec.power}${debugTail}`,
+      + ` · ${spec.effect}/${spec.target} · ${spec.form} · power ${spec.power}`
+      + ` · cost ${spec.cost}${debugTail}`,
       { fontSize: '14px', color: '#8fa4ff' },
     ).setOrigin(0.5).setAlpha(0).setScrollFactor(0).setDepth(100);
 
