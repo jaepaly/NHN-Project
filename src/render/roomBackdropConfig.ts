@@ -8,7 +8,9 @@ export interface RoomBackdropPalette {
 
 export const ROOM_BACKDROP_PALETTES = {
   stage1: { base: 0x050711, grid: 0x24366f, gridAlpha: 0.42, bgTint: 0xffffff },
-  stage2: { base: 0x0b0718, grid: 0x4b2b70, gridAlpha: 0.48, bgTint: 0xd0b8ff },
+  // stage2도 전용 배경(bg-stage2, 부패한 보라 아케인)이 생겨 틴트 없이 아트 그대로 보여준다 (#72).
+  // 로드 실패로 stage1 이미지로 폴백하는 경우엔 보라감이 빠지지만, 전용 배경이 정상 경로다.
+  stage2: { base: 0x0b0718, grid: 0x4b2b70, gridAlpha: 0.48, bgTint: 0xffffff },
   // 보스는 전용 배경(bg-boss)이 있으므로 틴트를 걸지 않고 아트 그대로 보여준다
   boss: { base: 0x17060d, grid: 0x7a2341, gridAlpha: 0.58, bgTint: 0xffffff },
 } as const satisfies Record<string, RoomBackdropPalette>;

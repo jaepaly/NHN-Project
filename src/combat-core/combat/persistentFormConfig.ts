@@ -1,4 +1,6 @@
 import type { SpellSize, SpellSpeed } from '../../spell/types';
+import { SHAPE_LIMITS } from '../../spell/spellShape';
+import type { SpellShape } from '../../spell/spellShape';
 
 export interface FormPoint {
   x: number;
@@ -71,6 +73,117 @@ export function wallArcPoints(
     });
   }
   return points;
+}
+
+/** 폴리라인 총 길이 */
+function polylineLength(points: readonly FormPoint[]): number {
+  let total = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+  }
+  return total;
+}
+
+/** 중심을 고정한 채 배율 조정 — 형상의 성격은 유지하고 크기만 맞춘다 */
+function scaleAbout(points: readonly FormPoint[], center: FormPoint, k: number): FormPoint[] {
+  return points.map((p) => ({
+    x: center.x + (p.x - center.x) * k,
+    y: center.y + (p.y - center.y) * k,
+  }));
+}
+
+/**
+ * 기본 원호(arc)의 실효 정면폭 — 목표 방향과 수직으로 잰 벽의 폭.
+ * 열린 형상의 정규화 기준이자, 오탐 무해화의 축이다 (아래 불변식 참조).
+ */
+export function wallFrontage(size: SpellSize, rangeScale = 1): number {
+  const safeScale = Number.isFinite(rangeScale) ? Math.max(0.25, rangeScale) : 1;
+  const halfArcAngle = WALL_CONFIG.lengths[size] / WALL_CONFIG.offset / 2;
+  // 호가 반원을 넘으면(huge) 횡폭은 지름에서 캡된다 — sin이 다시 줄어드는 걸 막는다
+  const spread = halfArcAngle >= Math.PI / 2 ? 1 : Math.sin(halfArcAngle);
+  return 2 * WALL_CONFIG.offset * safeScale * spread;
+}
+
+/**
+ * 형상 DSL을 실제 벽 폴리라인으로 실현한다 (L3 확장 — spellShape.ts).
+ *
+ * ⚠️ **불변식: 형상은 표현이지 위력이 아니다.** 다만 열린 형상과 닫힌 형상은
+ * "세기"의 척도가 달라 기준을 나눈다 (회귀로 고정):
+ *
+ * - **열린 형상**(line·zigzag·wave): **정면폭 = 기본 원호(arc)의 실효 정면폭** 고정.
+ *   벽의 힘은 *얼마나 넓은 통로를 막는가*이므로 정면폭이 맞는 척도다. 굴곡은 전진축
+ *   방향이라 정면폭을 건드리지 않는다 — 접어도 막는 폭은 같고 모양만 달라진다.
+ *   기준을 arc와 통일한 이유(#133 오탐 실측): LLM이 모양 묘사 없는 벽에 간헐적으로
+ *   `line`을 붙이는데, line 정면폭이 arc보다 넓으면 **오탐 = 숨은 버프**가 된다.
+ *   전 형상의 정면폭을 arc와 같게 묶으면 오탐이 떠도 세기가 변하지 않는다 —
+ *   프롬프트(확률적)에 기대지 않는 결정론적 방어.
+ *   (총 길이로 정규화하면 "지그재그로 만들라"는 말이 벽을 좁히는 **벌칙**이 된다.)
+ * - **닫힌 형상**(ring·polygon): **총 둘레 = 같은 값** 고정. 360° 차단은 틈이 없어
+ *   그 자체로 강하므로, 둘레까지 키워주면 이중 이득이 된다. 둘레를 묶어 반경으로 상쇄한다.
+ *
+ * shape가 없거나 'arc'면 기존 `wallArcPoints`와 **완전히 동일**한 결과를 낸다.
+ */
+export function shapedWallPoints(
+  origin: FormPoint,
+  target: FormPoint | null,
+  size: SpellSize,
+  rangeScale = 1,
+  shape?: SpellShape | null,
+): readonly FormPoint[] {
+  if (!shape || shape.kind === 'arc') {
+    return wallArcPoints(origin, target, size, rangeScale);
+  }
+  const safeScale = Number.isFinite(rangeScale) ? Math.max(0.25, rangeScale) : 1;
+  const targetLength = WALL_CONFIG.lengths[size];
+  const direction = normalizedDirection(origin, target);
+  const offset = WALL_CONFIG.offset * safeScale;
+  // 벽의 중심 = 시전자에서 목표 방향으로 offset 떨어진 지점
+  const center: FormPoint = {
+    x: origin.x + direction.x * offset,
+    y: origin.y + direction.y * offset,
+  };
+  const forward = direction;                                   // 목표 방향
+  const normal = { x: -direction.y, y: direction.x };          // 좌우(횡) 방향
+  const segments = WALL_CONFIG.segmentCount;
+  const amplitude = shape.amplitude ?? SHAPE_LIMITS.defaultAmplitude;
+
+  let raw: FormPoint[];
+  if (shape.kind === 'ring' || shape.kind === 'polygon') {
+    // 닫힌 도형은 시전자를 감싼다 — "원을 그리며 벽을 세운다"
+    const corners = shape.kind === 'ring' ? segments : Math.max(3, shape.sides ?? 3);
+    raw = [];
+    for (let i = 0; i <= corners; i += 1) {
+      const angle = (Math.PI * 2 * i) / corners - Math.PI / 2;
+      raw.push({
+        x: origin.x + Math.cos(angle) * offset,
+        y: origin.y + Math.sin(angle) * offset,
+      });
+    }
+    const scaled = scaleAbout(raw, origin, targetLength / (polylineLength(raw) || 1));
+    return scaled;
+  }
+
+  // 열린 형상 — 정면폭(횡방향)은 그대로 두고 전진축으로만 굽힌다.
+  // 굴곡이 정면폭을 깎지 않으므로 재정규화하지 않는다 (위 불변식 참조).
+  const frontage = wallFrontage(size, rangeScale);
+  raw = [];
+  for (let i = 0; i <= segments; i += 1) {
+    const ratio = i / segments;
+    const along = (ratio - 0.5) * frontage;        // 횡방향 진행 = 정면폭(arc와 동일)
+    let bend = 0;                                  // 전진축 굴곡
+    if (shape.kind === 'zigzag') {
+      // 삼각파 — 뾰족하게 꺾인다
+      const phase = ratio * 6;
+      bend = (Math.abs((phase % 2) - 1) * 2 - 1) * amplitude;
+    } else if (shape.kind === 'wave') {
+      bend = Math.sin(ratio * Math.PI * 3) * amplitude;
+    }
+    raw.push({
+      x: center.x + normal.x * along + forward.x * bend,
+      y: center.y + normal.y * along + forward.y * bend,
+    });
+  }
+  return raw;
 }
 
 export function orbitCount(size: SpellSize): number {

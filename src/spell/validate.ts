@@ -3,6 +3,8 @@ import {
   FALLBACK_SPELL,
 } from './types';
 import { validateSummonBehavior } from './summonBehavior';
+import { validateSpellShape } from './spellShape';
+import { validateSpellPlan, representativeSpecFromPlan } from './spellPlanValidate';
 import type { SpellJudgement, SpellSpec, SpellStatus } from './types';
 
 const MAX_SPELL_NAME_LENGTH = 30;
@@ -67,6 +69,7 @@ export function validateSpec(raw: unknown, powerCap = 100): SpellSpec | null {
     cost,
     flavor: typeof o.flavor === 'string' ? o.flavor.slice(0, 60) : undefined,
     behavior: validateSummonBehavior(o.behavior) ?? undefined,
+    shape: validateSpellShape(o.shape) ?? undefined,
   };
 }
 
@@ -77,8 +80,15 @@ export function validateJudgement(raw: unknown, powerCap = 100): SpellJudgement 
   if (o.schema_version !== 2) return null;
 
   if (o.disposition === 'cast') {
-    const spell = validateSpec(o.spell, powerCap);
-    return spell ? { schema_version: 2, disposition: 'cast', spell } : null;
+    // 영창 시퀀스: Worker가 spell_plan을 보내면 검증해 싣는다 (없으면 v2 단일 주문 그대로).
+    // spell이 없고 plan만 오면 대표 주문을 유도해 기존 소비처(기록·반복)를 보존한다.
+    const plan = validateSpellPlan(o.spell_plan);
+    const spell = validateSpec(o.spell, powerCap)
+      ?? (plan ? representativeSpecFromPlan(plan) : null);
+    if (!spell) return null;
+    return plan
+      ? { schema_version: 2, disposition: 'cast', spell, plan }
+      : { schema_version: 2, disposition: 'cast', spell };
   }
 
   if (o.disposition !== 'fizzle' && o.disposition !== 'blocked') return null;

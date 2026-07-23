@@ -66,6 +66,7 @@ import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
 import { requestCameraShake, resetCameraShake } from '../render/cameraShake';
 import { reducedAffinityVfxTier } from '../render/affinityVfx';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
+import { devInfo } from '../debug/devLog';
 import {
   KNOCKBACK_CONFIG,
   knockbackDistanceForForm,
@@ -86,7 +87,7 @@ import {
   orbitPoint,
   repeatHitReady,
   sweepIntersectsPolyline,
-  wallArcPoints,
+  shapedWallPoints,
   wallDurationSeconds,
 } from '../combat-core/combat/persistentFormConfig';
 import type { FormPoint } from '../combat-core/combat/persistentFormConfig';
@@ -180,6 +181,7 @@ import type {
   FormBehavior,
   MoveBehavior,
   ResolvedSpellPlan,
+  SpellPlan,
 } from '../spell/sequencePlan';
 import { sequenceEngraveCandidate } from '../spell/sequenceEngraveCandidate';
 import { SilenceCurseField } from '../render/silenceCurseField';
@@ -406,6 +408,11 @@ export class ProtoScene extends Phaser.Scene {
   private sequenceProgressDurationMs = 0;
   private sequenceProgressName = '';
   private sequenceProgressBoundaries: number[] = [];
+  /**
+   * 영창 시퀀스 판정 기능 플래그 (R2 2일 게이트 안전망). 기본 ON.
+   * VITE_SEQUENCE_JUDGE=0 이면 판정이 plan을 실어도 무시하고 v2 단일 경로로 즉시 복귀한다.
+   */
+  private readonly sequenceJudgeEnabled = import.meta.env.VITE_SEQUENCE_JUDGE !== '0';
   /** 주문서 보유 수 캐시 — HUD는 매 프레임 갱신되므로 localStorage를 직접 읽지 않는다 */
   private grimoireCount = 0;
   /**
@@ -515,6 +522,12 @@ export class ProtoScene extends Phaser.Scene {
       'bg-stage1',
       `${import.meta.env.BASE_URL}assets/backgrounds/arena-stage1.jpg`,
     );
+    // 스테이지2 전용 AI 배경 — 부패한 보라 아케인 석재 (stage1+틴트 대체, #72)
+    // 후처리: 워터마크 제거·발광 하이라이트 롤오프(몹 씻김 방지)·3:2 크롭·1920×1280.
+    this.load.image(
+      'bg-stage2',
+      `${import.meta.env.BASE_URL}assets/backgrounds/arena-stage2.jpg`,
+    );
     // 보스방 전용 AI 배경 — 탑다운 소환진 아레나 (일반 방과 확실히 구분되는 결전 공간)
     this.load.image(
       'bg-boss',
@@ -533,7 +546,7 @@ export class ProtoScene extends Phaser.Scene {
     }
     // 로드 실패가 조용히 묻히지 않게 — 실패 시 원인·URL을 남기고 그리드 배경으로 폴백한다.
     this.load.on('loaderror', (file: Phaser.Loader.File) => {
-      if (file.key === 'bg-stage1') {
+      if (file.key === 'bg-stage1' || file.key === 'bg-stage2') {
         console.warn('[backdrop] 배경 이미지 로드 실패 — 그리드로 폴백:', file.src);
       }
     });
@@ -632,7 +645,7 @@ export class ProtoScene extends Phaser.Scene {
       this.deferTransientCombatCleanup();
       this.stopCastingForRunPause();
       this.announceSystemMessage(`방 ${state.roomIndex} 클리어`, '#72f1b8');
-      console.info('[Run] reward-ready', options, state);
+      devInfo('[Run] reward-ready', options, state);
     });
     this.combatRunController.on('reward-applied', (chosen, state) => {
       this.audio.playSfx('reward-select');
@@ -648,7 +661,7 @@ export class ProtoScene extends Phaser.Scene {
       if (chosen.kind === 'evolve' && chosen.evolve) {
         // 진화·융합은 LLM 작명이 필요해 비동기 — 작명은 반드시 성공하므로(폴백) 미완료 상태가 없다
         void this.applyEvolution(chosen.evolve);
-        console.info('[Run] reward-applied', chosen, state);
+        devInfo('[Run] reward-applied', chosen, state);
         return;
       }
       if (chosen.kind === 'spirit-haste') {
@@ -660,7 +673,7 @@ export class ProtoScene extends Phaser.Scene {
           `신속 정령 · 시전 ${(1 / rate).toFixed(2)}배 속도`,
           '#ffd166',
         );
-        console.info('[Run] reward-applied', chosen, state);
+        devInfo('[Run] reward-applied', chosen, state);
         return;
       }
       const engraved = this.engraveManager.applyReward(chosen);
@@ -672,20 +685,20 @@ export class ProtoScene extends Phaser.Scene {
           ? `${this.spiritName(spirit.role, spirit.element)} · 정령 Lv${spirit.level}`
         : chosen.title;
       this.announceSystemMessage(message, '#ffd166');
-      console.info('[Run] reward-applied', chosen, state);
+      devInfo('[Run] reward-applied', chosen, state);
     });
     this.combatRunController.on('room-transition', (state, durationMs) => {
-      console.info('[Run] room-transition', { state, durationMs });
+      devInfo('[Run] room-transition', { state, durationMs });
     });
     this.combatRunController.on('room-started', (state) => {
       this.startRoom(state.roomIndex);
-      console.info('[Run] room-started', state);
+      devInfo('[Run] room-started', state);
       this.reportAutoShare(`방 ${state.roomIndex} 진입 누적`);
     });
     this.combatRunController.on('run-completed', (state) => {
       this.deferTransientCombatCleanup();
       this.stopCastingForRunPause();
-      console.info('[Run] completed', state);
+      devInfo('[Run] completed', state);
       // 플레이어 사망이 먼저 확정된 동시 확정 레이스(사망 후 장판 틱이 보스 처치 등)
       // — 패배가 선점: 기억 저장·승리 연출 모두 생략해 한 런에 lose/win 이중 기록을 막는다
       if (this.deathHandled) return;
@@ -817,7 +830,7 @@ export class ProtoScene extends Phaser.Scene {
 
   private reportAutoShare(tag: string): void {
     const s = this.autoShareSnapshot();
-    console.info(
+    devInfo(
       `[auto-share] ${tag} — 오토 ${s.autoSharePercent}% `
       + `(수동 ${s.manual} · 오토 ${s.auto} · 기본탄 ${s.basic} · 상태이상 ${s.status})`,
     );
@@ -857,7 +870,7 @@ export class ProtoScene extends Phaser.Scene {
       ^ Math.imul(memory.deaths + 1, 0x85ebca6b);
     this.roomCursePlan = createRoomCursePlan(
       RUN_ENCOUNTERS,
-      this.runEscalation.tier,
+      this.runEscalation.gimmicksUnlocked,
       createRunRandom(curseSeed),
       undefined,
       memory.lastCurseBehavior,
@@ -1264,8 +1277,13 @@ export class ProtoScene extends Phaser.Scene {
       },
     });
     this.redrawBackdropDetails(palette);
-    // 보스방은 전용 배경으로 교체한다. setTexture가 표시 크기를 리셋하므로 월드 크기를 다시 준다.
-    const bgKey = this.isBossEncounter() ? 'bg-boss' : 'bg-stage1';
+    // 방 종류·스테이지별 전용 배경으로 교체한다. setTexture가 표시 크기를 리셋하므로 월드 크기를 다시 준다.
+    // 스테이지2는 부패한 보라 아케인 배경(#72) — 없으면(로드 실패) stage1로 폴백.
+    const bgKey = this.isBossEncounter()
+      ? 'bg-boss'
+      : state.stage === 2 && this.textures.exists('bg-stage2')
+        ? 'bg-stage2'
+        : 'bg-stage1';
     if (
       this.backdropImage
       && this.textures.exists(bgKey)
@@ -2538,48 +2556,61 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.incantBar.disabled = false;
   }
 
+  /**
+   * 검증된 SpellPlan을 실행한다 — DEV 쇼케이스와 실판정 시퀀스의 공통 경로.
+   * 마나(plan 단위 1회)·시퀀스 기록·각인 대표 투영·반복 페널티·무적/UX·실행을 한 번에.
+   */
+  private async runSequenceCast(
+    rawPlan: SpellPlan,
+    text: string,
+    source: JudgeSource,
+  ): Promise<void> {
+    const plan = resolveSpellPlan(rawPlan);
+    if (!this.playerState.trySpendMana(plan.manaCost)) {
+      this.audio.playSfx('fizzle');
+      this.announceManaShortage(plan.manaCost);
+      return;
+    }
+    const sequenceHistoryEntry = this.spellHistory.recordSequence({
+      rawText: text,
+      name: plan.name,
+      power: plan.power,
+      cost: plan.manaCost,
+      source,
+      castAt: Date.now(),
+    });
+    const engraveCandidate = sequenceEngraveCandidate(plan);
+    if (engraveCandidate) {
+      this.engraveManager.rememberManualCast(
+        sequenceHistoryEntry.normalized,
+        engraveCandidate,
+      );
+    }
+    this.markOnboarded();
+    this.beginSequenceExecutionUx(plan);
+    if (sequenceHistoryEntry.power < sequenceHistoryEntry.basePower) {
+      const penaltyPct = Math.round(
+        (1 - sequenceHistoryEntry.power / sequenceHistoryEntry.basePower) * 100,
+      );
+      this.announceSystemMessage(
+        `REPEAT -${penaltyPct}% · 같은 영창은 힘을 잃는다`,
+        '#ff9f43',
+      );
+    }
+    await this.executeSpellSequencePlan(
+      plan,
+      plan.power > 0 ? sequenceHistoryEntry.power / plan.power : 1,
+    );
+  }
+
   // ── 판정 → 렌더링 사이클 ────────────────────────────────────
   private async castFromText(text: string): Promise<void> {
     this.casting = true;
     try {
+      // DEV 쇼케이스: 픽스처 이름/#seq 키로 시퀀스를 바로 실행 (판정 우회)
       const debugPlan = import.meta.env.DEV ? debugSpellPlan(text) : null;
       if (debugPlan) {
-        const plan = resolveSpellPlan(debugPlan);
-        if (!this.playerState.trySpendMana(plan.manaCost)) {
-          this.audio.playSfx('fizzle');
-          this.announceManaShortage(plan.manaCost);
-          return;
-        }
-        const sequenceHistoryEntry = this.spellHistory.recordSequence({
-          rawText: text,
-          name: plan.name,
-          power: plan.power,
-          cost: plan.manaCost,
-          source: 'local',
-          castAt: Date.now(),
-        });
-        const engraveCandidate = sequenceEngraveCandidate(plan);
-        if (engraveCandidate) {
-          this.engraveManager.rememberManualCast(
-            sequenceHistoryEntry.normalized,
-            engraveCandidate,
-          );
-        }
-        this.markOnboarded();
-        this.beginSequenceExecutionUx(plan);
-        if (sequenceHistoryEntry.power < sequenceHistoryEntry.basePower) {
-          const penaltyPct = Math.round(
-            (1 - sequenceHistoryEntry.power / sequenceHistoryEntry.basePower) * 100,
-          );
-          this.announceSystemMessage(
-            `REPEAT -${penaltyPct}% · 같은 영창은 힘을 잃는다`,
-            '#ff9f43',
-          );
-        }
-        await this.executeSpellSequencePlan(
-          plan,
-          plan.power > 0 ? sequenceHistoryEntry.power / plan.power : 1,
-        );
+        await this.runSequenceCast(debugPlan, text, 'local');
         return;
       }
       if (import.meta.env.DEV && text.toLowerCase().startsWith('#seq ')) {
@@ -2602,6 +2633,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const prefix = judgement.disposition === 'fizzle' ? '불발' : '영창 차단';
         const color = judgement.disposition === 'fizzle' ? '#ffd166' : '#ff6b86';
         this.announceSystemMessage(`${prefix} · ${judgement.message}`, color);
+        return;
+      }
+
+      // 영창 시퀀스(복합 주문) — 판정이 plan을 실었고 기능 플래그가 켜져 있으면 시퀀스 런타임으로.
+      // 플래그(VITE_SEQUENCE_JUDGE=0)로 언제든 v2 단일 경로로 즉시 복귀할 수 있다.
+      if (this.sequenceJudgeEnabled && judgement.plan) {
+        await this.runSequenceCast(judgement.plan, text, this.currentJudgeSource());
         return;
       }
 
@@ -2646,6 +2684,31 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           * castPlan.ratio, // 감쇠 시전 — 모자란 마나만큼 잦아든다
         ),
       };
+      // [dev] 실뎀 breakdown 로깅 — "같은 속성 뎀감" 스택 진단용 (logs/play.jsonl, 읽기전용)
+      if (import.meta.env.DEV) {
+        const base = historyEntry.basePower;
+        const bossResist = this.activeBossResistances.get(spec.element_primary) ?? 1;
+        void fetch('/__log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            t: Math.round(this.time.now / 100) / 10,
+            type: 'dmg',
+            input: text,
+            el: spec.element_primary,
+            base,
+            repeat: base > 0 ? Number((historyEntry.power / base).toFixed(2)) : 1,
+            affinity: Number(affinityBonus.toFixed(2)),
+            escalation: Number(escalationWeaken.toFixed(2)),
+            diversity: Number(diversity.toFixed(2)),
+            empower: Number(this.playerState.damageOutMultiplier.toFixed(2)),
+            degraded: Number(castPlan.ratio.toFixed(2)),
+            effective: effectiveSpec.power,
+            bossResist: Number(bossResist.toFixed(2)),
+            finalVsBoss: Math.round(effectiveSpec.power * bossResist),
+          }),
+        }).catch(() => {});
+      }
       if (castPlan.ratio < 1) {
         this.announceSystemMessage(
           `마나가 모자라 주문이 잦아들었다 · 위력 ${Math.round(castPlan.ratio * 100)}%`,
@@ -3283,11 +3346,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         WALL_CONFIG.targetingHalfWidth,
         this.enemies.filter((enemy) => enemy.alive),
       ) ?? this.nearestEnemy();
-    const points = wallArcPoints(
+    // 형상 DSL(L3 확장) — LLM이 모양을 설계하면 그대로, 없으면 기존 원호
+    const points = shapedWallPoints(
       from,
       target ? { x: target.x, y: target.y } : null,
       spec.size,
       options?.rangeScale,
+      spec.shape,
     );
     const palette = ELEMENT_PALETTES[spec.element_primary];
     const vectors = points.map((point) => new Phaser.Math.Vector2(point.x, point.y));
@@ -4317,11 +4382,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       enemy.view.addAt(indicator, 0);
       this.controlIndicators.set(enemy, indicator);
     }
-    console.info('[Control] slow-applied', {
-      enemy: enemy.kind,
-      durationSeconds: remaining,
-      movementMultiplier: this.enemyControlState.movementMultiplierFor(enemy),
-    });
+    // 핫패스(컨트롤 적중마다) — 호출부째 가드해야 인자 객체 생성까지 제거된다
+    if (import.meta.env.DEV) {
+      console.info('[Control] slow-applied', {
+        enemy: enemy.kind,
+        durationSeconds: remaining,
+        movementMultiplier: this.enemyControlState.movementMultiplierFor(enemy),
+      });
+    }
   }
 
   private applyRoot(enemy: CombatEnemy, durationSeconds: number): void {
@@ -4342,11 +4410,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       .setRadius(CAGE_CONFIG.baseRadius)
       .setFillStyle(CAGE_CONFIG.indicatorColor, 0.08)
       .setStrokeStyle(3, CAGE_CONFIG.indicatorColor, 0.95);
-    console.info('[Control] root-applied', {
-      enemy: enemy.kind,
-      durationSeconds: remaining,
-      movementMultiplier: 0,
-    });
+    if (import.meta.env.DEV) {
+      console.info('[Control] root-applied', {
+        enemy: enemy.kind,
+        durationSeconds: remaining,
+        movementMultiplier: 0,
+      });
+    }
   }
 
   private updateEnemyControls(deltaSeconds: number): void {

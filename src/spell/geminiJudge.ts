@@ -17,7 +17,7 @@ import { MockJudge, precheckText } from './mockJudge';
  */
 
 export const JUDGE_SCHEMA_VERSION = 2;
-export const JUDGE_PROMPT_VERSION = 'meaning-v2.4';
+export const JUDGE_PROMPT_VERSION = 'meaning-v2.5';
 const CACHE_PREFIX = `incant:judge:v${JUDGE_SCHEMA_VERSION}:${JUDGE_PROMPT_VERSION}:`;
 const TIMEOUT_MS = 2500;
 

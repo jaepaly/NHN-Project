@@ -79,7 +79,7 @@ const remoteJudge = new GeminiJudge('https://invalid.example');
 assert.equal((await remoteJudge.judge('ㅁㄴㅇㄹ')).disposition, 'fizzle');
 assert.equal(remoteJudge.lastSource, 'local');
 assert.equal(JUDGE_SCHEMA_VERSION, 2);
-assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.4'); // v2.4: 모델 드리프트 fizzle 안전망 (#110)
+assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.5'); // v2.5: wall 형상(shape) DSL 프롬프트 (#133)
 
 assert.equal(validateJudgement({ element_primary: 'fire', form: 'bolt' }), null,
   'v1 responses must not pass v2 validation');
@@ -93,4 +93,32 @@ const damage = state.takeDamage(25);
 assert.deepEqual(damage, { hpDamage: 5, shieldDamage: 20 });
 assert.equal(state.hp, 70);
 
-console.log('Spell Understanding v2 regression: 27 inputs(외래어 8종·활용형 7종 포함) + player effects passed');
+// 폴백 품질 — Mock이 크기·빠르기 수식어를 읽는다 (#134)
+// 실 Gemini는 이미 정확하나(R2 실측 40/40), 부하 시 폴백 구간에서 플레이어의 말이
+// 버려지면 안 된다. 수식어가 없을 때만 기존 파생(power/form)으로 떨어진다.
+{
+  const mock = new MockJudge();
+  const sizeOf = async (text: string) => {
+    const v = await mock.judge(text);
+    return v.disposition === 'cast' ? v.spell.size : null;
+  };
+  const speedOf = async (text: string) => {
+    const v = await mock.judge(text);
+    return v.disposition === 'cast' ? v.spell.speed : null;
+  };
+  assert.equal(await sizeOf('조그만 불씨 하나'), 'small', 'Mock: 조그만 → small');
+  assert.equal(await sizeOf('거대한 불덩이를 던져라'), 'large', 'Mock: 거대한 → large');
+  assert.equal(await sizeOf('하늘을 덮는 화염'), 'huge', 'Mock: 하늘을 덮는 → huge');
+  assert.equal(await speedOf('아주 빠른 얼음 화살'), 'fast', 'Mock: 빠른 → fast');
+  assert.equal(await speedOf('천천히 퍼지는 독안개'), 'slow', 'Mock: 천천히 → slow');
+  assert.equal(await speedOf('느릿느릿 기어오는 용암'), 'slow', 'Mock: 느릿느릿 → slow');
+  // 수식어가 없으면 기존 파생 유지 (회귀 방지)
+  const plain = await mock.judge('화염 화살');
+  assert.ok(plain.disposition === 'cast', '수식어 없는 주문도 정상 판정');
+  assert.ok(
+    ['small', 'medium', 'large', 'huge'].includes(plain.spell.size),
+    '수식어 없으면 power 파생 size 유지',
+  );
+}
+
+console.log('Spell Understanding v2 regression: 27 inputs(외래어 8종·활용형 7종 포함) + player effects + Mock 수식어 7군 passed');

@@ -36,7 +36,6 @@ export const ROOM_CURSE_BEHAVIOR_CONFIG = {
 } as const;
 
 export const ROOM_CURSE_CONFIG = {
-  unlockTier: 3,
   roomRatio: 0.4,
   maxCategoriesPerRun: 2,
   silenceRadius: 185,
@@ -55,14 +54,14 @@ export const ROOM_CURSE_CONFIG = {
  */
 export function createRoomCursePlan(
   encounters: readonly EncounterDefinition[],
-  escalationTier: number,
+  gimmicksUnlocked: boolean,
   rand: () => number,
   pools: Readonly<Partial<Record<RoomCurseCategory, readonly RoomCurseKind[]>>>
     = ROOM_CURSE_POOL_BY_CATEGORY,
   behavior?: CurseBehaviorMemory,
 ): RoomCursePlan {
   const curseWeights = roomCurseWeights(behavior);
-  if (escalationTier < ROOM_CURSE_CONFIG.unlockTier) {
+  if (!gimmicksUnlocked) {
     return { selectedKinds: {}, curseWeights, assignments: [] };
   }
 

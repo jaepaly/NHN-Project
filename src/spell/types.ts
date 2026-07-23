@@ -4,6 +4,8 @@
  */
 
 import type { SummonBehavior } from './summonBehavior';
+import type { SpellShape } from './spellShape';
+import type { SpellPlan } from './sequencePlan';
 
 export const ELEMENTS = [
   'fire', 'water', 'lightning', 'ice', 'earth', 'wind', 'light', 'dark',
@@ -64,6 +66,8 @@ export interface SpellSpec {
    * validateSpec이 validateSummonBehavior로 검증한 것만 통과한다.
    */
   behavior?: SummonBehavior;
+  /** L3 확장: LLM이 설계한 형상(벽 등). 없으면 형태별 기본형 */
+  shape?: SpellShape;
 }
 
 export type SpellRejectionReason = 'nonsense' | 'unsafe';
@@ -74,6 +78,12 @@ export type SpellJudgement =
       schema_version: 2;
       disposition: 'cast';
       spell: SpellSpec;
+      /**
+       * 영창 시퀀스(순차/병렬 복합 주문) — 옵션 (SPELL_SEQUENCE_SCHEMA_DRAFT).
+       * 있으면 씬이 시퀀스 런타임으로 실행하고, `spell`은 폴백·기록용 대표 주문으로 남는다.
+       * 검증기(validateSpellPlan)를 통과한 값만 담는다.
+       */
+      plan?: SpellPlan;
     }
   | {
       schema_version: 2;

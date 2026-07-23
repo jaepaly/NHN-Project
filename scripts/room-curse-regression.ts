@@ -25,9 +25,9 @@ assert.equal(ROOM_CURSE_CONFIG.silenceRadius, 185);
 assert.equal(ROOM_CURSE_CONFIG.silenceManaDrainRatio, 0.05);
 assert.equal(ROOM_CURSE_CONFIG.blackoutVisionRadius, 95);
 assert.equal(ROOM_CURSE_CONFIG.blackoutIlluminationSeconds, 4);
-assert.equal(createRoomCursePlan(encounters, 2, () => 0).assignments.length, 0);
+assert.equal(createRoomCursePlan(encounters, false, () => 0).assignments.length, 0);
 
-const plan = createRoomCursePlan(encounters, 4, () => 0.25);
+const plan = createRoomCursePlan(encounters, true, () => 0.25);
 assert.deepEqual(
   plan.selectedKinds,
   { movement: 'silence', element: 'blackout' },
@@ -96,7 +96,7 @@ const denseStage: EncounterDefinition[] = Array.from({ length: 5 }, (_, index) =
   rewardAfterClear: true,
   waveSetId: 'a',
 }));
-const mixedPlan = createRoomCursePlan(denseStage, 3, () => 0.5);
+const mixedPlan = createRoomCursePlan(denseStage, true, () => 0.5);
 assert.deepEqual(
   mixedPlan.assignments.map((assignment) => assignment.kind),
   ['silence', 'blackout'],
@@ -107,7 +107,7 @@ const tinyStage: EncounterDefinition[] = [
   { id: 'only', stage: 1, kind: 'memory-boss', rewardAfterClear: false },
 ];
 assert.equal(
-  createRoomCursePlan(tinyStage, 5, () => 0).assignments.length,
+  createRoomCursePlan(tinyStage, true, () => 0).assignments.length,
   0,
   '정상방을 남길 수 없는 단일 방 스테이지에는 배정하지 않음',
 );

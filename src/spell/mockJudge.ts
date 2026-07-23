@@ -1,9 +1,39 @@
 import type { SpellJudge } from './judge';
 import type {
-  SpellEffect, SpellElement, SpellForm, SpellJudgement, SpellStatus, SpellTarget,
+  SpellEffect,
+  SpellElement,
+  SpellForm,
+  SpellJudgement,
+  SpellSize,
+  SpellSpeed,
+  SpellSpec,
+  SpellStatus,
+  SpellTarget,
 } from './types';
 import { validateSpec } from './validate';
 import { FIZZLE_JUDGEMENT } from './types';
+import type { SpellPlan } from './sequencePlan';
+import { validateSpellPlan } from './spellPlanValidate';
+
+/**
+ * 명시적 순차 접속사 — 이게 있을 때만 절을 나눠 시퀀스로 본다.
+ * Mock은 폴백이라 Gemini만큼 섬세할 필요 없다: "여러 단계"라는 신호가 뚜렷할 때만 분해해
+ * 기존 단일 판정(회귀 코퍼스엔 이 마커가 없다)을 건드리지 않는다.
+ */
+const SEQUENCE_MARKERS = [
+  '그리고 나서', '그런 다음', '그러고 나서', '그다음', '그 다음', '이어서',
+  '하고 나서', '한 뒤', '한 후', '고 나서', ' 뒤 ', ' 후 ', ' then ', 'after that',
+];
+
+/** 순차 마커로 원문을 절로 나눈다. 마커가 없으면 단일 절. */
+function splitSequenceClauses(text: string): string[] {
+  const DELIM = " §SEQ§ ";
+  let marked = ` ${text} `;
+  for (const marker of SEQUENCE_MARKERS) {
+    marked = marked.split(marker).join(DELIM);
+  }
+  return marked.split(DELIM).map((s) => s.trim()).filter((s) => s.length > 0);
+}
 
 /**
  * MockJudge — 키워드 기반 결정론적 판정기.
@@ -165,6 +195,29 @@ const FORM_KEYWORDS: Record<SpellForm, string[]> = {
   chain: ['연쇄', '도약', '전이', '체인', 'chain', 'jump'],
 };
 
+/**
+ * 크기·빠르기 수식어 — 폴백이 플레이어의 말을 버리지 않게 한다 (#134).
+ *
+ * 실 Gemini는 이 둘을 이미 정확히 판정한다(R2 실측 40/40). 문제는 **폴백 경로**였다:
+ * Mock이 size를 power에서, speed를 form에서만 파생해 `조그만`·`아주 빠른` 같은
+ * 수식어를 아예 읽지 않았다. 평상시 폴백은 드물지만(게이트 실측 0/10) **부하가
+ * 걸리면 무너진다** — 15 RPM은 프로젝트 전체 한도라 심사위원 여럿이 동시에
+ * 플레이하면 폴백 구간이 생긴다(SUBMISSION_PLAN §6-2). 그때 플레이어가
+ * "조그만 불씨"라 말하고 중간 크기를 받으면, 안전망이 말을 삼키는 셈이 된다.
+ */
+const SIZE_KEYWORDS: Record<SpellSize, string[]> = {
+  small: ['조그만', '조그마', '작은', '작게', '자그마', '소형', '한 줌', '불씨', '가느다란', 'small', 'tiny'],
+  medium: ['적당', '보통', '중형', 'medium'],
+  large: ['거대', '커다', '큰', '크게', '대형', '육중', '장대', '길고', '두꺼운', 'large', 'huge'],
+  huge: ['하늘을 덮', '전장을 뒤덮', '온 세상', 'massive', '어마어마', '초대형', '천지'],
+};
+
+const SPEED_KEYWORDS: Record<SpellSpeed, string[]> = {
+  slow: ['느릿', '천천히', '서서히', '느리게', '느린', '굼뜨', '유유히', 'slow'],
+  normal: ['평범', '보통 속도', 'normal'],
+  fast: ['빠르', '빠른', '재빠', '순식간', '번개처럼', '쏜살', '질풍', '삽시간', '신속', 'fast', 'quick'],
+};
+
 const STATUS_KEYWORDS: Record<SpellStatus, string[]> = {
   burn: ['불', '화염', '작열', 'burn'],
   freeze: ['얼음', '빙결', '동결', 'freeze'],
@@ -249,6 +302,40 @@ export class MockJudge implements SpellJudge {
     const prechecked = precheckText(t);
     if (prechecked) return prechecked;
 
+    const spec = this.buildSpec(text, t);
+    if (!spec) return FIZZLE_JUDGEMENT;
+    // 명시적 순차 마커가 있으면 복합 영창 plan을 함께 싣는다. spec은 폴백·기록용 대표.
+    const plan = this.buildSequencePlan(text);
+    return plan
+      ? { schema_version: 2, disposition: 'cast', spell: spec, plan }
+      : { schema_version: 2, disposition: 'cast', spell: spec };
+  }
+
+  /**
+   * 폴백용 시퀀스 산출 — 명시적 순차 마커가 있을 때만 절별 form 시퀀스 plan을 만든다.
+   * Gemini(R2 프롬프트)가 담당할 섬세한 move/wait 해석은 하지 않는다. 오프라인·폴백에서도
+   * 복합 영창이 "여러 단계로 실행"되게 하는 최소 근사다. 마커가 없으면 null(단일 주문).
+   */
+  private buildSequencePlan(text: string): SpellPlan | null {
+    const clauses = splitSequenceClauses(text);
+    if (clauses.length < 2) return null;
+    const specs = clauses
+      .map((clause) => this.buildSpec(clause, clause.trim().toLowerCase()))
+      .filter((s): s is SpellSpec => s !== null);
+    if (specs.length < 2) return null;
+    return validateSpellPlan({
+      name: text.trim(),
+      power: Math.min(100, Math.max(...specs.map((s) => s.power))),
+      durationMs: 500 * specs.length,
+      sequences: specs.map((spec) => ({
+        durationWeight: 1,
+        behaviors: [{ type: 'form', spec, powerWeight: 1 }],
+      })),
+    });
+  }
+
+  /** 자유 텍스트 한 절 → 단일 SpellSpec (기존 v2 판정 로직). 검증 실패 시 null. */
+  private buildSpec(text: string, t: string): SpellSpec | null {
     const effect = inferEffect(t);
     const target = targetForEffect(effect, t);
     const primary = findMatch(ELEMENT_KEYWORDS, t)
@@ -288,7 +375,11 @@ export class MockJudge implements SpellJudge {
     const jitter = h % 10;
     const power = Math.min(semanticCap, base + comboBonus + statusBonus + jitter);
 
-    const size = power > 75 ? 'huge' : power > 55 ? 'large' : power > 35 ? 'medium' : 'small';
+    // 수식어가 있으면 그 말을 따르고, 없을 때만 power에서 파생한다 (#134)
+    const size = findMatch(SIZE_KEYWORDS, t)
+      ?? (power > 75 ? 'huge' : power > 55 ? 'large' : power > 35 ? 'medium' : 'small');
+    const speed = findMatch(SPEED_KEYWORDS, t)
+      ?? (form === 'wave' ? 'slow' : 'normal');
 
     const spec = validateSpec({
       behavior,
@@ -300,13 +391,11 @@ export class MockJudge implements SpellJudge {
       element_secondary: secondary === primary ? null : secondary,
       form,
       size,
-      speed: form === 'wave' ? 'slow' : 'normal',
+      speed,
       status,
       power,
       cost: Math.max(5, Math.round(power * 0.6)),
     });
-    return spec
-      ? { schema_version: 2, disposition: 'cast', spell: spec }
-      : FIZZLE_JUDGEMENT;
+    return spec;
   }
 }
