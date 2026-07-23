@@ -30,6 +30,8 @@ assert.equal(wallDurationSeconds('fast'), 2.2);
 
 // 2) 이동 선분 sweep으로 빠른 적·투사체의 원호 관통을 검출한다.
 const wall = wallArcPoints({ x: 0, y: 0 }, { x: 100, y: 0 }, 'medium');
+const wideWall = wallArcPoints({ x: 0, y: 0 }, { x: 100, y: 0 }, 'medium', 1.35);
+assert.ok(Math.hypot(wideWall[0].x, wideWall[0].y) > Math.hypot(wall[0].x, wall[0].y));
 assert.equal(
   sweepIntersectsPolyline({ x: 30, y: 0 }, { x: 150, y: 0 }, 1, wall),
   true,
@@ -46,6 +48,9 @@ assert.deepEqual(
 );
 assert.ok(Math.abs(orbitAngularVelocity('normal') - Math.PI * 2 * 1.2) < Number.EPSILON);
 const orbit = orbitPoint({ x: 10, y: 20 }, 0, 0, 3);
+const wideOrbit = orbitPoint({ x: 10, y: 20 }, 0, 0, 3, 1.35);
+assert.ok(Math.hypot(wideOrbit.x - 10, wideOrbit.y - 20)
+  > Math.hypot(orbit.x - 10, orbit.y - 20));
 assert.equal(orbit.x, 10 + ORBIT_CONFIG.radius);
 assert.equal(orbit.y, 20);
 

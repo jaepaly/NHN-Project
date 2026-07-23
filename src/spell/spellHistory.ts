@@ -54,6 +54,37 @@ export interface RecordSpellInput {
   castAt: number;
 }
 
+export interface SpellCastRecord {
+  rawText: string;
+  normalized: string;
+  name: string;
+  basePower: number;
+  power: number;
+  cost: number;
+  source: JudgeSource;
+  castAt: number;
+}
+
+export interface SpellBehaviorUsageEntry {
+  name: string;
+  effect: SpellEffect;
+  target: SpellTarget;
+  elementPrimary: SpellElement;
+  elementSecondary: SpellElement | null;
+  form: SpellForm;
+  power: number;
+  castAt: number;
+}
+
+export interface RecordSequenceInput {
+  rawText: string;
+  name: string;
+  power: number;
+  cost: number;
+  source: JudgeSource;
+  castAt: number;
+}
+
 /** 보스 기억 요약 (Phase 3 계약용 초안 — 실제 보스 로직은 여기서 구현하지 않음) */
 export interface BossMemoryProfile {
   dominantElement: SpellElement | null;
@@ -102,6 +133,8 @@ export function spellSignature(spell: Pick<SpellSpec, 'effect' | 'element_primar
 
 export class SpellHistory {
   private entries: SpellHistoryEntry[] = [];
+  private casts: SpellCastRecord[] = [];
+  private behaviorUsages: SpellBehaviorUsageEntry[] = [];
 
   /**
    * 검증된 cast 주문을 기록한다. R1이 **마나 지불 후 발동이 확정된 시점**에 호출한다.
@@ -128,13 +161,47 @@ export class SpellHistory {
       castAt: input.castAt,
     };
     this.entries.push(entry);
+    this.casts.push({
+      rawText: entry.rawText,
+      normalized: entry.normalized,
+      name: entry.name,
+      basePower: entry.basePower,
+      power: entry.power,
+      cost: entry.cost,
+      source: entry.source,
+      castAt: entry.castAt,
+    });
+    this.behaviorUsages.push(toBehaviorUsage(input.spell, input.castAt));
     return entry;
+  }
+
+  /** Records one player incantation. Executed forms are recorded separately at runtime. */
+  recordSequence(input: RecordSequenceInput): SpellCastRecord {
+    const multiplier = this.repeatMultiplier(input.rawText);
+    const cast: SpellCastRecord = {
+      rawText: input.rawText,
+      normalized: normalizeSpellText(input.rawText),
+      name: input.name,
+      basePower: input.power,
+      power: Math.round(input.power * multiplier),
+      cost: input.cost,
+      source: input.source,
+      castAt: input.castAt,
+    };
+    this.casts.push(cast);
+    return cast;
+  }
+
+  recordBehaviorUsage(spell: SpellSpec, castAt: number): SpellBehaviorUsageEntry {
+    const usage = toBehaviorUsage(spell, castAt);
+    this.behaviorUsages.push(usage);
+    return usage;
   }
 
   /** 이 문장이 지금까지 기록된 횟수 (정규화 기준) */
   countOf(rawText: string): number {
     const key = normalizeSpellText(rawText);
-    return this.entries.reduce((n, e) => (e.normalized === key ? n + 1 : n), 0);
+    return this.casts.reduce((n, e) => (e.normalized === key ? n + 1 : n), 0);
   }
 
   /**
@@ -177,25 +244,50 @@ export class SpellHistory {
     return this.entries;
   }
 
+  get allCasts(): readonly SpellCastRecord[] {
+    return this.casts;
+  }
+
+  get allBehaviorUsages(): readonly SpellBehaviorUsageEntry[] {
+    return this.behaviorUsages;
+  }
+
   /** 기록 건수 */
   get size(): number {
-    return this.entries.length;
+    return this.casts.length;
   }
 
   /** 보스 기억 요약 초안 (Phase 3 계약용). 최다 원소·폼과 최근 주문명. */
   bossMemory(recentCount = 5): BossMemoryProfile {
     return {
-      dominantElement: mode(this.entries.map((e) => e.elementPrimary)),
-      dominantForm: mode(this.entries.map((e) => e.form)),
-      recentSpellNames: this.recent(recentCount).map((e) => e.name),
-      totalCasts: this.entries.length,
+      dominantElement: mode(this.behaviorUsages.flatMap((e) => (
+        e.elementSecondary ? [e.elementPrimary, e.elementSecondary] : [e.elementPrimary]
+      ))),
+      dominantForm: mode(this.behaviorUsages.map((e) => e.form)),
+      recentSpellNames: this.casts.slice(-Math.max(0, recentCount)).map((e) => e.name),
+      totalCasts: this.casts.length,
     };
   }
 
   /** 새 런 시작 시 초기화 */
   reset(): void {
     this.entries = [];
+    this.casts = [];
+    this.behaviorUsages = [];
   }
+}
+
+function toBehaviorUsage(spell: SpellSpec, castAt: number): SpellBehaviorUsageEntry {
+  return {
+    name: spell.name,
+    effect: spell.effect,
+    target: spell.target,
+    elementPrimary: spell.element_primary,
+    elementSecondary: spell.element_secondary,
+    form: spell.form,
+    power: spell.power,
+    castAt,
+  };
 }
 
 /** 기록 항목을 서명 계산 입력 형태로 (필드명이 SpellSpec과 달라 변환이 필요하다) */

@@ -13,15 +13,14 @@ export const PLAYER_COMBAT_CONFIG = {
   // 임시값: 플레이테스트와 팀 논의 후 조정한다 (GDD에는 초당 n으로 표기).
   // Issue #53 C prototype: passive recovery is only a soft-lock safeguard.
   manaRegenPerSecond: ACTIVE_MANA_CONFIG.passiveRegenPerSecond,
-  globalCooldownSeconds: 3,
-  /** 신속 영창을 아무리 쌓아도 이 밑으로는 안 내려감 (PROGRESSION_DESIGN §1) */
-  globalCooldownFloorSeconds: 1,
+  /** 신속 영창을 아무리 쌓아도 입력락이 이 밑으로는 안 내려감 (GATE_DECISION_0728 #67) */
+  castInputLockFloorSeconds: 0.15,
 } as const;
 
 export class PlayerCombatState {
   private maxHpValue: number = PLAYER_COMBAT_CONFIG.maxHp;
   private maxManaValue: number = PLAYER_COMBAT_CONFIG.maxMana;
-  private cooldownReductionSeconds = 0;
+  private castLockReductionSeconds = 0;
   private manaRegenMultiplierValue = 1;
   private manaGainMultiplierValue = 1;
   private manaPickupRadiusMultiplierValue = 1;
@@ -33,6 +32,7 @@ export class PlayerCombatState {
 
   /** 자기 강화(buff) 타이머 — haste=이동, empower=주는피해, ward=받는피해 */
   private readonly buffs = new Map<SelfBuffKind, ActiveBuff>();
+  private invulnerabilityRemaining = 0;
 
   private buffMultiplier(kind: SelfBuffKind, neutral = 1): number {
     return this.buffs.get(kind)?.multiplier ?? neutral;
@@ -43,7 +43,17 @@ export class PlayerCombatState {
   /** 주는 피해 배율 (empower 버프). 1=평소 */
   get damageOutMultiplier(): number { return this.buffMultiplier('empower'); }
   /** 받는 피해 배율 (ward 버프). 1=평소, 0=무적 */
-  get damageInMultiplier(): number { return this.buffMultiplier('ward'); }
+  get damageInMultiplier(): number {
+    return this.invulnerabilityRemaining > 0 ? 0 : this.buffMultiplier('ward');
+  }
+
+  /** Buff-independent invulnerability used by committed sequence execution. */
+  applyInvulnerability(seconds: number): void {
+    this.invulnerabilityRemaining = Math.max(
+      this.invulnerabilityRemaining,
+      safePositiveAmount(seconds),
+    );
+  }
 
   /** 자기 강화 적용 — 같은 종류는 더 강한 효과와 더 긴 시간으로 갱신한다. */
   applyTimedBuff(kind: SelfBuffKind, multiplier: number, seconds: number): void {
@@ -72,11 +82,11 @@ export class PlayerCombatState {
     return this.maxManaValue;
   }
 
-  /** 신속 영창 반영 후 실제 글로벌 쿨다운 (하한 적용) */
-  get globalCooldownSeconds(): number {
+  /** 신속 영창 반영 후 실제 영창 입력락 (하한 적용) — C 경제엔 글로벌 쿨다운이 없다 */
+  get castInputLockSeconds(): number {
     return Math.max(
-      PLAYER_COMBAT_CONFIG.globalCooldownFloorSeconds,
-      PLAYER_COMBAT_CONFIG.globalCooldownSeconds - this.cooldownReductionSeconds,
+      PLAYER_COMBAT_CONFIG.castInputLockFloorSeconds,
+      ACTIVE_MANA_CONFIG.castInputLockSeconds - this.castLockReductionSeconds,
     );
   }
 
@@ -99,6 +109,7 @@ export class PlayerCombatState {
   update(deltaSeconds: number): void {
     const delta = Math.max(0, deltaSeconds);
     this.cooldownRemaining = Math.max(0, this.cooldownRemaining - delta);
+    this.invulnerabilityRemaining = Math.max(0, this.invulnerabilityRemaining - delta);
 
     for (const [kind, buff] of this.buffs) {
       buff.remaining -= delta;
@@ -130,18 +141,19 @@ export class PlayerCombatState {
     return previous - this.mana;
   }
 
-  startGlobalCooldown(): void {
-    this.cooldownRemaining = this.globalCooldownSeconds;
+  /** 시전 후 입력락 시작 — 신속 영창 감소분이 반영된 실제 값 사용 */
+  startCastLock(): void {
+    this.startInputLock(this.castInputLockSeconds);
   }
 
   startInputLock(seconds: number): void {
     this.cooldownRemaining = Math.max(this.cooldownRemaining, safePositiveAmount(seconds));
   }
 
-  /** 신속 영창 보상 — 글로벌 쿨다운 감소 (하한은 globalCooldownSeconds getter가 보장) */
-  addCooldownReduction(seconds: number): number {
+  /** 신속 영창 보상 — 영창 입력락 감소 (하한은 castInputLockSeconds getter가 보장) */
+  addCastLockReduction(seconds: number): number {
     const amount = safePositiveAmount(seconds);
-    this.cooldownReductionSeconds += amount;
+    this.castLockReductionSeconds += amount;
     return amount;
   }
 
@@ -168,7 +180,7 @@ export class PlayerCombatState {
   reset(): void {
     this.maxHpValue = PLAYER_COMBAT_CONFIG.maxHp;
     this.maxManaValue = PLAYER_COMBAT_CONFIG.maxMana;
-    this.cooldownReductionSeconds = 0;
+    this.castLockReductionSeconds = 0;
     this.manaRegenMultiplierValue = 1;
     this.manaGainMultiplierValue = 1;
     this.manaPickupRadiusMultiplierValue = 1;
@@ -176,6 +188,7 @@ export class PlayerCombatState {
     this.mana = this.maxManaValue;
     this.shield = 0;
     this.cooldownRemaining = 0;
+    this.invulnerabilityRemaining = 0;
     this.buffs.clear();
   }
 

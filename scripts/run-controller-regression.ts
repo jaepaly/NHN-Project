@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { ACTIVE_MANA_CONFIG } from '../src/combat-core/mana/activeManaConfig';
 import { spellPowerWithAffinity } from '../src/combat-core/combat/combatConfig';
 import {
   PLAYER_COMBAT_CONFIG,
@@ -199,21 +200,21 @@ assert.equal(spellPowerWithAffinity(Number.NaN, 0.15), 0, '비정상 power 방�
   }
   assert.notDeepEqual(kindsC.slice(0, seqA.length), seqA, '다른 시드 = 다른 순열');
 
-  // 7-c. 신속 영창: 쿨다운 감소 + 하한
+  // 7-c. 신속 영창: 입력락 감소 + 하한 (C 경제 대체 — GATE_DECISION_0728 #67)
   const swift = new PlayerCombatState();
-  swift.addCooldownReduction(RUN_REWARD_CONFIG.swiftIncantReduction);
+  swift.addCastLockReduction(RUN_REWARD_CONFIG.swiftIncantLockReduction);
   assert.equal(
-    swift.globalCooldownSeconds,
-    PLAYER_COMBAT_CONFIG.globalCooldownSeconds - RUN_REWARD_CONFIG.swiftIncantReduction,
+    swift.castInputLockSeconds,
+    ACTIVE_MANA_CONFIG.castInputLockSeconds - RUN_REWARD_CONFIG.swiftIncantLockReduction,
   );
-  swift.addCooldownReduction(999);
+  swift.addCastLockReduction(999);
   assert.equal(
-    swift.globalCooldownSeconds,
-    PLAYER_COMBAT_CONFIG.globalCooldownFloorSeconds,
-    '쿨다운 하한',
+    swift.castInputLockSeconds,
+    PLAYER_COMBAT_CONFIG.castInputLockFloorSeconds,
+    '입력락 하한',
   );
-  swift.startGlobalCooldown();
-  assert.equal(swift.cooldownRemaining, PLAYER_COMBAT_CONFIG.globalCooldownFloorSeconds);
+  swift.startCastLock();
+  assert.equal(swift.cooldownRemaining, PLAYER_COMBAT_CONFIG.castInputLockFloorSeconds);
 
   // 7-d. 마나 격류: 재생 배율
   const surge = new PlayerCombatState();
@@ -254,7 +255,7 @@ assert.equal(spellPowerWithAffinity(Number.NaN, 0.15), 0, '비정상 power 방�
 
   // 7-f. 플레이어 reset이 신규 패시브도 초기화
   swift.reset();
-  assert.equal(swift.globalCooldownSeconds, PLAYER_COMBAT_CONFIG.globalCooldownSeconds);
+  assert.equal(swift.castInputLockSeconds, ACTIVE_MANA_CONFIG.castInputLockSeconds);
   surge.reset();
   assert.equal(surge.manaRegenMultiplier, 1);
   assert.equal(surge.manaGainMultiplier, 1);

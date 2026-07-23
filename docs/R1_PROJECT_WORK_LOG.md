@@ -739,6 +739,7 @@
 ---
 
 ## [R1] Phase 5 — 격상 암전 저주방 프로토타입
+## [R1] 영창 시퀀스 런타임 프로토타입·R2 계약 초안
 
 ### 작업 개요
 
@@ -775,6 +776,37 @@
 - [ ] 사용자 플레이테스트로 암전 농도·시야 반경·전체 조명 지속 시간 조정
 - [x] DEV 첫 방 강제 설정 제거
 - [ ] PR 리뷰·병합
+| 담당 영역 | R1 전투 런타임·협업 계약 |
+| 담당자 | 이도원 (`dowon03`) |
+| 브랜치 | `prototype/spell-sequence-runtime` |
+| 목표 | 자유 영창을 순차·병렬 behavior로 실행하는 로컬 뼈대를 검증하고 R2 판정 스키마의 구현 기준 전달 |
+| 구현 상태 | 프로토타입·계약 문서·회귀 검증 완료, 협업 리뷰 준비 |
+
+### 구현 내용과 결정
+
+- 최대 10개 sequence를 순차 실행하고 각 sequence의 최대 5개 behavior를 병렬 실행하는 `SpellPlan` 프로토타입을 추가했다. behavior는 기존 form, 마법 이동, wait으로 제한했다.
+- 일반 영창 총 시간을 Power에 따라 0.5~3초로 제한하고, move 하나마다 총 Power 10%를 예약한 뒤 남은 Power를 모든 form의 상대 가중치로 배분한다. 마나는 `max(5, round(power × 0.6))`로 로컬 계산한다.
+- 이동 목적지 8종, 맵 경계 clamp, 전체 시퀀스 무적, 실행 중 재영창·수동 이동 제한과 진행 시간 HUD를 구현했다. 전체 무적 정책은 3초 상한을 적용했지만 후속 플레이테스트 논의 대상으로 남겼다.
+- LLM에 적 ID·좌표를 맡기지 않고, 첫 영향을 받은 적을 lock-on한 뒤 사망하면 마지막 위치에서 가장 가까운 적으로 재탐색하도록 했다. chain과 wall/orbit 지속 적중도 이 계약에 연결했다.
+- 반복 페널티는 영창 한 번에 적용하고 친화·격상·다양성·피해 배율 및 보스 행동 기억은 실제 실행된 form behavior마다 적용·기록한다. 순수 이동 영창은 영창 횟수에는 포함하되 공격 습관 통계에서는 제외한다.
+- 기존 단일 `SpellSpec` 각인에 복합 영창을 투영하는 임시 어댑터를 구현했다. 적격 damage form의 Power를 대표 공격 하나에 합산하며 방어·제어·이동과 기존 제외 form은 피해 각인으로 변환하지 않는다. 최종 정책은 R3 확인이 필요하다.
+- 명시적 복합 명령과 추상적 영창을 포함하는 이름 기반 쇼케이스 30종과 기계적 디버그 fixture 8종을 마련했다.
+- [SPELL_SEQUENCE_QUICKSTART.md](SPELL_SEQUENCE_QUICKSTART.md)에 시스템 요약, 실행 방법, 대표·전체 프리셋과 플레이테스트 관찰 항목을 정리하고, [SPELL_SEQUENCE_SCHEMA_DRAFT.md](SPELL_SEQUENCE_SCHEMA_DRAFT.md)에 실행 의미, 필드 계약, 정규화, Power·Mana·시간, 타깃, 호환, 실패 복구, R2/R3 리뷰 요청을 문서화했다.
+
+### 협업 경계와 후속 협의
+
+- R2는 새 Gemini 응답 스키마·프롬프트·validator·fallback·cache version을 구현하고, `effect/target/form`을 독립 판정해 self damage nova가 가능하도록 보완한다.
+- R3는 전체 시퀀스를 각인으로 보존할지, 현재 대표 form 투영을 유지할지 확인한다.
+- 현재 코드는 확정 기능 브랜치가 아니라 R2/R3 설계 전달과 실제 전투 적용 가능성을 검증하기 위한 프로토타입이다.
+
+### 검증 및 완료 상태
+
+- [x] 사용자 플레이테스트: 이동·병렬 공격·wait·복합 원소·진행 HUD·3초 상한
+- [x] `test:sequence`, `test:spell`, `test:advanced-forms`, `test:persistent-forms` 통과
+- [x] `test:history`, `test:boss` 통과
+- [x] 프로덕션 빌드 및 `git diff --check` 통과
+- [x] R2/R3 전달용 상세 스키마 초안 작성
+- [ ] R2/R3 협업 리뷰 및 판정 API 연결
 
 ---
 

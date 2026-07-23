@@ -3,9 +3,11 @@ import type { SpellSpec } from '../spell/types';
 import { SPELL_DAMAGE_CONFIG } from '../combat-core/combat/combatConfig';
 import { CAGE_CONFIG, CHAIN_CONFIG } from '../combat-core/combat/advancedFormConfig';
 import {
+  NOVA_CONFIG,
   RAIN_CONFIG,
   ZONE_CONFIG,
   areaTargetPoint,
+  novaProjectileSpeed,
   rainFallDurationMs,
   rainLaunchDurationSeconds,
   rainOffset,
@@ -73,6 +75,12 @@ export interface CastContext {
     toY: number,
     projectileRadius: number,
   ) => { x: number; y: number } | null;
+  /** Prevents delayed projectiles from resolving after their combat room has ended. */
+  shouldResolveImpact?: () => boolean;
+  /** Optional bounded modifiers used by sequence showcase tuning. */
+  damageScale?: number;
+  rangeScale?: number;
+  radiusScale?: number;
 }
 
 /** 파티클용 원형 글로우 텍스처를 1회 생성 */
@@ -147,7 +155,8 @@ function withAffinityImpactFlourish(ctx: CastContext, spec: SpellSpec): CastCont
 }
 
 function requestCastCameraShake(ctx: CastContext, spec: SpellSpec): void {
-  if (ctx.allowCameraShake === false || spec.form === 'bolt') return;
+  // Projectile forms shake on impact rather than when they launch.
+  if (ctx.allowCameraShake === false || spec.form === 'bolt' || spec.form === 'nova') return;
   let tier: CameraShakeTier | null = null;
   let intensityScale = 1.25;
   switch (spec.form) {
@@ -158,10 +167,6 @@ function requestCastCameraShake(ctx: CastContext, spec: SpellSpec): void {
     case 'wave':
     case 'rain':
       tier = 'medium';
-      break;
-    case 'nova':
-      tier = 'strong';
-      intensityScale = 1.45;
       break;
     case 'zone':
     case 'cage':
@@ -378,7 +383,8 @@ function castBeam(ctx: CastContext, spec: SpellSpec): void {
   const { scene, from } = ctx;
   const pal = ELEMENT_PALETTES[spec.element_primary];
   const scale = SIZE_SCALE[spec.size];
-  const end = endpointInDirection(from, ctx.to, SPELL_DAMAGE_CONFIG.beamRange);
+  const range = SPELL_DAMAGE_CONFIG.beamRange * (ctx.rangeScale ?? 1);
+  const end = endpointInDirection(from, ctx.to, range);
   const width = SPELL_DAMAGE_CONFIG.beamBaseWidth * scale;
   const holdDurationMs = spec.speed === 'fast' ? 200 : spec.speed === 'slow' ? 400 : 300;
   const fadeDurationMs = spec.speed === 'fast' ? 400 : spec.speed === 'slow' ? 650 : 500;
@@ -404,6 +410,7 @@ function castBeam(ctx: CastContext, spec: SpellSpec): void {
     toX: end.x,
     toY: end.y,
     width,
+    damageMultiplier: ctx.damageScale ?? 1,
   }, spec);
   impactBurst(scene, end.x, end.y, spec);
   scene.time.delayedCall(holdDurationMs, () => {
@@ -494,15 +501,86 @@ function endpointInDirection(
   return from.clone().add(direction.normalize().scale(range));
 }
 
-/** nova — 시전자 중심 360° 방사 폭발 */
+/** nova — 지정 지점까지 핵을 보내 도착 시 360° 방사 폭발 */
 function castNova(ctx: CastContext, spec: SpellSpec): void {
   const { scene, from } = ctx;
   const pal = ELEMENT_PALETTES[spec.element_primary];
   const scale = SIZE_SCALE[spec.size];
-  const radius = 120 * scale + spec.power;
+  const target = areaTargetPoint(
+    from.x,
+    from.y,
+    ctx.to?.x,
+    ctx.to?.y,
+    NOVA_CONFIG.castRange,
+  );
+  const distance = Phaser.Math.Distance.Between(from.x, from.y, target.x, target.y);
+
+  if (distance <= NOVA_CONFIG.instantDistance) {
+    explodeNova(ctx, spec, target.x, target.y);
+    return;
+  }
+
+  const body = scene.add.circle(from.x, from.y, 9 * scale, pal.core)
+    .setBlendMode(Phaser.BlendModes.ADD);
+  const halo = scene.add.circle(from.x, from.y, 18 * scale, pal.glow, 0.38)
+    .setBlendMode(Phaser.BlendModes.ADD);
+  const trail = scene.add.particles(0, 0, 'particle', {
+    speed: { min: 20, max: 85 },
+    scale: { start: 0.55 * scale, end: 0 },
+    lifespan: 360,
+    quantity: 2,
+    tint: [pal.core, pal.glow, pal.accent],
+    blendMode: Phaser.BlendModes.ADD,
+    follow: body,
+  });
+  let subTrail: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
+  if (spec.element_secondary) {
+    const sub = ELEMENT_PALETTES[spec.element_secondary];
+    subTrail = scene.add.particles(0, 0, 'particle', {
+      speed: { min: 30, max: 100 },
+      scale: { start: 0.32 * scale, end: 0 },
+      lifespan: 300,
+      quantity: 1,
+      tint: [sub.core, sub.accent],
+      blendMode: Phaser.BlendModes.ADD,
+      follow: body,
+    });
+  }
+
+  scene.tweens.add({
+    targets: [body, halo],
+    x: target.x,
+    y: target.y,
+    duration: distance / novaProjectileSpeed(spec.speed) * 1000,
+    ease: 'Linear',
+    onComplete: () => {
+      trail.stop();
+      subTrail?.stop();
+      body.destroy();
+      halo.destroy();
+      explodeNova(ctx, spec, target.x, target.y);
+      scene.time.delayedCall(400, () => {
+        trail.destroy();
+        subTrail?.destroy();
+      });
+    },
+  });
+}
+
+function explodeNova(ctx: CastContext, spec: SpellSpec, x: number, y: number): void {
+  if (ctx.shouldResolveImpact?.() === false) return;
+  const { scene } = ctx;
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const scale = SIZE_SCALE[spec.size];
+  const radiusScale = ctx.radiusScale ?? 1;
+  const radius = (120 * scale + spec.power) * radiusScale;
+
+  if (ctx.allowCameraShake !== false) {
+    requestCameraShake(scene, 'strong', 1.45);
+  }
 
   // 확장하는 링
-  const ring = scene.add.circle(from.x, from.y, 10, pal.glow, 0)
+  const ring = scene.add.circle(x, y, 10, pal.glow, 0)
     .setStrokeStyle(4 * scale, pal.core, 0.9)
     .setBlendMode(Phaser.BlendModes.ADD);
   scene.tweens.add({
@@ -516,7 +594,7 @@ function castNova(ctx: CastContext, spec: SpellSpec): void {
   });
 
   // 방사 파티클
-  const burst = scene.add.particles(from.x, from.y, 'particle', {
+  const burst = scene.add.particles(x, y, 'particle', {
     speed: { min: radius * 1.2, max: radius * 2.2 },
     scale: { start: 0.7 * scale, end: 0 },
     lifespan: 500,
@@ -529,7 +607,7 @@ function castNova(ctx: CastContext, spec: SpellSpec): void {
 
   if (spec.element_secondary) {
     const sub = ELEMENT_PALETTES[spec.element_secondary];
-    const subBurst = scene.add.particles(from.x, from.y, 'particle', {
+    const subBurst = scene.add.particles(x, y, 'particle', {
       speed: { min: radius, max: radius * 1.8 },
       scale: { start: 0.4 * scale, end: 0 },
       lifespan: 400,
@@ -544,9 +622,10 @@ function castNova(ctx: CastContext, spec: SpellSpec): void {
 
   ctx.onHit?.({
     kind: 'circle',
-    x: from.x,
-    y: from.y,
-    radius: SPELL_DAMAGE_CONFIG.novaBaseRadius + spec.power,
+    x,
+    y,
+    radius: (SPELL_DAMAGE_CONFIG.novaBaseRadius + spec.power) * radiusScale,
+    damageMultiplier: ctx.damageScale ?? 1,
   }, spec);
   scene.time.delayedCall(700, () => burst.destroy());
 }

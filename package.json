@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test:spell": "esbuild scripts/spell-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-regression.mjs && node node_modules/.cache/incant-spell-regression.mjs",
+    "test:judge-fallback": "esbuild scripts/gemini-fizzle-fallback-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-gemini-fizzle-fallback-regression.mjs && node node_modules/.cache/incant-gemini-fizzle-fallback-regression.mjs",
     "test:history": "esbuild scripts/spell-history-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-history-regression.mjs && node node_modules/.cache/incant-spell-history-regression.mjs",
     "test:run": "esbuild scripts/run-controller-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-run-controller-regression.mjs && node node_modules/.cache/incant-run-controller-regression.mjs",
     "test:control": "esbuild scripts/control-effects-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-control-effects-regression.mjs && node node_modules/.cache/incant-control-effects-regression.mjs",
@@ -41,7 +42,8 @@
     "test:summonbehavior": "esbuild scripts/summon-behavior-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-summon-behavior-regression.mjs && node node_modules/.cache/incant-summon-behavior-regression.mjs",
     "test:affinityvfx": "esbuild scripts/affinity-vfx-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-affinity-vfx-regression.mjs && node node_modules/.cache/incant-affinity-vfx-regression.mjs",
     "test:onboarding": "esbuild scripts/onboarding-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-onboarding-regression.mjs && node node_modules/.cache/incant-onboarding-regression.mjs",
-    "test:room-curse": "esbuild scripts/room-curse-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-curse-regression.mjs && node node_modules/.cache/incant-room-curse-regression.mjs"
+    "test:room-curse": "esbuild scripts/room-curse-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-curse-regression.mjs && node node_modules/.cache/incant-room-curse-regression.mjs",
+    "test:sequence": "esbuild scripts/spell-sequence-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-sequence-regression.mjs && node node_modules/.cache/incant-spell-sequence-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

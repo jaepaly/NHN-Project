@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import {
+  NOVA_CONFIG,
   RAIN_CONFIG,
   ZONE_CONFIG,
   areaTargetPoint,
   densestAreaTarget,
   densestDirectionalTarget,
+  novaProjectileSpeed,
   rainFallDurationMs,
   rainLaunchDurationSeconds,
   rainOffset,
@@ -20,6 +22,17 @@ assert.deepEqual(clamped, { x: 320, y: 0 }, '먼 zone 목표는 320px 설치 사
 
 const noTarget = areaTargetPoint(25, 35, undefined, undefined, ZONE_CONFIG.castRange);
 assert.deepEqual(noTarget, { x: 25, y: 35 }, '대상이 없으면 시전자 위치에 생성해야 한다');
+
+const novaClamped = areaTargetPoint(0, 0, 800, 0, NOVA_CONFIG.castRange);
+assert.deepEqual(novaClamped, { x: 520, y: 0 },
+  'nova target should clamp to its maximum cast range');
+assert.deepEqual(
+  ['slow', 'normal', 'fast'].map(novaProjectileSpeed),
+  [460, 620, 820],
+  'nova projectile speed should follow the judged spell speed',
+);
+assert.ok(NOVA_CONFIG.instantDistance > 0,
+  'self nova should explode immediately within a small distance');
 
 const clustered = densestAreaTarget(0, 0, 320, 40, [
   { x: 40, y: 0, collisionRadius: 10 },
