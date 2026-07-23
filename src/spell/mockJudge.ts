@@ -6,11 +6,34 @@ import type {
   SpellJudgement,
   SpellSize,
   SpellSpeed,
+  SpellSpec,
   SpellStatus,
   SpellTarget,
 } from './types';
 import { validateSpec } from './validate';
 import { FIZZLE_JUDGEMENT } from './types';
+import type { SpellPlan } from './sequencePlan';
+import { validateSpellPlan } from './spellPlanValidate';
+
+/**
+ * 명시적 순차 접속사 — 이게 있을 때만 절을 나눠 시퀀스로 본다.
+ * Mock은 폴백이라 Gemini만큼 섬세할 필요 없다: "여러 단계"라는 신호가 뚜렷할 때만 분해해
+ * 기존 단일 판정(회귀 코퍼스엔 이 마커가 없다)을 건드리지 않는다.
+ */
+const SEQUENCE_MARKERS = [
+  '그리고 나서', '그런 다음', '그러고 나서', '그다음', '그 다음', '이어서',
+  '하고 나서', '한 뒤', '한 후', '고 나서', ' 뒤 ', ' 후 ', ' then ', 'after that',
+];
+
+/** 순차 마커로 원문을 절로 나눈다. 마커가 없으면 단일 절. */
+function splitSequenceClauses(text: string): string[] {
+  const DELIM = " §SEQ§ ";
+  let marked = ` ${text} `;
+  for (const marker of SEQUENCE_MARKERS) {
+    marked = marked.split(marker).join(DELIM);
+  }
+  return marked.split(DELIM).map((s) => s.trim()).filter((s) => s.length > 0);
+}
 
 /**
  * MockJudge — 키워드 기반 결정론적 판정기.
@@ -279,6 +302,40 @@ export class MockJudge implements SpellJudge {
     const prechecked = precheckText(t);
     if (prechecked) return prechecked;
 
+    const spec = this.buildSpec(text, t);
+    if (!spec) return FIZZLE_JUDGEMENT;
+    // 명시적 순차 마커가 있으면 복합 영창 plan을 함께 싣는다. spec은 폴백·기록용 대표.
+    const plan = this.buildSequencePlan(text);
+    return plan
+      ? { schema_version: 2, disposition: 'cast', spell: spec, plan }
+      : { schema_version: 2, disposition: 'cast', spell: spec };
+  }
+
+  /**
+   * 폴백용 시퀀스 산출 — 명시적 순차 마커가 있을 때만 절별 form 시퀀스 plan을 만든다.
+   * Gemini(R2 프롬프트)가 담당할 섬세한 move/wait 해석은 하지 않는다. 오프라인·폴백에서도
+   * 복합 영창이 "여러 단계로 실행"되게 하는 최소 근사다. 마커가 없으면 null(단일 주문).
+   */
+  private buildSequencePlan(text: string): SpellPlan | null {
+    const clauses = splitSequenceClauses(text);
+    if (clauses.length < 2) return null;
+    const specs = clauses
+      .map((clause) => this.buildSpec(clause, clause.trim().toLowerCase()))
+      .filter((s): s is SpellSpec => s !== null);
+    if (specs.length < 2) return null;
+    return validateSpellPlan({
+      name: text.trim(),
+      power: Math.min(100, Math.max(...specs.map((s) => s.power))),
+      durationMs: 500 * specs.length,
+      sequences: specs.map((spec) => ({
+        durationWeight: 1,
+        behaviors: [{ type: 'form', spec, powerWeight: 1 }],
+      })),
+    });
+  }
+
+  /** 자유 텍스트 한 절 → 단일 SpellSpec (기존 v2 판정 로직). 검증 실패 시 null. */
+  private buildSpec(text: string, t: string): SpellSpec | null {
     const effect = inferEffect(t);
     const target = targetForEffect(effect, t);
     const primary = findMatch(ELEMENT_KEYWORDS, t)
@@ -339,8 +396,6 @@ export class MockJudge implements SpellJudge {
       power,
       cost: Math.max(5, Math.round(power * 0.6)),
     });
-    return spec
-      ? { schema_version: 2, disposition: 'cast', spell: spec }
-      : FIZZLE_JUDGEMENT;
+    return spec;
   }
 }
