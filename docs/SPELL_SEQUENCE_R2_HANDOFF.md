@@ -59,3 +59,64 @@ npm run test:sequence       # 런타임·예산·픽스처
 npm run test:spell          # 단일 판정 불변 (Mock)
 npm run build
 ```
+
+---
+
+## 부록 A — Worker 프롬프트 초안 (붙여넣기용)
+
+> 총괄 초안. 임재윤이 문구·수치를 다듬어 `proxy/worker.js`의 `JUDGE_PROMPT`에 넣고 배포한다.
+> **원칙**: `spell`(대표 단일)은 항상 내고, `spell_plan`은 **복합/순차 동작일 때만** 추가한다.
+> 단일 영창은 plan을 넣지 말 것 — 게이트 실패 모드 1순위("단일이 복잡해짐").
+
+`JUDGE_PROMPT`의 판단 순서에 단계 하나를 더한다(현재 6번 shape 다음, "cast 출력 스키마" 앞):
+
+```text
+7. 입력이 **시간 순서가 있는 복합 동작**("먼저 A 그다음 B", "A한 뒤 B")이거나
+   **동시 다원소 동작**("얼음과 불을 동시에")이면, spell(대표 하나)에 더해 spell_plan을 설계한다.
+   단일 동작이면 spell_plan을 넣지 않는다. 긴 문장이라고 무조건 단계를 늘리지 않는다.
+   - sequences: 순차 사건을 앞에서부터 단계로(최대 10). 같은 순간의 사건은 한 단계의 behaviors로 병렬(최대 5).
+   - behavior type은 셋뿐: form(공격·효과, spec은 위 cast 스키마와 동일)·move(이동, element 필수)·wait(정적·박자).
+   - move.destination(이 5개만): cast-point|target-direction|away-from-target|random-direction|arena-center.
+   - power·durationMs는 전체 예산이다. behavior마다 새로 만들지 않는다. spec.power와 spec.cost는 0으로 둔다(로컬 재계산).
+   - durationMs는 500~3000. 절대 픽셀·초·피해값·적 위치·무적을 만들지 않는다. 스키마에 없는 type/원소/form 금지.
+```
+
+cast 출력 스키마의 `spell` 뒤에 옵션 필드로 추가:
+
+```jsonc
+  "spell_plan": {                         // 복합/순차 동작일 때만 (단일이면 생략)
+    "name": "전체 영창명", "power": 0, "durationMs": 1500,
+    "sequences": [
+      { "durationWeight": 2, "behaviors": [
+          { "type": "move", "destination": "target-direction", "element": "fire" } ] },
+      { "durationWeight": 1, "behaviors": [
+          { "type": "form", "powerWeight": 1, "tuning": { "damage": 2, "radius": 2 },
+            "spec": { "name":"돌진 폭발","effect":"damage","target":"self",
+                      "element_primary":"fire","element_secondary":null,"form":"nova",
+                      "size":"large","speed":"normal","status":["burn"],"power":0,"cost":0 } } ] }
+    ]
+  }
+```
+
+스키마 하단 안내에 한 줄 추가:
+`spell_plan은 복합/순차·동시 동작일 때만 포함(그 외 생략). type은 form|move|wait, move는 element 필수·destination 5종만.`
+
+### 배포 시 함께 (조율 필수)
+
+1. **캐시 접두 bump** — `src/spell/geminiJudge.ts`의 `CACHE_PREFIX`를 올린다(예: `…:v2.4:` → `…:v3seq:`).
+   안 하면 순차 입력의 **옛 단일 캐시가 새 plan을 가린다**(§18).
+2. **프롬프트 버전** — `src/spell/geminiJudge.ts`의 `JUDGE_PROMPT_VERSION`을 올리고, `scripts/spell-regression.ts`의 assert도 같이 갱신.
+3. 배포는 임재윤(wrangler 인증) — 총괄 PC는 미인증.
+
+> 클라이언트는 `spell` 없이 `spell_plan`만 와도 대표 주문을 유도한다(`validateJudgement`). 즉 대표 spell을 생략해 토큰을 아껴도 되지만, 캐시·기록 가독성을 위해 대표를 함께 내는 것을 권장.
+
+## 부록 B — 실측 하니스
+
+```bash
+npm run gate:sequence        # 배포된 프록시에 30입력(복합10·추상10·단일10)
+# PROXY_URL=... npm run gate:sequence  # 다른 프록시 지정
+```
+
+자동 집계: 유효 JSON% · 복합 행동 보존%(plan·시퀀스≥2) · **단일 1-시퀀스 유지** · 지연 p50/p90 · **2.5초 초과율**.
+게이트 판정(🟢/🔴)까지 출력. **배포 전 먼저 돌려 baseline**(전부 plan 없음)을 잡고, 배포 후 다시 돌려 비교.
+`scripts/sequence-yield-harness.ts` — 입력 세트는 자유 편집.
