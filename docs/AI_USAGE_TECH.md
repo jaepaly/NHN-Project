@@ -66,7 +66,7 @@ judge(text)
  │     └ mockJudge.precheckText()          source: 'local'
  │
  ├─② localStorage 캐시 조회     ─── 같은 문장 = 같은 판정 (재현성·속도·호출량 절감)
- │     └ 키: incant:judge:v2:meaning-v2.3:<문장>   source: 'cache'
+ │     └ 키: incant:judge:v2:meaning-v2.4:<문장>   source: 'cache'
  │
  ├─③ 프록시 요청 (2.5초 타임아웃) ─── Cloudflare Worker → Gemini
  │     └ fetch({ text }), AbortController 2500ms   source: 'gemini'
@@ -88,7 +88,7 @@ judge(text)
 
 프롬프트는 **서버(프록시)에 고정**한다. 클라이언트는 `{ text }`(플레이어 입력)만 보내고, 판정 규칙·출력 스키마는 워커가 강제한다 — 프롬프트를 클라이언트에 두면 조작이 가능하기 때문이다(1.8).
 
-프롬프트는 LLM에게 **정해진 순서로 판단**하도록 지시한다. 다음이 실제 배포 중인 전문이다 (`proxy/worker.js`, 버전 `meaning-v2.3`):
+프롬프트는 LLM에게 **정해진 순서로 판단**하도록 지시한다. 다음이 실제 배포 중인 전문이다 (`proxy/worker.js`, 버전 `meaning-v2.4`):
 
 ```
 당신은 자유 텍스트 마법 게임의 의미 판정관이다. 반드시 JSON 하나만 출력한다.
