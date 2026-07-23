@@ -93,14 +93,30 @@ function scaleAbout(points: readonly FormPoint[], center: FormPoint, k: number):
 }
 
 /**
+ * 기본 원호(arc)의 실효 정면폭 — 목표 방향과 수직으로 잰 벽의 폭.
+ * 열린 형상의 정규화 기준이자, 오탐 무해화의 축이다 (아래 불변식 참조).
+ */
+export function wallFrontage(size: SpellSize, rangeScale = 1): number {
+  const safeScale = Number.isFinite(rangeScale) ? Math.max(0.25, rangeScale) : 1;
+  const halfArcAngle = WALL_CONFIG.lengths[size] / WALL_CONFIG.offset / 2;
+  // 호가 반원을 넘으면(huge) 횡폭은 지름에서 캡된다 — sin이 다시 줄어드는 걸 막는다
+  const spread = halfArcAngle >= Math.PI / 2 ? 1 : Math.sin(halfArcAngle);
+  return 2 * WALL_CONFIG.offset * safeScale * spread;
+}
+
+/**
  * 형상 DSL을 실제 벽 폴리라인으로 실현한다 (L3 확장 — spellShape.ts).
  *
  * ⚠️ **불변식: 형상은 표현이지 위력이 아니다.** 다만 열린 형상과 닫힌 형상은
  * "세기"의 척도가 달라 기준을 나눈다 (회귀로 고정):
  *
- * - **열린 형상**(line·zigzag·wave): **정면폭 = WALL_CONFIG.lengths[size]** 고정.
+ * - **열린 형상**(line·zigzag·wave): **정면폭 = 기본 원호(arc)의 실효 정면폭** 고정.
  *   벽의 힘은 *얼마나 넓은 통로를 막는가*이므로 정면폭이 맞는 척도다. 굴곡은 전진축
  *   방향이라 정면폭을 건드리지 않는다 — 접어도 막는 폭은 같고 모양만 달라진다.
+ *   기준을 arc와 통일한 이유(#133 오탐 실측): LLM이 모양 묘사 없는 벽에 간헐적으로
+ *   `line`을 붙이는데, line 정면폭이 arc보다 넓으면 **오탐 = 숨은 버프**가 된다.
+ *   전 형상의 정면폭을 arc와 같게 묶으면 오탐이 떠도 세기가 변하지 않는다 —
+ *   프롬프트(확률적)에 기대지 않는 결정론적 방어.
  *   (총 길이로 정규화하면 "지그재그로 만들라"는 말이 벽을 좁히는 **벌칙**이 된다.)
  * - **닫힌 형상**(ring·polygon): **총 둘레 = 같은 값** 고정. 360° 차단은 틈이 없어
  *   그 자체로 강하므로, 둘레까지 키워주면 이중 이득이 된다. 둘레를 묶어 반경으로 상쇄한다.
@@ -149,10 +165,11 @@ export function shapedWallPoints(
 
   // 열린 형상 — 정면폭(횡방향)은 그대로 두고 전진축으로만 굽힌다.
   // 굴곡이 정면폭을 깎지 않으므로 재정규화하지 않는다 (위 불변식 참조).
+  const frontage = wallFrontage(size, rangeScale);
   raw = [];
   for (let i = 0; i <= segments; i += 1) {
     const ratio = i / segments;
-    const along = (ratio - 0.5) * targetLength;    // 횡방향 진행 = 정면폭
+    const along = (ratio - 0.5) * frontage;        // 횡방향 진행 = 정면폭(arc와 동일)
     let bend = 0;                                  // 전진축 굴곡
     if (shape.kind === 'zigzag') {
       // 삼각파 — 뾰족하게 꺾인다

@@ -5,6 +5,7 @@ import {
   WALL_CONFIG,
   shapedWallPoints,
   wallArcPoints,
+  wallFrontage,
   sweepIntersectsPolyline,
 } from '../src/combat-core/combat/persistentFormConfig';
 import type { FormPoint } from '../src/combat-core/combat/persistentFormConfig';
@@ -59,15 +60,21 @@ function frontage(points: readonly FormPoint[]): number {
   return Math.max(...ys) - Math.min(...ys);
 }
 for (const size of ['small', 'medium', 'large', 'huge'] as const) {
-  const expected = WALL_CONFIG.lengths[size];
+  // 열린 형상 기준 = 기본 원호(arc)의 실효 정면폭 — 오탐(arc↔line 스왑)이 세기를 못 바꾸게
+  const expectedFrontage = wallFrontage(size);
+  const arcFrontage = frontage(wallArcPoints(origin, target, size));
+  assert.ok(
+    Math.abs(expectedFrontage - arcFrontage) < 0.5,
+    `${size}: wallFrontage 공식이 실제 arc 정면폭과 일치해야 한다`,
+  );
   for (const kind of ['line', 'zigzag', 'wave'] as const) {
     for (const amplitude of [1, 30, 60, 100]) {
       const points = shapedWallPoints(origin, target, size, 1, { kind, amplitude });
       const actual = frontage(points);
       assert.ok(
-        Math.abs(actual - expected) < 0.5,
-        `${size}/${kind}(진폭${amplitude}): 정면폭 ${actual.toFixed(1)} ≈ ${expected}`
-        + ' — 굴곡이 막는 폭을 깎으면 표현이 벌칙이 된다',
+        Math.abs(actual - expectedFrontage) < 0.5,
+        `${size}/${kind}(진폭${amplitude}): 정면폭 ${actual.toFixed(1)} ≈ arc ${expectedFrontage.toFixed(1)}`
+        + ' — 오탐으로 형상이 바뀌어도 막는 폭이 변하면 숨은 버프다',
       );
     }
   }
@@ -75,8 +82,8 @@ for (const size of ['small', 'medium', 'large', 'huge'] as const) {
     const points = shapedWallPoints(origin, target, size, 1, { kind, sides: 3 });
     const actual = length(points);
     assert.ok(
-      Math.abs(actual - expected) < 0.5,
-      `${size}/${kind}: 둘레 ${actual.toFixed(1)} ≈ ${expected} (360° 차단은 반경으로 상쇄)`,
+      Math.abs(actual - WALL_CONFIG.lengths[size]) < 0.5,
+      `${size}/${kind}: 둘레 ${actual.toFixed(1)} ≈ ${WALL_CONFIG.lengths[size]} (360° 차단은 반경으로 상쇄)`,
     );
   }
 }
