@@ -201,7 +201,15 @@ interface FriendlyMissile {
   speed: number;
   hitDistance: number;
   knockbackDistance: number;
+  source: DamageSource;
 }
+
+/**
+ * 피해 귀속 — 오토 비중 실런 계측용 (GATE_DECISION_0728 #67 필수 2번).
+ * manual=수동 영창(지속형 wall/orbit 포함) · auto=각인+정령+소환 · basic=기본탄 ·
+ * status=상태이상 파생(burn DoT·shock 전이, 시전 주체 미추적이라 별도 버킷)
+ */
+type DamageSource = 'manual' | 'auto' | 'basic' | 'status';
 
 interface CastFeedbackState {
   resistanceNoticeShown: boolean;
@@ -414,6 +422,11 @@ export class ProtoScene extends Phaser.Scene {
   private readonly enemyKnockbacks = new Map<CombatEnemy, EnemyKnockbackState>();
   private basicAttackCooldownRemaining = 0;
   private friendlyMissiles: FriendlyMissile[] = [];
+
+  /** 런 누적 피해 귀속 원장 — restartRun에서 리셋, 방·런 종료 시 리포트 */
+  private damageLedger: Record<DamageSource, number> = {
+    manual: 0, auto: 0, basic: 0, status: 0,
+  };
   /** 활성 소환체들 — 분신 1 / 군체 N / 포탑 1 / 기본 오브 1 (#97 ②) */
   private activeSummons: SummonedOrb[] = [];
   private activeSummonKnockbackDistance = 0;
@@ -500,6 +513,9 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   create(): void {
+    // 실런 재측정용 디버그 접근자 — 콘솔에서 __autoShare()로 현재 누적 확인
+    (window as unknown as { __autoShare?: () => unknown }).__autoShare
+      = () => this.autoShareSnapshot();
     const { width, height } = this.scale;
     this.worldBounds.setTo(
       0,
@@ -635,6 +651,7 @@ export class ProtoScene extends Phaser.Scene {
     this.combatRunController.on('room-started', (state) => {
       this.startRoom(state.roomIndex);
       console.info('[Run] room-started', state);
+      this.reportAutoShare(`방 ${state.roomIndex} 진입 누적`);
     });
     this.combatRunController.on('run-completed', (state) => {
       this.deferTransientCombatCleanup();
@@ -644,6 +661,11 @@ export class ProtoScene extends Phaser.Scene {
       // — 패배가 선점: 기억 저장·승리 연출 모두 생략해 한 런에 lose/win 이중 기록을 막는다
       if (this.deathHandled) return;
       this.announceSystemMessage('런 완료', '#72f1b8');
+      this.reportAutoShare('런 완주');
+      if (import.meta.env.DEV) {
+        const share = this.autoShareSnapshot();
+        this.announceSystemMessage(`[DEV] 오토 비중 ${share.autoSharePercent}%`, '#8fa4ff', 3200);
+      }
       this.persistRunMemory('win');
       // RUN COMPLETE 전환 연출(runUiBinding)이 걷힌 뒤 런 요약 → Enter로 새 런
       this.time.delayedCall(1400, () => {
@@ -659,6 +681,7 @@ export class ProtoScene extends Phaser.Scene {
     // 보스가 먼저 죽어 런이 완주된 뒤의 사망(지연 판정 등)은 승리가 선점 — 패배 처리 안 함
     if (this.combatRunController.state.phase === 'run-over') return;
     this.deathHandled = true;
+    this.reportAutoShare('사망');
     this.persistRunMemory('lose');
     this.stopCastingForRunPause();
     this.deferTransientCombatCleanup();
@@ -749,8 +772,30 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   /** 새 런 — 씬 재시작 없이 상태만 초기화. 컨트롤러 reset이 room-started를 발화해 방 1부터 재개된다. */
+  /** 오토 비중 스냅샷 — 콘솔 리포트·재측정(window.__autoShare)용 */
+  private autoShareSnapshot(): Record<DamageSource, number> & { autoSharePercent: number } {
+    const { manual, auto, basic, status } = this.damageLedger;
+    const total = manual + auto + basic + status;
+    return {
+      manual: Math.round(manual),
+      auto: Math.round(auto),
+      basic: Math.round(basic),
+      status: Math.round(status),
+      autoSharePercent: total > 0 ? Math.round((auto / total) * 1000) / 10 : 0,
+    };
+  }
+
+  private reportAutoShare(tag: string): void {
+    const s = this.autoShareSnapshot();
+    console.info(
+      `[auto-share] ${tag} — 오토 ${s.autoSharePercent}% `
+      + `(수동 ${s.manual} · 오토 ${s.auto} · 기본탄 ${s.basic} · 상태이상 ${s.status})`,
+    );
+  }
+
   private restartRun(): void {
     this.deathHandled = false;
+    this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
@@ -1419,7 +1464,7 @@ if (applied) this.playPlayerHit();
 
     // burn(지속피해) 0.5초 펄스 — persistent 킨드로 가벼운 연출, 방향 보호막 무시.
     this.enemyAilments.update(deltaSeconds, (enemy, damage) => {
-      this.damageEnemy(enemy, damage, undefined, enemy.x, enemy.y, true, 'persistent', 0);
+      this.damageEnemy(enemy, damage, undefined, enemy.x, enemy.y, true, 'persistent', 0, 'status');
     });
 
     const stoppedEnemies = new Set<CombatEnemy>();
@@ -2069,6 +2114,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       hitDistance: BASIC_ATTACK_CONFIG.hitDistance,
       coreColor: 0xc8d3ff,
       glowColor: 0x6b7cff,
+      source: 'basic',
     });
   }
 
@@ -2083,6 +2129,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     knockbackDistance?: number;
     coreColor: number;
     glowColor: number;
+    source: DamageSource;
   }): void {
     const body = this.add.circle(options.fromX, options.fromY, 5, options.coreColor)
       .setBlendMode(Phaser.BlendModes.ADD);
@@ -2098,6 +2145,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       speed: options.speed,
       hitDistance: options.hitDistance,
       knockbackDistance: options.knockbackDistance ?? 0,
+      source: options.source,
     });
   }
 
@@ -2131,6 +2179,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           false,
           'standard',
           missile.knockbackDistance,
+          missile.source,
         );
         continue;
       }
@@ -3657,6 +3706,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         bypassDirectionalShield,
         hitStopKind,
         knockbackDistance,
+        auto ? 'auto' : 'manual',
       );
       onAffectEnemy?.(enemy);
       if (damaged && (spec.form === 'beam' || spec.form === 'wave')) {
@@ -3835,6 +3885,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         knockbackDistance: this.activeSummonKnockbackDistance,
         coreColor: palette.core,
         glowColor: palette.glow,
+        source: 'auto',
       });
     }
     this.activeSummons = survivors;
@@ -4191,7 +4242,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const arc = this.add.line(0, 0, source.x, source.y, target.x, target.y, 0xfff07a, 0.9)
         .setOrigin(0, 0).setLineWidth(2).setDepth(6).setBlendMode(Phaser.BlendModes.ADD);
       this.tweens.add({ targets: arc, alpha: 0, duration: 180, onComplete: () => arc.destroy() });
-      this.damageEnemy(target, this.spellDamageAgainst(target, spec, zap), spec.element_primary, source.x, source.y);
+      this.damageEnemy(
+        target, this.spellDamageAgainst(target, spec, zap), spec.element_primary,
+        source.x, source.y, false, 'standard', 0, 'status',
+      );
     }
   }
 
@@ -4204,6 +4258,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     bypassDirectionalShield = false,
     hitStopKind: HitStopKind = 'standard',
     knockbackDistance = 0,
+    source: DamageSource = 'manual',
   ): boolean {
     if (damage <= 0 || !enemy.alive) return false;
     const underlyingEnemy = enemy instanceof EliteEnemy ? enemy.baseEnemy : enemy;
@@ -4219,6 +4274,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     } else {
       defeated = enemy.takeDamage(damage);
     }
+    this.damageLedger[source] += damage;
     this.audio.playSfx('hit');
     if (!defeated) {
       const direction = new Phaser.Math.Vector2(enemy.x - sourceX, enemy.y - sourceY);
