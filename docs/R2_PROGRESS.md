@@ -37,7 +37,7 @@
 - [x] 진짜 결함이던 **MockJudge 수식어 맹인**은 총괄이 클라에서 해결 (#138 머지: `SIZE_KEYWORDS`·`SPEED_KEYWORDS`, 수식어 없으면 기존 파생 유지).
 
 **🎯 남은 것 (active)**
-- [ ] 실뎀 로깅 검증 — "같은 속성 뎀감 과한가", 로깅 diff 백업(`scratchpad/protoscene-dmg-logging.diff`) 새 ProtoScene 재적용 후 플레이(저우선, 심사 후 가능). **← R2 실작업으로 남은 유일한 항목(플레이 필요).**
+- [ ] **실뎀 밸런스 실측** — "같은 속성 뎀감 과한가". **로깅은 배선 완료**(아래 ✅), 이제 **보스전에서 같은 원소 반복 시전 후 `logs/play.jsonl`의 `type:"dmg"` 줄**로 보스내성×0.3 + #77 격상 + 반복 중첩이 얼마씩 겹치는지 확인. **플레이 필요·저우선·심사 후 가능.** (smoke test 힌트: 일반방 같은 fire 반복은 repeat만 살짝 1.0→0.96→0.91, ×0.3은 보스전 한정 — 보스까지 가야 스택 보임.)
 
 **✅ 완료 (이번 국면 — 지우지 말고 아래 누적)**
 - [x] **제출물 ④ PDF 제출·git 공유** — `docs/AI_USAGE_TECH.pdf` ([PR #142](https://github.com/jaepaly/NHN-Project/pull/142) 머지). 마크다운→HTML→Chrome headless 인쇄(10p, 한글·표·코드블록 정상). 팀원 `git pull`로 수령 가능. 문서 정확성도 함께: 프롬프트 버전 v2.4→v2.5(#133 정합), 1.5에 형상 DSL 서브섹션 추가.
@@ -47,6 +47,7 @@
 - [x] **§6 API 재점검** — 마나 환류(#121) 반영 (PR #127).
 - [x] **#112 계약 무결성 검증** — 이도원 저주방 PR이 #77 계약을 소비하나 코드 추적. **발견**: tier는 계약(`runEscalationProfile().tier`)에서 잘 받으나, 게이트를 `gimmicksUnlocked`(계약이 저주방용으로 노출한 필드) 대신 `ROOM_CURSE_CONFIG.unlockTier:3`으로 **중복 정의** → `gimmicksUnlocked`가 **죽은 필드**·값 드리프트 위험. **기능은 정상**(둘 다 3). 비차단 리뷰 코멘트로 "게이트에 `gimmicksUnlocked` 소비" 제안([PR #112 comment](https://github.com/jaepaly/NHN-Project/pull/112#issuecomment-5057596217)).
 - [x] **#67 §5 주문 판정 계약 검증** — 능동 마나 정식화 중 R2 몫. ① API 빈도: `SUBMISSION_PLAN §6`에 반영 완료(감쇠 #122는 호출↑ 아님·호출당 효율↑, 진짜 리스크=동시접속→유료전환). ② `spec.cost` 계약: `degradedCastPlan(spec.cost)`→`trySpendMana(spend)`+`ratio`를 위력에 곱함(ProtoScene:2462·2498) 정합 확인, 죽은 필드·이중카운트 없음. 수치 밸런스는 총괄 플레이테스트 몫. [#67 comment](https://github.com/jaepaly/NHN-Project/issues/67#issuecomment-5057681332).
+- [x] **실뎀 breakdown 로깅 재적용·검증** — 새 ProtoScene의 `effectiveSpec` 직후에 재삽입([PR #148](https://github.com/jaepaly/NHN-Project/pull/148)). base·repeat·affinity·escalation·diversity·empower·degraded·effective·bossResist·finalVsBoss를 `/__log`→`logs/play.jsonl`(판정 로거와 동일 채널)에 기록. `import.meta.env.DEV` 가드·읽기전용 → 프로덕션 무영향. **smoke test 통과**: 서버에서 fire 3연속 시전 → dmg 3줄·전 필드 정상(마나 100→25 실차감 확인). tsc+빌드 통과. (밸런스 실측은 위 남은 것 — 플레이 필요.)
 
 ---
 
