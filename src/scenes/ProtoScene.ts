@@ -2430,6 +2430,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         lockedTarget = collision?.target ?? null;
         return collision ? { x: collision.x, y: collision.y } : null;
       },
+      shouldResolveImpact: () => {
+        const state = this.combatRunController.state;
+        return state.phase === 'combat' && state.roomIndex === castRoomIndex;
+      },
       onHit: (impact) => {
         const currentRunState = this.combatRunController.state;
         if (currentRunState.phase !== 'combat'
@@ -3424,6 +3428,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         );
         lockedTarget = collision?.target ?? null;
         return collision ? { x: collision.x, y: collision.y } : null;
+      },
+      shouldResolveImpact: () => {
+        const state = this.combatRunController.state;
+        return state.phase === 'combat' && state.roomIndex === castRoomIndex;
       },
       onHit: (impact) => {
         const currentRunState = this.combatRunController.state;

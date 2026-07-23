@@ -1,5 +1,15 @@
 import type { SpellSpeed } from '../../spell/types';
 
+export const NOVA_CONFIG = {
+  castRange: 520,
+  instantDistance: 12,
+  projectileSpeed: {
+    slow: 460,
+    normal: 620,
+    fast: 820,
+  },
+} as const;
+
 export const ZONE_CONFIG = {
   castRange: 320,
   baseRadius: 130,
@@ -181,6 +191,10 @@ export function areaTargetPoint(
 
 export function zoneDurationSeconds(speed: SpellSpeed): number {
   return ZONE_CONFIG.durationSeconds[speed];
+}
+
+export function novaProjectileSpeed(speed: SpellSpeed): number {
+  return NOVA_CONFIG.projectileSpeed[speed];
 }
 
 export function rainLaunchDurationSeconds(speed: SpellSpeed): number {
