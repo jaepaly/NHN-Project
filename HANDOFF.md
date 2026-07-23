@@ -8,13 +8,13 @@
 
 ## 현재 인수인계  <!-- 끊을 때마다 이 블록만 갱신하고 commit+push -->
 
-- **목표(한 줄)**: 판정·behavior 안정화 완료. 다음 국면 = 제출물 ④(AI 활용 기술 문서, R2 오너) 준비 + 마나경제(#121)에 따른 API §6 재점검.
+- **목표(한 줄)**: 판정·표현력 DSL·제출물 ④ **전부 완료·머지**. 남은 것 = 자투리(실뎀 검증·#67 §5·#112)뿐.
 - **브랜치**: `main` (동기화됨, working tree 깨끗)
-- **현재 상태**: 판정기 `gemini-3.5-flash-lite`에서 정상(Node 실측 검증). behavior DSL(#106)·다양성(#94)·격상(#84) 다 머지. #110 닫힘.
-- **방금 한 것 / 마지막 검증**: 3.5 판정 품질·behavior 6종·난타 fizzle Node로 검증(전부 정상). 로컬 정리·main 동기화.
-- **막힌 곳 / 다음 할 것**: (진행 중인 코드 작업 없음) → 제출물 ④ 착수하거나, #121 마나경제 진화 시 SUBMISSION_PLAN §6 재점검.
-- **관련 파일·이슈**: `docs/R2_PROGRESS.md`(최상단 최신), #110(판정 안정화), `docs/SUBMISSION_PLAN.md §6`, `docs/SPELL_UNDERSTANDING_V2.md`.
-- **주의**: HTTP 판정 검증은 **curl 인라인 금지**(아래 참조). 총괄 #111(클라 fizzle 안전망) 머지됨.
+- **현재 상태**: 판정 `gemini-3.5-flash-lite` **v2.5 배포**(349d207f). **#133 형상 shape DSL** 머지·배포·검증(shape 10/10·오탐 0). **#134 size·speed는 팬텀**(실 Gemini 40/40 정확)으로 종결 — 진짜 결함이던 **MockJudge 수식어 맹인**은 총괄 **#138**로 수정. **제출물 ④** 문서(#130)+**PDF(#142)** 머지·git 공유 완료.
+- **방금 한 것 / 마지막 검증**: ④ PDF 생성(`docs/AI_USAGE_TECH.md`→HTML→Chrome headless 인쇄, `docs/AI_USAGE_TECH.pdf` 10p)·머지(#142). R2_PROGRESS 현행화(완료 누적 구조). HANDOFF 이 블록 갱신.
+- **막힌 곳 / 다음 할 것**: (진행 중 코드 작업 없음) 자투리 = **실뎀 로깅 검증**("같은 속성 뎀감 과한가", diff 백업 `scratchpad/protoscene-dmg-logging.diff` 새 ProtoScene 재적용 후 플레이) · **#67 §5** · **#112** 계약 무결성.
+- **관련 파일·이슈**: `docs/R2_PROGRESS.md`(최상단=최신 체크리스트), `docs/AI_USAGE_TECH.md`+`.pdf`(제출물 ④), #133·#134·#138·#139·#142.
+- **주의**: 판정 측정은 **반드시 `lastSource` 기록 + 캐시 제거**(배치가 15 RPM 넘으면 Mock 폴백 섞여 프롬프트 문제로 오인 — #134 교훈). curl 인라인 금지(아래). **배포**: 이 세션에선 wrangler가 인증돼 AI가 `npx wrangler deploy` 직접 함 — 단 머신별 인증 캐시에 따라 다르니 안 되면 사람이.
 
 ---
 
