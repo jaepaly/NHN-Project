@@ -43,6 +43,7 @@ npm run build   # 프로덕션 빌드 (dist/)
 | [docs/PHASE_5.md](docs/PHASE_5.md) | **Phase 5 지시 — 프레젠테이션 승격 & 완성도 (현재)** |
 | [docs/PROGRESSION_DESIGN.md](docs/PROGRESSION_DESIGN.md) | 성장 시스템 설계 (보상 풀·각인·정령·진화/융합) |
 | [docs/SPELL_UNDERSTANDING_V2.md](docs/SPELL_UNDERSTANDING_V2.md) | 자유 문장 의미 판정·비공격 효과·불발/금칙 설계 |
+| [docs/R2_SYSTEM_GUIDE.md](docs/R2_SYSTEM_GUIDE.md) | **R2 AI 판정 시스템 개발자 가이드 — 데이터 흐름·어디서 뭘 고치나·함정** |
 
 ## 🏗 기술 스택
 
