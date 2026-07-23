@@ -14,8 +14,9 @@ export const RUN_REWARD_CONFIG = {
   maxManaIncrease: 20,
   manaRecovery: 20,
   affinityBonus: 0.15,
-  // Phase 3.5 신규 패시브 (PROGRESSION_DESIGN §1)
-  swiftIncantReduction: 0.4,
+  // 신속 영창 — C 경제 전환(#53)으로 글로벌 쿨다운이 사라져 입력락 감소로 대체 (GATE_DECISION_0728 #67).
+  // 기본 0.4s에서 장당 -0.1s, 하한 0.15s(playerCombatState) = 실질 2.5장.
+  swiftIncantLockReduction: 0.1,
   // 신속 정령 — 순수 빈도 증가(스택당 실질 DPS ×1.25). 소환사 빌드의 투자 축.
   // 하한 0.5 = 최대 2배 속사. 풀투자 오토 상한은 spiritManager.levelDpsGrowth 주석 참조.
   spiritHasteScale: 0.8,
@@ -67,7 +68,7 @@ function buildOption(
         id: `room-${roomIndex}-swift-incant`,
         kind,
         title: '신속 영창',
-        description: `영창 쿨다운 -${RUN_REWARD_CONFIG.swiftIncantReduction}초 (하한 1초)`,
+        description: `영창 후 딜레이 -${RUN_REWARD_CONFIG.swiftIncantLockReduction}초 (하한 0.15초 · 영창가 빌드)`,
       };
     case 'mana-surge':
       return {
@@ -95,8 +96,8 @@ function buildOption(
 
 /** 시드 랜덤 추첨이 뽑는 카드 풀 (PROGRESSION_DESIGN §1 — 각인·정령은 ②③에서 추가) */
 const REWARD_POOL: readonly StaticRewardKind[] = [
-  // Issue #53 C prototype has no global cast cooldown, so swift-incant is a dead reward here.
-  'max-hp', 'max-mana', 'affinity', 'mana-surge', 'ward-start', 'spirit-haste',
+  // swift-incant는 입력락 감소로 대체 후 풀 복귀 (GATE_DECISION_0728 #67 보상 풀 충돌 해소)
+  'max-hp', 'max-mana', 'affinity', 'swift-incant', 'mana-surge', 'ward-start', 'spirit-haste',
 ];
 
 /**

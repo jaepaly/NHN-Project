@@ -44,7 +44,7 @@ export function gainLabelFor(option: RewardOption): GainLabel {
       return { text: `${label} 위력 +${percent}%`, color };
     }
     case 'swift-incant':
-      return { text: `영창 쿨다운 -${RUN_REWARD_CONFIG.swiftIncantReduction}s`, color };
+      return { text: `영창 딜레이 -${RUN_REWARD_CONFIG.swiftIncantLockReduction}s`, color };
     case 'mana-surge':
       return {
         text: `마나 획득 +${Math.round(RUN_REWARD_CONFIG.manaSurgeGainBonus * 100)}% · 흡수 범위 증가`,

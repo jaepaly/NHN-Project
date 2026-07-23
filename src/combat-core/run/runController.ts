@@ -187,7 +187,7 @@ export class CombatRunController implements RunController {
         break;
       }
       case 'swift-incant':
-        this.playerState.addCooldownReduction(RUN_REWARD_CONFIG.swiftIncantReduction);
+        this.playerState.addCastLockReduction(RUN_REWARD_CONFIG.swiftIncantLockReduction);
         break;
       case 'mana-surge':
         this.playerState.addManaGainMultiplier(RUN_REWARD_CONFIG.manaSurgeGainBonus);

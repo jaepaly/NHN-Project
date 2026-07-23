@@ -2448,7 +2448,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.applySpellPalette(effectiveSpec);
       this.announceSpell(effectiveSpec);
       this.applySpellEffect(effectiveSpec);
-      this.playerState.startInputLock(ACTIVE_MANA_CONFIG.castInputLockSeconds);
+      this.playerState.startCastLock(); // 신속 영창 감소분 반영된 입력락
       this.playCastFlare();
     } finally {
       this.finishCastingUx();
@@ -3396,7 +3396,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const manaRatio = Phaser.Math.Clamp(this.playerState.mana / this.playerState.maxMana, 0, 1);
     const shieldRatio = Phaser.Math.Clamp(this.playerState.shield / this.playerState.maxHp, 0, 1);
     const cooldownRatio = Phaser.Math.Clamp(
-      this.playerState.cooldownRemaining / this.playerState.globalCooldownSeconds,
+      // 분모를 실제 입력락 길이로 — 죽은 글로벌 쿨다운(3s) 분모는 게이지가 13%만 찼다
+      this.playerState.cooldownRemaining / this.playerState.castInputLockSeconds,
       0,
       1,
     );
