@@ -37,6 +37,8 @@ export const ACTIVE_MANA_CONFIG = {
    * 킬은 방마다 유한하므로 무한 자원이 아니다. 드롭(8)을 넘지 않게 유지(회귀 고정).
    */
   spellKillRefundMana: 6,
+  /** 감쇠 시전 바닥 — 이 미만이면 잦아든 주문조차 못 나가고 거부된다 (degradedCast) */
+  degradedCastMinMana: 5,
 } as const;
 
 export function manaPotionSpawnDelay(randomValue: number): number {
