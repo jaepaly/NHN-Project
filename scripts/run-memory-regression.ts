@@ -43,6 +43,31 @@ assert.deepEqual(o1.curseBehavior, {
   lightFireCastCount: 2,
 });
 
+const sequenceAwareHistory = new SpellHistory();
+sequenceAwareHistory.recordSequence({
+  rawText: '빛과 번개로 돌진한다',
+  name: '빛과 번개로 돌진한다',
+  elements: ['light', 'lightning'],
+  power: 70,
+  cost: 42,
+  source: 'local',
+  castAt: 2000,
+});
+sequenceAwareHistory.recordSequence({
+  rawText: '허공답보',
+  name: '허공답보',
+  elements: [],
+  power: 20,
+  cost: 12,
+  source: 'local',
+  castAt: 3000,
+});
+assert.deepEqual(summarizeRun(sequenceAwareHistory, 'win').curseBehavior, {
+  movementDistance: 0,
+  manualCastCount: 2,
+  lightFireCastCount: 1,
+}, 'sequence plans count once while any matching behavior element qualifies the cast');
+
 // 2) updateRunMemory — 승패 카운트·favorite·top 유지·recent 누적
 let m: RunMemory = { ...EMPTY_RUN_MEMORY };
 m = updateRunMemory(m, { result: 'lose', dominantElement: 'fire', topSpellName: '강불', topSpellPower: 90 });

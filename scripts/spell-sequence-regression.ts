@@ -209,6 +209,7 @@ const phoenixBehaviors = phoenix.sequences.flatMap((sequence) => (
 sequenceHistory.recordSequence({
   rawText: '불사조의 낙화',
   name: phoenix.name,
+  elements: ['fire', 'wind'],
   power: phoenix.power,
   cost: phoenix.manaCost,
   source: 'local',
@@ -226,6 +227,7 @@ const movementOnly = resolveSpellPlan(debugSpellPlan('허공답보')!);
 sequenceHistory.recordSequence({
   rawText: '허공답보',
   name: movementOnly.name,
+  elements: [],
   power: movementOnly.power,
   cost: movementOnly.manaCost,
   source: 'local',

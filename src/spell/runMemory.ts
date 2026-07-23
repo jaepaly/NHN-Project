@@ -87,9 +87,9 @@ export function summarizeRun(
     topSpellPower,
     curseBehavior: {
       movementDistance: finiteNonNegative(movementDistance),
-      manualCastCount: history.all.length,
-      lightFireCastCount: history.all.filter(
-        (entry) => entry.elementPrimary === 'light' || entry.elementPrimary === 'fire',
+      manualCastCount: history.allCasts.length,
+      lightFireCastCount: history.allCasts.filter(
+        (cast) => cast.elements.includes('light') || cast.elements.includes('fire'),
       ).length,
     },
   };

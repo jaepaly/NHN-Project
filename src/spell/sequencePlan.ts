@@ -74,18 +74,22 @@ export interface FormBehavior {
 
 export type SpellBehavior = MoveBehavior | WaitBehavior | FormBehavior;
 
+/** 실제 behavior가 사용하는 원소 집합. wait은 비원소이며 form은 보조 원소까지 포함한다. */
+export function behaviorElements(behavior: SpellBehavior): SpellElement[] {
+  if (behavior.type === 'wait') return [];
+  if (behavior.type === 'move') return [behavior.element];
+  return behavior.spec.element_secondary != null
+    ? [behavior.spec.element_primary, behavior.spec.element_secondary]
+    : [behavior.spec.element_primary];
+}
+
 /** 원소 친화 저주 등에서 실제 실행 behavior의 주·보조 원소를 공통 판정한다. */
 export function behaviorUsesAnyElement(
   behavior: SpellBehavior,
   elements: readonly SpellElement[],
 ): boolean {
-  if (behavior.type === 'wait' || elements.length === 0) return false;
-  if (behavior.type === 'move') return elements.includes(behavior.element);
-  return elements.includes(behavior.spec.element_primary)
-    || (
-      behavior.spec.element_secondary != null
-      && elements.includes(behavior.spec.element_secondary)
-    );
+  return elements.length > 0
+    && behaviorElements(behavior).some((element) => elements.includes(element));
 }
 
 export interface SpellSequence {

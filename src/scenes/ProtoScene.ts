@@ -172,6 +172,7 @@ import { SUMMON_CONFIG, summonGroupPlan } from '../combat-core/summons/summonCon
 import { SummonedOrb } from '../combat-core/summons/summonedOrb';
 import { GameAudio } from '../audio/gameAudio';
 import {
+  behaviorElements,
   behaviorUsesAnyElement,
   debugSpellPlan,
   resolveSpellPlan,
@@ -2575,6 +2576,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const sequenceHistoryEntry = this.spellHistory.recordSequence({
       rawText: text,
       name: plan.name,
+      elements: [...new Set(plan.sequences.flatMap((sequence) => (
+        sequence.behaviors.flatMap(behaviorElements)
+      )))],
       power: plan.power,
       cost: plan.manaCost,
       source,
