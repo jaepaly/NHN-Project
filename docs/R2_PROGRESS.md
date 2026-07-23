@@ -26,11 +26,11 @@
 >
 > _(참고 — 이도원: #125 저주방 답변(병목) → #72 stage2 배경 → #128 기본탄)_
 
-**🎯 1순위 — #133 형상(shape) DSL 2단계** *(정정 전 2순위에서 승격)*
-- [ ] 배경: `화염의 벽을 지그재그로` → "지그재그"가 조용히 사라짐(벽이 고정 원호 하나뿐). 클라(#132) **머지 완료**, 프롬프트만 켜면 됨.
-- [ ] 수정: 프롬프트에 6항 추가 — `form=wall` + 모양 묘사 시 `shape` 설계(arc/line/zigzag/wave/ring/polygon, zigzag·wave=amplitude 1~100, polygon=sides 3~8). 출력 스키마에 `shape` 필드 노출. **behavior와 동일 패턴**(화이트리스트 밖 거부→arc 폴백·클램프).
-- [ ] 검증: 수율 재측정(게이트 20/20·폴백 0/10 현재 프롬프트 기준 재확인) + **모양 묘사 없을 때 shape 안 붙는지**(오탐) + `JUDGE_PROMPT_VERSION` bump + `spell-regression` 버전핀 + Cloudflare 재배포. 기준 미달이면 프롬프트만 되돌리면 무해.
-- [ ] **부담되면 제출 후로 미뤄도 됨** — 클라가 안전하게 arc로 폴백하므로 현 상태로도 문제없음(총괄 명시).
+**✅ 완료 — #133 형상(shape) DSL 2단계** ([PR #139](https://github.com/jaepaly/NHN-Project/pull/139) 총괄 머지, 07-23)
+- [x] 프롬프트 6항 추가(`form=wall` + 모양 묘사 → shape) + 출력 스키마 shape 필드 노출. `spellShape.ts` 단일 소스와 정합(arc/line/zigzag/wave/ring/polygon, amplitude 1~100, sides 3~8). `JUDGE_PROMPT_VERSION` v2.4→v2.5, 버전핀 3곳.
+- [x] Cloudflare 배포(349d207f) → **소스=배포 정합**.
+- [x] 라이브 실측(Node 직접 호출 — Mock 오염 없음, #134 교훈 적용): **shape 수율 10/10**(zigzag·ring·polygon·wave·line 정확) · **오탐 0/6**(모양 묘사 없거나 wall 아니면 미출력→arc 폴백) · 전체 회귀 35/35.
+- [x] 벽 렌더 기하 검증(실 브라우저 클라 코드): 6종 뚜렷이 구별 + **정면폭 불변식**(열린 형상 정면폭 고정 — 모양은 표현, 세기 영향 없음).
 
 **~~#134 size·speed 프롬프트 지침~~ — 불필요 확정 (작업 없음)**
 - [x] 실 Gemini 40/40 정확 (R2 실측, N=3·N=2 반복). 프롬프트 규칙 불필요 — 있어도 무해한 모델 이식성 보험 정도.
