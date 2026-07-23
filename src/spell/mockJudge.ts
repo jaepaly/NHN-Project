@@ -1,6 +1,13 @@
 import type { SpellJudge } from './judge';
 import type {
-  SpellEffect, SpellElement, SpellForm, SpellJudgement, SpellStatus, SpellTarget,
+  SpellEffect,
+  SpellElement,
+  SpellForm,
+  SpellJudgement,
+  SpellSize,
+  SpellSpeed,
+  SpellStatus,
+  SpellTarget,
 } from './types';
 import { validateSpec } from './validate';
 import { FIZZLE_JUDGEMENT } from './types';
@@ -165,6 +172,29 @@ const FORM_KEYWORDS: Record<SpellForm, string[]> = {
   chain: ['연쇄', '도약', '전이', '체인', 'chain', 'jump'],
 };
 
+/**
+ * 크기·빠르기 수식어 — 폴백이 플레이어의 말을 버리지 않게 한다 (#134).
+ *
+ * 실 Gemini는 이 둘을 이미 정확히 판정한다(R2 실측 40/40). 문제는 **폴백 경로**였다:
+ * Mock이 size를 power에서, speed를 form에서만 파생해 `조그만`·`아주 빠른` 같은
+ * 수식어를 아예 읽지 않았다. 평상시 폴백은 드물지만(게이트 실측 0/10) **부하가
+ * 걸리면 무너진다** — 15 RPM은 프로젝트 전체 한도라 심사위원 여럿이 동시에
+ * 플레이하면 폴백 구간이 생긴다(SUBMISSION_PLAN §6-2). 그때 플레이어가
+ * "조그만 불씨"라 말하고 중간 크기를 받으면, 안전망이 말을 삼키는 셈이 된다.
+ */
+const SIZE_KEYWORDS: Record<SpellSize, string[]> = {
+  small: ['조그만', '조그마', '작은', '작게', '자그마', '소형', '한 줌', '불씨', '가느다란', 'small', 'tiny'],
+  medium: ['적당', '보통', '중형', 'medium'],
+  large: ['거대', '커다', '큰', '크게', '대형', '육중', '장대', '길고', '두꺼운', 'large', 'huge'],
+  huge: ['하늘을 덮', '전장을 뒤덮', '온 세상', 'massive', '어마어마', '초대형', '천지'],
+};
+
+const SPEED_KEYWORDS: Record<SpellSpeed, string[]> = {
+  slow: ['느릿', '천천히', '서서히', '느리게', '느린', '굼뜨', '유유히', 'slow'],
+  normal: ['평범', '보통 속도', 'normal'],
+  fast: ['빠르', '빠른', '재빠', '순식간', '번개처럼', '쏜살', '질풍', '삽시간', '신속', 'fast', 'quick'],
+};
+
 const STATUS_KEYWORDS: Record<SpellStatus, string[]> = {
   burn: ['불', '화염', '작열', 'burn'],
   freeze: ['얼음', '빙결', '동결', 'freeze'],
@@ -288,7 +318,11 @@ export class MockJudge implements SpellJudge {
     const jitter = h % 10;
     const power = Math.min(semanticCap, base + comboBonus + statusBonus + jitter);
 
-    const size = power > 75 ? 'huge' : power > 55 ? 'large' : power > 35 ? 'medium' : 'small';
+    // 수식어가 있으면 그 말을 따르고, 없을 때만 power에서 파생한다 (#134)
+    const size = findMatch(SIZE_KEYWORDS, t)
+      ?? (power > 75 ? 'huge' : power > 55 ? 'large' : power > 35 ? 'medium' : 'small');
+    const speed = findMatch(SPEED_KEYWORDS, t)
+      ?? (form === 'wave' ? 'slow' : 'normal');
 
     const spec = validateSpec({
       behavior,
@@ -300,7 +334,7 @@ export class MockJudge implements SpellJudge {
       element_secondary: secondary === primary ? null : secondary,
       form,
       size,
-      speed: form === 'wave' ? 'slow' : 'normal',
+      speed,
       status,
       power,
       cost: Math.max(5, Math.round(power * 0.6)),
