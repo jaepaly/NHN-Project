@@ -2498,6 +2498,31 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           * castPlan.ratio, // 감쇠 시전 — 모자란 마나만큼 잦아든다
         ),
       };
+      // [dev] 실뎀 breakdown 로깅 — "같은 속성 뎀감" 스택 진단용 (logs/play.jsonl, 읽기전용)
+      if (import.meta.env.DEV) {
+        const base = historyEntry.basePower;
+        const bossResist = this.activeBossResistances.get(spec.element_primary) ?? 1;
+        void fetch('/__log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            t: Math.round(this.time.now / 100) / 10,
+            type: 'dmg',
+            input: text,
+            el: spec.element_primary,
+            base,
+            repeat: base > 0 ? Number((historyEntry.power / base).toFixed(2)) : 1,
+            affinity: Number(affinityBonus.toFixed(2)),
+            escalation: Number(escalationWeaken.toFixed(2)),
+            diversity: Number(diversity.toFixed(2)),
+            empower: Number(this.playerState.damageOutMultiplier.toFixed(2)),
+            degraded: Number(castPlan.ratio.toFixed(2)),
+            effective: effectiveSpec.power,
+            bossResist: Number(bossResist.toFixed(2)),
+            finalVsBoss: Math.round(effectiveSpec.power * bossResist),
+          }),
+        }).catch(() => {});
+      }
       if (castPlan.ratio < 1) {
         this.announceSystemMessage(
           `마나가 모자라 주문이 잦아들었다 · 위력 ${Math.round(castPlan.ratio * 100)}%`,
