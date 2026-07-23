@@ -171,6 +171,7 @@ import type {
   FormBehavior,
   MoveBehavior,
   ResolvedSpellPlan,
+  SpellPlan,
 } from '../spell/sequencePlan';
 import { sequenceEngraveCandidate } from '../spell/sequenceEngraveCandidate';
 
@@ -394,6 +395,11 @@ export class ProtoScene extends Phaser.Scene {
   private sequenceProgressDurationMs = 0;
   private sequenceProgressName = '';
   private sequenceProgressBoundaries: number[] = [];
+  /**
+   * 영창 시퀀스 판정 기능 플래그 (R2 2일 게이트 안전망). 기본 ON.
+   * VITE_SEQUENCE_JUDGE=0 이면 판정이 plan을 실어도 무시하고 v2 단일 경로로 즉시 복귀한다.
+   */
+  private readonly sequenceJudgeEnabled = import.meta.env.VITE_SEQUENCE_JUDGE !== '0';
   /** 주문서 보유 수 캐시 — HUD는 매 프레임 갱신되므로 localStorage를 직접 읽지 않는다 */
   private grimoireCount = 0;
   /**
@@ -2401,48 +2407,61 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.incantBar.disabled = false;
   }
 
+  /**
+   * 검증된 SpellPlan을 실행한다 — DEV 쇼케이스와 실판정 시퀀스의 공통 경로.
+   * 마나(plan 단위 1회)·시퀀스 기록·각인 대표 투영·반복 페널티·무적/UX·실행을 한 번에.
+   */
+  private async runSequenceCast(
+    rawPlan: SpellPlan,
+    text: string,
+    source: JudgeSource,
+  ): Promise<void> {
+    const plan = resolveSpellPlan(rawPlan);
+    if (!this.playerState.trySpendMana(plan.manaCost)) {
+      this.audio.playSfx('fizzle');
+      this.announceManaShortage(plan.manaCost);
+      return;
+    }
+    const sequenceHistoryEntry = this.spellHistory.recordSequence({
+      rawText: text,
+      name: plan.name,
+      power: plan.power,
+      cost: plan.manaCost,
+      source,
+      castAt: Date.now(),
+    });
+    const engraveCandidate = sequenceEngraveCandidate(plan);
+    if (engraveCandidate) {
+      this.engraveManager.rememberManualCast(
+        sequenceHistoryEntry.normalized,
+        engraveCandidate,
+      );
+    }
+    this.markOnboarded();
+    this.beginSequenceExecutionUx(plan);
+    if (sequenceHistoryEntry.power < sequenceHistoryEntry.basePower) {
+      const penaltyPct = Math.round(
+        (1 - sequenceHistoryEntry.power / sequenceHistoryEntry.basePower) * 100,
+      );
+      this.announceSystemMessage(
+        `REPEAT -${penaltyPct}% · 같은 영창은 힘을 잃는다`,
+        '#ff9f43',
+      );
+    }
+    await this.executeSpellSequencePlan(
+      plan,
+      plan.power > 0 ? sequenceHistoryEntry.power / plan.power : 1,
+    );
+  }
+
   // ── 판정 → 렌더링 사이클 ────────────────────────────────────
   private async castFromText(text: string): Promise<void> {
     this.casting = true;
     try {
+      // DEV 쇼케이스: 픽스처 이름/#seq 키로 시퀀스를 바로 실행 (판정 우회)
       const debugPlan = import.meta.env.DEV ? debugSpellPlan(text) : null;
       if (debugPlan) {
-        const plan = resolveSpellPlan(debugPlan);
-        if (!this.playerState.trySpendMana(plan.manaCost)) {
-          this.audio.playSfx('fizzle');
-          this.announceManaShortage(plan.manaCost);
-          return;
-        }
-        const sequenceHistoryEntry = this.spellHistory.recordSequence({
-          rawText: text,
-          name: plan.name,
-          power: plan.power,
-          cost: plan.manaCost,
-          source: 'local',
-          castAt: Date.now(),
-        });
-        const engraveCandidate = sequenceEngraveCandidate(plan);
-        if (engraveCandidate) {
-          this.engraveManager.rememberManualCast(
-            sequenceHistoryEntry.normalized,
-            engraveCandidate,
-          );
-        }
-        this.markOnboarded();
-        this.beginSequenceExecutionUx(plan);
-        if (sequenceHistoryEntry.power < sequenceHistoryEntry.basePower) {
-          const penaltyPct = Math.round(
-            (1 - sequenceHistoryEntry.power / sequenceHistoryEntry.basePower) * 100,
-          );
-          this.announceSystemMessage(
-            `REPEAT -${penaltyPct}% · 같은 영창은 힘을 잃는다`,
-            '#ff9f43',
-          );
-        }
-        await this.executeSpellSequencePlan(
-          plan,
-          plan.power > 0 ? sequenceHistoryEntry.power / plan.power : 1,
-        );
+        await this.runSequenceCast(debugPlan, text, 'local');
         return;
       }
       if (import.meta.env.DEV && text.toLowerCase().startsWith('#seq ')) {
@@ -2465,6 +2484,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const prefix = judgement.disposition === 'fizzle' ? '불발' : '영창 차단';
         const color = judgement.disposition === 'fizzle' ? '#ffd166' : '#ff6b86';
         this.announceSystemMessage(`${prefix} · ${judgement.message}`, color);
+        return;
+      }
+
+      // 영창 시퀀스(복합 주문) — 판정이 plan을 실었고 기능 플래그가 켜져 있으면 시퀀스 런타임으로.
+      // 플래그(VITE_SEQUENCE_JUDGE=0)로 언제든 v2 단일 경로로 즉시 복귀할 수 있다.
+      if (this.sequenceJudgeEnabled && judgement.plan) {
+        await this.runSequenceCast(judgement.plan, text, this.currentJudgeSource());
         return;
       }
 

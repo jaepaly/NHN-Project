@@ -28,15 +28,19 @@ export function maxSequenceDurationMs(power: number): number {
   );
 }
 
-export type MoveDestination =
-  | 'cast-point'
-  | 'cast-direction'
-  | 'target-direction'
-  | 'away-from-target'
-  | 'random-direction'
-  | 'custom-vector'
-  | 'random-enemy'
-  | 'arena-center';
+/** 이동 목적지 화이트리스트 — 검증기(validateSpellPlan)와 런타임이 공유하는 단일 출처. */
+export const MOVE_DESTINATIONS = [
+  'cast-point',
+  'cast-direction',
+  'target-direction',
+  'away-from-target',
+  'random-direction',
+  'custom-vector',
+  'random-enemy',
+  'arena-center',
+] as const;
+
+export type MoveDestination = (typeof MOVE_DESTINATIONS)[number];
 
 export interface MoveBehavior {
   type: 'move';

@@ -42,6 +42,7 @@
     "test:summonbehavior": "esbuild scripts/summon-behavior-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-summon-behavior-regression.mjs && node node_modules/.cache/incant-summon-behavior-regression.mjs",
     "test:affinityvfx": "esbuild scripts/affinity-vfx-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-affinity-vfx-regression.mjs && node node_modules/.cache/incant-affinity-vfx-regression.mjs",
     "test:onboarding": "esbuild scripts/onboarding-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-onboarding-regression.mjs && node node_modules/.cache/incant-onboarding-regression.mjs",
+    "test:planvalidate": "esbuild scripts/spell-plan-validate-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-plan-validate-regression.mjs && node node_modules/.cache/incant-spell-plan-validate-regression.mjs",
     "test:sequence": "esbuild scripts/spell-sequence-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-sequence-regression.mjs && node node_modules/.cache/incant-spell-sequence-regression.mjs",
     "test:shape": "esbuild scripts/spell-shape-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-shape-regression.mjs && node node_modules/.cache/incant-spell-shape-regression.mjs"
   },
