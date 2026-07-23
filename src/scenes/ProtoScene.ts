@@ -66,6 +66,7 @@ import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
 import { requestCameraShake, resetCameraShake } from '../render/cameraShake';
 import { reducedAffinityVfxTier } from '../render/affinityVfx';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
+import { devInfo } from '../debug/devLog';
 import {
   KNOCKBACK_CONFIG,
   knockbackDistanceForForm,
@@ -607,7 +608,7 @@ export class ProtoScene extends Phaser.Scene {
       this.deferTransientCombatCleanup();
       this.stopCastingForRunPause();
       this.announceSystemMessage(`방 ${state.roomIndex} 클리어`, '#72f1b8');
-      console.info('[Run] reward-ready', options, state);
+      devInfo('[Run] reward-ready', options, state);
     });
     this.combatRunController.on('reward-applied', (chosen, state) => {
       this.audio.playSfx('reward-select');
@@ -623,7 +624,7 @@ export class ProtoScene extends Phaser.Scene {
       if (chosen.kind === 'evolve' && chosen.evolve) {
         // 진화·융합은 LLM 작명이 필요해 비동기 — 작명은 반드시 성공하므로(폴백) 미완료 상태가 없다
         void this.applyEvolution(chosen.evolve);
-        console.info('[Run] reward-applied', chosen, state);
+        devInfo('[Run] reward-applied', chosen, state);
         return;
       }
       if (chosen.kind === 'spirit-haste') {
@@ -635,7 +636,7 @@ export class ProtoScene extends Phaser.Scene {
           `신속 정령 · 시전 ${(1 / rate).toFixed(2)}배 속도`,
           '#ffd166',
         );
-        console.info('[Run] reward-applied', chosen, state);
+        devInfo('[Run] reward-applied', chosen, state);
         return;
       }
       const engraved = this.engraveManager.applyReward(chosen);
@@ -647,20 +648,20 @@ export class ProtoScene extends Phaser.Scene {
           ? `${this.spiritName(spirit.role, spirit.element)} · 정령 Lv${spirit.level}`
         : chosen.title;
       this.announceSystemMessage(message, '#ffd166');
-      console.info('[Run] reward-applied', chosen, state);
+      devInfo('[Run] reward-applied', chosen, state);
     });
     this.combatRunController.on('room-transition', (state, durationMs) => {
-      console.info('[Run] room-transition', { state, durationMs });
+      devInfo('[Run] room-transition', { state, durationMs });
     });
     this.combatRunController.on('room-started', (state) => {
       this.startRoom(state.roomIndex);
-      console.info('[Run] room-started', state);
+      devInfo('[Run] room-started', state);
       this.reportAutoShare(`방 ${state.roomIndex} 진입 누적`);
     });
     this.combatRunController.on('run-completed', (state) => {
       this.deferTransientCombatCleanup();
       this.stopCastingForRunPause();
-      console.info('[Run] completed', state);
+      devInfo('[Run] completed', state);
       // 플레이어 사망이 먼저 확정된 동시 확정 레이스(사망 후 장판 틱이 보스 처치 등)
       // — 패배가 선점: 기억 저장·승리 연출 모두 생략해 한 런에 lose/win 이중 기록을 막는다
       if (this.deathHandled) return;
@@ -791,7 +792,7 @@ export class ProtoScene extends Phaser.Scene {
 
   private reportAutoShare(tag: string): void {
     const s = this.autoShareSnapshot();
-    console.info(
+    devInfo(
       `[auto-share] ${tag} — 오토 ${s.autoSharePercent}% `
       + `(수동 ${s.manual} · 오토 ${s.auto} · 기본탄 ${s.basic} · 상태이상 ${s.status})`,
     );
@@ -4161,11 +4162,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       enemy.view.addAt(indicator, 0);
       this.controlIndicators.set(enemy, indicator);
     }
-    console.info('[Control] slow-applied', {
-      enemy: enemy.kind,
-      durationSeconds: remaining,
-      movementMultiplier: this.enemyControlState.movementMultiplierFor(enemy),
-    });
+    // 핫패스(컨트롤 적중마다) — 호출부째 가드해야 인자 객체 생성까지 제거된다
+    if (import.meta.env.DEV) {
+      console.info('[Control] slow-applied', {
+        enemy: enemy.kind,
+        durationSeconds: remaining,
+        movementMultiplier: this.enemyControlState.movementMultiplierFor(enemy),
+      });
+    }
   }
 
   private applyRoot(enemy: CombatEnemy, durationSeconds: number): void {
@@ -4186,11 +4190,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       .setRadius(CAGE_CONFIG.baseRadius)
       .setFillStyle(CAGE_CONFIG.indicatorColor, 0.08)
       .setStrokeStyle(3, CAGE_CONFIG.indicatorColor, 0.95);
-    console.info('[Control] root-applied', {
-      enemy: enemy.kind,
-      durationSeconds: remaining,
-      movementMultiplier: 0,
-    });
+    if (import.meta.env.DEV) {
+      console.info('[Control] root-applied', {
+        enemy: enemy.kind,
+        durationSeconds: remaining,
+        movementMultiplier: 0,
+      });
+    }
   }
 
   private updateEnemyControls(deltaSeconds: number): void {
