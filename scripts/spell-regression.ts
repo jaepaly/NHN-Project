@@ -79,7 +79,7 @@ const remoteJudge = new GeminiJudge('https://invalid.example');
 assert.equal((await remoteJudge.judge('ㅁㄴㅇㄹ')).disposition, 'fizzle');
 assert.equal(remoteJudge.lastSource, 'local');
 assert.equal(JUDGE_SCHEMA_VERSION, 2);
-assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.5'); // v2.5: wall 형상(shape) DSL 프롬프트 (#133)
+assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v3.0-seq'); // v3.0: 영창 시퀀스 spell_plan 프롬프트 (#151/#152)
 
 assert.equal(validateJudgement({ element_primary: 'fire', form: 'bolt' }), null,
   'v1 responses must not pass v2 validation');
