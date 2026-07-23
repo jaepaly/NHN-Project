@@ -37,8 +37,7 @@
 - [x] 진짜 결함이던 **MockJudge 수식어 맹인**은 총괄이 클라에서 해결 (#138 머지: `SIZE_KEYWORDS`·`SPEED_KEYWORDS`, 수식어 없으면 기존 파생 유지).
 
 **🎯 남은 것 (active)**
-- [ ] 실뎀 로깅 검증 — "같은 속성 뎀감 과한가", 로깅 diff 백업(`scratchpad/protoscene-dmg-logging.diff`) 새 ProtoScene 재적용 후 플레이(저우선, 심사 후 가능).
-- [ ] 자투리: #67 §5 재확인(마나 경제 진화 반영).
+- [ ] 실뎀 로깅 검증 — "같은 속성 뎀감 과한가", 로깅 diff 백업(`scratchpad/protoscene-dmg-logging.diff`) 새 ProtoScene 재적용 후 플레이(저우선, 심사 후 가능). **← R2 실작업으로 남은 유일한 항목(플레이 필요).**
 
 **✅ 완료 (이번 국면 — 지우지 말고 아래 누적)**
 - [x] **제출물 ④ PDF 제출·git 공유** — `docs/AI_USAGE_TECH.pdf` ([PR #142](https://github.com/jaepaly/NHN-Project/pull/142) 머지). 마크다운→HTML→Chrome headless 인쇄(10p, 한글·표·코드블록 정상). 팀원 `git pull`로 수령 가능. 문서 정확성도 함께: 프롬프트 버전 v2.4→v2.5(#133 정합), 1.5에 형상 DSL 서브섹션 추가.
@@ -47,6 +46,7 @@
 - [x] **#134 size·speed 팬텀 규명** — 실 Gemini 40/40 정확, 진짜 결함 Mock은 총괄 #138로 수정. *(상세 ↑ 완료 블록)*
 - [x] **§6 API 재점검** — 마나 환류(#121) 반영 (PR #127).
 - [x] **#112 계약 무결성 검증** — 이도원 저주방 PR이 #77 계약을 소비하나 코드 추적. **발견**: tier는 계약(`runEscalationProfile().tier`)에서 잘 받으나, 게이트를 `gimmicksUnlocked`(계약이 저주방용으로 노출한 필드) 대신 `ROOM_CURSE_CONFIG.unlockTier:3`으로 **중복 정의** → `gimmicksUnlocked`가 **죽은 필드**·값 드리프트 위험. **기능은 정상**(둘 다 3). 비차단 리뷰 코멘트로 "게이트에 `gimmicksUnlocked` 소비" 제안([PR #112 comment](https://github.com/jaepaly/NHN-Project/pull/112#issuecomment-5057596217)).
+- [x] **#67 §5 주문 판정 계약 검증** — 능동 마나 정식화 중 R2 몫. ① API 빈도: `SUBMISSION_PLAN §6`에 반영 완료(감쇠 #122는 호출↑ 아님·호출당 효율↑, 진짜 리스크=동시접속→유료전환). ② `spec.cost` 계약: `degradedCastPlan(spec.cost)`→`trySpendMana(spend)`+`ratio`를 위력에 곱함(ProtoScene:2462·2498) 정합 확인, 죽은 필드·이중카운트 없음. 수치 밸런스는 총괄 플레이테스트 몫. [#67 comment](https://github.com/jaepaly/NHN-Project/issues/67#issuecomment-5057681332).
 
 ---
 
