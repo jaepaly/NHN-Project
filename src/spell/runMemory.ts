@@ -48,7 +48,7 @@ export interface RunOutcome {
 export function summarizeRun(history: SpellHistory, result: 'win' | 'lose'): RunOutcome {
   let topSpellName: string | null = null;
   let topSpellPower = 0;
-  for (const e of history.all) {
+  for (const e of history.allCasts) {
     // basePower(판정 원 위력)로 비교한다 — topSpell은 이 런 최고 위력 주문의 **정체성**이라
     // 반복 패널티(e.power)가 반영되면 안 된다. 반영하면 약불30 뒤의 강불90이 '재탕'으로
     // 81 처리돼 기억이 오염된다(#91). 반복/다양성 마찰은 피해 계산 시점에만 쓴다.

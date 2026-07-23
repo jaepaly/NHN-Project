@@ -55,7 +55,9 @@ export function wallArcPoints(
   origin: FormPoint,
   target: FormPoint | null,
   size: SpellSize,
+  rangeScale = 1,
 ): readonly FormPoint[] {
+  const safeScale = Number.isFinite(rangeScale) ? Math.max(0.25, rangeScale) : 1;
   const direction = normalizedDirection(origin, target);
   const middleAngle = Math.atan2(direction.y, direction.x);
   const halfArcAngle = WALL_CONFIG.lengths[size] / WALL_CONFIG.offset / 2;
@@ -64,8 +66,8 @@ export function wallArcPoints(
     const ratio = index / WALL_CONFIG.segmentCount;
     const angle = middleAngle - halfArcAngle + halfArcAngle * 2 * ratio;
     points.push({
-      x: origin.x + Math.cos(angle) * WALL_CONFIG.offset,
-      y: origin.y + Math.sin(angle) * WALL_CONFIG.offset,
+      x: origin.x + Math.cos(angle) * WALL_CONFIG.offset * safeScale,
+      y: origin.y + Math.sin(angle) * WALL_CONFIG.offset * safeScale,
     });
   }
   return points;
@@ -84,12 +86,14 @@ export function orbitPoint(
   baseAngle: number,
   index: number,
   count: number,
+  radiusScale = 1,
 ): FormPoint {
   const safeCount = Math.max(1, Math.floor(count));
+  const safeScale = Number.isFinite(radiusScale) ? Math.max(0.25, radiusScale) : 1;
   const angle = baseAngle + Math.PI * 2 * index / safeCount;
   return {
-    x: center.x + Math.cos(angle) * ORBIT_CONFIG.radius,
-    y: center.y + Math.sin(angle) * ORBIT_CONFIG.radius,
+    x: center.x + Math.cos(angle) * ORBIT_CONFIG.radius * safeScale,
+    y: center.y + Math.sin(angle) * ORBIT_CONFIG.radius * safeScale,
   };
 }
 

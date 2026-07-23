@@ -41,7 +41,8 @@
     "test:summonvariety": "esbuild scripts/summon-variety-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-summon-variety-regression.mjs && node node_modules/.cache/incant-summon-variety-regression.mjs",
     "test:summonbehavior": "esbuild scripts/summon-behavior-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-summon-behavior-regression.mjs && node node_modules/.cache/incant-summon-behavior-regression.mjs",
     "test:affinityvfx": "esbuild scripts/affinity-vfx-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-affinity-vfx-regression.mjs && node node_modules/.cache/incant-affinity-vfx-regression.mjs",
-    "test:onboarding": "esbuild scripts/onboarding-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-onboarding-regression.mjs && node node_modules/.cache/incant-onboarding-regression.mjs"
+    "test:onboarding": "esbuild scripts/onboarding-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-onboarding-regression.mjs && node node_modules/.cache/incant-onboarding-regression.mjs",
+    "test:sequence": "esbuild scripts/spell-sequence-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-sequence-regression.mjs && node node_modules/.cache/incant-spell-sequence-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
