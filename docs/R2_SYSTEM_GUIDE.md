@@ -24,9 +24,10 @@
    │   ④ validateJudgement (스키마 재검증·클램프)          [validate.ts]
    │   ⑤ 실패/타임아웃/무효 → MockJudge 폴백 (게임 무중단)  [mockJudge.ts]
    ▼
-SpellJudgement { disposition, spell{ effect, target, element, form, size, speed, status, power, cost, behavior?, shape? } }
+SpellJudgement { disposition, spell{ ...behavior?, shape? }, spell_plan? }  // 복합/동시 동작이면 spell_plan(여러 단계)
    │
-   ▼  시전 처리                                          [src/scenes/ProtoScene.ts]
+   ├─ spell_plan 있으면 → runSequenceCast(단계별 실행)  [ProtoScene · sequencePlan.ts]
+   ▼  시전 처리 (단일)                                    [src/scenes/ProtoScene.ts]
    │   · 반복 페널티 × 다양성 × 격상약화 × 친화 → effectiveSpec.power  [spellHistory·spellDiversity·runEscalation·combatConfig]
    │   · 마나 지불/감쇠 시전                              [src/combat-core/mana/]
    │   · 히트 시 × 보스 내성                              [bossMemory / runMemory]
@@ -52,6 +53,7 @@ SpellJudgement { disposition, spell{ effect, target, element, form, size, speed,
 | **size·speed** | 모델이 냄 (규칙 없이도 정확) | `validate.ts` (enum·기본값) | `spellRenderer.ts` `SIZE_SCALE`(`palette.ts`)·speed 분기 |
 | **소환 behavior** | `worker.js` 프롬프트 5항 + `summonBehavior.ts` 어휘 | `summonBehavior.ts` `validateSummonBehavior` | `behaviorRunner` |
 | **벽 shape** | `worker.js` 프롬프트 6항 + `spellShape.ts` 어휘 | `spellShape.ts` `validateSpellShape` | `persistentFormConfig.ts` `shapedWallPoints` |
+| **영창 시퀀스 (복합)** | `worker.js` 프롬프트 **7항 + few-shot 예시** | `spellPlanValidate.ts` `validateSpellPlan` | `ProtoScene.runSequenceCast` · `sequencePlan.ts` (게이트 `npm run gate:sequence`) |
 | **반복 억제** | `spellHistory.ts` `repeatMultiplier` (`REPEAT_PENALTY`) | — | `ProtoScene` 피해계산 |
 | **다양성 보너스** | `spellDiversity.ts` `diversityBonus` | — | `ProtoScene` 피해계산 |
 | **회차 격상** | `runEscalation.ts` (과의존 원소 약화·기믹 티어) | — | `ProtoScene`·보스 |
@@ -84,6 +86,8 @@ SpellJudgement { disposition, spell{ effect, target, element, form, size, speed,
 - **size·speed는 팬텀이었다** — 실 Gemini 3.5는 size/speed를 **이미 정확히** 냄(실측 40/40, N=2~3 결정론적). 판정이 틀려 보이면 **프롬프트가 아니라 Mock 폴백**을 의심하라.
 - **Mock 폴백 오인 주의** — 배치 측정 페이싱이 **15 RPM을 넘으면** 폴백(Mock)이 섞여 "프롬프트가 틀렸다"로 오인된다. 판정 품질 측정 시 **반드시 `lastSource`(gemini/cache/fallback/local) 기록 + 캐시 제거**. Mock은 size=power파생·speed=form파생이라 수식어를 무시(#138에서 키워드 인식 추가했지만 폴백 한정).
 - **모델 핀 필수** — `gemini-3.5-flash-lite` **명시 고정**. `-latest` 별칭 **금지**(자동 드리프트로 2.5-flash-lite가 폐기·404된 전례). 재현성 우선.
+- **영창 시퀀스 = 지연이 진짜 축** — spell_plan은 출력이 커서 판정 ~2초(단일 ~1.3초), tail이 2.5초 폴백 임계에 근접. **프롬프트 예시 추가는 지연을 밀어올린다 → 신중.** 게이트 `npm run gate:sequence`의 **2.5초 초과율이 pass/fail 1순위**. 초과해도 MockJudge가 plan 내서 우아하게 열화. 롤백 `VITE_SEQUENCE_JUDGE=0`. **최적화**: 복합이면 대표 `spell` 생략(#157) — 대표는 `validate.ts`의 타입 shim일 뿐(보스기억/반복/각인/실행은 plan·단계별 데이터 사용)이라 시스템 무영향.
+- **시퀀스 분류·튜닝은 few-shot으로** — 복합(plan)=뚜렷한 순차/동시 다른 동작("A한 뒤 B"). 단일=한 동작(웅장해도)·인과·시적 다원소·**반복 동작**. 경계는 보수적(애매하면 단일, 오버트리거 0 실측). 튜닝은 **트리거 단어 나열(게이트 과적합) 금지 → 다양한 few-shot 예시 + held-out(게이트·예시 밖 문장) 검증**. 미해소 허점 워치리스트 = #158.
 - **프롬프트 바꾸면 버전핀 3곳** — `src/spell/geminiJudge.ts`의 `JUDGE_PROMPT_VERSION` + `scripts/spell-regression.ts` + `scripts/gemini-fizzle-fallback-regression.ts`. 하나라도 놓치면 회귀 red(의도된 가드). 버전 올리면 옛 localStorage 캐시가 무효화됨.
 - **소스 = 배포 정합** — `worker.js`를 바꿔도 `wrangler deploy` 안 하면 **라이브 프록시는 옛 프롬프트**. 프롬프트 검증은 반드시 **배포 후** 라이브로. 반대로 배포만 하고 소스 머지를 안 하면 다음 배포가 되돌린다.
 - **fizzle/blocked는 노카운트** — 마나·쿨다운·히스토리 전부 소비 안 함. cast만 기록.
