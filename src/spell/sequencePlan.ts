@@ -74,6 +74,20 @@ export interface FormBehavior {
 
 export type SpellBehavior = MoveBehavior | WaitBehavior | FormBehavior;
 
+/** 원소 친화 저주 등에서 실제 실행 behavior의 주·보조 원소를 공통 판정한다. */
+export function behaviorUsesAnyElement(
+  behavior: SpellBehavior,
+  elements: readonly SpellElement[],
+): boolean {
+  if (behavior.type === 'wait' || elements.length === 0) return false;
+  if (behavior.type === 'move') return elements.includes(behavior.element);
+  return elements.includes(behavior.spec.element_primary)
+    || (
+      behavior.spec.element_secondary != null
+      && elements.includes(behavior.spec.element_secondary)
+    );
+}
+
 export interface SpellSequence {
   durationWeight?: number;
   behaviors: SpellBehavior[];

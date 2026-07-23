@@ -172,6 +172,7 @@ import { SUMMON_CONFIG, summonGroupPlan } from '../combat-core/summons/summonCon
 import { SummonedOrb } from '../combat-core/summons/summonedOrb';
 import { GameAudio } from '../audio/gameAudio';
 import {
+  behaviorUsesAnyElement,
   debugSpellPlan,
   resolveSpellPlan,
   SEQUENCE_PLAN_LIMITS,
@@ -2835,11 +2836,21 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     );
     this.beginSequenceProgress(plan, totalDurationMs);
     this.playerState.applyInvulnerability(totalDurationMs / 1000);
+    let blackoutIlluminated = false;
 
     for (const sequence of plan.sequences) {
       if (!this.playerState.alive || !this.isCombatActive()) break;
       this.refreshSequenceTarget(targetState);
       for (const behavior of sequence.behaviors) {
+        if (
+          !blackoutIlluminated
+          && this.activeRoomCurse?.kind === 'blackout'
+          && this.blackoutCurseField
+          && behaviorUsesAnyElement(behavior, ['light', 'fire'])
+        ) {
+          this.blackoutCurseField.illuminate();
+          blackoutIlluminated = true;
+        }
         if (behavior.type === 'move') {
           this.executeSequenceMove(behavior, sequence.durationMs, targetState);
         } else if (behavior.type === 'form') {
