@@ -29,6 +29,14 @@ export const ACTIVE_MANA_CONFIG = {
   surgeManaGainBonus: 0.25,
   surgePickupRadiusBonus: 0.35,
   castInputLockSeconds: 0.4,
+  /**
+   * 영창 환류 — 수동 주문이 적을 처치하면 즉시 환급되는 마나 (오토·기본탄·상태이상 킬 제외).
+   * 실측(#119): 기본탄 39% 고정의 원인은 마나 고갈로 영창이 막히는 대기 구간.
+   * 주문 킬→마나→다음 주문의 순환으로 그 구간 자체를 줄인다. 저비용 속삭임(비용 5)
+   * 마무리 킬이 마나 소폭 흑자가 되는 건 의도 — "광역으로 눕히고 속삭임으로 거둔다".
+   * 킬은 방마다 유한하므로 무한 자원이 아니다. 드롭(8)을 넘지 않게 유지(회귀 고정).
+   */
+  spellKillRefundMana: 6,
 } as const;
 
 export function manaPotionSpawnDelay(randomValue: number): number {
