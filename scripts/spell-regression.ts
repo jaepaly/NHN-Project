@@ -79,7 +79,7 @@ const remoteJudge = new GeminiJudge('https://invalid.example');
 assert.equal((await remoteJudge.judge('ㅁㄴㅇㄹ')).disposition, 'fizzle');
 assert.equal(remoteJudge.lastSource, 'local');
 assert.equal(JUDGE_SCHEMA_VERSION, 2);
-assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.4'); // v2.4: 모델 드리프트 fizzle 안전망 (#110)
+assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.5'); // v2.5: size·speed 매핑 지침 추가 (#134)
 
 assert.equal(validateJudgement({ element_primary: 'fire', form: 'bolt' }), null,
   'v1 responses must not pass v2 validation');
