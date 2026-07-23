@@ -493,6 +493,12 @@ export class ProtoScene extends Phaser.Scene {
       'bg-stage1',
       `${import.meta.env.BASE_URL}assets/backgrounds/arena-stage1.jpg`,
     );
+    // 스테이지2 전용 AI 배경 — 부패한 보라 아케인 석재 (stage1+틴트 대체, #72)
+    // 후처리: 워터마크 제거·발광 하이라이트 롤오프(몹 씻김 방지)·3:2 크롭·1920×1280.
+    this.load.image(
+      'bg-stage2',
+      `${import.meta.env.BASE_URL}assets/backgrounds/arena-stage2.jpg`,
+    );
     // 보스방 전용 AI 배경 — 탑다운 소환진 아레나 (일반 방과 확실히 구분되는 결전 공간)
     this.load.image(
       'bg-boss',
@@ -511,7 +517,7 @@ export class ProtoScene extends Phaser.Scene {
     }
     // 로드 실패가 조용히 묻히지 않게 — 실패 시 원인·URL을 남기고 그리드 배경으로 폴백한다.
     this.load.on('loaderror', (file: Phaser.Loader.File) => {
-      if (file.key === 'bg-stage1') {
+      if (file.key === 'bg-stage1' || file.key === 'bg-stage2') {
         console.warn('[backdrop] 배경 이미지 로드 실패 — 그리드로 폴백:', file.src);
       }
     });
@@ -1135,8 +1141,13 @@ export class ProtoScene extends Phaser.Scene {
       },
     });
     this.redrawBackdropDetails(palette);
-    // 보스방은 전용 배경으로 교체한다. setTexture가 표시 크기를 리셋하므로 월드 크기를 다시 준다.
-    const bgKey = this.isBossEncounter() ? 'bg-boss' : 'bg-stage1';
+    // 방 종류·스테이지별 전용 배경으로 교체한다. setTexture가 표시 크기를 리셋하므로 월드 크기를 다시 준다.
+    // 스테이지2는 부패한 보라 아케인 배경(#72) — 없으면(로드 실패) stage1로 폴백.
+    const bgKey = this.isBossEncounter()
+      ? 'bg-boss'
+      : state.stage === 2 && this.textures.exists('bg-stage2')
+        ? 'bg-stage2'
+        : 'bg-stage1';
     if (
       this.backdropImage
       && this.textures.exists(bgKey)
