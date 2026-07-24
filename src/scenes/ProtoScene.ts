@@ -69,6 +69,7 @@ import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import { devInfo } from '../debug/devLog';
 import { FusionGauge } from '../combat-core/player/fusionGauge';
 import { loopDamageScale } from '../combat-core/run/loopDifficulty';
+import { bossDamageTelemetry } from '../combat-core/combat/damageTelemetry';
 import { flooredResistMultiplier } from '../combat-core/combat/debuffFloor';
 import { showBossChoice } from '../ui/bossChoiceOverlay';
 import { codexEntryFromSpec, codexEntryFromSequence, recordCodexEntry } from '../spell/spellCodex';
@@ -2815,6 +2816,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       if (import.meta.env.DEV) {
         const base = historyEntry.basePower;
         const bossResist = this.activeBossResistances.get(spec.element_primary) ?? 1;
+        const bossDamage = bossDamageTelemetry(
+          effectiveSpec.power,
+          escalationWeaken,
+          bossResist,
+        );
         void fetch('/__log', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2831,8 +2837,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
             empower: Number(this.playerState.damageOutMultiplier.toFixed(2)),
             degraded: Number(castPlan.ratio.toFixed(2)),
             effective: effectiveSpec.power,
-            bossResist: Number(bossResist.toFixed(2)),
-            finalVsBoss: Math.round(effectiveSpec.power * bossResist),
+            // bossResist는 기존 분석 호환용 원시값. 아래 필드는 전투 경로와 같은 보정값이다.
+            bossResist: Number(bossDamage.rawBossResist.toFixed(2)),
+            rawBossResist: Number(bossDamage.rawBossResist.toFixed(2)),
+            appliedBossMultiplier: Number(bossDamage.appliedBossMultiplier.toFixed(2)),
+            combinedDebuff: Number(bossDamage.combinedDebuff.toFixed(2)),
+            finalVsBoss: bossDamage.finalVsBoss,
           }),
         }).catch(() => {});
       }

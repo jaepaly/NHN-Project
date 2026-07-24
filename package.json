@@ -52,7 +52,8 @@
     "test:rewardsummary": "esbuild scripts/run-reward-summary-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-run-reward-summary-regression.mjs && node node_modules/.cache/incant-run-reward-summary-regression.mjs",
     "test:useaffinity": "esbuild scripts/use-affinity-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-use-affinity-regression.mjs && node node_modules/.cache/incant-use-affinity-regression.mjs",
     "test:loop": "esbuild scripts/loop-continue-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-loop-continue-regression.mjs && node node_modules/.cache/incant-loop-continue-regression.mjs",
-    "test:debufffloor": "esbuild scripts/debuff-floor-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-debuff-floor-regression.mjs && node node_modules/.cache/incant-debuff-floor-regression.mjs"
+    "test:debufffloor": "esbuild scripts/debuff-floor-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-debuff-floor-regression.mjs && node node_modules/.cache/incant-debuff-floor-regression.mjs",
+    "test:dmgtelemetry": "esbuild scripts/damage-telemetry-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-damage-telemetry-regression.mjs && node node_modules/.cache/incant-damage-telemetry-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
