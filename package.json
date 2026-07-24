@@ -51,7 +51,8 @@
     "test:codex": "esbuild scripts/spell-codex-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-codex-regression.mjs && node node_modules/.cache/incant-spell-codex-regression.mjs",
     "test:rewardsummary": "esbuild scripts/run-reward-summary-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-run-reward-summary-regression.mjs && node node_modules/.cache/incant-run-reward-summary-regression.mjs",
     "test:useaffinity": "esbuild scripts/use-affinity-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-use-affinity-regression.mjs && node node_modules/.cache/incant-use-affinity-regression.mjs",
-    "test:loop": "esbuild scripts/loop-continue-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-loop-continue-regression.mjs && node node_modules/.cache/incant-loop-continue-regression.mjs"
+    "test:loop": "esbuild scripts/loop-continue-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-loop-continue-regression.mjs && node node_modules/.cache/incant-loop-continue-regression.mjs",
+    "test:debufffloor": "esbuild scripts/debuff-floor-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-debuff-floor-regression.mjs && node node_modules/.cache/incant-debuff-floor-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
