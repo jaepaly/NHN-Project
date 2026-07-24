@@ -68,6 +68,7 @@ import { reducedAffinityVfxTier } from '../render/affinityVfx';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import { devInfo } from '../debug/devLog';
 import { FusionGauge } from '../combat-core/player/fusionGauge';
+import { codexEntryFromSpec, codexEntryFromSequence, recordCodexEntry } from '../spell/spellCodex';
 import {
   KNOCKBACK_CONFIG,
   knockbackDistanceForForm,
@@ -2582,17 +2583,23 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (this.fusionGauge.charge(plan.manaCost)) {
       this.announceSystemMessage('융합의 힘이 응축됐다 — 두 원소를 담아 영창하라', '#e2b7ff', 3400);
     }
+    const sequenceElements = [...new Set(plan.sequences.flatMap((sequence) => (
+      sequence.behaviors.flatMap(behaviorElements)
+    )))];
     const sequenceHistoryEntry = this.spellHistory.recordSequence({
       rawText: text,
       name: plan.name,
-      elements: [...new Set(plan.sequences.flatMap((sequence) => (
-        sequence.behaviors.flatMap(behaviorElements)
-      )))],
+      elements: sequenceElements,
       power: plan.power,
       cost: plan.manaCost,
       source,
       castAt: Date.now(),
     });
+    // 주문 도감 — 다단계 주문도 "내가 쓴 마법"으로 새긴다
+    recordCodexEntry(
+      window.localStorage,
+      codexEntryFromSequence(plan, sequenceElements[0] ?? 'light', Date.now()),
+    );
     const engraveCandidate = sequenceEngraveCandidate(plan);
     if (engraveCandidate) {
       this.engraveManager.rememberManualCast(
@@ -2688,6 +2695,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         castAt: Date.now(),
       });
       this.engraveManager.rememberManualCast(historyEntry.normalized, spec);
+      // 주문 도감 — 원판(판정) 스펙으로 새긴다 (감쇠·페널티 반영 전 = 발견의 기록)
+      recordCodexEntry(window.localStorage, codexEntryFromSpec(spec, Date.now()));
       const affinityBonus = this.combatRunController.state
         .elementalAffinity[spec.element_primary] ?? 0;
       // 런 반복 격상(#77): 회차가 쌓이면 과의존한 원소가 이번 런 전체에서 약화된다.

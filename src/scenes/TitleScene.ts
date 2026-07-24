@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { applyWorldFx } from '../render/postFx';
+import { loadCodex } from '../spell/spellCodex';
+import { showCodexOverlay } from '../ui/codexOverlay';
 
 const TITLE_COLORS = {
   background: 0x05060f,
@@ -13,6 +15,9 @@ const TITLE_COLORS = {
 export class TitleScene extends Phaser.Scene {
   private starting = false;
 
+  /** 도감이 열려 있는 동안 시작 트리거(클릭·Enter)를 막는다 */
+  private codexOpen = false;
+
   constructor() {
     super('title');
   }
@@ -24,11 +29,39 @@ export class TitleScene extends Phaser.Scene {
     this.createArcaneSeal(width / 2, height * 0.44);
     this.createTitle(width, height);
     this.createStartPrompt(width, height);
+    this.createCodexTab(width, height);
 
-    this.input.keyboard?.once('keydown-ENTER', this.startGame, this);
-    this.input.once('pointerdown', this.startGame, this);
+    // once가 아닌 on — 도감을 열었다 닫아도 시작 트리거가 살아 있어야 한다.
+    // (버튼의 gameobject 핸들러가 씬 pointerdown보다 먼저 돌아 codexOpen 가드가 성립)
+    this.input.keyboard?.on('keydown-ENTER', this.startGame, this);
+    this.input.on('pointerdown', this.startGame, this);
 
     applyWorldFx(this.cameras.main); // Phase 5 네온 후처리 (블룸+비네트)
+  }
+
+  /** 주문 도감 탭 — 런과 승패를 넘어 쌓인 "내가 만든 마법"의 기록 (게임성 분석 ③) */
+  private createCodexTab(width: number, height: number): void {
+    const tab = this.add.text(width / 2, height * 0.885, '〔 주문 도감 〕', {
+      fontFamily: '"Noto Serif KR", "Malgun Gothic", serif',
+      fontSize: '15px',
+      color: '#8fa4ff',
+      letterSpacing: 2,
+    }).setOrigin(0.5).setAlpha(0.75).setInteractive({ useHandCursor: true });
+
+    tab.on('pointerover', () => tab.setAlpha(1).setColor('#c7d0ff'));
+    tab.on('pointerout', () => tab.setAlpha(0.75).setColor('#8fa4ff'));
+    tab.on('pointerdown', () => { void this.openCodex(); });
+  }
+
+  private async openCodex(): Promise<void> {
+    if (this.codexOpen || this.starting) return;
+    this.codexOpen = true;
+    try {
+      await showCodexOverlay(loadCodex(window.localStorage));
+    } finally {
+      // 같은 프레임의 씬 pointerdown이 시작을 못 물게 한 틱 늦게 푼다
+      this.time.delayedCall(50, () => { this.codexOpen = false; });
+    }
   }
 
   private drawBackground(width: number, height: number): void {
@@ -224,7 +257,7 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private startGame(): void {
-    if (this.starting) return;
+    if (this.starting || this.codexOpen) return;
     this.starting = true;
     this.input.enabled = false;
     this.cameras.main.fadeOut(420, 5, 6, 15);
