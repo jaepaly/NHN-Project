@@ -73,6 +73,8 @@ export class CombatRunController implements RunController {
   private rand: () => number;
   /** 수호 기점 누적치 — 방 시작마다 부여 (PROGRESSION_DESIGN §1) */
   private wardOnRoomStart = 0;
+  /** 보스 후 이어가기 루프 인덱스 (0=첫 런). 이어갈수록 난이도↑ (loopDifficulty) */
+  private loopIndex = 0;
 
   constructor(options: CombatRunControllerOptions) {
     this.playerState = options.playerState;
@@ -169,6 +171,23 @@ export class CombatRunController implements RunController {
     this.useAffinityAdded = {};
     this.rewardOptions = [];
     this.wardOnRoomStart = 0;
+    this.loopIndex = 0;
+    this.rand = mulberry32(seed);
+    this.encounters = resolveEncounters(this.encounterDefinitions, mulberry32(seed ^ 0x9e3779b9));
+    this.emit('room-started', this.snapshot());
+  }
+
+  /**
+   * 보스 후 이어가기 — 빌드(친화·보상·사용성장·수호기점)를 **유지**한 채 방만 새로
+   * 뽑고 루프를 올린다. reset()과 달리 성장을 비우지 않는다. 씬은 여기 더해 플레이어
+   * HP·각인·정령·융합 게이지를 유지하고 난이도(loopDamageScale)를 올린다.
+   */
+  continueRun(seed = Date.now()): void {
+    this.loopIndex += 1;
+    this.roomIndex = this.initialRoomIndex;
+    this.phase = 'combat';
+    this.rewardOptions = [];
+    // elementalAffinity·useAffinityAdded·rewards·wardOnRoomStart 는 유지 (빌드 지속)
     this.rand = mulberry32(seed);
     this.encounters = resolveEncounters(this.encounterDefinitions, mulberry32(seed ^ 0x9e3779b9));
     this.emit('room-started', this.snapshot());
@@ -252,6 +271,7 @@ export class CombatRunController implements RunController {
       encounterVariantId: encounter.variantId,
       waveSetId: encounter.waveSetId,
       phase: this.phase,
+      loopIndex: this.loopIndex,
       rewards: this.rewards.map(cloneReward),
       elementalAffinity: { ...this.elementalAffinity },
     };
