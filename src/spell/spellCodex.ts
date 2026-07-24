@@ -1,4 +1,4 @@
-import type { SpellElement, SpellSpec } from './types';
+import type { SpellElement, SpellForm, SpellSpec } from './types';
 import { ELEMENT_LABELS, FORM_LABELS } from '../render/palette';
 
 /**
@@ -18,6 +18,12 @@ export interface CodexEntry {
   name: string;
   /** 색상용 대표 원소 */
   element: SpellElement;
+  /** 이중 원소 부속성 (아이콘 투톤용, 있을 때만) */
+  elementSecondary?: SpellElement;
+  /** 폼 — 인벤토리 아이콘·정렬용. 시퀀스는 undefined */
+  form?: SpellForm;
+  /** 크기 — 아이콘 규모·정렬용 */
+  size?: SpellSpec['size'];
   /** 사람이 읽는 한 줄 요약 — 기록 시점에 미리 만들어 저장 (UI는 렌더만) */
   summary: string;
   /** 판정 위력 (첫 발견 시점) */
@@ -60,6 +66,9 @@ export function codexEntryFromSpec(spec: SpellSpec, at: number): CodexEntry {
   return {
     name: spec.name,
     element: spec.element_primary,
+    elementSecondary: spec.element_secondary ?? undefined,
+    form: spec.form,
+    size: spec.size,
     summary: parts.join(' · '),
     power: spec.power,
     flavor: spec.flavor,
@@ -111,6 +120,49 @@ export function mergeCodexEntry(
 /** 최신 사용순 정렬 (UI 표시용, 원본 불변) */
 export function sortCodexForDisplay(entries: readonly CodexEntry[]): CodexEntry[] {
   return [...entries].sort((a, b) => b.lastCastAt - a.lastCastAt);
+}
+
+export type CodexSortMode = 'recent' | 'discovered' | 'power' | 'element' | 'form';
+
+/** 원소·폼 정렬을 위한 고정 순서 (팔레트/스키마 순 — 같은 계열끼리 모이게) */
+const ELEMENT_ORDER: SpellElement[] = [
+  'fire', 'water', 'lightning', 'ice', 'earth', 'wind', 'light', 'dark',
+];
+const FORM_ORDER: SpellForm[] = [
+  'bolt', 'beam', 'wave', 'nova', 'rain', 'wall', 'cage', 'orbit', 'summon', 'buff', 'zone', 'chain',
+];
+
+/**
+ * 인벤토리 정렬 (순수, 원본 불변). 동점 시 위력 내림차순 → 이름으로 안정화한다.
+ * 폼이 없는 항목(시퀀스)은 폼 정렬에서 맨 뒤로 모은다.
+ */
+export function sortCodex(entries: readonly CodexEntry[], mode: CodexSortMode): CodexEntry[] {
+  const byName = (a: CodexEntry, b: CodexEntry): number => a.name.localeCompare(b.name);
+  const byPowerThenName = (a: CodexEntry, b: CodexEntry): number => (
+    b.power - a.power || byName(a, b)
+  );
+  const rank = <T>(order: readonly T[], v: T | undefined): number => {
+    const i = v === undefined ? -1 : order.indexOf(v);
+    return i < 0 ? order.length : i;
+  };
+  const copy = [...entries];
+  switch (mode) {
+    case 'power':
+      return copy.sort(byPowerThenName);
+    case 'discovered':
+      return copy.sort((a, b) => a.firstCastAt - b.firstCastAt || byName(a, b));
+    case 'element':
+      return copy.sort((a, b) => (
+        rank(ELEMENT_ORDER, a.element) - rank(ELEMENT_ORDER, b.element) || byPowerThenName(a, b)
+      ));
+    case 'form':
+      return copy.sort((a, b) => (
+        rank(FORM_ORDER, a.form) - rank(FORM_ORDER, b.form) || byPowerThenName(a, b)
+      ));
+    case 'recent':
+    default:
+      return copy.sort((a, b) => b.lastCastAt - a.lastCastAt || byName(a, b));
+  }
 }
 
 interface StorageLike {

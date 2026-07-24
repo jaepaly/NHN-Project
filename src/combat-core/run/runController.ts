@@ -7,6 +7,8 @@ import type {
   RunPhase,
   RunStateSnapshot,
 } from '../../run/runContract';
+import type { SpellElement } from '../../spell/types';
+import { accrueUseAffinity } from './useAffinity';
 import { RUN_ENCOUNTERS } from './encounterConfig';
 import {
   drawRewardOptions,
@@ -64,11 +66,15 @@ export class CombatRunController implements RunController {
   private phase: RunPhase = 'combat';
   private rewards: RewardOption[] = [];
   private elementalAffinity: RunStateSnapshot['elementalAffinity'] = {};
+  /** 사용으로 더해온 친화 누적 (원소별, 소프트캡 판정용 — 카드분은 제외) */
+  private useAffinityAdded: Record<string, number> = {};
   private rewardOptions: RewardOption[] = [];
   private readonly rewardDraw: RewardDraw;
   private rand: () => number;
   /** 수호 기점 누적치 — 방 시작마다 부여 (PROGRESSION_DESIGN §1) */
   private wardOnRoomStart = 0;
+  /** 보스 후 이어가기 루프 인덱스 (0=첫 런). 이어갈수록 난이도↑ (loopDifficulty) */
+  private loopIndex = 0;
 
   constructor(options: CombatRunControllerOptions) {
     this.playerState = options.playerState;
@@ -93,6 +99,20 @@ export class CombatRunController implements RunController {
 
   get state(): Readonly<RunStateSnapshot> {
     return this.snapshot();
+  }
+
+  /**
+   * 사용 기반 친화 성장 (useAffinity.ts) — 수동 시전이 그 원소 친화를 소프트캡 안에서
+   * 조금 올린다. 카드 친화와 같은 맵에 더하므로 데미지·VFX 격상이 함께 따라온다.
+   * @returns { added: 이번에 실제 오른 양, total: 갱신된 총 친화 } (씬이 화면 표시에 사용)
+   */
+  growAffinityFromUse(element: SpellElement): { added: number; total: number } {
+    const { added, nextAddedSoFar } = accrueUseAffinity(this.useAffinityAdded[element] ?? 0);
+    if (added > 0) {
+      this.useAffinityAdded[element] = nextAddedSoFar;
+      this.elementalAffinity[element] = (this.elementalAffinity[element] ?? 0) + added;
+    }
+    return { added, total: this.elementalAffinity[element] ?? 0 };
   }
 
   /** 마지막 활성 적 처치 후 전투 씬이 호출하는 R1 내부 진입점. */
@@ -143,13 +163,35 @@ export class CombatRunController implements RunController {
    * 새 런 시작 (R1 내부 API — RunController 계약 외).
    * 초기 상태로 되돌리고 'room-started'를 발화해 씬·UI가 방 1부터 다시 진행하게 한다.
    */
-  reset(seed = Date.now()): void {
+  /**
+   * 새 런 초기화. `emit=false`면 room-started를 발화하지 않는다 — 씬 재진입(create)에서
+   * 씬이 직접 startRoom을 부를 때, 이벤트로 방이 이중 시작되는 걸 막는다.
+   */
+  reset(seed = Date.now(), emit = true): void {
     this.roomIndex = this.initialRoomIndex;
     this.phase = 'combat';
     this.rewards = [];
     this.elementalAffinity = {};
+    this.useAffinityAdded = {};
     this.rewardOptions = [];
     this.wardOnRoomStart = 0;
+    this.loopIndex = 0;
+    this.rand = mulberry32(seed);
+    this.encounters = resolveEncounters(this.encounterDefinitions, mulberry32(seed ^ 0x9e3779b9));
+    if (emit) this.emit('room-started', this.snapshot());
+  }
+
+  /**
+   * 보스 후 이어가기 — 빌드(친화·보상·사용성장·수호기점)를 **유지**한 채 방만 새로
+   * 뽑고 루프를 올린다. reset()과 달리 성장을 비우지 않는다. 씬은 여기 더해 플레이어
+   * HP·각인·정령·융합 게이지를 유지하고 난이도(loopDamageScale)를 올린다.
+   */
+  continueRun(seed = Date.now()): void {
+    this.loopIndex += 1;
+    this.roomIndex = this.initialRoomIndex;
+    this.phase = 'combat';
+    this.rewardOptions = [];
+    // elementalAffinity·useAffinityAdded·rewards·wardOnRoomStart 는 유지 (빌드 지속)
     this.rand = mulberry32(seed);
     this.encounters = resolveEncounters(this.encounterDefinitions, mulberry32(seed ^ 0x9e3779b9));
     this.emit('room-started', this.snapshot());
@@ -233,6 +275,7 @@ export class CombatRunController implements RunController {
       encounterVariantId: encounter.variantId,
       waveSetId: encounter.waveSetId,
       phase: this.phase,
+      loopIndex: this.loopIndex,
       rewards: this.rewards.map(cloneReward),
       elementalAffinity: { ...this.elementalAffinity },
     };

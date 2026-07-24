@@ -61,10 +61,10 @@ export interface CastContext {
   /** Automated spirit/engrave casts keep reduced impact VFX but never move the camera. */
   allowCameraShake?: boolean;
   /**
-   * 원소 친화 VFX 티어(0~3) — 친화를 쌓은 원소일수록 시전 연출이 화려해진다.
+   * 원소 친화 VFX 강도(연속, 0=기본) — 친화를 쌓은 원소일수록 시전 연출이 화려해진다.
    * 판정 영역과 무관한 오버레이만 격상한다(affinityVfx.ts). 위력·적중 불변.
    */
-  vfxTier?: number;
+  vfxIntensity?: number;
   /** 렌더러가 만든 실제 형상의 적중 영역을 전투 씬에 전달 */
   onHit?: (impact: SpellImpact, spec: SpellSpec) => void;
   /** Checks a bolt's latest movement segment against live combat targets. */
@@ -133,9 +133,10 @@ export function castSpell(ctx: CastContext, spec: SpellSpec): void {
 
 /** 친화 연출은 지속/연쇄 타격마다 반복하지 않고 영창의 첫 적중·전개 지점에서 한 번만 재생한다. */
 function withAffinityImpactFlourish(ctx: CastContext, spec: SpellSpec): CastContext {
-  const tier = Math.max(0, Math.min(AFFINITY_VFX_CONFIG.maxTier, Math.floor(ctx.vfxTier ?? 0)));
+  const intensity = Math.max(0, ctx.vfxIntensity ?? 0);
   // Beam/wave affinities are emitted per enemy after ProtoScene confirms real damage.
-  if (tier === 0 || !ctx.onHit || spec.form === 'beam' || spec.form === 'wave') return ctx;
+  if (intensity < AFFINITY_VFX_CONFIG.minIntensity
+    || !ctx.onHit || spec.form === 'beam' || spec.form === 'wave') return ctx;
 
   const onHit = ctx.onHit;
   let played = false;
@@ -147,7 +148,7 @@ function withAffinityImpactFlourish(ctx: CastContext, spec: SpellSpec): CastCont
         const point = impact.kind === 'line'
           ? { x: impact.toX, y: impact.toY }
           : { x: impact.x, y: impact.y };
-        playAffinityImpactFlourish(ctx.scene, point.x, point.y, spec, tier);
+        playAffinityImpactFlourish(ctx.scene, point.x, point.y, spec, intensity);
       }
       onHit(impact, spec);
     },
@@ -850,17 +851,19 @@ export function playAffinityImpactFlourish(
   x: number,
   y: number,
   spec: SpellSpec,
-  tier: number,
+  intensity: number,
 ): void {
+  const cfg = AFFINITY_VFX_CONFIG;
+  const t = Math.max(0, Math.min(cfg.intensityCap, intensity));
+  if (t < cfg.minIntensity) return;
   const pal = ELEMENT_PALETTES[spec.element_primary];
 
-  // 확장 링 — 티어 수만큼, 바깥 링일수록 크고 옅게 (시간차로 물결처럼)
-  const rings = AFFINITY_VFX_CONFIG.ringsPerTier[tier];
-  const maxRadius = AFFINITY_VFX_CONFIG.ringRadius[tier];
-  const ringWidth = 5;
+  // 확장 링 — 개수는 강도 반올림(최대 maxRings), 반경은 강도에 연속 비례
+  const rings = Math.min(cfg.maxRings, Math.max(1, Math.round(t)));
+  const maxRadius = cfg.radiusBase + t * cfg.radiusPerStack;
   for (let i = 0; i < rings; i += 1) {
     const ring = scene.add.circle(x, y, 10, 0x000000, 0)
-      .setStrokeStyle(ringWidth - i * 0.5, i === 0 ? pal.core : i === 1 ? pal.glow : pal.accent, 1)
+      .setStrokeStyle(5 - i * 0.5, i === 0 ? pal.core : i === 1 ? pal.glow : pal.accent, 1)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setDepth(7);
     scene.tweens.add({
@@ -875,23 +878,28 @@ export function playAffinityImpactFlourish(
     });
   }
 
-  // 스파크 버스트 — 양이 티어에 비례
+  // 스파크 버스트 — 양·속도가 강도에 연속 비례 (매 시전의 작은 성장도 보인다)
+  const sparkCount = Math.round(cfg.sparksBase + t * cfg.sparksPerStack);
   const sparks = scene.add.particles(x, y, 'particle', {
-    speed: { min: 60, max: 160 + tier * 40 },
-    scale: { start: 0.56, end: 0 },
+    speed: { min: 60, max: 150 + t * 30 },
+    scale: { start: 0.5 + t * 0.05, end: 0 },
     lifespan: 500,
-    quantity: AFFINITY_VFX_CONFIG.sparksPerTier[tier],
+    quantity: sparkCount,
     tint: [pal.core, pal.accent],
     blendMode: Phaser.BlendModes.ADD,
     emitting: false,
   }).setDepth(7);
-  sparks.explode(AFFINITY_VFX_CONFIG.sparksPerTier[tier]);
+  sparks.explode(sparkCount);
   scene.time.delayedCall(620, () => sparks.destroy());
 
-  // 티어 3 전용 — 원소 불씨가 잠시 떠오르는 잔광 (마스터리의 표식)
-  if (tier >= AFFINITY_VFX_CONFIG.maxTier) {
-    for (let i = 0; i < AFFINITY_VFX_CONFIG.emberCountAtMax; i += 1) {
-      const angle = (Math.PI * 2 * i) / AFFINITY_VFX_CONFIG.emberCountAtMax;
+  // 엠버 잔광 — 강도 3(친화 0.45)부터, 강도에 비례해 더 많이 (마스터리의 표식)
+  if (t >= cfg.emberFromIntensity) {
+    const embers = Math.min(
+      cfg.emberCap,
+      Math.round((t - cfg.emberFromIntensity + 1) * cfg.emberPerStack),
+    );
+    for (let i = 0; i < embers; i += 1) {
+      const angle = (Math.PI * 2 * i) / embers;
       const ember = scene.add.circle(
         x + Math.cos(angle) * 26,
         y + Math.sin(angle) * 26,
@@ -908,5 +916,20 @@ export function playAffinityImpactFlourish(
         onComplete: () => ember.destroy(),
       });
     }
+  }
+
+  // 마스터리 섬광 — 강도 5(친화 0.75)부터, 원소색 밝은 원이 확 퍼진다 (깊은 특화의 위엄)
+  if (t >= cfg.flashFromIntensity) {
+    const flash = scene.add.circle(x, y, 14, pal.glow, 0.5)
+      .setBlendMode(Phaser.BlendModes.ADD).setDepth(7);
+    scene.tweens.add({
+      targets: flash,
+      radius: maxRadius * 1.5,
+      alpha: 0,
+      duration: 340,
+      ease: 'Quart.easeOut',
+      onUpdate: () => flash.setRadius(flash.radius),
+      onComplete: () => flash.destroy(),
+    });
   }
 }

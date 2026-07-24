@@ -7,6 +7,7 @@ import {
   mergeCodexEntry,
   recordCodexEntry,
   saveCodex,
+  sortCodex,
   sortCodexForDisplay,
 } from '../src/spell/spellCodex';
 import type { SpellSpec } from '../src/spell/types';
@@ -104,4 +105,30 @@ const display = sortCodexForDisplay(list);
 assert.ok(display[0].lastCastAt >= display[display.length - 1].lastCastAt);
 assert.notEqual(display, list);
 
-console.log('spell codex regression: 생성·병합·상한·저장왕복·손상방어·정렬 5군 통과');
+// 6) 인벤토리 필드 — 폼·크기·부속성이 스펙에서 보존된다 (아이콘·정렬용)
+const iconEntry = codexEntryFromSpec(spec, 1000);
+assert.equal(iconEntry.form, 'bolt', 'form 필드 보존');
+assert.equal(iconEntry.size, 'large', 'size 필드 보존');
+assert.equal(iconEntry.elementSecondary, 'earth', '부속성 보존');
+assert.equal(seqEntry.form, undefined, '시퀀스는 폼 없음(전용 아이콘)');
+
+// 7) 정렬 모드 — 위력·발견·속성·폼, 전부 원본 불변 + 안정
+const pool = [
+  { ...codexEntryFromSpec({ ...spec, name: 'A', element_primary: 'water', form: 'wave', power: 30 }, 3000) },
+  { ...codexEntryFromSpec({ ...spec, name: 'B', element_primary: 'fire', form: 'bolt', power: 90 }, 1000) },
+  { ...codexEntryFromSpec({ ...spec, name: 'C', element_primary: 'fire', form: 'nova', power: 60 }, 2000) },
+];
+assert.deepEqual(sortCodex(pool, 'power').map((e) => e.name), ['B', 'C', 'A'], '위력 내림차순');
+assert.deepEqual(sortCodex(pool, 'discovered').map((e) => e.name), ['B', 'C', 'A'], '발견 오름차순');
+assert.equal(sortCodex(pool, 'element')[0].element, 'fire', '속성 순서(fire 먼저)');
+assert.deepEqual(
+  sortCodex(pool, 'element').filter((e) => e.element === 'fire').map((e) => e.name),
+  ['B', 'C'], '같은 속성 안에서 위력순',
+);
+assert.equal(sortCodex(pool, 'form')[0].form, 'bolt', '폼 순서(bolt 먼저)');
+// 폼 없는 항목은 폼 정렬에서 맨 뒤
+const withSeq = [seqEntry, ...pool];
+assert.equal(sortCodex(withSeq, 'form')[withSeq.length - 1].form, undefined, '시퀀스는 폼 정렬 맨 뒤');
+assert.notEqual(sortCodex(pool, 'power'), pool, '원본 불변');
+
+console.log('spell codex regression: 생성·병합·상한·저장왕복·손상방어·정렬·인벤토리필드·정렬모드 7군 통과');

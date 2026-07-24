@@ -32,9 +32,12 @@ export class TitleScene extends Phaser.Scene {
     this.createCodexTab(width, height);
 
     // once가 아닌 on — 도감을 열었다 닫아도 시작 트리거가 살아 있어야 한다.
-    // (버튼의 gameobject 핸들러가 씬 pointerdown보다 먼저 돌아 codexOpen 가드가 성립)
     this.input.keyboard?.on('keydown-ENTER', this.startGame, this);
-    this.input.on('pointerdown', this.startGame, this);
+    // 빈 공간 클릭만 시작 — 도감 탭 위 클릭은 currentlyOver에 잡혀 여기서 걸러진다.
+    // (이벤트 순서에 기대던 codexOpen 가드가 실플레이에서 어긋나 도감이 안 열리던 버그)
+    this.input.on('pointerdown', (_pointer: Phaser.Input.Pointer, currentlyOver: unknown[]) => {
+      if (currentlyOver.length === 0) this.startGame();
+    });
 
     applyWorldFx(this.cameras.main); // Phase 5 네온 후처리 (블룸+비네트)
   }

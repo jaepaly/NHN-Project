@@ -104,6 +104,8 @@ export interface RunStateSnapshot {
   encounterVariantId?: string;
   waveSetId?: string;
   phase: RunPhase;
+  /** 보스 후 이어가기 루프 (0=첫 런). 이어갈수록 난이도↑ */
+  loopIndex: number;
   /** 이번 런에서 획득한 보상 누적 기록 (선택 순서대로) — R1 답변 3 */
   readonly rewards: readonly RewardOption[];
   /** 원소별 위력 배율 보너스 (0.15 = +15%) — HUD 요약 표시용 */

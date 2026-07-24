@@ -64,10 +64,13 @@ import {
 import type { HitStopKind } from '../combat-core/combat/hitStopConfig';
 import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
 import { requestCameraShake, resetCameraShake } from '../render/cameraShake';
-import { reducedAffinityVfxTier } from '../render/affinityVfx';
+import { reducedAffinityVfxIntensity } from '../render/affinityVfx';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import { devInfo } from '../debug/devLog';
 import { FusionGauge } from '../combat-core/player/fusionGauge';
+import { loopDamageScale } from '../combat-core/run/loopDifficulty';
+import { flooredResistMultiplier } from '../combat-core/combat/debuffFloor';
+import { showBossChoice } from '../ui/bossChoiceOverlay';
 import { codexEntryFromSpec, codexEntryFromSequence, recordCodexEntry } from '../spell/spellCodex';
 import {
   KNOCKBACK_CONFIG,
@@ -159,6 +162,7 @@ import type { BossResistanceProfile, RunEscalationProfile } from '../spell/bossM
 import { EMPTY_RUN_MEMORY } from '../spell/runMemory';
 import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { showRewardCards } from '../ui/rewardCardOverlay';
+import { summarizeRunRewards } from '../run/runRewardSummary';
 import {
   addEntry,
   bestEntryFromRun,
@@ -211,6 +215,9 @@ const HUD = {
   barWidth: 270,
   barHeight: 7,
 } as const;
+
+/** 친화 경험치 바가 채워지는 이정표 — 각성 임계(MASTERY_REDESIGN §5-b, 친화 0.9). */
+const AFFINITY_BAR_MILESTONE = 0.9;
 
 interface FriendlyMissile {
   body: Phaser.GameObjects.Arc;
@@ -401,6 +408,8 @@ export class ProtoScene extends Phaser.Scene {
   private manaText!: Phaser.GameObjects.Text;
   private shieldText!: Phaser.GameObjects.Text;
   private attunementText!: Phaser.GameObjects.Text;
+  /** 친화 경험치 바 라벨 — 가장 깊이 투자한 원소·% (HUD 박스 아래) */
+  private affinityLabelText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
   /** 빌드 패널 — 각인·정령·주문서 보유 현황 (우하단 상시 표시) */
   private buildHudText!: Phaser.GameObjects.Text;
@@ -597,6 +606,9 @@ export class ProtoScene extends Phaser.Scene {
     }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
     this.createHud(width, height);
     this.setupRunFlow();
+    // 씬 재진입(런 종료→타이틀→새 런) 대비: 매니저·컨트롤러는 필드라 create마다
+    // 리셋해야 이전 런의 친화·각인·정령·HP·루프가 남지 않는다 (총괄 제보 버그).
+    this.resetForNewRun();
     this.prepareRunEscalation();
     this.startRoom(this.combatRunController.state.roomIndex);
     this.updateStatusText();
@@ -715,13 +727,28 @@ export class ProtoScene extends Phaser.Scene {
         const share = this.autoShareSnapshot();
         this.announceSystemMessage(`[DEV] 오토 비중 ${share.autoSharePercent}%`, '#8fa4ff', 3200);
       }
+      // 보스 처치 = 유산 은행 저장. 이어가다 죽어도 이건 남는다 (총괄 리스크 구조).
       this.persistRunMemory('win');
-      // RUN COMPLETE 전환 연출(runUiBinding)이 걷힌 뒤 런 요약 → Enter로 새 런
+      // 보스 후 선택: 마칠까(시작 화면) vs 이어갈까(빌드 유지·난이도↑)
       this.time.delayedCall(1400, () => {
-        void showRunSummaryOverlay(this.buildRunSummary('victory'))
-          .then(() => this.restartRun());
+        const completedLoops = this.combatRunController.state.loopIndex + 1;
+        const nextDamagePct = Math.round(loopDamageScale(completedLoops) * 100);
+        void showBossChoice(completedLoops, nextDamagePct).then((choice) => {
+          if (choice === 'continue') {
+            this.continueToNextLoop();
+          } else {
+            void showRunSummaryOverlay(this.buildRunSummary('victory'))
+              .then(() => this.scene.start('title'));
+          }
+        });
       });
     });
+  }
+
+  /** 적이 주는 피해 — 이어가기 루프 난이도(loopDamageScale)를 반영해 감쇠 전 원본에 곱한다 */
+  private damagePlayer(amount: number): { hpDamage: number; shieldDamage: number } {
+    const scale = loopDamageScale(this.combatRunController.state.loopIndex);
+    return this.playerState.takeDamage(amount * scale);
   }
 
   /** 사망은 1회만 처리 — 요약 오버레이 → Enter로 새 런 (GDD §2 사망 흐름) */
@@ -841,6 +868,53 @@ export class ProtoScene extends Phaser.Scene {
       `[auto-share] ${tag} — 오토 ${s.autoSharePercent}% `
       + `(수동 ${s.manual} · 오토 ${s.auto} · 기본탄 ${s.basic} · 상태이상 ${s.status})`,
     );
+  }
+
+  /**
+   * 보스 후 이어가기 — 빌드는 유지하고 전투만 새로. restartRun과 달리 playerState·각인·
+   * 정령·융합 게이지·주문 히스토리·성장 표식·친화를 **비우지 않는다**. 컨트롤러는
+   * continueRun으로 친화·보상을 지킨 채 방만 새로 뽑고 루프를 올린다 (난이도↑).
+   */
+  private continueToNextLoop(): void {
+    this.deathHandled = false;
+    // 전투 전용 상태만 초기화 (다음 보스가 내성 재계산, 장판·쿨다운은 방 단위)
+    this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
+    this.bossResistance = { ...NO_BOSS_RESISTANCE };
+    this.activeBossResistances.clear();
+    this.enemyAilments.clear();
+    this.shockCooldowns.clear();
+    this.lastResistNoticeAt = 0;
+    this.runMovementDistance = 0;
+    this.combatRunController.continueRun();
+    const loop = this.combatRunController.state.loopIndex;
+    this.announceSystemMessage(
+      `${loop}순환 진입 — 적 피해 ×${loopDamageScale(loop).toFixed(1)}`,
+      '#e2b7ff',
+      3200,
+    );
+  }
+
+  /**
+   * 새 런 진입 시 지속 매니저를 깨끗이 (create가 씬 재진입마다 호출). 컨트롤러는 silent
+   * 리셋 — create가 곧 startRoom을 직접 부르므로 room-started 이중 발화를 막는다.
+   * restartRun(런 중 재시작)과 달리 offerLegacy/prepareEscalation은 create가 따로 한다.
+   */
+  private resetForNewRun(): void {
+    this.deathHandled = false;
+    this.fusionGauge.reset();
+    this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
+    this.bossResistance = { ...NO_BOSS_RESISTANCE };
+    this.activeBossResistances.clear();
+    this.enemyAilments.clear();
+    this.shockCooldowns.clear();
+    this.lastResistNoticeAt = 0;
+    this.spellHistory.reset();
+    this.engraveManager.reset();
+    this.spiritManager.reset();
+    this.clearSpiritViews();
+    this.playerState.reset();
+    this.runMovementDistance = 0;
+    this.combatRunController.reset(Date.now(), false);
   }
 
   private restartRun(): void {
@@ -1150,6 +1224,13 @@ export class ProtoScene extends Phaser.Scene {
       fontSize: '11px',
       fontStyle: 'bold',
       color: '#c7f9e0',
+    }).setScrollFactor(0).setDepth(100);
+    // 친화 경험치 바 라벨 — 메인 HUD 박스 아래, 가장 깊이 투자한 원소의 성장 (사용 성장 #166 체감)
+    this.affinityLabelText = this.add.text(HUD.x + 6, HUD.y + HUD.height + 6, '', {
+      fontFamily: '"Noto Serif KR", Consolas, monospace',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: '#8fa4ff',
     }).setScrollFactor(0).setDepth(100);
 
     this.waveText = this.add.text(width - 34, 72, '', {
@@ -1545,7 +1626,7 @@ export class ProtoScene extends Phaser.Scene {
       hazard.damageCooldown = Math.max(0, hazard.damageCooldown - deltaSeconds);
       if (hazard.damageCooldown > 0) continue;
       if (!hazard.contains(this.player.x, this.player.y)) continue;
-      const applied = this.playerState.takeDamage(9);
+      const applied = this.damagePlayer(9);
 if (applied) this.playPlayerHit();
       this.announceIncomingDamage(applied.hpDamage, applied.shieldDamage);
       hazard.onDamage?.();
@@ -1686,7 +1767,7 @@ if (applied) this.playPlayerHit();
       ) <= enemy.contactDistance;
       if (!touching || !enemy.canDealContactDamage) continue;
 
-      const applied = this.playerState.takeDamage(enemy.contactDamage);
+      const applied = this.damagePlayer(enemy.contactDamage);
 if (applied) this.playPlayerHit(
         enemy instanceof BossEnemy && enemy.charging ? 'strong' : 'weak',
       );
@@ -2225,7 +2306,7 @@ if (applied) this.playPlayerHit(
         this.player.y,
       ) <= SHOOTER_CONFIG.bulletHitDistance;
       if (hitPlayer) {
-        const applied = this.playerState.takeDamage(SHOOTER_CONFIG.bulletDamage);
+        const applied = this.damagePlayer(SHOOTER_CONFIG.bulletDamage);
 if (applied) this.playPlayerHit(projectile.hitShakeTier);
         totalHpDamage += applied.hpDamage;
         totalShieldDamage += applied.shieldDamage;
@@ -2586,6 +2667,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const sequenceElements = [...new Set(plan.sequences.flatMap((sequence) => (
       sequence.behaviors.flatMap(behaviorElements)
     )))];
+    // 사용 기반 친화 성장 — 시퀀스도 수동 영창. 대표(첫) 원소만 올려 다원소 폭증 방지.
+    if (sequenceElements[0]) {
+      const grown = this.combatRunController.growAffinityFromUse(sequenceElements[0]);
+      if (grown.added > 0) this.showAffinityGrowthFloat(sequenceElements[0], grown.total);
+    }
     const sequenceHistoryEntry = this.spellHistory.recordSequence({
       rawText: text,
       name: plan.name,
@@ -2697,6 +2783,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.engraveManager.rememberManualCast(historyEntry.normalized, spec);
       // 주문 도감 — 원판(판정) 스펙으로 새긴다 (감쇠·페널티 반영 전 = 발견의 기록)
       recordCodexEntry(window.localStorage, codexEntryFromSpec(spec, Date.now()));
+      // 사용 기반 친화 성장 — 이 시전이 그 원소 친화를 조금 올린다 (소프트캡). 오른 값은 화면에.
+      const affinityGrowth = this.combatRunController.growAffinityFromUse(spec.element_primary);
+      if (affinityGrowth.added > 0) {
+        this.showAffinityGrowthFloat(spec.element_primary, affinityGrowth.total);
+      }
       const affinityBonus = this.combatRunController.state
         .elementalAffinity[spec.element_primary] ?? 0;
       // 런 반복 격상(#77): 회차가 쌓이면 과의존한 원소가 이번 런 전체에서 약화된다.
@@ -3183,7 +3274,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       rangeScale: options?.rangeScale,
       radiusScale: options?.radiusScale,
       // 친화 격상 연출(영창가 빌드 동기) — 위력·판정 불변, 순수 오버레이
-      vfxTier: reducedAffinityVfxTier(
+      vfxIntensity: reducedAffinityVfxIntensity(
         this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
         vfxTierReduction,
       ),
@@ -3738,6 +3829,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         .join(' · ')}`;
 
     const lines = [engraveLabel, spiritLabel];
+    // 이번 런 패시브 강화 — 적용되고 사라지던 스탯 보상을 한 줄로 되돌린다 (게임성 ②).
+    // 각인·정령은 위에 전용 줄이 있으므로 여기선 제외된다 (summarizeRunRewards).
+    const rewardLine = summarizeRunRewards(this.combatRunController.state.rewards);
+    if (rewardLine) lines.push(rewardLine);
     // 주문서는 보유분이 있을 때만 — 첫 런에서 빈 줄로 혼란을 주지 않는다.
     // 캐시된 수를 쓴다: 이 메서드는 매 프레임 호출되므로 localStorage를 여기서 읽으면 안 된다.
     if (this.grimoireCount > 0) lines.push(`주문서 ${this.grimoireCount}`);
@@ -3795,11 +3890,53 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       2,
     );
 
+    this.drawAffinityBar(g);
+
     const { width } = this.scale;
     g.fillStyle(0x080b1c, 0.86);
     g.fillRoundedRect(width - 306, 62, 288, 72, 12);
     g.lineStyle(1, 0x2a735c, 0.62);
     g.strokeRoundedRect(width - 306, 62, 288, 72, 12);
+  }
+
+  /** 가장 깊이 투자한 원소와 그 친화 총량 (없으면 null) */
+  private topAffinity(): { element: SpellElement; value: number } | null {
+    const affinity = this.combatRunController.state.elementalAffinity;
+    let best: { element: SpellElement; value: number } | null = null;
+    for (const [element, value] of Object.entries(affinity)) {
+      const v = value ?? 0;
+      if (v > 0 && (!best || v > best.value)) best = { element: element as SpellElement, value: v };
+    }
+    return best;
+  }
+
+  /**
+   * 친화 경험치 바 — 가장 깊이 투자한 원소의 성장을 각성 이정표(§5-b, 0.9)까지 채운다.
+   * 사용 성장(#166)이 매 시전 조금씩 차오르는 게 눈에 보여야 그 성장이 체감된다.
+   */
+  private drawAffinityBar(g: Phaser.GameObjects.Graphics): void {
+    const top = this.topAffinity();
+    if (!top) {
+      this.affinityLabelText.setText('');
+      return;
+    }
+    const pal = ELEMENT_PALETTES[top.element];
+    const ratio = Phaser.Math.Clamp(top.value / AFFINITY_BAR_MILESTONE, 0, 1);
+    const barX = HUD.x + 6;
+    const barY = HUD.y + HUD.height + 22;
+    const barW = HUD.width - 12;
+    g.fillStyle(0x141a35, 1);
+    g.fillRoundedRect(barX, barY, barW, 6, 3);
+    g.fillStyle(pal.core, 1);
+    g.fillRoundedRect(barX, barY, barW * ratio, 6, 3);
+    if (ratio >= 1) {
+      // 이정표 도달 — 각성 예고 펄스 (§5-b 구현 시 여기서 각성 선택지)
+      g.fillStyle(pal.accent, 0.4 + 0.4 * Math.abs(Math.sin(this.time.now / 200)));
+      g.fillRoundedRect(barX, barY, barW, 6, 3);
+    }
+    this.affinityLabelText
+      .setText(`「${ELEMENT_LABELS[top.element]}」 친화 ${Math.round(top.value * 100)}%`)
+      .setColor(paletteColorToCss(pal.core));
   }
 
   private applySpellPalette(spec: SpellSpec): void {
@@ -4026,7 +4163,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       );
       onAffectEnemy?.(enemy);
       if (damaged && (spec.form === 'beam' || spec.form === 'wave')) {
-        const tier = reducedAffinityVfxTier(
+        const tier = reducedAffinityVfxIntensity(
           this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
           vfxTierReduction,
         );
@@ -4117,7 +4254,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const label = ELEMENT_LABELS[element];
       this.announceSystemMessage(`저항! ${label}이(가) 통하지 않는다 — 다른 원소를 창작하라`, '#ffa94d');
     }
-    return baseDamage * multiplier;
+    // 합산 감쇠 하한 (결정서 §3③): 격상×내성이 겹쳐도 ×0.5 밑으로 안 내려간다.
+    // baseDamage엔 격상이 이미 반영돼 있어, 이 원소의 격상 배율로 겹침을 계산한다.
+    const escalation = this.runEscalation.weakenedElements.includes(element)
+      ? this.runEscalation.weakenMultiplier
+      : 1;
+    return baseDamage * flooredResistMultiplier(escalation, multiplier);
   }
 
   private addBossResistance(element: SpellElement, multiplier: number): void {
@@ -4250,6 +4392,32 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.time.delayedCall(900, () => burst.destroy());
   }
 
+  /**
+   * 사용 친화 성장 표시 — 시전 원소색으로 "화염 친화 45%"가 플레이어 위로 떠오른다.
+   * 성장이 화면에 보여야 "내 영창이 힘을 빚는다"는 체감이 산다 (게임성 진행 밀도).
+   */
+  private showAffinityGrowthFloat(element: SpellElement, total: number): void {
+    const pal = ELEMENT_PALETTES[element];
+    const label = this.add.text(
+      this.player.x, this.player.y - 34,
+      `${ELEMENT_LABELS[element]} 친화 ${Math.round(total * 100)}%`,
+      {
+        fontFamily: '"Noto Serif KR", "Malgun Gothic", sans-serif',
+        fontSize: '12px', fontStyle: 'bold',
+        color: paletteColorToCss(pal.core),
+        stroke: '#05060f', strokeThickness: 3,
+      },
+    ).setOrigin(0.5).setDepth(8).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: label,
+      y: this.player.y - 58,
+      alpha: { from: 0.95, to: 0 },
+      duration: 780,
+      ease: 'Cubic.Out',
+      onComplete: () => label.destroy(),
+    });
+  }
+
   /** 환류 부상 텍스트 — 킬 지점에서 마나색 "+N"이 떠오른다 */
   private showManaRefundFloat(x: number, y: number, amount: number): void {
     const label = this.add.text(x, y - 18, `+${Math.round(amount)}`, {
@@ -4310,7 +4478,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       rangeScale: options?.rangeScale,
       radiusScale: options?.radiusScale,
       // 친화 격상 연출(영창가 빌드 동기) — 위력·판정 불변, 순수 오버레이
-      vfxTier: reducedAffinityVfxTier(
+      vfxIntensity: reducedAffinityVfxIntensity(
         this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
         vfxTierReduction,
       ),
@@ -5192,7 +5360,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       });
       requestCameraShake(this, 'medium');
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, x, y) <= radius) {
-        const applied = this.playerState.takeDamage(30);
+        const applied = this.damagePlayer(30);
 if (applied) this.playPlayerHit('strong');
         this.announceIncomingDamage(applied.hpDamage, applied.shieldDamage);
       }
