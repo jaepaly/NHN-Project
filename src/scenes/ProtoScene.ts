@@ -410,6 +410,8 @@ export class ProtoScene extends Phaser.Scene {
   private attunementText!: Phaser.GameObjects.Text;
   /** 친화 경험치 바 라벨 — 가장 깊이 투자한 원소·% (HUD 박스 아래) */
   private affinityLabelText!: Phaser.GameObjects.Text;
+  /** 필살기(융합) 게이지 라벨 — 하단 중앙 미터 위 (충전%·준비 알림) */
+  private fusionLabelText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
   /** 빌드 패널 — 각인·정령·주문서 보유 현황 (우하단 상시 표시) */
   private buildHudText!: Phaser.GameObjects.Text;
@@ -1232,6 +1234,16 @@ export class ProtoScene extends Phaser.Scene {
       fontStyle: 'bold',
       color: '#8fa4ff',
     }).setScrollFactor(0).setDepth(100);
+    // 필살기(융합) 미터 라벨 — 하단 중앙, 궁극기 게이지처럼 항상 노출해 존재를 가르친다
+    this.fusionLabelText = this.add.text(width / 2, height - 62, '', {
+      fontFamily: '"Noto Serif KR", Consolas, monospace',
+      fontSize: '13px',
+      fontStyle: 'bold',
+      color: '#a99cff',
+      stroke: '#05060f',
+      strokeThickness: 4,
+      align: 'center',
+    }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(100);
 
     this.waveText = this.add.text(width - 34, 72, '', {
       fontFamily: 'Consolas, monospace',
@@ -3867,18 +3879,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     g.fillStyle(0x48c9ff, 1);
     g.fillRoundedRect(HUD.barX, 141, HUD.barWidth * shieldRatio, HUD.barHeight, 4);
 
-    // 융합 게이지 — 수동 영창으로만 차는 필살기 스트립 (만충 시 보라 펄스)
-    const fusionRatio = Phaser.Math.Clamp(this.fusionGauge.ratio, 0, 1);
-    g.fillStyle(0x1d2445, 1);
-    g.fillRoundedRect(HUD.x + 8, HUD.y + HUD.height - 10, HUD.width - 16, 3, 2);
-    if (fusionRatio > 0) {
-      const pulse = this.fusionGauge.ready
-        ? 0.7 + 0.3 * Math.abs(Math.sin(this.time.now / 180))
-        : 1;
-      g.fillStyle(this.fusionGauge.ready ? 0xe2b7ff : 0xb18cff, pulse);
-      g.fillRoundedRect(HUD.x + 8, HUD.y + HUD.height - 10, (HUD.width - 16) * fusionRatio, 3, 2);
-    }
-
     g.fillStyle(0x1d2445, 1);
     g.fillRoundedRect(HUD.x + 8, HUD.y + HUD.height - 5, HUD.width - 16, 3, 2);
     g.fillStyle(cooldownRatio > 0 ? 0xffb86b : 0x72f1b8, 1);
@@ -3891,6 +3891,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     );
 
     this.drawAffinityBar(g);
+    this.drawFusionGauge(g);
 
     const { width } = this.scale;
     g.fillStyle(0x080b1c, 0.86);
@@ -3937,6 +3938,56 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.affinityLabelText
       .setText(`「${ELEMENT_LABELS[top.element]}」 친화 ${Math.round(top.value * 100)}%`)
       .setColor(paletteColorToCss(pal.core));
+  }
+
+  /**
+   * 필살기(융합) 미터 — 화면 하단 중앙의 궁극기 게이지. 이전엔 HUD 안 3px 실선이라
+   * 존재를 몰랐다(총괄 피드백: "필살기 게이지 잘 안보임"). 격투게임 슈퍼미터처럼
+   * 항상 크게 노출하고, 만충 시 바깥 후광이 크게 맥동해 "지금 쓸 수 있다"를 알린다.
+   */
+  private drawFusionGauge(g: Phaser.GameObjects.Graphics): void {
+    const ratio = Phaser.Math.Clamp(this.fusionGauge.ratio, 0, 1);
+    const ready = this.fusionGauge.ready;
+    const { width, height } = this.scale;
+    const barW = 300;
+    const barH = 14;
+    const x = (width - barW) / 2;
+    const y = height - 54;
+    const now = this.time.now;
+
+    // 준비 완료 — 바깥 후광이 크게 맥동 (놓칠 수 없게)
+    if (ready) {
+      g.fillStyle(0x7a4dff, 0.22 + 0.2 * Math.abs(Math.sin(now / 220)));
+      g.fillRoundedRect(x - 12, y - 12, barW + 24, barH + 24, 18);
+    }
+
+    // 트랙
+    g.fillStyle(0x0c1030, 0.94);
+    g.fillRoundedRect(x, y, barW, barH, 7);
+
+    // 채움 — 최소 둥근끝이 보이도록 폭 하한을 둔다
+    if (ratio > 0) {
+      const fillW = Math.max(barH, barW * ratio);
+      g.fillStyle(0x6b4dd6, 1);
+      g.fillRoundedRect(x, y, fillW, barH, 7);
+      g.fillStyle(0xb18cff, 0.85); // 위쪽 하이라이트로 입체감
+      g.fillRoundedRect(x, y, fillW, barH * 0.42, 7);
+      if (ready) {
+        g.fillStyle(0xe2b7ff, 0.5 + 0.45 * Math.abs(Math.sin(now / 160)));
+        g.fillRoundedRect(x, y, barW, barH, 7);
+      }
+    }
+
+    // 테두리 — 준비 시 밝은 보라로 강조
+    g.lineStyle(ready ? 2 : 1, ready ? 0xe6c8ff : 0x4a3a86, ready ? 0.95 : 0.7);
+    g.strokeRoundedRect(x, y, barW, barH, 7);
+
+    this.fusionLabelText
+      .setText(ready
+        ? '✦ 필살기 준비 — 이중 원소로 방출 ✦'
+        : `필살기 융합  ${Math.round(ratio * 100)}%`)
+      .setColor(ready ? '#f0d9ff' : '#a99cff')
+      .setPosition(width / 2, y - 6);
   }
 
   private applySpellPalette(spec: SpellSpec): void {
