@@ -69,6 +69,7 @@ import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import { devInfo } from '../debug/devLog';
 import { FusionGauge } from '../combat-core/player/fusionGauge';
 import { loopDamageScale } from '../combat-core/run/loopDifficulty';
+import { flooredResistMultiplier } from '../combat-core/combat/debuffFloor';
 import { showBossChoice } from '../ui/bossChoiceOverlay';
 import { codexEntryFromSpec, codexEntryFromSequence, recordCodexEntry } from '../spell/spellCodex';
 import {
@@ -4173,7 +4174,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const label = ELEMENT_LABELS[element];
       this.announceSystemMessage(`저항! ${label}이(가) 통하지 않는다 — 다른 원소를 창작하라`, '#ffa94d');
     }
-    return baseDamage * multiplier;
+    // 합산 감쇠 하한 (결정서 §3③): 격상×내성이 겹쳐도 ×0.5 밑으로 안 내려간다.
+    // baseDamage엔 격상이 이미 반영돼 있어, 이 원소의 격상 배율로 겹침을 계산한다.
+    const escalation = this.runEscalation.weakenedElements.includes(element)
+      ? this.runEscalation.weakenMultiplier
+      : 1;
+    return baseDamage * flooredResistMultiplier(escalation, multiplier);
   }
 
   private addBossResistance(element: SpellElement, multiplier: number): void {
