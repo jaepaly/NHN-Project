@@ -7,6 +7,8 @@ import type {
   RunPhase,
   RunStateSnapshot,
 } from '../../run/runContract';
+import type { SpellElement } from '../../spell/types';
+import { accrueUseAffinity } from './useAffinity';
 import { RUN_ENCOUNTERS } from './encounterConfig';
 import {
   drawRewardOptions,
@@ -64,6 +66,8 @@ export class CombatRunController implements RunController {
   private phase: RunPhase = 'combat';
   private rewards: RewardOption[] = [];
   private elementalAffinity: RunStateSnapshot['elementalAffinity'] = {};
+  /** 사용으로 더해온 친화 누적 (원소별, 소프트캡 판정용 — 카드분은 제외) */
+  private useAffinityAdded: Record<string, number> = {};
   private rewardOptions: RewardOption[] = [];
   private readonly rewardDraw: RewardDraw;
   private rand: () => number;
@@ -93,6 +97,20 @@ export class CombatRunController implements RunController {
 
   get state(): Readonly<RunStateSnapshot> {
     return this.snapshot();
+  }
+
+  /**
+   * 사용 기반 친화 성장 (useAffinity.ts) — 수동 시전이 그 원소 친화를 소프트캡 안에서
+   * 조금 올린다. 카드 친화와 같은 맵에 더하므로 데미지·VFX 격상이 함께 따라온다.
+   * @returns { added: 이번에 실제 오른 양, total: 갱신된 총 친화 } (씬이 화면 표시에 사용)
+   */
+  growAffinityFromUse(element: SpellElement): { added: number; total: number } {
+    const { added, nextAddedSoFar } = accrueUseAffinity(this.useAffinityAdded[element] ?? 0);
+    if (added > 0) {
+      this.useAffinityAdded[element] = nextAddedSoFar;
+      this.elementalAffinity[element] = (this.elementalAffinity[element] ?? 0) + added;
+    }
+    return { added, total: this.elementalAffinity[element] ?? 0 };
   }
 
   /** 마지막 활성 적 처치 후 전투 씬이 호출하는 R1 내부 진입점. */
@@ -148,6 +166,7 @@ export class CombatRunController implements RunController {
     this.phase = 'combat';
     this.rewards = [];
     this.elementalAffinity = {};
+    this.useAffinityAdded = {};
     this.rewardOptions = [];
     this.wardOnRoomStart = 0;
     this.rand = mulberry32(seed);
