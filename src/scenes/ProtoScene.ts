@@ -67,6 +67,7 @@ import { requestCameraShake, resetCameraShake } from '../render/cameraShake';
 import { reducedAffinityVfxTier } from '../render/affinityVfx';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import { devInfo } from '../debug/devLog';
+import { FusionGauge } from '../combat-core/player/fusionGauge';
 import {
   KNOCKBACK_CONFIG,
   knockbackDistanceForForm,
@@ -456,6 +457,9 @@ export class ProtoScene extends Phaser.Scene {
   private basicAttackCooldownRemaining = 0;
   private friendlyMissiles: FriendlyMissile[] = [];
 
+  /** 필살기 — 수동 영창으로만 차는 융합 게이지 (fusionGauge.ts) */
+  private readonly fusionGauge = new FusionGauge();
+
   /** 속삭임 힌트 최근 노출 시각 — 15초 쿨다운 (announceManaShortage) */
   private lastWhisperHintAt = 0;
 
@@ -840,6 +844,7 @@ export class ProtoScene extends Phaser.Scene {
 
   private restartRun(): void {
     this.deathHandled = false;
+    this.fusionGauge.reset();
     this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.activeBossResistances.clear();
@@ -2573,6 +2578,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceManaShortage(plan.manaCost);
       return;
     }
+    // 융합 게이지 — 시퀀스도 수동 영창이므로 충전한다 (방출 격상은 v1에선 단일 주문만)
+    if (this.fusionGauge.charge(plan.manaCost)) {
+      this.announceSystemMessage('융합의 힘이 응축됐다 — 두 원소를 담아 영창하라', '#e2b7ff', 3400);
+    }
     const sequenceHistoryEntry = this.spellHistory.recordSequence({
       rawText: text,
       name: plan.name,
@@ -2658,6 +2667,17 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
       this.playerState.trySpendMana(castPlan.spend);
 
+      // 필살기(융합 게이지) — 만충 + 이중 원소 판정이면 이 시전이 융합 방출로 격상된다.
+      // 방출 시전은 충전하지 않는다(리셋 직후 자기 마나로 재충전 방지).
+      const fusedSpec = this.fusionGauge.tryRelease(spec);
+      if (!fusedSpec && this.fusionGauge.charge(castPlan.spend)) {
+        this.announceSystemMessage(
+          '융합의 힘이 응축됐다 — 두 원소를 담아 영창하라',
+          '#e2b7ff',
+          3400,
+        );
+      }
+
       // 첫 성공 영창 — 이후 온보딩 안내는 다시 뜨지 않는다.
       this.markOnboarded();
 
@@ -2681,7 +2701,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         { element: spec.element_primary, form: spec.form },
         priorCasts.map((e) => ({ element: e.elementPrimary, form: e.form })),
       );
-      const effectiveSpec: SpellSpec = {
+      // 융합 방출은 페널티·친화·감쇠 체인을 덮는 고정 최대치 — "최대 방출"의 약속
+      const effectiveSpec: SpellSpec = fusedSpec ?? {
         ...spec,
         power: Math.round(
           spellPowerWithAffinity(historyEntry.power, affinityBonus)
@@ -2689,6 +2710,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           * castPlan.ratio, // 감쇠 시전 — 모자란 마나만큼 잦아든다
         ),
       };
+      if (fusedSpec) this.playFusionRelease(fusedSpec);
       // [dev] 실뎀 breakdown 로깅 — "같은 속성 뎀감" 스택 진단용 (logs/play.jsonl, 읽기전용)
       if (import.meta.env.DEV) {
         const base = historyEntry.basePower;
@@ -3741,6 +3763,18 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     g.fillStyle(0x48c9ff, 1);
     g.fillRoundedRect(HUD.barX, 141, HUD.barWidth * shieldRatio, HUD.barHeight, 4);
 
+    // 융합 게이지 — 수동 영창으로만 차는 필살기 스트립 (만충 시 보라 펄스)
+    const fusionRatio = Phaser.Math.Clamp(this.fusionGauge.ratio, 0, 1);
+    g.fillStyle(0x1d2445, 1);
+    g.fillRoundedRect(HUD.x + 8, HUD.y + HUD.height - 10, HUD.width - 16, 3, 2);
+    if (fusionRatio > 0) {
+      const pulse = this.fusionGauge.ready
+        ? 0.7 + 0.3 * Math.abs(Math.sin(this.time.now / 180))
+        : 1;
+      g.fillStyle(this.fusionGauge.ready ? 0xe2b7ff : 0xb18cff, pulse);
+      g.fillRoundedRect(HUD.x + 8, HUD.y + HUD.height - 10, (HUD.width - 16) * fusionRatio, 3, 2);
+    }
+
     g.fillStyle(0x1d2445, 1);
     g.fillRoundedRect(HUD.x + 8, HUD.y + HUD.height - 5, HUD.width - 16, 3, 2);
     g.fillStyle(cooldownRatio > 0 ? 0xffb86b : 0x72f1b8, 1);
@@ -4162,6 +4196,49 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       });
     }
     this.activeSummons = survivors;
+  }
+
+  /**
+   * 융합 방출 대연출 — 게이지 만충의 카타르시스. 두 원소의 팔레트가 교차하는
+   * 이중 링 + 스파크 폭발 + 강한 셰이크. 판정 영역과 무관한 순수 오버레이.
+   */
+  private playFusionRelease(spec: SpellSpec): void {
+    const primary = ELEMENT_PALETTES[spec.element_primary];
+    const secondary = ELEMENT_PALETTES[spec.element_secondary ?? spec.element_primary];
+    const x = this.player.x;
+    const y = this.player.y;
+    requestCameraShake(this, 'strong', 1.6);
+    this.announceSystemMessage(
+      `융합 방출 — 『${spec.name}』`,
+      '#e2b7ff',
+      3000,
+    );
+    [primary, secondary].forEach((pal, index) => {
+      const ring = this.add.circle(x, y, 14, pal.glow, 0)
+        .setStrokeStyle(5, pal.core, 0.95)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(9);
+      this.tweens.add({
+        targets: ring,
+        radius: 210 + index * 60,
+        alpha: 0,
+        delay: index * 110,
+        duration: 620,
+        ease: 'Cubic.Out',
+        onComplete: () => ring.destroy(),
+      });
+    });
+    const burst = this.add.particles(x, y, 'particle', {
+      speed: { min: 240, max: 520 },
+      scale: { start: 1.1, end: 0 },
+      lifespan: 640,
+      quantity: 46,
+      tint: [primary.core, primary.glow, secondary.core, secondary.glow],
+      blendMode: Phaser.BlendModes.ADD,
+      emitting: false,
+    }).setDepth(9);
+    burst.explode(46, x, y);
+    this.time.delayedCall(900, () => burst.destroy());
   }
 
   /** 환류 부상 텍스트 — 킬 지점에서 마나색 "+N"이 떠오른다 */
