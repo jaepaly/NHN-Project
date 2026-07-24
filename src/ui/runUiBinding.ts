@@ -1,5 +1,6 @@
 import type { RunController } from '../run/runContract';
 import { showRewardCards } from './rewardCardOverlay';
+import { ownedLabelFor } from '../run/runRewardSummary';
 import { playRoomTransition } from './roomTransition';
 import { updateRunHud } from './runHud';
 
@@ -17,7 +18,11 @@ export function bindRunUi(controller: RunController): void {
   updateRunHud(controller.state);
 
   controller.on('room-cleared', (options) => {
-    void showRewardCards(options).then((chosen) => {
+    // 이미 보유 배지 — 이번 런에서 고른 스택형 보상을 카드에 표시 (게임성 ②)
+    const ownedAtOffer = controller.state.rewards;
+    void showRewardCards(options, {
+      ownedLabelFor: (option) => ownedLabelFor(option, ownedAtOffer),
+    }).then((chosen) => {
       controller.chooseReward(chosen.id);
     });
   });

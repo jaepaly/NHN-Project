@@ -159,6 +159,7 @@ import type { BossResistanceProfile, RunEscalationProfile } from '../spell/bossM
 import { EMPTY_RUN_MEMORY } from '../spell/runMemory';
 import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { showRewardCards } from '../ui/rewardCardOverlay';
+import { summarizeRunRewards } from '../run/runRewardSummary';
 import {
   addEntry,
   bestEntryFromRun,
@@ -3738,6 +3739,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         .join(' · ')}`;
 
     const lines = [engraveLabel, spiritLabel];
+    // 이번 런 패시브 강화 — 적용되고 사라지던 스탯 보상을 한 줄로 되돌린다 (게임성 ②).
+    // 각인·정령은 위에 전용 줄이 있으므로 여기선 제외된다 (summarizeRunRewards).
+    const rewardLine = summarizeRunRewards(this.combatRunController.state.rewards);
+    if (rewardLine) lines.push(rewardLine);
     // 주문서는 보유분이 있을 때만 — 첫 런에서 빈 줄로 혼란을 주지 않는다.
     // 캐시된 수를 쓴다: 이 메서드는 매 프레임 호출되므로 localStorage를 여기서 읽으면 안 된다.
     if (this.grimoireCount > 0) lines.push(`주문서 ${this.grimoireCount}`);
