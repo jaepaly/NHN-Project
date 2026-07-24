@@ -64,7 +64,7 @@ import {
 import type { HitStopKind } from '../combat-core/combat/hitStopConfig';
 import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
 import { requestCameraShake, resetCameraShake } from '../render/cameraShake';
-import { reducedAffinityVfxTier } from '../render/affinityVfx';
+import { reducedAffinityVfxIntensity } from '../render/affinityVfx';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import { devInfo } from '../debug/devLog';
 import { FusionGauge } from '../combat-core/player/fusionGauge';
@@ -215,6 +215,9 @@ const HUD = {
   barWidth: 270,
   barHeight: 7,
 } as const;
+
+/** 친화 경험치 바가 채워지는 이정표 — 각성 임계(MASTERY_REDESIGN §5-b, 친화 0.9). */
+const AFFINITY_BAR_MILESTONE = 0.9;
 
 interface FriendlyMissile {
   body: Phaser.GameObjects.Arc;
@@ -405,6 +408,8 @@ export class ProtoScene extends Phaser.Scene {
   private manaText!: Phaser.GameObjects.Text;
   private shieldText!: Phaser.GameObjects.Text;
   private attunementText!: Phaser.GameObjects.Text;
+  /** 친화 경험치 바 라벨 — 가장 깊이 투자한 원소·% (HUD 박스 아래) */
+  private affinityLabelText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
   /** 빌드 패널 — 각인·정령·주문서 보유 현황 (우하단 상시 표시) */
   private buildHudText!: Phaser.GameObjects.Text;
@@ -1219,6 +1224,13 @@ export class ProtoScene extends Phaser.Scene {
       fontSize: '11px',
       fontStyle: 'bold',
       color: '#c7f9e0',
+    }).setScrollFactor(0).setDepth(100);
+    // 친화 경험치 바 라벨 — 메인 HUD 박스 아래, 가장 깊이 투자한 원소의 성장 (사용 성장 #166 체감)
+    this.affinityLabelText = this.add.text(HUD.x + 6, HUD.y + HUD.height + 6, '', {
+      fontFamily: '"Noto Serif KR", Consolas, monospace',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: '#8fa4ff',
     }).setScrollFactor(0).setDepth(100);
 
     this.waveText = this.add.text(width - 34, 72, '', {
@@ -3262,7 +3274,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       rangeScale: options?.rangeScale,
       radiusScale: options?.radiusScale,
       // 친화 격상 연출(영창가 빌드 동기) — 위력·판정 불변, 순수 오버레이
-      vfxTier: reducedAffinityVfxTier(
+      vfxIntensity: reducedAffinityVfxIntensity(
         this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
         vfxTierReduction,
       ),
@@ -3878,11 +3890,53 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       2,
     );
 
+    this.drawAffinityBar(g);
+
     const { width } = this.scale;
     g.fillStyle(0x080b1c, 0.86);
     g.fillRoundedRect(width - 306, 62, 288, 72, 12);
     g.lineStyle(1, 0x2a735c, 0.62);
     g.strokeRoundedRect(width - 306, 62, 288, 72, 12);
+  }
+
+  /** 가장 깊이 투자한 원소와 그 친화 총량 (없으면 null) */
+  private topAffinity(): { element: SpellElement; value: number } | null {
+    const affinity = this.combatRunController.state.elementalAffinity;
+    let best: { element: SpellElement; value: number } | null = null;
+    for (const [element, value] of Object.entries(affinity)) {
+      const v = value ?? 0;
+      if (v > 0 && (!best || v > best.value)) best = { element: element as SpellElement, value: v };
+    }
+    return best;
+  }
+
+  /**
+   * 친화 경험치 바 — 가장 깊이 투자한 원소의 성장을 각성 이정표(§5-b, 0.9)까지 채운다.
+   * 사용 성장(#166)이 매 시전 조금씩 차오르는 게 눈에 보여야 그 성장이 체감된다.
+   */
+  private drawAffinityBar(g: Phaser.GameObjects.Graphics): void {
+    const top = this.topAffinity();
+    if (!top) {
+      this.affinityLabelText.setText('');
+      return;
+    }
+    const pal = ELEMENT_PALETTES[top.element];
+    const ratio = Phaser.Math.Clamp(top.value / AFFINITY_BAR_MILESTONE, 0, 1);
+    const barX = HUD.x + 6;
+    const barY = HUD.y + HUD.height + 22;
+    const barW = HUD.width - 12;
+    g.fillStyle(0x141a35, 1);
+    g.fillRoundedRect(barX, barY, barW, 6, 3);
+    g.fillStyle(pal.core, 1);
+    g.fillRoundedRect(barX, barY, barW * ratio, 6, 3);
+    if (ratio >= 1) {
+      // 이정표 도달 — 각성 예고 펄스 (§5-b 구현 시 여기서 각성 선택지)
+      g.fillStyle(pal.accent, 0.4 + 0.4 * Math.abs(Math.sin(this.time.now / 200)));
+      g.fillRoundedRect(barX, barY, barW, 6, 3);
+    }
+    this.affinityLabelText
+      .setText(`「${ELEMENT_LABELS[top.element]}」 친화 ${Math.round(top.value * 100)}%`)
+      .setColor(paletteColorToCss(pal.core));
   }
 
   private applySpellPalette(spec: SpellSpec): void {
@@ -4109,7 +4163,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       );
       onAffectEnemy?.(enemy);
       if (damaged && (spec.form === 'beam' || spec.form === 'wave')) {
-        const tier = reducedAffinityVfxTier(
+        const tier = reducedAffinityVfxIntensity(
           this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
           vfxTierReduction,
         );
@@ -4424,7 +4478,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       rangeScale: options?.rangeScale,
       radiusScale: options?.radiusScale,
       // 친화 격상 연출(영창가 빌드 동기) — 위력·판정 불변, 순수 오버레이
-      vfxTier: reducedAffinityVfxTier(
+      vfxIntensity: reducedAffinityVfxIntensity(
         this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
         vfxTierReduction,
       ),
