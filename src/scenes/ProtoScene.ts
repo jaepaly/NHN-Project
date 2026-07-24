@@ -2587,6 +2587,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const sequenceElements = [...new Set(plan.sequences.flatMap((sequence) => (
       sequence.behaviors.flatMap(behaviorElements)
     )))];
+    // 사용 기반 친화 성장 — 시퀀스도 수동 영창. 대표(첫) 원소만 올려 다원소 폭증 방지.
+    if (sequenceElements[0]) {
+      const grown = this.combatRunController.growAffinityFromUse(sequenceElements[0]);
+      if (grown.added > 0) this.showAffinityGrowthFloat(sequenceElements[0], grown.total);
+    }
     const sequenceHistoryEntry = this.spellHistory.recordSequence({
       rawText: text,
       name: plan.name,
@@ -2698,6 +2703,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.engraveManager.rememberManualCast(historyEntry.normalized, spec);
       // 주문 도감 — 원판(판정) 스펙으로 새긴다 (감쇠·페널티 반영 전 = 발견의 기록)
       recordCodexEntry(window.localStorage, codexEntryFromSpec(spec, Date.now()));
+      // 사용 기반 친화 성장 — 이 시전이 그 원소 친화를 조금 올린다 (소프트캡). 오른 값은 화면에.
+      const affinityGrowth = this.combatRunController.growAffinityFromUse(spec.element_primary);
+      if (affinityGrowth.added > 0) {
+        this.showAffinityGrowthFloat(spec.element_primary, affinityGrowth.total);
+      }
       const affinityBonus = this.combatRunController.state
         .elementalAffinity[spec.element_primary] ?? 0;
       // 런 반복 격상(#77): 회차가 쌓이면 과의존한 원소가 이번 런 전체에서 약화된다.
@@ -4253,6 +4263,32 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }).setDepth(9);
     burst.explode(46, x, y);
     this.time.delayedCall(900, () => burst.destroy());
+  }
+
+  /**
+   * 사용 친화 성장 표시 — 시전 원소색으로 "화염 친화 45%"가 플레이어 위로 떠오른다.
+   * 성장이 화면에 보여야 "내 영창이 힘을 빚는다"는 체감이 산다 (게임성 진행 밀도).
+   */
+  private showAffinityGrowthFloat(element: SpellElement, total: number): void {
+    const pal = ELEMENT_PALETTES[element];
+    const label = this.add.text(
+      this.player.x, this.player.y - 34,
+      `${ELEMENT_LABELS[element]} 친화 ${Math.round(total * 100)}%`,
+      {
+        fontFamily: '"Noto Serif KR", "Malgun Gothic", sans-serif',
+        fontSize: '12px', fontStyle: 'bold',
+        color: paletteColorToCss(pal.core),
+        stroke: '#05060f', strokeThickness: 3,
+      },
+    ).setOrigin(0.5).setDepth(8).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: label,
+      y: this.player.y - 58,
+      alpha: { from: 0.95, to: 0 },
+      duration: 780,
+      ease: 'Cubic.Out',
+      onComplete: () => label.destroy(),
+    });
   }
 
   /** 환류 부상 텍스트 — 킬 지점에서 마나색 "+N"이 떠오른다 */

@@ -49,7 +49,8 @@
     "test:shape": "esbuild scripts/spell-shape-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-shape-regression.mjs && node node_modules/.cache/incant-spell-shape-regression.mjs",
     "test:fusion": "esbuild scripts/fusion-gauge-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-fusion-gauge-regression.mjs && node node_modules/.cache/incant-fusion-gauge-regression.mjs",
     "test:codex": "esbuild scripts/spell-codex-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-codex-regression.mjs && node node_modules/.cache/incant-spell-codex-regression.mjs",
-    "test:rewardsummary": "esbuild scripts/run-reward-summary-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-run-reward-summary-regression.mjs && node node_modules/.cache/incant-run-reward-summary-regression.mjs"
+    "test:rewardsummary": "esbuild scripts/run-reward-summary-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-run-reward-summary-regression.mjs && node node_modules/.cache/incant-run-reward-summary-regression.mjs",
+    "test:useaffinity": "esbuild scripts/use-affinity-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-use-affinity-regression.mjs && node node_modules/.cache/incant-use-affinity-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
