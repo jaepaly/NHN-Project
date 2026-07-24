@@ -53,7 +53,8 @@
     "test:useaffinity": "esbuild scripts/use-affinity-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-use-affinity-regression.mjs && node node_modules/.cache/incant-use-affinity-regression.mjs",
     "test:loop": "esbuild scripts/loop-continue-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-loop-continue-regression.mjs && node node_modules/.cache/incant-loop-continue-regression.mjs",
     "test:debufffloor": "esbuild scripts/debuff-floor-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-debuff-floor-regression.mjs && node node_modules/.cache/incant-debuff-floor-regression.mjs",
-    "test:dmgtelemetry": "esbuild scripts/damage-telemetry-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-damage-telemetry-regression.mjs && node node_modules/.cache/incant-damage-telemetry-regression.mjs"
+    "test:dmgtelemetry": "esbuild scripts/damage-telemetry-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-damage-telemetry-regression.mjs && node node_modules/.cache/incant-damage-telemetry-regression.mjs",
+    "audit:expression": "esbuild scripts/spell-expression-audit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-expression-audit.mjs && node node_modules/.cache/incant-spell-expression-audit.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

@@ -89,6 +89,7 @@ SpellJudgement { disposition, spell{ ...behavior?, shape? }, spell_plan? }  // �
 - **모델 핀 필수** — `gemini-3.5-flash-lite` **명시 고정**. `-latest` 별칭 **금지**(자동 드리프트로 2.5-flash-lite가 폐기·404된 전례). 재현성 우선.
 - **영창 시퀀스 = 지연이 진짜 축** — spell_plan은 출력이 커서 판정 ~2초(단일 ~1.3초), tail이 2.5초 폴백 임계에 근접. **프롬프트 예시 추가는 지연을 밀어올린다 → 신중.** 게이트 `npm run gate:sequence`의 **2.5초 초과율이 pass/fail 1순위**. 초과해도 MockJudge가 plan 내서 우아하게 열화. 롤백 `VITE_SEQUENCE_JUDGE=0`. **최적화**: 복합이면 대표 `spell` 생략(#157) — 대표는 `validate.ts`의 타입 shim일 뿐(보스기억/반복/각인/실행은 plan·단계별 데이터 사용)이라 시스템 무영향.
 - **시퀀스 분류·튜닝은 few-shot으로** — 복합(plan)=뚜렷한 순차/동시 다른 동작("A한 뒤 B"). 단일=한 동작(웅장해도)·인과·시적 다원소·**반복 동작**. 경계는 보수적(애매하면 단일, 오버트리거 0 실측). 튜닝은 **트리거 단어 나열(게이트 과적합) 금지 → 다양한 few-shot 예시 + held-out(게이트·예시 밖 문장) 검증**. 미해소 허점 워치리스트 = #158.
+- **`effect:element:form`은 최종 패턴 식별자가 아니다** — 2026-07-24 live Gemini 48건 감사에서 화염구·화염창·화염검이 모두 `damage:fire:bolt`로 합쳐졌다. 반대로 target·status·shape를 모두 넣으면 같은 화염벽이 표현에 따라 갈라진다. #170-2는 기존 필드를 임의 조합해 바로 엔진에 연결하지 말고, 이름·power·size·speed처럼 쉽게 변주되는 값이 아닌 **최소 전술 축**을 producer→validator→consumer 계약으로 먼저 보강한다. 근거와 전체 원본은 [`SPELL_EXPRESSION_AUDIT.md`](SPELL_EXPRESSION_AUDIT.md).
 - **시퀀스 이동 어휘는 공개 5종 / 런타임 8종** — Worker는 `cast-point|target-direction|away-from-target|random-direction|arena-center`만 생성한다. `cast-direction|custom-vector|random-enemy`는 로컬 픽스처·쇼케이스용이며 `MOVE_DESTINATIONS` 검증에는 포함된다. 프롬프트와 validator가 다르다고 곧바로 버그로 보지 말고 producer 범위를 먼저 확인한다.
 - **프롬프트 바꾸면 버전핀 3곳** — `src/spell/geminiJudge.ts`의 `JUDGE_PROMPT_VERSION` + `scripts/spell-regression.ts` + `scripts/gemini-fizzle-fallback-regression.ts`. 하나라도 놓치면 회귀 red(의도된 가드). 버전 올리면 옛 localStorage 캐시가 무효화됨.
 - **소스 = 배포 정합** — `worker.js`를 바꿔도 `wrangler deploy` 안 하면 **라이브 프록시는 옛 프롬프트**. 프롬프트 검증은 반드시 **배포 후** 라이브로. 반대로 배포만 하고 소스 머지를 안 하면 다음 배포가 되돌린다.
@@ -99,6 +100,7 @@ SpellJudgement { disposition, spell{ ...behavior?, shape? }, spell_plan? }  // �
 ## 5. 검증법 (이 repo 컨벤션)
 
 - **판정 테스트**: Node `fetch`로 라이브 프록시 직접 호출(curl 금지). **N회 반복·held-out(튜닝에 안 쓴 신규 문장)·`lastSource` 확인**. "초록불 테스트" 말고 실제 값·다회 평균.
+- **표현/패턴 게이트**: `npm run audit:expression` — 6전술×4표현×N=2를 4.5초 간격으로 Worker에 직접 보내 캐시·Mock 오염 없이 candidate signature·상세 fingerprint·plan 오탐·2.5초 초과율을 함께 기록한다.
 - **코드 회귀**: `npm run test:*` **전체**(subset 금지) + `npx tsc --noEmit` + `npm run build`. 의존성 0(node:assert + esbuild), Vitest 미도입.
 - **인게임**: `npm run dev` → `http://localhost:5173/NHN-Project/`. (브라우저 캔버스라 런타임 검사는 `window.__game`으로.)
 - **프록시 배포**: `cd proxy && npx wrangler deploy` (임재윤 Cloudflare 계정). 프롬프트 변경 후 필수. 인증은 머신별 캐시라 안 되면 사람이.
@@ -111,4 +113,5 @@ SpellJudgement { disposition, spell{ ...behavior?, shape? }, spell_plan? }  // �
 - [`SPELL_UNDERSTANDING_V2.md`](SPELL_UNDERSTANDING_V2.md) — 판정 스키마·프롬프트 상세
 - [`SPELL_SEQUENCE_SCHEMA_DRAFT.md`](SPELL_SEQUENCE_SCHEMA_DRAFT.md) — 구현된 시퀀스 계약의 설계 원본(현행 상수는 코드 우선)
 - [`SPELL_SEQUENCE_R2_HANDOFF.md`](SPELL_SEQUENCE_R2_HANDOFF.md) — Worker 구현 전 전달 기록(완료된 역사 문서)
+- [`SPELL_EXPRESSION_AUDIT.md`](SPELL_EXPRESSION_AUDIT.md) — #170-2 전 표현 안정성·전술 충돌 48건 live Gemini 감사
 - `proxy/README.md` — 프록시 배포 절차
