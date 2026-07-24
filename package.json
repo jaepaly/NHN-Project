@@ -46,7 +46,8 @@
     "test:planvalidate": "esbuild scripts/spell-plan-validate-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-plan-validate-regression.mjs && node node_modules/.cache/incant-spell-plan-validate-regression.mjs",
     "gate:sequence": "esbuild scripts/sequence-yield-harness.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-sequence-yield-harness.mjs && node node_modules/.cache/incant-sequence-yield-harness.mjs",
     "test:sequence": "esbuild scripts/spell-sequence-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-sequence-regression.mjs && node node_modules/.cache/incant-spell-sequence-regression.mjs",
-    "test:shape": "esbuild scripts/spell-shape-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-shape-regression.mjs && node node_modules/.cache/incant-spell-shape-regression.mjs"
+    "test:shape": "esbuild scripts/spell-shape-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-shape-regression.mjs && node node_modules/.cache/incant-spell-shape-regression.mjs",
+    "test:codex": "esbuild scripts/spell-codex-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-codex-regression.mjs && node node_modules/.cache/incant-spell-codex-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
