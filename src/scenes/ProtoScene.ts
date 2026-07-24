@@ -601,6 +601,9 @@ export class ProtoScene extends Phaser.Scene {
     }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
     this.createHud(width, height);
     this.setupRunFlow();
+    // 씬 재진입(런 종료→타이틀→새 런) 대비: 매니저·컨트롤러는 필드라 create마다
+    // 리셋해야 이전 런의 친화·각인·정령·HP·루프가 남지 않는다 (총괄 제보 버그).
+    this.resetForNewRun();
     this.prepareRunEscalation();
     this.startRoom(this.combatRunController.state.roomIndex);
     this.updateStatusText();
@@ -884,6 +887,29 @@ export class ProtoScene extends Phaser.Scene {
       '#e2b7ff',
       3200,
     );
+  }
+
+  /**
+   * 새 런 진입 시 지속 매니저를 깨끗이 (create가 씬 재진입마다 호출). 컨트롤러는 silent
+   * 리셋 — create가 곧 startRoom을 직접 부르므로 room-started 이중 발화를 막는다.
+   * restartRun(런 중 재시작)과 달리 offerLegacy/prepareEscalation은 create가 따로 한다.
+   */
+  private resetForNewRun(): void {
+    this.deathHandled = false;
+    this.fusionGauge.reset();
+    this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
+    this.bossResistance = { ...NO_BOSS_RESISTANCE };
+    this.activeBossResistances.clear();
+    this.enemyAilments.clear();
+    this.shockCooldowns.clear();
+    this.lastResistNoticeAt = 0;
+    this.spellHistory.reset();
+    this.engraveManager.reset();
+    this.spiritManager.reset();
+    this.clearSpiritViews();
+    this.playerState.reset();
+    this.runMovementDistance = 0;
+    this.combatRunController.reset(Date.now(), false);
   }
 
   private restartRun(): void {

@@ -163,7 +163,11 @@ export class CombatRunController implements RunController {
    * 새 런 시작 (R1 내부 API — RunController 계약 외).
    * 초기 상태로 되돌리고 'room-started'를 발화해 씬·UI가 방 1부터 다시 진행하게 한다.
    */
-  reset(seed = Date.now()): void {
+  /**
+   * 새 런 초기화. `emit=false`면 room-started를 발화하지 않는다 — 씬 재진입(create)에서
+   * 씬이 직접 startRoom을 부를 때, 이벤트로 방이 이중 시작되는 걸 막는다.
+   */
+  reset(seed = Date.now(), emit = true): void {
     this.roomIndex = this.initialRoomIndex;
     this.phase = 'combat';
     this.rewards = [];
@@ -174,7 +178,7 @@ export class CombatRunController implements RunController {
     this.loopIndex = 0;
     this.rand = mulberry32(seed);
     this.encounters = resolveEncounters(this.encounterDefinitions, mulberry32(seed ^ 0x9e3779b9));
-    this.emit('room-started', this.snapshot());
+    if (emit) this.emit('room-started', this.snapshot());
   }
 
   /**
