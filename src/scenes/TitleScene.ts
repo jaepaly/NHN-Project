@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { applyWorldFx } from '../render/postFx';
 import { loadCodex } from '../spell/spellCodex';
 import { showCodexOverlay } from '../ui/codexOverlay';
+import { clearRunHud } from '../ui/runHud';
 
 const TITLE_COLORS = {
   background: 0x05060f,
@@ -23,6 +24,15 @@ export class TitleScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Phaser는 씬 인스턴스를 재사용한다 — 런에서 돌아와 create가 다시 돌 때
+    // 이전 startGame이 남긴 starting/입력 비활성 상태를 반드시 되돌린다.
+    // (안 하면 starting=true·input.enabled=false가 남아 도감·시작 클릭이 먹통)
+    this.starting = false;
+    this.codexOpen = false;
+    this.input.enabled = true;
+    // 런 진행 HUD(우상단 ROOM n/m)는 DOM이라 씬을 넘어 잔류한다 — 타이틀에선 지운다.
+    clearRunHud();
+
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor(TITLE_COLORS.background);
     this.drawBackground(width, height);
