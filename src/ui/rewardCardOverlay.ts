@@ -72,6 +72,12 @@ const CSS = `
   position: absolute; left: 0; right: 0; bottom: 14px;
   font-size: 11px; letter-spacing: 0.18em; color: var(--card-core); opacity: 0.9;
 }
+#${WRAP_ID} .card-owned {
+  position: absolute; top: 9px; right: 11px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
+  padding: 2px 7px; border-radius: 999px;
+  color: #0a0e22; background: var(--card-core); opacity: 0.92;
+}
 #${WRAP_ID} .reward-hint { margin-top: 20px; font-size: 12.5px; color: #7f8aba; }
 #${WRAP_ID} .reward-hint b { color: #aeb9e8; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) {
@@ -127,6 +133,8 @@ function cardColors(option: RewardOption): { core: string; glow: string } {
 export interface CardFraming {
   kicker?: string;
   title?: string;
+  /** 카드별 "이미 보유" 라벨 (게임성 ②) — null이면 배지 없음 */
+  ownedLabelFor?: (option: RewardOption) => string | null;
 }
 
 function escapeText(text: string): string {
@@ -195,6 +203,14 @@ export function showRewardCards(
         }</div>`;
       btn.querySelector('.card-title')!.textContent = option.title;
       btn.querySelector('.card-desc')!.textContent = option.description;
+      // 이미 보유 배지 — "친화를 더 쌓을까, 갈아탈까"의 근거 (게임성 ②)
+      const ownedLabel = framing.ownedLabelFor?.(option) ?? null;
+      if (ownedLabel) {
+        const badge = document.createElement('div');
+        badge.className = 'card-owned';
+        badge.textContent = ownedLabel;
+        btn.appendChild(badge);
+      }
       btn.addEventListener('click', () => finish(i));
       btn.addEventListener('mouseenter', () => setFocus(i));
       cardsEl.appendChild(btn);
