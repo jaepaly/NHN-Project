@@ -144,7 +144,7 @@ console.log(`\n적합 ${pass}/${rows.length} · 평균 latency ${avg}ms`);
 const md = [
   '# 5티어 판정 품질 스냅샷 (R2 P1-b)',
   '',
-  `> 생성: \`npm run snapshot:quality\` · 모델 gemini-flash-lite-latest · 자동 적합 **${pass}/${rows.length}** · 평균 latency **${avg}ms**`,
+  `> 생성: \`npm run snapshot:quality\` · 모델 gemini-3.5-flash-lite · 자동 적합 **${pass}/${rows.length}** · 평균 latency **${avg}ms**`,
   '> (자동 "적합"은 러프한 휴리스틱 — 티어별 power 대략치. 최종 품질 판단은 사람이 표를 보고 한다.)',
   '',
   '| 티어 | 입력 | disposition | 주문명 | effect | element | form | power | ms | 자동적합 |',

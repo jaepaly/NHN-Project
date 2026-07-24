@@ -23,7 +23,7 @@ function clamp(n: number, lo: number, hi: number): number {
  *
  * @param raw LLM이 반환한 JSON (신뢰 불가)
  * @param powerCap 스테이지별 power 상한
- * @returns 검증 실패 시 null (호출측에서 재시도 → FALLBACK_SPELL 순으로 처리)
+ * @returns 검증 실패 시 null (호출측에서 MockJudge 폴백으로 처리)
  */
 export function validateSpec(raw: unknown, powerCap = 100): SpellSpec | null {
   if (typeof raw !== 'object' || raw === null) return null;

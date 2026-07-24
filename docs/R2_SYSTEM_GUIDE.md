@@ -26,7 +26,8 @@
    ▼
 SpellJudgement { disposition, spell{ ...behavior?, shape? }, spell_plan? }  // 복합/동시 동작이면 spell_plan(여러 단계)
    │
-   ├─ spell_plan 있으면 → runSequenceCast(단계별 실행)  [ProtoScene · sequencePlan.ts]
+   ├─ spell_plan 있으면 → validate/resolve → runSequenceCast  [spellPlanValidate · sequencePlan · ProtoScene]
+   │                       · plan 단위 마나/반복/도감/융합게이지, behavior 단위 원소·폼 기록
    ▼  시전 처리 (단일)                                    [src/scenes/ProtoScene.ts]
    │   · 반복 페널티 × 다양성 × 격상약화 × 친화 → effectiveSpec.power  [spellHistory·spellDiversity·runEscalation·combatConfig]
    │   · 마나 지불/감쇠 시전                              [src/combat-core/mana/]
@@ -53,7 +54,7 @@ SpellJudgement { disposition, spell{ ...behavior?, shape? }, spell_plan? }  // �
 | **size·speed** | 모델이 냄 (규칙 없이도 정확) | `validate.ts` (enum·기본값) | `spellRenderer.ts` `SIZE_SCALE`(`palette.ts`)·speed 분기 |
 | **소환 behavior** | `worker.js` 프롬프트 5항 + `summonBehavior.ts` 어휘 | `summonBehavior.ts` `validateSummonBehavior` | `behaviorRunner` |
 | **벽 shape** | `worker.js` 프롬프트 6항 + `spellShape.ts` 어휘 | `spellShape.ts` `validateSpellShape` | `persistentFormConfig.ts` `shapedWallPoints` |
-| **영창 시퀀스 (복합)** | `worker.js` 프롬프트 **7항 + few-shot 예시** | `spellPlanValidate.ts` `validateSpellPlan` | `ProtoScene.runSequenceCast` · `sequencePlan.ts` (게이트 `npm run gate:sequence`) |
+| **영창 시퀀스 (복합)** | `worker.js` 프롬프트 **7항 + few-shot 예시** | `spellPlanValidate.ts` `validateSpellPlan` → `sequencePlan.ts` `resolveSpellPlan` | `ProtoScene.runSequenceCast` · `spellHistory.recordSequence` · 주문 도감·융합 게이지·저주 원소 판정 (게이트 `npm run gate:sequence`) |
 | **반복 억제** | `spellHistory.ts` `repeatMultiplier` (`REPEAT_PENALTY`) | — | `ProtoScene` 피해계산 |
 | **다양성 보너스** | `spellDiversity.ts` `diversityBonus` | — | `ProtoScene` 피해계산 |
 | **회차 격상** | `runEscalation.ts` (과의존 원소 약화·기믹 티어) | — | `ProtoScene`·보스 |
@@ -62,10 +63,10 @@ SpellJudgement { disposition, spell{ ...behavior?, shape? }, spell_plan? }  // �
 | **진화·융합 작명** | `worker.js` `EVOLVE_NAME_PROMPT` | `evolveName.ts` sanitize·캐시 | 성장 시스템(진화·융합) |
 | **능동형 마나** | `combat-core/mana/activeManaConfig.ts`·`degradedCast.ts` | — | `ProtoScene`·`playerCombatState.ts` |
 | **폴백(무중단)** | `mockJudge.ts` (키워드 판정 — size/speed 키워드도 #138) | — | `GeminiJudge` 실패 시 |
-| **프록시 인프라** | `worker.js` (키 은닉·15 RPM·CORS·모델 핀) | — | 모든 LLM 호출 |
+| **프록시 인프라** | `worker.js` (키 은닉·Worker측 15 RPM·CORS·모델 핀) | — | 모든 LLM 호출 |
 | **실뎀 계산** | `combat-core/combat/combatConfig.ts` + `ProtoScene` | — | 히트 시 데미지 |
 
-> **DSL 3형제 패턴 (behavior·shape, 그리고 size/speed)**: 프롬프트가 **생성**하고 → 검증 파일이 **화이트리스트·클램프**하고 → 렌더가 **소비**한다. 프롬프트 어휘·수치 한계는 **검증 파일의 상수와 정확히 일치**해야 한다(단일 소스). 한쪽만 바꾸면 조용히 어긋난다.
+> **DSL 계약 패턴**: 프롬프트가 **생성**하고 → 검증 파일이 **화이트리스트·클램프**하고 → 런타임이 **소비**한다. behavior·shape의 공개 어휘와 수치 한계는 검증 상수와 정확히 맞춘다. 시퀀스 이동은 예외적으로 Worker에 5종만 공개하고, 런타임은 로컬 쇼케이스용 `cast-direction`·`custom-vector`·`random-enemy`를 더해 8종을 허용한다. 이 차이는 의도된 producer subset이며 문서 없이 공개 범위를 넓히지 않는다.
 
 ---
 
@@ -88,9 +89,10 @@ SpellJudgement { disposition, spell{ ...behavior?, shape? }, spell_plan? }  // �
 - **모델 핀 필수** — `gemini-3.5-flash-lite` **명시 고정**. `-latest` 별칭 **금지**(자동 드리프트로 2.5-flash-lite가 폐기·404된 전례). 재현성 우선.
 - **영창 시퀀스 = 지연이 진짜 축** — spell_plan은 출력이 커서 판정 ~2초(단일 ~1.3초), tail이 2.5초 폴백 임계에 근접. **프롬프트 예시 추가는 지연을 밀어올린다 → 신중.** 게이트 `npm run gate:sequence`의 **2.5초 초과율이 pass/fail 1순위**. 초과해도 MockJudge가 plan 내서 우아하게 열화. 롤백 `VITE_SEQUENCE_JUDGE=0`. **최적화**: 복합이면 대표 `spell` 생략(#157) — 대표는 `validate.ts`의 타입 shim일 뿐(보스기억/반복/각인/실행은 plan·단계별 데이터 사용)이라 시스템 무영향.
 - **시퀀스 분류·튜닝은 few-shot으로** — 복합(plan)=뚜렷한 순차/동시 다른 동작("A한 뒤 B"). 단일=한 동작(웅장해도)·인과·시적 다원소·**반복 동작**. 경계는 보수적(애매하면 단일, 오버트리거 0 실측). 튜닝은 **트리거 단어 나열(게이트 과적합) 금지 → 다양한 few-shot 예시 + held-out(게이트·예시 밖 문장) 검증**. 미해소 허점 워치리스트 = #158.
+- **시퀀스 이동 어휘는 공개 5종 / 런타임 8종** — Worker는 `cast-point|target-direction|away-from-target|random-direction|arena-center`만 생성한다. `cast-direction|custom-vector|random-enemy`는 로컬 픽스처·쇼케이스용이며 `MOVE_DESTINATIONS` 검증에는 포함된다. 프롬프트와 validator가 다르다고 곧바로 버그로 보지 말고 producer 범위를 먼저 확인한다.
 - **프롬프트 바꾸면 버전핀 3곳** — `src/spell/geminiJudge.ts`의 `JUDGE_PROMPT_VERSION` + `scripts/spell-regression.ts` + `scripts/gemini-fizzle-fallback-regression.ts`. 하나라도 놓치면 회귀 red(의도된 가드). 버전 올리면 옛 localStorage 캐시가 무효화됨.
 - **소스 = 배포 정합** — `worker.js`를 바꿔도 `wrangler deploy` 안 하면 **라이브 프록시는 옛 프롬프트**. 프롬프트 검증은 반드시 **배포 후** 라이브로. 반대로 배포만 하고 소스 머지를 안 하면 다음 배포가 되돌린다.
-- **fizzle/blocked는 노카운트** — 마나·쿨다운·히스토리 전부 소비 안 함. cast만 기록.
+- **fizzle/blocked는 노카운트** — 마나·영창 입력락·히스토리 전부 소비 안 함. cast만 기록.
 
 ---
 
@@ -107,4 +109,6 @@ SpellJudgement { disposition, spell{ ...behavior?, shape? }, spell_plan? }  // �
 - [`R2_PROGRESS.md`](R2_PROGRESS.md) — 진행 상태·체크리스트·상세 로그 (자주 바뀜)
 - [`AI_USAGE_TECH.md`](AI_USAGE_TECH.md) — 제출물 ④ (심사자용 AI 활용 설명)
 - [`SPELL_UNDERSTANDING_V2.md`](SPELL_UNDERSTANDING_V2.md) — 판정 스키마·프롬프트 상세
+- [`SPELL_SEQUENCE_SCHEMA_DRAFT.md`](SPELL_SEQUENCE_SCHEMA_DRAFT.md) — 구현된 시퀀스 계약의 설계 원본(현행 상수는 코드 우선)
+- [`SPELL_SEQUENCE_R2_HANDOFF.md`](SPELL_SEQUENCE_R2_HANDOFF.md) — Worker 구현 전 전달 기록(완료된 역사 문서)
 - `proxy/README.md` — 프록시 배포 절차

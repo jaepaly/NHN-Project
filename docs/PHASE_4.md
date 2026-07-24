@@ -1,5 +1,7 @@
 # Phase 4 작업 지시 — 성장 시스템 & 폴리싱
 
+> **상태: 과거 단계 작업 기록.** 아래 체크리스트와 당시 할당량 가정은 보존용이며, 현재 R2 운영값은 [R2_SYSTEM_GUIDE.md](R2_SYSTEM_GUIDE.md), [R2_PROGRESS.md](R2_PROGRESS.md) 상단, [SUBMISSION_PLAN.md](SUBMISSION_PLAN.md) §6을 기준으로 한다.
+>
 > 기간: **즉시 착수 ~ 2026-07-26** (이후 Phase 5: 밸런스 마감·영상·PDF 제작)
 > 목표: **"런마다 다른 빌드가 만들어진다 — 내 문장이 각인되고, 정령이 자라고, 그 정점에 LLM이 이름을 붙인다."**
 

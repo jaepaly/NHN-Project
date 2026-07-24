@@ -108,7 +108,7 @@ LLM(Gemini)이 의미·창의성을 실시간 판정해 원소·형태·위력�
 ```bash
 git clone https://github.com/jaepaly/NHN-Project.git
 cd NHN-Project
-npm install
+npm ci
 npm run dev     # http://localhost:5173/NHN-Project/
 ```
 - 별도 API 키 불필요 — 팀 공용 프록시(키는 서버 시크릿)로 실제 LLM 판정이 기본 동작.

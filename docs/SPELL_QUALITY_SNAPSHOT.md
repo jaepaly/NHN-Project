@@ -2,6 +2,8 @@
 
 > 생성: `npm run snapshot:quality` · 모델 gemini-flash-lite-latest · 자동 적합 **24/26** · 평균 latency **1227ms**
 > (자동 "적합"은 러프한 휴리스틱 — 티어별 power 대략치. 최종 품질 판단은 사람이 표를 보고 한다.)
+>
+> **역사 스냅샷**: 위 모델명과 수치는 측정 당시 기록이다. 현재 운영 모델은 `gemini-3.5-flash-lite` 명시 핀이며, 이 표를 현행 쿼터·지연 근거로 재사용하지 않는다.
 
 | 티어 | 입력 | disposition | 주문명 | effect | element | form | power | ms | 자동적합 |
 |---|---|---|---|---|---|---|---|---|---|

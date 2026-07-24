@@ -8,14 +8,14 @@
 
 ## 🎮 플레이
 
-- **데모**: https://jaepaly.github.io/NHN-Project/ (기술검증 프로토타입)
+- **데모**: https://jaepaly.github.io/NHN-Project/ (GitHub Pages 배포판)
 - **조작**: WASD 이동 / **Enter** 영창 모드(슬로모션) → 아무 문장이나 입력 → 그것이 주문이 된다
 
 ## 🛠 로컬 실행
 
 ```bash
-npm install
-npm run dev     # http://localhost:5173
+npm ci
+npm run dev     # http://localhost:5173/NHN-Project/
 npm run build   # 프로덕션 빌드 (dist/)
 ```
 
@@ -94,7 +94,9 @@ Phase 4는 2026-07-20 완료 — 성장(각인·정령·진화·융합·강화 �
 ### 공통 시작 절차
 
 1. `git checkout main && git pull && npm ci`
-2. 판정은 **기본값이 실제 Gemini** — 별도 설정 없이 바로 동작한다. (할당량 넉넉: 무료 1000 RPD)
+2. 판정은 **기본값이 실제 Gemini** — 별도 설정 없이 바로 동작한다.
+   - 현재 모델은 `gemini-3.5-flash-lite`, 판정 프롬프트는 `meaning-v2.6-seq`로 명시 고정한다.
+   - Worker는 IP·인스턴스별 15 RPM 보호막을 두며, Gemini의 실제 프로젝트 한도는 계정·티어에 따라 달라 Google AI Studio에서 확인한다.
    - Mock은 콩글리시·창의 판정 품질이 낮아 **실제 테스트엔 부적합** → 손맛·판정 확인은 실제 Gemini로.
    - 오프라인·할당량 우려 시에만 `.env`에 `VITE_JUDGE_MOCK=1`, **테스트 후 제거** 권장.
 3. 역할별 feature 브랜치 + AI_USAGE_LOG 기록을 같은 PR에 포함

@@ -67,6 +67,7 @@ type SpellJudgement =
       schema_version: 2;
       disposition: 'cast';
       spell: CastSpellSpec;
+      plan?: SpellPlan; // 복합·순차·동시 영창일 때만
     }
   | {
       schema_version: 2;
@@ -88,10 +89,23 @@ interface CastSpellSpec {
   power: number;
   cost: number;
   flavor?: string;
+  behavior?: SummonBehavior;
+  shape?: SpellShape;
+}
+
+interface SpellPlan {
+  name: string;
+  power: number;       // 전체 영창 예산
+  durationMs: number;  // 로컬에서 최대 3초로 정규화
+  sequences: Array<{
+    durationWeight?: number;
+    behaviors: Array<FormBehavior | MoveBehavior | WaitBehavior>;
+  }>;
 }
 ```
 
 - 회복량·보호막량·피해량은 LLM이 직접 정하지 않고 검증된 `effect`, `power`를 받아 엔진 공식이 계산한다.
+- 단일 동작은 `spell` 하나로 실행한다. 서로 다른 동작의 뚜렷한 순차·동시 영창은 `spell_plan`을 검증한 뒤 `form`·`move`·`wait` 단계로 실행한다. Worker가 복합 판정에서 대표 `spell`을 생략해도 클라이언트가 plan에서 대표 스펙을 유도한다.
 - 상세 판정 순서·호환 전략·회귀 입력은 [SPELL_UNDERSTANDING_V2.md](SPELL_UNDERSTANDING_V2.md)를 따른다.
 
 ### 3.3 판정 원칙 — 하이브리드 5티어 정책 (2026-07-14 확정)
@@ -112,25 +126,26 @@ interface CastSpellSpec {
 - **다국어·은유 우선**: `라이트닝 스톰`, `forest fury`, `숲의 분노`처럼 외래어·영어·은유도 키워드가 아니라 의미로 판정
 - **효과 의도 우선**: 공격·회복·보호·강화·제어·소환을 먼저 결정한 뒤 원소와 폼을 매핑
 - **주제 밖 해석의 상한 40**: "장난 입력 스팸"이 최적 전략이 되는 것을 방지 — 진지한 마법 묘사가 항상 더 강하다
-- **MockJudge(폴백)는 창의 해석 없이 불발 처리** — 폴백의 목적은 무중단이지 재치가 아님
+- **MockJudge(폴백)는 결정론적 키워드 판정** — 실제 Gemini보다 해석력은 낮지만 의미 입력을 안전한 주문으로 변환하며, 명시적 순차 입력은 축약된 plan으로 복구한다. 목적은 창의성이 아니라 무중단이다.
 
-### 3.4 밸런스 가드레일 (엔진이 강제, LLM을 신뢰하지 않음)
+### 3.4 밸런스 가드레일 (엔진 소유, LLM을 신뢰하지 않음)
 
 | 가드레일 | 규칙 |
 |---|---|
-| 마나 경제 | 마나 자동 회복(초당 n). cost > 보유 마나면 영창 실패 |
-| power 상한 | 스테이지별 캡 (S1: 60, S2: 80, S3: 100). LLM이 초과값을 줘도 클램프 |
-| 반복 패널티 | 동일/유사 주문 반복 시 power 20%씩 감소 (다양성 유도 → §4 보스 기억과 시너지) |
-| 쿨다운 | 영창 후 3초 글로벌 쿨다운 (스팸 방지 + API 비용 통제) |
+| 마나 경제 | 초당 2의 완만한 재생 + 적 처치 드롭 + 수동 주문 킬 환류(+6). 마나가 cost보다 적어도 5 이상이면 보유량 비례로 약해진 **감쇠 시전** |
+| power 상한 | 판정 스키마는 0~100으로 클램프. 기존 S1:60/S2:80/S3:100 스테이지 캡은 설계값이며 현재 라이브 시전 경로에는 아직 연결되지 않음 |
+| 반복 패널티 | 같은 문장 재사용마다 ×0.9, 다른 문장이어도 같은 효과·원소·폼이면 ×0.95, 하한 ×0.6. 최근과 다른 원소·폼에는 다양성 보너스 최대 +30% |
+| 입력락 | 글로벌 3초 쿨다운 대신 기본 0.4초 영창 입력락. 보상으로 줄어도 0.15초가 하한이며 API 남용은 프록시 레이트리밋이 별도 통제 |
 | 비공격 효과 | `power`를 엔진 공식으로 회복량·보호막량·버프 시간에 변환. LLM 수치를 직접 적용하지 않음 |
-| 불발·금칙 | 마나 소모 없음. 불발은 짧은 입력 잠금, 금칙은 경고 후 발동 차단 |
+| 복합 영창 | plan 전체 power·마나·최대 3초 예산을 로컬에서 강제하고 단계별 power를 재배분. 이동 1회마다 전체 power의 10%를 사용 |
+| 불발·금칙 | 마나·영창 입력락·히스토리 소모 없음. 안내 또는 경고 후 발동 차단 |
 
 ### 3.5 안정성 (버그 제로 전략)
 
-- **스키마 검증**: enum 밖 값 → 1회 재시도 → 실패 시 기본 주문 폴백. 렌더러에는 검증된 값만 도달
+- **스키마 검증**: enum 밖 값·무효 JSON은 즉시 MockJudge로 폴백. `spell_plan`은 별도 화이트리스트·클램프를 통과한 단계만 실행하고, 렌더러에는 검증된 값만 도달
 - **타임아웃**: 2.5초 초과 시 로컬 키워드 판정기(MockJudge)로 즉시 폴백 — 게임이 멈추는 경우는 없음
 - **로컬 사전검사**: 빈 입력·명백한 키보드 난타는 프록시 호출 전에 `fizzle` 처리
-- **캐시 버전**: `incant:judge:v2:<promptVersion>:` 접두사를 사용해 이전 프롬프트의 잘못된 판정을 재사용하지 않음
+- **캐시 버전**: 현재 `incant:judge:v2:meaning-v2.6-seq:` 접두사를 사용해 이전 프롬프트의 단일 판정이 새 시퀀스 판정을 가리지 않게 함
 - **판정기 추상화**: `SpellJudge` 인터페이스 — `MockJudge`(키워드 결정론) / `GeminiJudge`(프록시) / (W4) `WebLLMJudge`
 
 ## 4. 기억하는 보스
@@ -186,15 +201,15 @@ interface CastSpellSpec {
 ```
 [브라우저 (GitHub Pages)]
    ├─ SpellJudge 인터페이스
-   │    ├─ GeminiJudge ──HTTPS──▶ [Cloudflare Worker 프록시] ──▶ Gemini Flash API
-   │    │                          (키 은닉, 레이트리밋, CORS)
+   │    ├─ GeminiJudge ──HTTPS──▶ [Cloudflare Worker 프록시] ──▶ Gemini 3.5 Flash-Lite
+   │    │                          (키 은닉, Worker측 15 RPM, CORS, 프롬프트 고정)
    │    ├─ MockJudge (키워드 결정론 — 로컬 개발·장애 폴백)
-   │    └─ WebLLMJudge (W4 옵션 — Qwen3 브라우저 구동, 오프라인 모드)
-   └─ 캐시 (localStorage: 문장 해시 → 판정 JSON)
+   │    └─ WebLLMJudge (W4 설계 옵션 — 현재 미구현/컷)
+   └─ 캐시 (localStorage: 프롬프트 버전 + 원문 → 판정 JSON)
 ```
 
-- Gemini Flash 무료 티어로 개발/시연 커버, 프록시에서 IP당 레이트리밋
-- 보스 대사 생성도 동일 프록시 경유 (엔드포인트 분리: `/judge`, `/boss-line`)
+- Gemini 프로젝트의 실제 한도는 모델·사용 티어별로 달라지므로 AI Studio의 활성 한도를 기준으로 운영한다. Worker의 15 RPM은 앱 보호막이지 공급자 쿼터 자체가 아니다.
+- 주문 판정은 `/`, 보스 대사는 `/boss-line`, 진화·융합 작명은 `/evolve-name`으로 동일 프록시를 경유한다.
 
 ## 9. 기술 스택
 
@@ -203,7 +218,7 @@ interface CastSpellSpec {
 | 게임 | TypeScript + Vite + **Phaser 3** |
 | 배포 | GitHub Actions → GitHub Pages (push 시 자동) |
 | 프록시 | Cloudflare Workers (`proxy/`, wrangler) |
-| LLM | Gemini Flash (판정·보스 대사) / WebLLM Qwen3 (옵션) |
+| LLM | Gemini 3.5 Flash-Lite (판정·보스 대사·진화/융합 작명) / WebLLM Qwen3 (미구현 옵션) |
 | 협업 | GitHub PR 기반, main 보호, 전원 에이전트 사용 + AI_USAGE_LOG 기록 |
 
 ## 10. 스코프 가드 (잘라도 게임이 성립하는 것들)

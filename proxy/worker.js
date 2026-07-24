@@ -12,7 +12,7 @@ const GEMINI_URL =
   // Gemini 3.5부터 temperature/thinkingBudget가 폐기되어 아래 요청에서도 제거했다.
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent';
 
-// Gemini 3.5 Flash-Lite 무료 등급의 15 RPM에 맞춘 간이 보호막.
+// 공급자 프로젝트 할당량과 별개인 앱 자체 간이 보호막.
 // IP별·Worker 인스턴스별 인메모리 제한이므로 프로젝트 전체 쿼터를 보장하지는 않는다.
 const RATE_LIMIT_PER_MIN = 15;
 const hits = new Map();

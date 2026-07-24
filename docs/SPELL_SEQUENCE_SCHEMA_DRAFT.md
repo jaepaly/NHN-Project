@@ -1,9 +1,10 @@
-# 영창 시퀀스 판정 계약 초안
+# 영창 시퀀스 판정 계약 설계 원본
 
-> 대상: R2 판정·프롬프트·검증 구현자, R1 전투 런타임 구현자, R3 각인·성장 연동 구현자  
-> 상태: **R1 실행 프로토타입을 기준으로 작성한 협업 초안**  
-> 기준 코드: `src/spell/sequencePlan.ts`, `src/spell/sequenceFixtureCatalog.ts`, `src/spell/sequenceEngraveCandidate.ts`  
-> 검증: `npm run test:sequence`
+> 대상: R2 판정·프롬프트·검증 구현자, R1 전투 런타임 구현자, R3 각인·성장 연동 구현자
+> 상태: **✅ 구현·배포·머지 완료.** 이 문서는 설계 출발점을 보존하며, 현재 동작의 단일 출처는 아래 기준 코드와 `proxy/worker.js`다.
+> 최종 계약: `schema_version: 2` 유지, 단일 `spell` 또는 복합 `spell_plan`, 프롬프트 `meaning-v2.6-seq`
+> 기준 코드: `src/spell/sequencePlan.ts`, `src/spell/sequenceFixtureCatalog.ts`, `src/spell/sequenceEngraveCandidate.ts`
+> 검증: `npm run test:planvalidate`, `npm run test:sequence`
 
 처음 검토하거나 직접 실행해 보려면 [SPELL_SEQUENCE_QUICKSTART.md](SPELL_SEQUENCE_QUICKSTART.md)를 먼저 읽는 것을 권장한다.
 
@@ -27,9 +28,9 @@
 4. 로컬은 실제 수치, 예산, 타깃, 정규화와 실패 복구를 책임진다.
 5. 복합 주문도 플레이어가 입력한 **영창 한 번**으로 기록한다.
 
-## 2. 현재 상태와 책임 경계
+## 2. 설계 당시 책임 경계와 구현 결과
 
-### R1 프로토타입에서 이미 실행되는 것
+### 당시 R1 프로토타입에서 먼저 실행되던 것
 
 - 시퀀스 순차 실행과 behavior 병렬 실행
 - `form`, `move`, `wait` behavior
@@ -44,26 +45,26 @@
 - 기존 v1 각인으로 투영하는 임시 정책
 - 이름으로 실행 가능한 쇼케이스와 회귀 테스트
 
-### R2가 구현·확정해야 하는 것
+### R2 구현 결과
 
-- Gemini 응답 계약과 프롬프트
-- 응답 파싱 및 검증
-- 기존 `SpellJudgement v2`와의 호환 또는 새 스키마 버전
-- 자연어를 시퀀스·behavior·가중치로 분해하는 판단 품질
-- `effect`, `target`, `form`을 서로 독립적인 축으로 판단하도록 프롬프트 보완
-- 캐시 버전 분리
+- [x] Gemini 응답 계약과 프롬프트
+- [x] `spell_plan` 응답 파싱·검증·대표 스펙 유도
+- [x] 기존 `SpellJudgement v2`를 유지한 하위 호환
+- [x] 자연어를 시퀀스·behavior·가중치로 분해하는 판단 품질 게이트
+- [x] `effect`, `target`, `form` 독립 축 판정
+- [x] `meaning-v2.6-seq` 캐시 버전 분리
 
-### R3 확인이 필요한 것
+### 성장·기억 시스템 연동 결과
 
-- 복합 영창을 각인 하나로 변환하는 최종 정책
-- 각인이 전체 시퀀스를 보존할지, 대표 공격 하나만 보존할지
-- 복합 영창과 보상·진화·정령 시스템의 장기적 연동
+- [x] 복합 영창 한 번을 plan 단위로 마나 소비·기록
+- [x] 기존 각인은 대표 공격 하나로 투영
+- [x] 융합 게이지·도감은 plan 단위, 보스 기억·반복·다양성·격상·방 저주는 behavior 단위로 연동
 
-## 3. 권장 최상위 응답 형태
+## 3. 초기 권고안과 최종 최상위 응답 형태
 
-기존 거절 결과는 유지하고, `cast` 결과만 단일 `spell` 또는 새 `spell_plan`을 갖게 하는 구별 유니온을 권장한다.
+기존 거절 결과는 유지하고, `cast` 결과만 단일 `spell` 또는 새 `spell_plan`을 갖게 하는 구별 유니온을 권장했다.
 
-스키마 버전 숫자는 R2가 기존 배포·캐시와 함께 결정해야 한다. 아래 `3`은 제안값이다.
+아래 `schema_version: 3`은 **설계 당시 제안값이며 채택되지 않았다.** 최종 구현은 캐시·클라이언트 하위 호환을 위해 `schema_version: 2`를 유지한다. 단일 영창은 `spell`, 복합 영창은 토큰 절감을 위해 대표 `spell` 없이 `spell_plan`만 전송한다.
 
 ```ts
 type SpellSequenceJudgement =
@@ -186,6 +187,8 @@ interface MoveBehavior {
   angle?: number;
 }
 ```
+
+> **생산자·소비자 범위 구분**: Worker 프롬프트가 생성할 수 있는 공개 목적지는 `cast-point|target-direction|away-from-target|random-direction|arena-center` 5종이다. 위 8종은 로컬 런타임이 쇼케이스·향후 조준 호환을 위해 검증하는 상위 집합이며, 원격 모델에 `cast-direction|custom-vector|random-enemy` 생성을 허용한다는 뜻이 아니다.
 
 이동도 영창의 마법적 정체성을 가지므로 `element`는 필수다. 다만 현재 보스 기억·반복 패널티는 이동을 공격 사용으로 세지 않는다.
 
@@ -640,7 +643,7 @@ LLM은 단어에 form 이름이 없더라도 문장의 이미지와 동사를 �
 
 ## 18. 캐시와 버전
 
-새 판정은 기존 v2 캐시와 구조가 다르므로 캐시 키 또는 접두사에 다음을 포함해야 한다.
+새 판정은 기존 v2 단일 캐시와 구조가 다르므로 캐시 키 또는 접두사에 다음을 포함해야 한다.
 
 - schema version
 - prompt version
@@ -648,9 +651,11 @@ LLM은 단어에 form 이름이 없더라도 문장의 이미지와 동사를 �
 
 기존 v2 캐시를 새 plan으로 자동 신뢰하지 않는다. 명시적인 단일-plan 변환을 거치거나 새 응답을 받아야 한다.
 
-## 19. 테스트 계약
+현재 값은 `JUDGE_PROMPT_VERSION = 'meaning-v2.6-seq'`, `incant:judge:v2:meaning-v2.6-seq:`다.
 
-R2 구현 후 최소 검증 항목:
+## 19. 현재 테스트 계약
+
+구현 후 계속 유지하는 최소 검증 항목:
 
 - 기존 v2 단일 주문 변환
 - fizzle/blocked 불변
@@ -667,9 +672,10 @@ R2 구현 후 최소 검증 항목:
 - 캐시 버전 격리
 - 실제 Gemini 응답의 JSON 안정성·지연시간·토큰 크기
 
-R1 회귀:
+주요 회귀:
 
 ```bash
+npm run test:planvalidate
 npm run test:sequence
 npm run test:spell
 npm run test:advanced-forms
@@ -679,9 +685,9 @@ npm run test:boss
 npm run build
 ```
 
-## 20. 확정된 내용과 리뷰 요청
+## 20. 확정된 내용과 후속 관찰
 
-### R1 프로토타입 기준으로 확정해 전달하는 내용
+### 현재 확정된 계약
 
 - 최대 sequence 10개, 단계당 behavior 5개
 - 순차 sequence / 병렬 behavior
@@ -695,18 +701,12 @@ npm run build
 - LLM이 무적·적 ID·절대 전투 수치를 정하지 않음
 - 영창 한 번/behavior 사용 여러 번의 기록 분리
 
-### R2 리뷰 요청
+### 구현 결과와 후속 관찰
 
-1. `SpellJudgement v3` 도입과 v2 호환 방식을 확정해 달라.
-2. `effect`, `target`, `form`을 독립 축으로 판정해 self damage nova가 가능하도록 프롬프트를 수정해 달라.
-3. 본 문서와 fixture catalog를 기준으로 Gemini 응답 스키마·validator·fallback·cache version을 구현해 달라.
-4. 응답 길이와 지연시간이 현재 Worker 제한 안에서 안정적인지 실측해 달라.
-5. 추상적 문장과 명시적 복합 명령 양쪽에서 sequence 수가 과도하거나 지나치게 축약되지 않는지 확인해 달라.
-
-### R3 리뷰 요청
-
-1. §13의 대표 form 각인 투영 정책을 임시안으로 수용할지 확인해 달라.
-2. 장기적으로 전체 sequence 각인을 지원할지, v1 단일 SpellSpec 각인을 유지할지 결정해 달라.
+1. `SpellJudgement v2`를 유지하고 옵션 `plan`으로 호환했다.
+2. Worker·validator·Mock fallback·캐시 버전을 구현했고, 복합·단일 게이트와 held-out 검증을 통과했다.
+3. 대표 form 각인 투영 정책을 현재 정책으로 채택했다.
+4. 대표 `spell` 생략 뒤 측정 최대 지연은 1.99초다. 실제 플레이의 새 문장·콜드스타트·반복동작 경계는 이슈 #158에서 관찰한다.
 
 ## 21. 의도 요약
 
