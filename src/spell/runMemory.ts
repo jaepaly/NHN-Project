@@ -1,6 +1,7 @@
 import { ELEMENTS } from './types';
 import type { SpellElement } from './types';
 import type { SpellHistory } from './spellHistory';
+import { topQuartileWordLimitCost } from '../combat-core/run/wordLimitCurse';
 
 /**
  * 런 간 기억 (Phase 3 R2, 트랙 2 ②).
@@ -21,12 +22,15 @@ export interface CurseBehaviorMemory {
   manualCastCount: number;
   /** 직접 영창 중 주 원소가 빛 또는 불꽃인 횟수. */
   lightFireCastCount: number;
+  /** 성공 직접 영창 중 언령 비용 상위 25%의 평균. */
+  wordLimitTopQuartileCost: number;
 }
 
 export const EMPTY_CURSE_BEHAVIOR: CurseBehaviorMemory = {
   movementDistance: 0,
   manualCastCount: 0,
   lightFireCastCount: 0,
+  wordLimitTopQuartileCost: 0,
 };
 
 export interface RunMemory {
@@ -91,6 +95,9 @@ export function summarizeRun(
       lightFireCastCount: history.allCasts.filter(
         (cast) => cast.elements.includes('light') || cast.elements.includes('fire'),
       ).length,
+      wordLimitTopQuartileCost: topQuartileWordLimitCost(
+        history.allCasts.map((cast) => cast.rawText),
+      ),
     },
   };
 }
@@ -186,6 +193,7 @@ function normalizeCurseBehavior(raw: unknown): CurseBehaviorMemory {
     movementDistance: finiteNonNegative(value.movementDistance),
     manualCastCount: Math.floor(finiteNonNegative(value.manualCastCount)),
     lightFireCastCount: Math.floor(finiteNonNegative(value.lightFireCastCount)),
+    wordLimitTopQuartileCost: finiteNonNegative(value.wordLimitTopQuartileCost),
   };
 }
 

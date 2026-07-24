@@ -41,6 +41,7 @@ assert.deepEqual(o1.curseBehavior, {
   movementDistance: 4321,
   manualCastCount: 3,
   lightFireCastCount: 2,
+  wordLimitTopQuartileCost: 3,
 });
 
 const sequenceAwareHistory = new SpellHistory();
@@ -66,6 +67,7 @@ assert.deepEqual(summarizeRun(sequenceAwareHistory, 'win').curseBehavior, {
   movementDistance: 0,
   manualCastCount: 2,
   lightFireCastCount: 1,
+  wordLimitTopQuartileCost: 45,
 }, 'sequence plans count once while any matching behavior element qualifies the cast');
 
 // 2) updateRunMemory — 승패 카운트·favorite·top 유지·recent 누적
