@@ -54,6 +54,34 @@ const CSS = `
               0 18px 50px rgba(0, 0, 0, 0.5);
 }
 #${WRAP_ID} .reward-card:focus-visible { outline: 2px solid var(--card-core); outline-offset: 3px; }
+/* 상위 선택지(진화·융합) — 반짝이는 금빛 테두리로 한눈에 티가 난다 */
+#${WRAP_ID} .reward-card--rare {
+  border-color: transparent;
+  background:
+    linear-gradient(160deg, rgba(14, 12, 30, 0.97), rgba(26, 18, 44, 0.95)) padding-box,
+    linear-gradient(120deg, #ffe08a, #ffb347, var(--card-core), #ffd76a, #ffe08a) border-box;
+  border: 2px solid transparent;
+  background-size: 100% 100%, 300% 100%;
+  animation: r3-rare-shimmer 2.6s linear infinite;
+  box-shadow: 0 0 20px rgba(255, 196, 92, 0.28);
+}
+#${WRAP_ID} .reward-card--rare:hover, #${WRAP_ID} .reward-card--rare.focused {
+  box-shadow: 0 0 34px rgba(255, 196, 92, 0.5), 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+#${WRAP_ID} .card-rare-ribbon {
+  position: absolute; top: 9px; right: 10px;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.12em;
+  color: #1a1204; background: linear-gradient(120deg, #ffe08a, #ffb347);
+  padding: 2px 8px; border-radius: 999px;
+  box-shadow: 0 0 10px rgba(255, 196, 92, 0.6);
+}
+@keyframes r3-rare-shimmer {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 0 0, 300% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #${WRAP_ID} .reward-card--rare { animation: none; }
+}
 #${WRAP_ID} .card-hotkey {
   position: absolute; top: 10px; left: 12px;
   font: 700 12px/1.6 'Consolas', monospace;
@@ -115,6 +143,14 @@ function ensureDom(): HTMLElement {
     document.body.appendChild(wrap);
   }
   return wrap;
+}
+
+/**
+ * 상위 선택지 여부 — 진화·정령 융합(둘 다 kind 'evolve')은 판을 바꾸는 격상 보상이라
+ * 반짝이는 금빛 테두리로 한눈에 티가 나게 한다 (총괄 요청).
+ */
+export function isRareReward(option: RewardOption): boolean {
+  return option.kind === 'evolve';
 }
 
 function cardColors(option: RewardOption): { core: string; glow: string } {
@@ -190,11 +226,13 @@ export function showRewardCards(
       const { core, glow } = cardColors(option);
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'reward-card';
+      const rare = isRareReward(option);
+      btn.className = rare ? 'reward-card reward-card--rare' : 'reward-card';
       btn.style.setProperty('--card-core', core);
       btn.style.setProperty('--card-glow', glow);
       btn.innerHTML = `
         <span class="card-hotkey">${i + 1}</span>
+        ${rare ? '<div class="card-rare-ribbon">격상</div>' : ''}
         <div class="card-glyph"></div>
         <div class="card-title"></div>
         <div class="card-desc"></div>
