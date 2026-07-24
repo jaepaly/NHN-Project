@@ -68,6 +68,8 @@ import { reducedAffinityVfxTier } from '../render/affinityVfx';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import { devInfo } from '../debug/devLog';
 import { FusionGauge } from '../combat-core/player/fusionGauge';
+import { loopDamageScale } from '../combat-core/run/loopDifficulty';
+import { showBossChoice } from '../ui/bossChoiceOverlay';
 import { codexEntryFromSpec, codexEntryFromSequence, recordCodexEntry } from '../spell/spellCodex';
 import {
   KNOCKBACK_CONFIG,
@@ -716,13 +718,28 @@ export class ProtoScene extends Phaser.Scene {
         const share = this.autoShareSnapshot();
         this.announceSystemMessage(`[DEV] 오토 비중 ${share.autoSharePercent}%`, '#8fa4ff', 3200);
       }
+      // 보스 처치 = 유산 은행 저장. 이어가다 죽어도 이건 남는다 (총괄 리스크 구조).
       this.persistRunMemory('win');
-      // RUN COMPLETE 전환 연출(runUiBinding)이 걷힌 뒤 런 요약 → Enter로 새 런
+      // 보스 후 선택: 마칠까(시작 화면) vs 이어갈까(빌드 유지·난이도↑)
       this.time.delayedCall(1400, () => {
-        void showRunSummaryOverlay(this.buildRunSummary('victory'))
-          .then(() => this.restartRun());
+        const completedLoops = this.combatRunController.state.loopIndex + 1;
+        const nextDamagePct = Math.round(loopDamageScale(completedLoops) * 100);
+        void showBossChoice(completedLoops, nextDamagePct).then((choice) => {
+          if (choice === 'continue') {
+            this.continueToNextLoop();
+          } else {
+            void showRunSummaryOverlay(this.buildRunSummary('victory'))
+              .then(() => this.scene.start('title'));
+          }
+        });
       });
     });
+  }
+
+  /** 적이 주는 피해 — 이어가기 루프 난이도(loopDamageScale)를 반영해 감쇠 전 원본에 곱한다 */
+  private damagePlayer(amount: number): { hpDamage: number; shieldDamage: number } {
+    const scale = loopDamageScale(this.combatRunController.state.loopIndex);
+    return this.playerState.takeDamage(amount * scale);
   }
 
   /** 사망은 1회만 처리 — 요약 오버레이 → Enter로 새 런 (GDD §2 사망 흐름) */
@@ -841,6 +858,30 @@ export class ProtoScene extends Phaser.Scene {
     devInfo(
       `[auto-share] ${tag} — 오토 ${s.autoSharePercent}% `
       + `(수동 ${s.manual} · 오토 ${s.auto} · 기본탄 ${s.basic} · 상태이상 ${s.status})`,
+    );
+  }
+
+  /**
+   * 보스 후 이어가기 — 빌드는 유지하고 전투만 새로. restartRun과 달리 playerState·각인·
+   * 정령·융합 게이지·주문 히스토리·성장 표식·친화를 **비우지 않는다**. 컨트롤러는
+   * continueRun으로 친화·보상을 지킨 채 방만 새로 뽑고 루프를 올린다 (난이도↑).
+   */
+  private continueToNextLoop(): void {
+    this.deathHandled = false;
+    // 전투 전용 상태만 초기화 (다음 보스가 내성 재계산, 장판·쿨다운은 방 단위)
+    this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
+    this.bossResistance = { ...NO_BOSS_RESISTANCE };
+    this.activeBossResistances.clear();
+    this.enemyAilments.clear();
+    this.shockCooldowns.clear();
+    this.lastResistNoticeAt = 0;
+    this.runMovementDistance = 0;
+    this.combatRunController.continueRun();
+    const loop = this.combatRunController.state.loopIndex;
+    this.announceSystemMessage(
+      `${loop}순환 진입 — 적 피해 ×${loopDamageScale(loop).toFixed(1)}`,
+      '#e2b7ff',
+      3200,
     );
   }
 
@@ -1546,7 +1587,7 @@ export class ProtoScene extends Phaser.Scene {
       hazard.damageCooldown = Math.max(0, hazard.damageCooldown - deltaSeconds);
       if (hazard.damageCooldown > 0) continue;
       if (!hazard.contains(this.player.x, this.player.y)) continue;
-      const applied = this.playerState.takeDamage(9);
+      const applied = this.damagePlayer(9);
 if (applied) this.playPlayerHit();
       this.announceIncomingDamage(applied.hpDamage, applied.shieldDamage);
       hazard.onDamage?.();
@@ -1687,7 +1728,7 @@ if (applied) this.playPlayerHit();
       ) <= enemy.contactDistance;
       if (!touching || !enemy.canDealContactDamage) continue;
 
-      const applied = this.playerState.takeDamage(enemy.contactDamage);
+      const applied = this.damagePlayer(enemy.contactDamage);
 if (applied) this.playPlayerHit(
         enemy instanceof BossEnemy && enemy.charging ? 'strong' : 'weak',
       );
@@ -2226,7 +2267,7 @@ if (applied) this.playPlayerHit(
         this.player.y,
       ) <= SHOOTER_CONFIG.bulletHitDistance;
       if (hitPlayer) {
-        const applied = this.playerState.takeDamage(SHOOTER_CONFIG.bulletDamage);
+        const applied = this.damagePlayer(SHOOTER_CONFIG.bulletDamage);
 if (applied) this.playPlayerHit(projectile.hitShakeTier);
         totalHpDamage += applied.hpDamage;
         totalShieldDamage += applied.shieldDamage;
@@ -5233,7 +5274,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       });
       requestCameraShake(this, 'medium');
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, x, y) <= radius) {
-        const applied = this.playerState.takeDamage(30);
+        const applied = this.damagePlayer(30);
 if (applied) this.playPlayerHit('strong');
         this.announceIncomingDamage(applied.hpDamage, applied.shieldDamage);
       }
