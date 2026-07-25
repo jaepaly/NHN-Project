@@ -6,13 +6,14 @@
  * 클라이언트는 { text } 만 보내고, 판정 프롬프트·스키마는 여기서 강제한다.
  * (프롬프트를 클라이언트에 두면 조작 가능 — 서버측 고정이 원칙)
  */
+import { normalizeJudgeOutput } from './judge-output.js';
 
 const GEMINI_URL =
   // 모델 핀 고정(2026-07-22): `-latest` 자동 갱신으로 요청 규격이 바뀌는 문제 방지.
   // Gemini 3.5부터 temperature/thinkingBudget가 폐기되어 아래 요청에서도 제거했다.
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent';
 
-// Gemini 3.5 Flash-Lite 무료 등급의 15 RPM에 맞춘 간이 보호막.
+// 공급자 프로젝트 할당량과 별개인 앱 자체 간이 보호막.
 // IP별·Worker 인스턴스별 인메모리 제한이므로 프로젝트 전체 쿼터를 보장하지는 않는다.
 const RATE_LIMIT_PER_MIN = 15;
 const hits = new Map();
@@ -23,6 +24,7 @@ const JUDGE_PROMPT = `당신은 자유 텍스트 마법 게임의 의미 판정�
 1. 입력 언어와 표현의 실제 의미를 파악한다. 외래어와 비유도 번역해 이해한다.
 2. disposition을 결정한다.
    - cast: 의미가 있는 모든 문장. 마법 단어가 없어도 창의적인 약한 효용 주문으로 번역한다.
+   - 완결된 동작·자연현상·전투 장면을 풀어 쓴 서술문도 의미 있는 cast다. 주문명 형식이 아니라는 이유로 fizzle하지 않는다.
    - fizzle: "ㅁㄴㅇㄹ", "asdf"처럼 의미 없는 키보드 매시만 해당한다.
    - blocked: 욕설, 혐오, 노골적 유해 표현 등 부적절한 입력만 해당한다.
 3. cast라면 effect와 target을 먼저 결정한 뒤 element와 form을 시각적 은유로 고른다.
@@ -53,7 +55,8 @@ const JUDGE_PROMPT = `당신은 자유 텍스트 마법 게임의 의미 판정�
    **spell_plan만 설계하고 대표 spell은 생략한다**(토큰 절약 — 클라이언트가 plan에서 대표를 유도). **단일 동작이면 반대로 spell만 내고 spell_plan은 넣지 않는다.** 긴 문장이라고 무조건 단계를 늘리지 않는다.
    - sequences: 순차 사건을 앞에서부터 단계로 나눈다(최대 10). 같은 순간의 사건은 한 단계의 behaviors로 병렬 배치(최대 5).
    - behavior type은 셋뿐: form(공격·효과, spec은 위 cast 스키마와 같은 필드)·move(이동, element 필수)·wait(정적·박자).
-   - move.destination은 이 5개만: cast-point|target-direction|away-from-target|random-direction|arena-center. move 하나마다 총 power의 10%를 쓴다.
+   - move.destination은 이 6개만: cast-point|target-direction|away-from-target|random-direction|arena-center|custom-vector. move 하나마다 총 power의 10%를 쓴다.
+   - 왼쪽·오른쪽처럼 표적을 바라보는 기준의 상대 방향이 명시되면 custom-vector를 쓰고 angle을 넣는다(왼쪽 -90, 오른쪽 90, 비스듬한 왼쪽 -45, 비스듬한 오른쪽 45). distance는 1~420이다.
    - power와 durationMs(500~3000)는 전체 예산이다. behavior마다 새로 만들지 않는다. spec.power와 spec.cost는 0으로 둔다(로컬이 재계산).
    - 절대 픽셀·초·피해값·적 위치·무적을 만들지 않는다. 스키마에 없는 type/원소/form을 창작하지 않는다.
    예시(아래 문장 자체를 외우지 말고 "여러 동작을 시간축/동시로 쪼갠다"는 원리를 익혀라):
@@ -98,7 +101,7 @@ cast 출력 스키마:
 }
 behavior는 effect가 summon이고 움직임 묘사가 있을 때만 포함한다(그 외 생략). steps는 위 6개 kind만, 최대 6개.
 shape는 form이 wall이고 모양 묘사가 있을 때만 포함한다(그 외 생략). kind는 위 6개(arc·line·zigzag·wave·ring·polygon)만.
-복합/순차·동시 동작이면 **대표 spell을 생략하고 spell_plan만** 낸다(클라이언트가 유도). 단일 동작이면 **spell만** 낸다(spell_plan 생략). type은 form|move|wait, move는 element 필수·destination 5종만. spec.power/cost는 0으로 둔다.
+복합/순차·동시 동작이면 **대표 spell을 생략하고 spell_plan만** 낸다(클라이언트가 유도). 단일 동작이면 **spell만** 낸다(spell_plan 생략). type은 form|move|wait, move는 element 필수·destination 6종만. custom-vector는 angle·distance를 함께 낸다. spec.power/cost는 0으로 둔다.
 
 fizzle 출력: {"schema_version":2,"disposition":"fizzle","reason":"nonsense","message":"마력이 형태를 이루지 못했다"}
 blocked 출력: {"schema_version":2,"disposition":"blocked","reason":"unsafe","message":"해당 문장으로는 영창할 수 없습니다"}
@@ -266,7 +269,6 @@ export default {
     if (path.endsWith('/evolve-name')) {
       return evolveName(request, env, cors);
     }
-
     let text;
     try {
       const body = await request.json();
@@ -313,11 +315,13 @@ export default {
     const first = raw.indexOf('{');
     const last = raw.lastIndexOf('}');
     const json = first !== -1 && last > first ? raw.slice(first, last + 1) : raw;
+    let parsed;
     try {
-      JSON.parse(json);
+      parsed = JSON.parse(json);
     } catch {
       return new Response(JSON.stringify({ error: 'invalid llm output', raw: String(raw).slice(0, 500) }), { status: 502, headers: cors });
     }
-    return new Response(json, { status: 200, headers: cors });
+    const normalized = normalizeJudgeOutput(parsed);
+    return new Response(JSON.stringify(normalized.value), { status: 200, headers: cors });
   },
 };
