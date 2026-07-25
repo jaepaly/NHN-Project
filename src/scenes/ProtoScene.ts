@@ -580,6 +580,10 @@ export class ProtoScene extends Phaser.Scene {
     // 실런 재측정용 디버그 접근자 — 콘솔에서 __autoShare()로 현재 누적 확인
     (window as unknown as { __autoShare?: () => unknown }).__autoShare
       = () => this.autoShareSnapshot();
+    // 씬 재시작(타이틀 → 다시 시작) 대비 — Phaser가 shutdown에서 view를 파괴하므로
+    // 낡은 래퍼를 그대로 들고 create로 들어가면 clearCombatRoom이 죽은 view를 만져 크래시난다.
+    // 참조만 끊는다(파괴는 Phaser 몫).
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.dropStaleRunObjects());
     // 주문 소비 매트릭스 감사 — 콘솔에서 __spellMatrix(step)로 effect×form×target 전수 점검.
     // 프레임 진행은 호출측이 넘긴다(백그라운드 탭에서는 game.loop.step을 감싸야 하므로).
     if (import.meta.env.DEV) {
@@ -870,6 +874,20 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   /** 새 런 — 씬 재시작 없이 상태만 초기화. 컨트롤러 reset이 room-started를 발화해 방 1부터 재개된다. */
+  /**
+   * 씬 shutdown에서 런 중 생성물의 **참조만** 끊는다.
+   * destroy를 부르지 않는 이유: 이 시점엔 Phaser가 이미 GameObject를 파괴해
+   * view.scene이 사라진 상태라, 만지면 그게 곧 재시작 크래시가 된다.
+   */
+  private dropStaleRunObjects(): void {
+    this.enemies = [];
+    this.friendlyMissiles = [];
+    this.hazardZones = [];
+    this.activeSummons = [];
+    this.hazardDecorations = [];
+    this.activeWall = null;
+    this.activeOrbit = null;
+  }
   /** 오토 비중 스냅샷 — 콘솔 리포트·재측정(window.__autoShare)용 */
   private autoShareSnapshot(): Record<DamageSource, number> & { autoSharePercent: number } {
     const { manual, auto, basic, status } = this.damageLedger;
