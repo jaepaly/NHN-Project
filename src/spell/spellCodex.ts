@@ -129,7 +129,7 @@ const ELEMENT_ORDER: SpellElement[] = [
   'fire', 'water', 'lightning', 'ice', 'earth', 'wind', 'light', 'dark',
 ];
 const FORM_ORDER: SpellForm[] = [
-  'bolt', 'beam', 'wave', 'nova', 'rain', 'wall', 'cage', 'orbit', 'summon', 'buff', 'zone', 'chain',
+  'bolt', 'beam', 'slash', 'wave', 'nova', 'rain', 'wall', 'cage', 'orbit', 'summon', 'buff', 'zone', 'chain',
 ];
 
 /**
