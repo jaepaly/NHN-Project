@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { validateSpellPlan, planFromSpec, representativeSpecFromPlan } from '../src/spell/spellPlanValidate';
 import { resolveSpellPlan } from '../src/spell/sequencePlan';
 import { validateJudgement } from '../src/spell/validate';
+import { judgeTimeoutMs } from '../src/spell/geminiJudge';
+import { looksSequential } from '../src/spell/mockJudge';
 import type { SpellSpec } from '../src/spell/types';
 
 const dmg = (over: Partial<SpellSpec> = {}): Record<string, unknown> => ({
@@ -208,4 +210,47 @@ assert.equal(validateSpellPlan({ sequences: [{ behaviors: [] }] }), null, '빈 b
   assert.equal((badPlan as { plan?: unknown }).plan, undefined, '무효 plan은 버리고 spell로');
 }
 
-console.log('SpellPlan validate regression: 검증·클램프·화이트리스트·대표유도·판정연결 12군 통과');
+// ── 캐시 왕복: 판정을 직렬화했다 되읽어도 plan이 살아남는다 (#180 회귀) ──
+// writeCache는 판정 객체를 그대로 저장하므로 키가 `plan`이다. 이걸 못 읽으면
+// 캐시 히트마다 복합 영창이 단일로 강등된다.
+{
+  const first = validateJudgement({
+    schema_version: 2, disposition: 'cast',
+    spell: dmg(),
+    spell_plan: {
+      name: '연격', power: 70, durationMs: 1200,
+      sequences: [
+        { behaviors: [{ type: 'move', destination: 'away-from-target', element: 'wind' }] },
+        { behaviors: [{ type: 'form', spec: dmg({ form: 'nova' }) }] },
+      ],
+    },
+  });
+  assert.ok(first && first.disposition === 'cast');
+  const firstPlan = (first as { plan?: { sequences: unknown[] } }).plan;
+  assert.equal(firstPlan?.sequences.length, 2, '최초 판정에 2단계 plan');
+
+  // localStorage 왕복을 그대로 흉내낸다 (writeCache → readCache)
+  const replayed = validateJudgement(JSON.parse(JSON.stringify(first)));
+  assert.ok(replayed && replayed.disposition === 'cast', '캐시 재생도 cast');
+  const replayedPlan = (replayed as { plan?: { sequences: unknown[] } }).plan;
+  assert.ok(replayedPlan, '캐시 히트에서 plan이 유실되지 않는다');
+  assert.equal(replayedPlan?.sequences.length, 2, '단계 수까지 보존 — 단일 강등 없음');
+}
+
+// ── 판정 타임아웃: 복합만 상향, 단순은 2.5초 유지 (#180) ──
+{
+  assert.equal(judgeTimeoutMs('파이어볼'), 2500, '단일 영창은 2.5초 유지');
+  assert.equal(judgeTimeoutMs('거대한 화염구를 적에게 던진다'), 2500, '긴 단일 문장도 2.5초');
+  assert.equal(
+    judgeTimeoutMs('왼쪽으로 피한 뒤 작은 화염구를 발사해'), 3200,
+    '순차 마커가 있으면 복합 상한',
+  );
+  assert.equal(
+    judgeTimeoutMs('얼음벽을 세우고 그다음 번개를 내리친다'), 3200,
+    '다른 마커도 복합으로 인식',
+  );
+  assert.ok(looksSequential('불덩이를 던진 뒤 얼음창을 쏜다'));
+  assert.equal(looksSequential('회오리바람을 일으킨다'), false);
+}
+
+console.log('SpellPlan validate regression: 검증·클램프·화이트리스트·대표유도·판정연결·캐시왕복·타임아웃 14군 통과');

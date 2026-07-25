@@ -82,7 +82,12 @@ export function validateJudgement(raw: unknown, powerCap = 100): SpellJudgement 
   if (o.disposition === 'cast') {
     // 영창 시퀀스: Worker가 spell_plan을 보내면 검증해 싣는다 (없으면 v2 단일 주문 그대로).
     // spell이 없고 plan만 오면 대표 주문을 유도해 기존 소비처(기록·반복)를 보존한다.
-    const plan = validateSpellPlan(o.spell_plan);
+    //
+    // `spell_plan`(원격 응답 필드)과 `plan`(SpellJudgement 필드)을 **둘 다** 받는다.
+    // 캐시는 판정 객체를 그대로 직렬화하므로(writeCache) 저장 키가 `plan`인데, 여기서
+    // `spell_plan`만 읽으면 **캐시 히트마다 복합 영창이 단일로 강등**된다(#180 실측).
+    // 왕복 대칭이 되어야 첫 호출과 캐시 재생이 같은 판정을 낸다.
+    const plan = validateSpellPlan(o.spell_plan ?? o.plan);
     const spell = validateSpec(o.spell, powerCap)
       ?? (plan ? representativeSpecFromPlan(plan) : null);
     if (!spell) return null;
