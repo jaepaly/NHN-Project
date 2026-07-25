@@ -129,7 +129,9 @@ export class ShooterEnemy implements CombatEnemy {
     if (this.dying) return;
     this.dying = true;
     if (options.animate === false) {
-      this.view.scene.tweens.killTweensOf(this.view);
+      // 씬 재시작 경로에서는 Phaser가 view를 먼저 파괴해 view.scene이 사라진다.
+      // 그 상태로 tweens를 만지면 게임이 아예 안 켜진다(타이틀→재시작 크래시).
+      this.view.scene?.tweens.killTweensOf(this.view);
       if (this.view.active) this.view.destroy(true);
       return;
     }
