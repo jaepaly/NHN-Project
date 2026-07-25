@@ -17,6 +17,7 @@ import { ELEMENT_PALETTES, SIZE_SCALE } from './palette';
 import {
   SLASH_CONFIG,
   slashAnchor,
+  slashCrescentPolygon,
   slashCutPoints,
   slashCutRadius,
   slashHitCircle,
@@ -535,28 +536,42 @@ export function castSlash(ctx: CastContext, spec: SpellSpec): void {
   const anchor = slashAnchor(from, toward, ctx.rangeScale);
   const points = slashCutPoints(from, anchor, spec.size, spec.power, ctx.radiusScale);
   const vectors = points.map((point) => new Phaser.Math.Vector2(point.x, point.y));
+  // 채워진 초승달 윤곽 — 폭이 일정한 선은 '기하 도형'으로 보인다. 벤 자국은
+  // 가운데가 두껍고 끝이 사라지듯 얇아야 한다.
+  const crescent = slashCrescentPolygon(from, anchor, spec.size, spec.power, ctx.radiusScale)
+    .map((point) => new Phaser.Math.Vector2(point.x, point.y));
   // 접근 축 — 스파크는 이 축의 **수직**(= 벤 자국을 따라)으로 튄다.
   const axisDeg = Phaser.Math.RadToDeg(
     Math.atan2(anchor.y - from.y, anchor.x - from.x),
   );
 
-  // ① 칼날 — 호를 따라 훑는 스윙. 진행도만큼만 그려 '베고 지나간' 순간이 읽히게 한다.
+  // ① 칼날 — 초승달을 채워 그린다. 스윕 진행도만큼 열려 '베고 지나간' 순간이 읽힌다.
   const blade = scene.add.graphics().setDepth(7)
     .setBlendMode(Phaser.BlendModes.ADD);
   // ② 잔상 — 살짝 늦게 따라오는 얇은 호. 한 줄만으로는 휘두른 무게가 안 실린다.
   const echo = scene.add.graphics().setDepth(6)
     .setBlendMode(Phaser.BlendModes.ADD);
   const sweep = { progress: 0, echo: 0 };
-  const strokeArc = (
-    gfx: Phaser.GameObjects.Graphics, progress: number, alpha: number, width: number,
-  ): void => {
-    gfx.clear();
+  const half = crescent.length / 2;
+  const drawBlade = (progress: number, alpha: number): void => {
+    blade.clear();
+    if (progress <= 0 || alpha <= 0) return;
+    // 바깥·안쪽 호를 같은 비율로 잘라 닫힌 도형을 유지한다.
+    const count = Math.max(2, Math.round(half * progress));
+    const outer = crescent.slice(0, count);
+    const inner = crescent.slice(crescent.length - count);
+    const shape = [...outer, ...inner];
+    blade.fillStyle(pal.glow, 0.28 * alpha).fillPoints(shape, true);
+    blade.fillStyle(pal.core, 0.8 * alpha).fillPoints(shape, true);
+    // 바깥 날만 가늘게 강조 — 베인 단면이 빛나는 느낌
+    blade.lineStyle(1.6, pal.accent, alpha).strokePoints(outer, false);
+  };
+  const drawEcho = (progress: number, alpha: number): void => {
+    echo.clear();
     if (progress <= 0 || alpha <= 0) return;
     const count = Math.max(2, Math.round(vectors.length * progress));
     const drawn = vectors.slice(0, count);
-    gfx.lineStyle(width * 2.4, pal.glow, 0.30 * alpha).strokePoints(drawn, false);
-    gfx.lineStyle(width, pal.core, 0.9 * alpha).strokePoints(drawn, false);
-    gfx.lineStyle(1.5, pal.accent, alpha).strokePoints(drawn, false);
+    echo.lineStyle(3 * scale, pal.glow, 0.45 * alpha).strokePoints(drawn, false);
   };
   scene.tweens.add({
     targets: sweep,
@@ -564,8 +579,8 @@ export function castSlash(ctx: CastContext, spec: SpellSpec): void {
     duration: SLASH_CONFIG.sweepMs,
     ease: 'Cubic.easeOut',
     onUpdate: () => {
-      strokeArc(blade, sweep.progress, 1 - sweep.progress * 0.3, 5 * scale);
-      strokeArc(echo, sweep.echo, (1 - sweep.echo) * 0.5, 2.5 * scale);
+      drawBlade(sweep.progress, 1 - sweep.progress * 0.25);
+      drawEcho(sweep.echo, 1 - sweep.echo);
     },
     onComplete: () => {
       scene.tweens.add({

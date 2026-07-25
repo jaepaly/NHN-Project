@@ -39,6 +39,12 @@ export const SLASH_CONFIG = {
   echoDelayMs: 55,
   /** 베는 섬광이 벌어졌다 닫히는 시간(ms) */
   flashMs: 160,
+  /** 초승달 최대 두께 비율(반경 대비) — 가운데가 가장 두껍다 */
+  bladeThickness: 0.42,
+  /** 두께가 얇아지는 기울기. 클수록 끝이 급격히 뾰족해진다 */
+  taperExponent: 1.7,
+  /** 두께 정점의 위치(-1=시작쪽, 0=중앙, 1=끝쪽) — 살짝 치우쳐야 기계적으로 안 보인다 */
+  bulgeBias: -0.18,
 } as const;
 
 function safeScale(value: number | undefined): number {
@@ -109,6 +115,54 @@ export function slashCutPoints(
     });
   }
   return points;
+}
+
+/**
+ * 벤 자국의 **채워진 초승달** 윤곽 — 가운데가 두껍고 양 끝이 바늘처럼 뾰족하다.
+ *
+ * 폭이 일정한 호를 그으면 '기하 도형'으로 보인다(총괄 지적: "너무 가지런한 호").
+ * 실제 참격은 휘두른 속도에 따라 두께가 변하고 끝이 사라지듯 얇아진다.
+ * 바깥 호 → 안쪽 호(역순)로 닫아 하나의 채울 수 있는 다각형을 만든다.
+ */
+export function slashCrescentPolygon(
+  from: FormPoint,
+  anchor: FormPoint,
+  size: SpellSize,
+  power?: number,
+  radiusScale?: number,
+): FormPoint[] {
+  const dx = anchor.x - from.x;
+  const dy = anchor.y - from.y;
+  const axis = dx === 0 && dy === 0 ? 0 : Math.atan2(dy, dx);
+  const radius = slashCutRadius(size, power, radiusScale);
+  const half = (SLASH_CONFIG.arcDegrees * Math.PI) / 180 / 2;
+  const steps = SLASH_CONFIG.segments;
+  const centerX = anchor.x - Math.cos(axis) * radius * 0.35;
+  const centerY = anchor.y - Math.sin(axis) * radius * 0.35;
+  const maxThickness = radius * SLASH_CONFIG.bladeThickness;
+
+  // u: -1(시작) ~ +1(끝). 두께는 정점에서 최대, 양 끝에서 0 → 뾰족한 팁.
+  const bias = Math.max(-0.9, Math.min(0.9, SLASH_CONFIG.bulgeBias));
+  const thicknessAt = (u: number): number => {
+    // 정점(bias)을 기준으로 **양쪽을 각각** 정규화한다. 한 식으로 밀면 치우친 쪽 끝이
+    // 0에 닿지 않아 팁이 뭉툭해진다(실제로 그렇게 만들었다가 회귀로 잡혔다).
+    const v = u <= bias ? (u - bias) / (1 + bias) : (u - bias) / (1 - bias);
+    const t = 1 - Math.abs(Math.max(-1, Math.min(1, v))) ** SLASH_CONFIG.taperExponent;
+    return Math.max(0, t) * maxThickness;
+  };
+
+  const outer: FormPoint[] = [];
+  const inner: FormPoint[] = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const u = (i / steps) * 2 - 1;
+    const angle = axis + u * half;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    outer.push({ x: centerX + cos * radius, y: centerY + sin * radius });
+    const innerRadius = radius - thicknessAt(u);
+    inner.push({ x: centerX + cos * innerRadius, y: centerY + sin * innerRadius });
+  }
+  return [...outer, ...inner.reverse()];
 }
 
 /**
