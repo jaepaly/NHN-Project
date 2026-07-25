@@ -19,8 +19,8 @@
    ▼  createJudge() → GeminiJudge.judge(text)            [src/spell/geminiJudge.ts]
    │   ① precheckText   로컬 즉시 (명백한 넌센스/차단어)   [mockJudge.ts]
    │   ② localStorage 캐시 (같은 문장=같은 판정)
-   │   ③ 프록시 POST {text} (2.5초 타임아웃) ──► Cloudflare Worker [proxy/worker.js]
-   │   │                                          └ JUDGE_PROMPT + Gemini 3.5-flash-lite → JSON
+   │   ③ 프록시 POST {text} (단순 2.5초·복합 3.2초 타임아웃 #182) ──► Cloudflare Worker [proxy/worker.js]
+   │   │                                          └ JUDGE_PROMPT + Gemini 3.5-flash-lite → normalizeJudgeOutput → JSON  [proxy/judge-output.js]
    │   ④ validateJudgement (스키마 재검증·클램프)          [validate.ts]
    │   ⑤ 실패/타임아웃/무효 → MockJudge 폴백 (게임 무중단)  [mockJudge.ts]
    ▼
@@ -53,7 +53,8 @@ SpellJudgement { disposition, spell{ ...behavior?, shape? }, spell_plan? }  // �
 | **size·speed** | 모델이 냄 (규칙 없이도 정확) | `validate.ts` (enum·기본값) | `spellRenderer.ts` `SIZE_SCALE`(`palette.ts`)·speed 분기 |
 | **소환 behavior** | `worker.js` 프롬프트 5항 + `summonBehavior.ts` 어휘 | `summonBehavior.ts` `validateSummonBehavior` | `behaviorRunner` |
 | **벽 shape** | `worker.js` 프롬프트 6항 + `spellShape.ts` 어휘 | `spellShape.ts` `validateSpellShape` | `persistentFormConfig.ts` `shapedWallPoints` |
-| **영창 시퀀스 (복합)** | `worker.js` 프롬프트 **7항 + few-shot 예시** | `spellPlanValidate.ts` `validateSpellPlan` | `ProtoScene.runSequenceCast` · `sequencePlan.ts` (게이트 `npm run gate:sequence`) |
+| **영창 시퀀스 (복합)** | `worker.js` 프롬프트 **7항 + few-shot 예시** (v2.12: move `custom-vector`+`angle` 방향 이동 — 왼쪽 -90/오른쪽 90/비스듬 ±45) | `spellPlanValidate.ts` `validateSpellPlan` | `ProtoScene.runSequenceCast` · `sequencePlan.ts` (게이트 `npm run gate:sequence`) |
+| **판정 출력 정규화** | `proxy/judge-output.js` `normalizeJudgeOutput` (worker 응답 반환 직전 후처리) | 자체(좁은 교차 enum만) | 클라 `validateJudgement` |
 | **반복 억제** | `spellHistory.ts` `repeatMultiplier` (`REPEAT_PENALTY`) | — | `ProtoScene` 피해계산 |
 | **다양성 보너스** | `spellDiversity.ts` `diversityBonus` | — | `ProtoScene` 피해계산 |
 | **회차 격상** | `runEscalation.ts` (과의존 원소 약화·기믹 티어) | — | `ProtoScene`·보스 |
@@ -86,10 +87,11 @@ SpellJudgement { disposition, spell{ ...behavior?, shape? }, spell_plan? }  // �
 - **size·speed는 팬텀이었다** — 실 Gemini 3.5는 size/speed를 **이미 정확히** 냄(실측 40/40, N=2~3 결정론적). 판정이 틀려 보이면 **프롬프트가 아니라 Mock 폴백**을 의심하라.
 - **Mock 폴백 오인 주의** — 배치 측정 페이싱이 **15 RPM을 넘으면** 폴백(Mock)이 섞여 "프롬프트가 틀렸다"로 오인된다. 판정 품질 측정 시 **반드시 `lastSource`(gemini/cache/fallback/local) 기록 + 캐시 제거**. Mock은 size=power파생·speed=form파생이라 수식어를 무시(#138에서 키워드 인식 추가했지만 폴백 한정).
 - **모델 핀 필수** — `gemini-3.5-flash-lite` **명시 고정**. `-latest` 별칭 **금지**(자동 드리프트로 2.5-flash-lite가 폐기·404된 전례). 재현성 우선.
-- **영창 시퀀스 = 지연이 진짜 축** — spell_plan은 출력이 커서 판정 ~2초(단일 ~1.3초), tail이 2.5초 폴백 임계에 근접. **프롬프트 예시 추가는 지연을 밀어올린다 → 신중.** 게이트 `npm run gate:sequence`의 **2.5초 초과율이 pass/fail 1순위**. 초과해도 MockJudge가 plan 내서 우아하게 열화. 롤백 `VITE_SEQUENCE_JUDGE=0`. **최적화**: 복합이면 대표 `spell` 생략(#157) — 대표는 `validate.ts`의 타입 shim일 뿐(보스기억/반복/각인/실행은 plan·단계별 데이터 사용)이라 시스템 무영향.
+- **영창 시퀀스 = 지연이 진짜 축** — spell_plan은 출력이 커서 판정 ~2초(단일 ~1.3초), tail이 임계에 근접. **프롬프트 예시 추가는 지연을 밀어올린다 → 신중.** 복합 상한은 **#182로 3.2초 상향(총괄 승인)** — `judgeTimeoutMs`가 `looksSequential` 순차 마커 입력에만 3.2초, 단순은 2.5초 유지. 게이트 `npm run gate:sequence`의 **2.5초 초과율이 pass/fail 1순위**. 초과해도 MockJudge가 plan 내서 우아하게 열화. 롤백 `VITE_SEQUENCE_JUDGE=0`. **최적화**: 복합이면 대표 `spell` 생략(#157) — 대표는 `validate.ts`의 타입 shim일 뿐(보스기억/반복/각인/실행은 plan·단계별 데이터 사용)이라 시스템 무영향. **판정 구조 재설계(semantic IR·compact 배열)는 NO-GO 확정(#180)**, mechanic 3축은 shadow 봉인(#178) — 다시 열지 마라(HANDOFF §7).
+- **`judge-output.js` = 좁은 정규화, repair 아님** — 모델이 `delivery`(mechanic enum)를 `form` 칸에 복사한 교차 enum 누출만(`form===delivery`일 때) 교정. 그 외 알 수 없는 form은 손대지 않고 클라 검증기가 거부. **현행 v2.12 프롬프트는 `mechanic`을 출력하지 않아 지금은 휴면**(#170 실험 잔재 안전망). 의미 복구·연쇄 계층 아님 → §7 경계 대상 아님.
 - **시퀀스 분류·튜닝은 few-shot으로** — 복합(plan)=뚜렷한 순차/동시 다른 동작("A한 뒤 B"). 단일=한 동작(웅장해도)·인과·시적 다원소·**반복 동작**. 경계는 보수적(애매하면 단일, 오버트리거 0 실측). 튜닝은 **트리거 단어 나열(게이트 과적합) 금지 → 다양한 few-shot 예시 + held-out(게이트·예시 밖 문장) 검증**. 미해소 허점 워치리스트 = #158.
 - **프롬프트 바꾸면 버전핀 3곳** — `src/spell/geminiJudge.ts`의 `JUDGE_PROMPT_VERSION` + `scripts/spell-regression.ts` + `scripts/gemini-fizzle-fallback-regression.ts`. 하나라도 놓치면 회귀 red(의도된 가드). 버전 올리면 옛 localStorage 캐시가 무효화됨.
-- **소스 = 배포 정합** — `worker.js`를 바꿔도 `wrangler deploy` 안 하면 **라이브 프록시는 옛 프롬프트**. 프롬프트 검증은 반드시 **배포 후** 라이브로. 반대로 배포만 하고 소스 머지를 안 하면 다음 배포가 되돌린다.
+- **소스 = 배포 정합** — `worker.js`를 바꿔도 `wrangler deploy` 안 하면 **라이브 프록시는 옛 프롬프트**. 프롬프트 검증은 반드시 **배포 후** 라이브로. 반대로 배포만 하고 소스 머지를 안 하면 다음 배포가 되돌린다. **실제 전례(07-25)**: v2.12(directional)가 노트북에서 배포만 되고 미커밋이라 `judge-output.js`까지 git에 없었고 main worker.js는 v2.6에 멈춰 있었다 → 재배포 시 퇴행 지뢰. **#186**으로 소스 정합(worker.js + judge-output.js + 버전핀 3곳 v2.12). **배포본 버전 확인법**: 라이브에 방향 문장(예: `왼쪽으로 피한 뒤 반격한다`)을 쏴 `move.angle`이 나오면 v2.12(라이브 probe로 angle -90 확인).
 - **fizzle/blocked는 노카운트** — 마나·쿨다운·히스토리 전부 소비 안 함. cast만 기록.
 
 ---
