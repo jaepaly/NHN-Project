@@ -25,6 +25,14 @@ const SEQUENCE_MARKERS = [
   '하고 나서', '한 뒤', '한 후', '고 나서', ' 뒤 ', ' 후 ', ' then ', 'after that',
 ];
 
+/**
+ * 복합(순차) 영창으로 보이는가 — Mock의 시퀀스 산출과 **판정 타임아웃 분기**(#180)가
+ * 같은 신호를 공유한다. 복합은 응답 JSON이 커 tail이 길어지므로 더 오래 기다린다.
+ */
+export function looksSequential(text: string): boolean {
+  return splitSequenceClauses(text).length >= 2;
+}
+
 /** 순차 마커로 원문을 절로 나눈다. 마커가 없으면 단일 절. */
 function splitSequenceClauses(text: string): string[] {
   const DELIM = " §SEQ§ ";
