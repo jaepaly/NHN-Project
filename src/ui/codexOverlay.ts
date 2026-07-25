@@ -110,6 +110,7 @@ const FORM_GLYPHS: Record<SpellForm, string> = {
   buff: '<path d="M12 20V6M6.5 11.5 12 6l5.5 5.5" fill="none"/>',
   zone: '<circle cx="12" cy="12" r="8" fill="none" stroke-dasharray="3 3"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>',
   chain: '<circle cx="7.5" cy="12" r="3.2" fill="none"/><circle cx="16.5" cy="12" r="3.2" fill="none"/><line x1="10.7" y1="12" x2="13.3" y2="12"/>',
+  slash: '<path d="M6 18 16 6M10 19 20 7" fill="none"/>',
 };
 const SEQUENCE_GLYPH = '<circle cx="5" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="2" fill="currentColor" stroke="none"/><path d="M7.5 12h2M14.5 12h2"/>';
 

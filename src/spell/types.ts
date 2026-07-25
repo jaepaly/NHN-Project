@@ -25,6 +25,7 @@ export const FORMS = [
   'buff',   // 자기 강화
   'zone',   // 장판
   'chain',  // 연쇄 도약
+  'slash',  // 근접 참격·베기 (렌더 castSlash는 #188 — 현재 bolt로 폴백)
 ] as const;
 export type SpellForm = (typeof FORMS)[number];
 

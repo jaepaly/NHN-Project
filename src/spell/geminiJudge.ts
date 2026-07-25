@@ -17,7 +17,7 @@ import { MockJudge, looksSequential, precheckText } from './mockJudge';
  */
 
 export const JUDGE_SCHEMA_VERSION = 2;
-export const JUDGE_PROMPT_VERSION = 'meaning-v2.13-seq-absdir';
+export const JUDGE_PROMPT_VERSION = 'meaning-v2.14-slash-move';
 const CACHE_PREFIX = `incant:judge:v${JUDGE_SCHEMA_VERSION}:${JUDGE_PROMPT_VERSION}:`;
 const TIMEOUT_MS = 2500;
 /**

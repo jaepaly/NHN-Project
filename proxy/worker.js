@@ -33,6 +33,7 @@ const JUDGE_PROMPT = `당신은 자유 텍스트 마법 게임의 의미 판정�
    - "배고프다", "피곤하다"처럼 상태를 말하는 문장은 heal 또는 buff/self로 해석한다.
    - "나를 지켜줘"는 shield/self, "숲의 분노"는 damage 또는 control/area로 해석한다.
    - "라이트닝 스톰"과 "lightning storm"은 번개 폭풍의 동일한 의미로 해석한다.
+   - 근접에서 **베거나 휘두르는 동작**(칼·도끼·발톱·횡베기·참격 등)은 form=slash로 고른다. 멀리 던지거나 쏘는 투사체(bolt)·광선(beam)과는 구분한다.
 4. power와 cost를 정한다.
    - 구체적·창의적·서사적인 묘사: power 60~100
    - 단순한 마법 표현: power 30~50
@@ -51,18 +52,21 @@ const JUDGE_PROMPT = `당신은 자유 텍스트 마법 게임의 의미 판정�
    - 형상 부품(kind, 이 6개만): arc(원호·기본)·line(직선)·zigzag(갈지자)·wave(물결)·ring(닫힌 원, 둘러싸기)·polygon(다각형)
    - zigzag·wave는 amplitude 1~100(굴곡 세기), polygon은 sides 3~8(삼각형=3).
    - 예: "지그재그로" → zigzag / "원을 그리며 둘러싸라" → ring / "삼각형으로" → polygon(sides 3)
-7. 입력이 **시간 순서가 있는 복합 동작**("먼저 A 그다음 B", "A한 뒤 B")이거나 **동시 다원소 동작**("얼음과 불을 동시에")이면,
+7. 입력이 **시간 순서가 있는 복합 동작**("먼저 A 그다음 B", "A한 뒤 B")이거나, **위치를 옮기는 이동이 공격으로 이어지거나**(접속어 없이 "-며/-어"로 붙어도), **동시 다원소 동작**("얼음과 불을 동시에")이면,
    **spell_plan만 설계하고 대표 spell은 생략한다**(토큰 절약 — 클라이언트가 plan에서 대표를 유도). **단일 동작이면 반대로 spell만 내고 spell_plan은 넣지 않는다.** 긴 문장이라고 무조건 단계를 늘리지 않는다.
    - sequences: 순차 사건을 앞에서부터 단계로 나눈다(최대 10). 같은 순간의 사건은 한 단계의 behaviors로 병렬 배치(최대 5).
    - behavior type은 셋뿐: form(공격·효과, spec은 위 cast 스키마와 같은 필드)·move(이동, element 필수)·wait(정적·박자).
    - move.destination은 이 6개만: cast-point|target-direction|away-from-target|random-direction|arena-center|custom-vector. move 하나마다 총 power의 10%를 쓴다.
    - 왼쪽·오른쪽·위·아래처럼 화면 절대 방향이 명시되면 custom-vector를 쓰고 angle을 넣는다(화면 위=0 기준 시계방향: 위 0, 오른쪽 90, 아래 180, 왼쪽 -90, 비스듬 위-왼쪽 -45, 비스듬 위-오른쪽 45). 표적 위치와 무관하게 그 화면 방향으로 이동한다. distance는 1~420이다.
+   - **위치를 옮기는 이동**(돌진·도약·굴러·대시·파고들어·물러서 등)은 공격과 한 문장에 "-며/-어"로 융합돼 있어도 그 이동을 **별도 move 단계**로 낸다("먼저/다음/뒤" 같은 접속어가 없어도).
    - power와 durationMs(500~3000)는 전체 예산이다. behavior마다 새로 만들지 않는다. spec.power와 spec.cost는 0으로 둔다(로컬이 재계산).
    - 절대 픽셀·초·피해값·적 위치·무적을 만들지 않는다. 스키마에 없는 type/원소/form을 창작하지 않는다.
    예시(아래 문장 자체를 외우지 말고 "여러 동작을 시간축/동시로 쪼갠다"는 원리를 익혀라):
    - "물러섰다가 화염 폭풍을 부른다" → 2단계: move(away-from-target) 다음 form(fire·nova)
    - "얼음과 번개를 한꺼번에 내리꽂는다" → 1단계에 병렬 2개: form(ice)·form(lightning)
    - "방벽을 세우고 그 너머로 저격한다" → 2단계: form(wall) 다음 form(bolt)
+   - "앞으로 파고들어 벤다" → 2단계: move(target-direction) 다음 form(근접 공격)  (융합 이동)
+   - "위로 도약해 내리찍는다" → 2단계: move(custom-vector·위=0) 다음 form(낙하 공격)  (융합 이동)
    - (단일 동작) "커다란 돌덩이를 굴린다" → spell_plan 없음 (한 동작이므로 만들지 않는다)
 
 cast 출력 스키마:
@@ -75,7 +79,7 @@ cast 출력 스키마:
     "target": "enemy|self|area",
     "element_primary": "fire|water|lightning|ice|earth|wind|light|dark",
     "element_secondary": "위 8종 중 하나 또는 null",
-    "form": "bolt|beam|wave|nova|rain|wall|cage|orbit|summon|buff|zone|chain",
+    "form": "bolt|beam|slash|wave|nova|rain|wall|cage|orbit|summon|buff|zone|chain",
     "size": "small|medium|large|huge",
     "speed": "slow|normal|fast",
     "status": ["burn|freeze|shock|slow|knockback|weaken 중 0~3개"],
