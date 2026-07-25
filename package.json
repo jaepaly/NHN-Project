@@ -53,7 +53,8 @@
     "test:useaffinity": "esbuild scripts/use-affinity-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-use-affinity-regression.mjs && node node_modules/.cache/incant-use-affinity-regression.mjs",
     "test:loop": "esbuild scripts/loop-continue-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-loop-continue-regression.mjs && node node_modules/.cache/incant-loop-continue-regression.mjs",
     "test:debufffloor": "esbuild scripts/debuff-floor-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-debuff-floor-regression.mjs && node node_modules/.cache/incant-debuff-floor-regression.mjs",
-    "audit:judge": "esbuild scripts/judge-fidelity-audit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-judge-fidelity-audit.mjs && node node_modules/.cache/incant-judge-fidelity-audit.mjs"
+    "audit:judge": "esbuild scripts/judge-fidelity-audit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-judge-fidelity-audit.mjs && node node_modules/.cache/incant-judge-fidelity-audit.mjs",
+    "test:slash": "esbuild scripts/slash-form-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-slash-form-regression.mjs && node node_modules/.cache/incant-slash-form-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
