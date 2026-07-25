@@ -12,7 +12,8 @@
 - [x] 배포본 버전 확정 = **v2.12** (라이브 probe: move가 `custom-vector`·`angle:-90` 반환)
 - [x] **① 소스↔배포 정합** — 노트북에서 `proxy/worker.js` + `proxy/judge-output.js`(누락분) 커밋 → main으로 가져옴. geminiJudge는 **main 것 유지(#182 3.2초 보존)** + 버전 문자열만 v2.12. 버전핀 3곳 v2.12 동기화. typecheck·판정/시퀀스 회귀 5종·서버 문법 통과. (PR는 아래 링크) — ⚠️ 노트북 geminiJudge는 3.2초를 되돌린 상태였어 **안 가져옴**. judge-output.js = delivery→form 교차enum 교정용 좁은 정규화(현재 프롬프트에선 휴면), §7 repair 아님.
 - [x] **② 이슈 정리** — #180 **close**(총괄 IR NO-GO 결정 수용 + #182 3.2초·#186 정합 완료), #178 **close**(총괄 mechanic shadow 봉인 수용), #158 **open 유지**(실플레이 검증 = ③ 남음, 상태 코멘트 갱신)
-- [ ] **③ 실측(초록불 금지)** — 동일-form 세트(화염구/창/검)에 size/speed가 실제로 갈리는지 N회 라이브 측정 (①정합 이후)
+- [x] **③ size/speed + 시퀀스 실측(객관층)** — 라이브 17문장 검증: 순서·동시성 4/4, 방향각 정확(`@45`/`@-90`/`@90`), **size/speed는 크기·속도 큐에 뚜렷이 갈림**(작고빠른↔거대느린 huge/slow). 단서 없으면 기본값(medium/normal). 결과 #158 기록. 한계 2: (a) 단일 근접에 융합된 방향은 move 소실 (b) narrow축 없음(="가늘게"→small) — narrow 신설은 #170 패턴이라 **보류**. 화면 체감은 저우선.
+- [ ] **④ 방향 이동 버그 수정 (draft, 총괄 리뷰 대기)** — 실플레이서 "왼쪽/아래" 방향 이동이 어긋남 발견. 원인: `custom-vector` angle이 **표적 상대각**(프롬프트·엔진 일관)이라 화면 방향과 불일치+아래 미지원. → **화면 절대 방향**으로 전환(순수 헬퍼 `screenDirectionFromAngle`+단위테스트, 프롬프트 위0/아래180 추가, 버전핀 v2.13). [PR #187](https://github.com/jaepaly/NHN-Project/pull/187) — ⚠️머지 시 worker 재배포 필수·설계결정(상대→절대) 확인 필요.
 - [ ] **하지 말 것** — 실패 문장 프롬프트 예시 증식 · sanitizer/repair/2차호출 연쇄 · IR·compact 재도전 · form 축 추가 (전부 NO-GO 확인됨, HANDOFF §7)
 
 ---
