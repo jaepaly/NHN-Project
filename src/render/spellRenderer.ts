@@ -16,7 +16,8 @@ import {
 import { ELEMENT_PALETTES, SIZE_SCALE } from './palette';
 import {
   SLASH_CONFIG,
-  slashArcPoints,
+  slashAnchor,
+  slashCutPoints,
   slashHitCircle,
 } from '../combat-core/combat/slashConfig';
 import { AFFINITY_VFX_CONFIG } from './affinityVfx';
@@ -512,23 +513,28 @@ function endpointInDirection(
 
 /** nova — 지정 지점까지 핵을 보내 도착 시 360° 방사 폭발 */
 /**
- * 근접 참격 — 플레이어 앞을 한 번 훑는 부채꼴 호 (#188).
+ * 참격 — **적이 있는 자리**에 즉시 그어지는 초승달 호 (#188).
  *
- * 시각은 호를 따라 훑는 스윕, 판정은 **전방 원**(slashHitCircle)이다.
- * 새 impact 종류를 만들지 않는 이유: onDamageHit·onControlHit 등 모든 소비처를
- * 건드려야 해서 훨씬 큰 변경이 된다. 부채꼴을 원으로 근사하면 기존 판정이 그대로 따라온다.
+ * 시전자 앞을 휘두르면 그건 검술이지 마법이 아니다(총괄 설계 결정). 참격은 거리를
+ * 무시하고 적 자리에 발현한다 — 그게 '말이 곧 마법'에 맞고, 근접 접근을 강요하지 않아
+ * 카이팅 중심 전투 루프와도 어울린다.
  *
- * DSL(#191)이 FORMS에 'slash'를 넣고 프롬프트도 배포됐으므로 castSpell 스위치에 연결돼 있다.
- * 연결 전에는 default→castBolt로 떨어져 "칼로 벤다"가 화면에서 탄환으로 나갔다(#188 증상 그대로).
+ * bolt와의 구분: bolt는 투사체가 **날아가고**, slash는 **즉발**로 그어진다.
+ * 대신 사거리 상한(SLASH_CONFIG.maxRange)이 있어 저격이 되지 않는다.
+ *
+ * 시각(호)과 판정(원)이 **같은 지점**에 정렬된다 — 보이는 곳과 맞는 곳이 어긋나지 않게.
+ * 새 impact 종류를 만들지 않는 이유: onDamageHit·onControlHit 등 소비처를 전부
+ * 건드려야 해서 훨씬 큰 변경이 된다. 원 근사로 기존 판정이 그대로 따라온다.
  */
 export function castSlash(ctx: CastContext, spec: SpellSpec): void {
   const { scene, from } = ctx;
   const pal = ELEMENT_PALETTES[spec.element_primary];
   const scale = SIZE_SCALE[spec.size];
   const toward = ctx.to ? { x: ctx.to.x, y: ctx.to.y } : null;
-  const points = slashArcPoints(from, toward, spec.size, ctx.rangeScale);
+  const anchor = slashAnchor(from, toward, ctx.rangeScale);
+  const points = slashCutPoints(from, anchor, spec.size, spec.power, ctx.radiusScale);
 
-  // 호를 따라 훑는 스윙 — 진행도만큼만 그려 '베는 순간'이 읽히게 한다.
+  // 호를 따라 훑는 스윙 — 진행도만큼만 그려 '베고 지나간' 순간이 읽히게 한다.
   const blade = scene.add.graphics().setDepth(6)
     .setBlendMode(Phaser.BlendModes.ADD);
   const sweep = { progress: 0 };
@@ -543,8 +549,8 @@ export function castSlash(ctx: CastContext, spec: SpellSpec): void {
         .map((point) => new Phaser.Math.Vector2(point.x, point.y));
       const fade = 1 - sweep.progress * 0.35;
       blade.clear()
-        .lineStyle(9 * scale, pal.glow, 0.30 * fade).strokePoints(drawn, false)
-        .lineStyle(4 * scale, pal.core, 0.85 * fade).strokePoints(drawn, false)
+        .lineStyle(11 * scale, pal.glow, 0.30 * fade).strokePoints(drawn, false)
+        .lineStyle(5 * scale, pal.core, 0.85 * fade).strokePoints(drawn, false)
         .lineStyle(1.5, pal.accent, 0.95 * fade).strokePoints(drawn, false);
     },
     onComplete: () => {
@@ -561,10 +567,11 @@ export function castSlash(ctx: CastContext, spec: SpellSpec): void {
     requestCameraShake(scene, 'weak', 1);
   }
 
-  const hit = slashHitCircle(from, toward, spec.size, ctx.rangeScale);
-  const radius = hit.radius * (ctx.radiusScale ?? 1);
+  const hit = slashHitCircle(
+    from, toward, spec.size, spec.power, ctx.rangeScale, ctx.radiusScale,
+  );
   if (ctx.shouldResolveImpact?.() === false) return;
-  ctx.onHit?.({ kind: 'circle', x: hit.x, y: hit.y, radius }, spec);
+  ctx.onHit?.({ kind: 'circle', x: hit.x, y: hit.y, radius: hit.radius }, spec);
 }
 function castNova(ctx: CastContext, spec: SpellSpec): void {
   const { scene, from } = ctx;
