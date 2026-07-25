@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   SLASH_CONFIG,
   slashArcPoints,
@@ -87,6 +88,19 @@ const origin = { x: 0, y: 0 };
   // nova 기본 반경(120*scale + power)과 비교해도 확연히 짧아야 한다
   assert.ok(slashReach('huge') < 200, '최대 크기도 근접 사거리 유지');
   assert.ok(slashReach('small') < slashReach('huge'), '크기 스케일 유효');
+}
+
+// ── 배선 회귀: castSpell이 form='slash'를 실제 참격으로 보내는가 ──────────
+// 이 한 줄(case 'slash')이 PR 정리 과정에서 유실됐다(#189 CLOSED → #191이 DSL만 반영).
+// 유실되면 판정은 slash인데 화면은 default→castBolt가 나가 "칼로 벤다가 탄환"이 재발한다.
+{
+  const src = readFileSync('src/render/spellRenderer.ts', 'utf8');
+  const at = src.indexOf("case 'slash':");
+  assert.ok(at >= 0, "castSpell 스위치에 case 'slash'가 없다");
+  assert.ok(
+    src.slice(at, at + 120).includes('castSlash('),
+    "case 'slash'가 castSlash를 부르지 않는다 (default→castBolt로 떨어짐)",
+  );
 }
 
 console.log('Slash form regression: 사거리·호 기하·조준 추종·전방 타격원(시전자 제외) 5군 통과');

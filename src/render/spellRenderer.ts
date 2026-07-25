@@ -128,6 +128,9 @@ export function castSpell(ctx: CastContext, spec: SpellSpec): void {
     case 'cage':
       castCage(impactCtx, spec);
       break;
+    case 'slash':
+      castSlash(impactCtx, spec);
+      break;
     case 'bolt':
     default:
       // 미구현 폼은 bolt로 대체 렌더링 (후속 개발에서 12폼 구현)
@@ -515,8 +518,8 @@ function endpointInDirection(
  * 새 impact 종류를 만들지 않는 이유: onDamageHit·onControlHit 등 모든 소비처를
  * 건드려야 해서 훨씬 큰 변경이 된다. 부채꼴을 원으로 근사하면 기존 판정이 그대로 따라온다.
  *
- * 아직 `SpellForm`에 'slash'가 없어 castSpell 스위치에는 연결하지 않았다(R2 DSL 대기, #188).
- * FORMS에 추가되면 `case 'slash': castSlash(impactCtx, spec); break;` 한 줄로 붙는다.
+ * DSL(#191)이 FORMS에 'slash'를 넣고 프롬프트도 배포됐으므로 castSpell 스위치에 연결돼 있다.
+ * 연결 전에는 default→castBolt로 떨어져 "칼로 벤다"가 화면에서 탄환으로 나갔다(#188 증상 그대로).
  */
 export function castSlash(ctx: CastContext, spec: SpellSpec): void {
   const { scene, from } = ctx;
