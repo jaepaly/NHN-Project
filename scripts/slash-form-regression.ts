@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import {
   SLASH_CONFIG,
   slashAnchor,
+  slashCrescentPolygon,
   slashCutPoints,
   slashCutRadius,
   slashHitCircle,
@@ -79,6 +80,42 @@ const origin = { x: 0, y: 0 };
     (Math.max(...ys) - Math.min(...ys)) > (Math.max(...xs) - Math.min(...xs)),
     '접근 축(x)보다 가로(y)로 더 벌어져야 "가로질러 벤" 모양',
   );
+}
+
+// ── 초승달 테이퍼: 가운데는 두껍고 양 끝은 뾰족해야 한다 ──────────────
+// 폭이 일정한 호는 '기하 도형'으로 보인다(총괄 지적: "너무 가지런한 호").
+{
+  const anchor = slashAnchor(origin, { x: 200, y: 0 });
+  const poly = slashCrescentPolygon(origin, anchor, 'medium', 60);
+  assert.equal(poly.length, (SLASH_CONFIG.segments + 1) * 2, '바깥+안쪽 윤곽');
+
+  const half = poly.length / 2;
+  // 같은 인덱스의 바깥/안쪽 점 사이 거리 = 그 지점의 날 두께
+  const thickness = (i: number) => {
+    const outer = poly[i];
+    const inner = poly[poly.length - 1 - i];
+    return Math.hypot(outer.x - inner.x, outer.y - inner.y);
+  };
+  const tipStart = thickness(0);
+  const tipEnd = thickness(half - 1);
+  const middle = Math.max(...Array.from({ length: half }, (_, i) => thickness(i)));
+
+  assert.ok(middle > 0, '가운데는 두께가 있어야 한다');
+  assert.ok(tipStart < middle * 0.25, `시작 팁이 뾰족하지 않다 (${tipStart.toFixed(1)} vs ${middle.toFixed(1)})`);
+  assert.ok(tipEnd < middle * 0.25, `끝 팁이 뾰족하지 않다 (${tipEnd.toFixed(1)} vs ${middle.toFixed(1)})`);
+
+  // 두께 정점이 정중앙이 아니어야 기계적으로 안 보인다(bulgeBias)
+  let peak = 0;
+  for (let i = 1; i < half; i += 1) if (thickness(i) > thickness(peak)) peak = i;
+  assert.notEqual(peak, Math.floor((half - 1) / 2), '두께 정점이 정확히 중앙 — 대칭이라 기계적');
+
+  // 위력이 크면 날도 두꺼워진다
+  const strong = slashCrescentPolygon(origin, anchor, 'medium', 95);
+  const strongMid = Math.hypot(
+    strong[Math.floor(half / 2)].x - strong[strong.length - 1 - Math.floor(half / 2)].x,
+    strong[Math.floor(half / 2)].y - strong[strong.length - 1 - Math.floor(half / 2)].y,
+  );
+  assert.ok(strongMid > thickness(Math.floor(half / 2)), '위력이 실리면 날이 두꺼워진다');
 }
 
 // ── 배선 회귀: castSpell이 form='slash'를 실제 참격으로 보내는가 ──────
