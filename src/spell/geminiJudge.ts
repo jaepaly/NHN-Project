@@ -17,14 +17,38 @@ import { MockJudge, precheckText } from './mockJudge';
  */
 
 export const JUDGE_SCHEMA_VERSION = 2;
-export const JUDGE_PROMPT_VERSION = 'meaning-v2.6-seq';
+// r1은 프롬프트 내용이 아니라 로컬의 v2.12/v2.13/v2.14 실험 캐시를 격리하는 롤백 표식이다.
+export const JUDGE_PROMPT_VERSION = 'meaning-v2.12-seq-directional-r1';
 const CACHE_PREFIX = `incant:judge:v${JUDGE_SCHEMA_VERSION}:${JUDGE_PROMPT_VERSION}:`;
 const TIMEOUT_MS = 2500;
+
+export type JudgeFailureReason =
+  | 'timeout'
+  | 'http-error'
+  | 'invalid-json'
+  | 'invalid-contract'
+  | 'remote-fizzle'
+  | 'network-error';
+
+function classifyFailure(error: unknown): JudgeFailureReason {
+  if (typeof error === 'object' && error !== null && 'name' in error
+      && error.name === 'AbortError') {
+    return 'timeout';
+  }
+  const message = error instanceof Error ? error.message : '';
+  if (message.startsWith('proxy responded ')) return 'http-error';
+  if (message === 'invalid-json') return 'invalid-json';
+  return 'network-error';
+}
 
 export class GeminiJudge implements SpellJudge {
   readonly name = 'GeminiJudge(gemini-via-proxy)';
   /** [디버그] 직전 판정 출처 — HUD 표기용 (⑤ 폴백 빈도 관찰) */
   lastSource: 'gemini' | 'cache' | 'fallback' | 'local' = 'gemini';
+  /** DEV telemetry only: end-to-end judge latency for the latest request. */
+  lastLatencyMs = 0;
+  /** DEV telemetry only: why the latest remote request used the fallback judge. */
+  lastFailureReason: JudgeFailureReason | null = null;
   private readonly fallback: SpellJudge;
 
   constructor(
@@ -35,10 +59,13 @@ export class GeminiJudge implements SpellJudge {
   }
 
   async judge(text: string): Promise<SpellJudgement> {
+    const startedAt = Date.now();
+    this.lastFailureReason = null;
     const key = text.trim();
     const prechecked = precheckText(key);
     if (prechecked) {
       this.lastSource = 'local';
+      this.lastLatencyMs = Date.now() - startedAt;
       return prechecked;
     }
 
@@ -46,6 +73,7 @@ export class GeminiJudge implements SpellJudge {
     const cached = this.readCache(key);
     if (cached) {
       this.lastSource = 'cache';
+      this.lastLatencyMs = Date.now() - startedAt;
       return cached;
     }
 
@@ -57,16 +85,21 @@ export class GeminiJudge implements SpellJudge {
         // cast/blocked만 캐시한다. 모델 드리프트가 만든 fizzle은 캐시에 고착시키지 않는다.
         this.writeCache(key, judgement);
         this.lastSource = 'gemini';
+        this.lastLatencyMs = Date.now() - startedAt;
         return judgement;
       }
-    } catch {
+      this.lastFailureReason = judgement ? 'remote-fizzle' : 'invalid-contract';
+    } catch (error) {
+      this.lastFailureReason = classifyFailure(error);
       // 네트워크 오류·타임아웃·비정상 응답 — 아래 폴백으로 처리
     }
 
     // 4) 폴백 — 로컬 사전검사를 통과한 입력은 원격 fizzle도 모델 오류로 간주한다.
     // 명백한 키보드 매시·금칙어는 위 precheckText에서 이미 fizzle/blocked 처리됐다.
     this.lastSource = 'fallback';
-    return this.fallback.judge(text);
+    const fallbackJudgement = await this.fallback.judge(text);
+    this.lastLatencyMs = Date.now() - startedAt;
+    return fallbackJudgement;
   }
 
   /** 프록시에 POST하고 2.5초 초과 시 abort. */
@@ -81,7 +114,11 @@ export class GeminiJudge implements SpellJudge {
         signal: ctrl.signal,
       });
       if (!res.ok) throw new Error(`proxy responded ${res.status}`);
-      return await res.json();
+      try {
+        return await res.json();
+      } catch {
+        throw new Error('invalid-json');
+      }
     } finally {
       clearTimeout(timer);
     }
@@ -91,7 +128,12 @@ export class GeminiJudge implements SpellJudge {
     try {
       const hit = localStorage.getItem(CACHE_PREFIX + text);
       if (!hit) return null;
-      const judgement = validateJudgement(JSON.parse(hit));
+      const cached = JSON.parse(hit) as unknown;
+      const raw = typeof cached === 'object' && cached !== null
+        && 'plan' in cached && !('spell_plan' in cached)
+        ? { ...cached, spell_plan: cached.plan }
+        : cached;
+      const judgement = validateJudgement(raw);
       // v2.4 정책상 fizzle 캐시는 신뢰하지 않는다. 부분 배포·수동 주입에도 안전하게 무시한다.
       return judgement?.disposition === 'fizzle' ? null : judgement;
     } catch {
