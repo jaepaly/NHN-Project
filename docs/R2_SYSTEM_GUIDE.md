@@ -68,6 +68,16 @@ SpellJudgement { disposition, spell{ ...behavior?, shape? }, spell_plan? }  // �
 
 > **DSL 3형제 패턴 (behavior·shape, 그리고 size/speed)**: 프롬프트가 **생성**하고 → 검증 파일이 **화이트리스트·클램프**하고 → 렌더가 **소비**한다. 프롬프트 어휘·수치 한계는 **검증 파일의 상수와 정확히 일치**해야 한다(단일 소스). 한쪽만 바꾸면 조용히 어긋난다.
 
+### 2.1 `form` 축 심층 — 표현력 확장 시 유일한 손댈 지도
+
+프롬프트 판정에서 표현력의 핵심 열쇠. **손대기 전에 이 지도를 본다.**
+
+- **단일소스 사슬**: `types.ts:15` `FORMS`(12종: bolt·beam·wave·nova·rain·wall·cage·orbit·summon·buff·zone·chain) → `validate.ts:34` `isOneOf(FORMS, …)`(FORMS 재사용 = 검증 자동) → `spellRenderer.ts:104` `switch(spec.form)` → `palette.ts:25` `FORM_LABELS`.
+- **`size`·`speed`는 프롬프트 1~7단계에 규칙이 없다** — 출력 스키마(worker.js line 79~81)에만 존재, 모델이 직관으로 채운다. 그래서 잘 되지만(모델이 원래 강함) **가장 앵커 없는 축**. 손댈 필요 거의 없음.
+- **엔진 렌더 실태**: `bolt·beam·wave·nova·zone·rain·chain·cage`는 각자 렌더 함수. **`wall/orbit/summon/buff`는 switch에 없어 `bolt`로 폴백**(line 128 — 이들은 persistentFormConfig·behaviorRunner 등 별 시스템서 처리). `speed`가 투사체 속도를 결정 → **같은 form도 speed로 화면에서 갈린다**(예: 화염구 bolt/normal vs 화염창 bolt/fast).
+- **알려진 뭉갬 = 근접 참격(검)**: 3단계가 form을 "시각적 은유로 고르라"고만 하고 **근접 앵커가 없음** + FORMS에 **근접 개념 자체가 없음** → 화염검→beam, 얼음검→bolt로 **비일관**. DSL 표현 한계가 아니라 **앵커 부재 노이즈**.
+- **form 하나 추가 = 정확히 4곳(+버전핀 3)**: ① `types.ts` `FORMS` ② `worker.js` 프롬프트 3단계 규칙 + 스키마 form 목록 ③ `spellRenderer.ts` `switch` case + `palette.ts` 라벨 ④ 버전핀 3곳. ⚠️ **"특정 단어를 규칙으로 강제"(예: 검→beam)는 ②만 건드리는 일관성 패칭 = 과적합 함정(#170/§7).** 확장은 반드시 **개념 단위 새 form + held-out 검증 + 엔진 소비자**로.
+
 ---
 
 ## 3. 설계 원칙 (왜 이렇게 됐나)
