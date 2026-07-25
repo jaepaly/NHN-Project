@@ -11,7 +11,7 @@
 - [x] 스파이크 브랜치의 프롬프트 문서를 main으로 살림 — [PR #185](https://github.com/jaepaly/NHN-Project/pull/185) (HANDOFF + AUDIT + 정정 머리말)
 - [x] 배포본 버전 확정 = **v2.12** (라이브 probe: move가 `custom-vector`·`angle:-90` 반환)
 - [x] **① 소스↔배포 정합** — 노트북에서 `proxy/worker.js` + `proxy/judge-output.js`(누락분) 커밋 → main으로 가져옴. geminiJudge는 **main 것 유지(#182 3.2초 보존)** + 버전 문자열만 v2.12. 버전핀 3곳 v2.12 동기화. typecheck·판정/시퀀스 회귀 5종·서버 문법 통과. (PR는 아래 링크) — ⚠️ 노트북 geminiJudge는 3.2초를 되돌린 상태였어 **안 가져옴**. judge-output.js = delivery→form 교차enum 교정용 좁은 정규화(현재 프롬프트에선 휴면), §7 repair 아님.
-- [ ] **② 이슈 정리** — #180 close(IR NO-GO 결론), #158(시퀀스 watch-list)·#178(#170 중단선) 상태 정리
+- [x] **② 이슈 정리** — #180 **close**(총괄 IR NO-GO 결정 수용 + #182 3.2초·#186 정합 완료), #178 **close**(총괄 mechanic shadow 봉인 수용), #158 **open 유지**(실플레이 검증 = ③ 남음, 상태 코멘트 갱신)
 - [ ] **③ 실측(초록불 금지)** — 동일-form 세트(화염구/창/검)에 size/speed가 실제로 갈리는지 N회 라이브 측정 (①정합 이후)
 - [ ] **하지 말 것** — 실패 문장 프롬프트 예시 증식 · sanitizer/repair/2차호출 연쇄 · IR·compact 재도전 · form 축 추가 (전부 NO-GO 확인됨, HANDOFF §7)
 
