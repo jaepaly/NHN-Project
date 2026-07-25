@@ -35,6 +35,10 @@ export const SLASH_CONFIG = {
   segments: 14,
   /** 스윕 연출 시간(ms) */
   sweepMs: 190,
+  /** 잔상 호가 본 칼날보다 늦게 따라오는 간격(ms) — 휘두른 무게를 만든다 */
+  echoDelayMs: 55,
+  /** 베는 섬광이 벌어졌다 닫히는 시간(ms) */
+  flashMs: 160,
 } as const;
 
 function safeScale(value: number | undefined): number {
