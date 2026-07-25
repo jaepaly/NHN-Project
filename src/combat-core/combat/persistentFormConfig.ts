@@ -1,6 +1,26 @@
-import type { SpellSize, SpellSpeed } from '../../spell/types';
+import type { SpellSize, SpellSpeed, SpellSpec } from '../../spell/types';
 import { SHAPE_LIMITS } from '../../spell/spellShape';
 import type { SpellShape } from '../../spell/spellShape';
+
+/**
+ * 전장 장벽인가 — "얼음 장벽으로 길을 막는다"는 자기 보호막이 아니라 **벽**이다.
+ *
+ * 판정은 방어 의도를 읽어 `effect: 'shield'`로 주지만, `form: 'wall'`에 대상이 자신이
+ * 아니면 플레이어가 말한 건 **공간을 막는 구조물**이다. 이때 자기 보호막만 주면
+ * "말이 곧 마법"이 깨진다(라이브 오디트에서 화염벽·얼음장벽 둘 다 재현).
+ *
+ * 판정 프롬프트(동결된 v2.12)를 건드리지 않고 **엔진에서 의미를 살리는** 경계다 —
+ * LLM은 의도를, 로컬은 그 의도를 기존 기믹으로 확장한다.
+ */
+export function isBattlefieldWall(
+  spec: Pick<SpellSpec, 'effect' | 'form' | 'target'>,
+): boolean {
+  if (spec.form !== 'wall') return false;
+  // 기존 계약 그대로 — 공격·제어 벽은 대상과 무관하게 벽이다(자기 주위 화염벽 포함).
+  if (spec.effect === 'damage' || spec.effect === 'control') return true;
+  // 방어 의도는 **대상이 자신이 아닐 때만** 벽 — "나를 감싸는 방패"는 보호막으로 남긴다.
+  return spec.effect === 'shield' && spec.target !== 'self';
+}
 
 export interface FormPoint {
   x: number;

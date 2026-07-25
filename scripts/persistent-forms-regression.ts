@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   ORBIT_CONFIG,
   WALL_CONFIG,
+  isBattlefieldWall,
   orbitAngularVelocity,
   orbitCount,
   orbitPoint,
@@ -80,4 +81,25 @@ assert.equal(controls.movementMultiplierFor(boss), 0.6);
 controls.update(1.5);
 assert.equal(controls.movementMultiplierFor(boss), 1);
 
-console.log('Persistent forms regression: wall 원호·sweep·orbit 배치·재타격·보스 둔화 5군 통과');
+// ── 전장 장벽 판정 — "장벽으로 길을 막는다"가 자기 보호막으로 삼켜지지 않는다 ──
+// 라이브 오디트(2026-07-25): "화염벽을 세운다"·"얼음 장벽으로 길을 막는다"가 둘 다
+// shield/area/wall로 판정되는데, 엔진이 shield에서 조기 반환해 벽이 안 생기던 회귀.
+{
+  const wall = (over: Partial<{ effect: string; form: string; target: string }> = {}) => ({
+    effect: 'shield', form: 'wall', target: 'area', ...over,
+  }) as Parameters<typeof isBattlefieldWall>[0];
+
+  // 방어 의도라도 대상이 자신이 아니면 벽이다 (라이브 실측 케이스)
+  assert.equal(isBattlefieldWall(wall()), true, 'shield/area/wall → 전장 장벽');
+  assert.equal(isBattlefieldWall(wall({ target: 'enemy' })), true, 'shield/enemy/wall → 전장 장벽');
+  // "나를 감싸는 방패"는 보호막으로 남긴다
+  assert.equal(isBattlefieldWall(wall({ target: 'self' })), false, 'shield/self/wall → 보호막 유지');
+  // 기존 계약 불변 — 공격·제어 벽은 대상과 무관
+  assert.equal(isBattlefieldWall(wall({ effect: 'damage', target: 'self' })), true, 'damage 벽 불변');
+  assert.equal(isBattlefieldWall(wall({ effect: 'control', target: 'area' })), true, 'control 벽 불변');
+  // wall이 아니면 무관
+  assert.equal(isBattlefieldWall(wall({ form: 'buff' })), false, 'wall 아닌 폼은 제외');
+  assert.equal(isBattlefieldWall(wall({ effect: 'heal' })), false, 'heal은 벽이 아니다');
+}
+
+console.log('Persistent forms regression: wall 원호·sweep·orbit 배치·재타격·보스 둔화·전장장벽 6군 통과');

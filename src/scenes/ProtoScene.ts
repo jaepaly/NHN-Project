@@ -87,6 +87,7 @@ import {
 import {
   ORBIT_CONFIG,
   WALL_CONFIG,
+  isBattlefieldWall,
   orbitAngularVelocity,
   orbitCount,
   orbitPoint,
@@ -196,6 +197,7 @@ import type {
   SpellPlan,
 } from '../spell/sequencePlan';
 import { sequenceEngraveCandidate } from '../spell/sequenceEngraveCandidate';
+import { runSpellMatrixAudit, summarizeMatrix } from '../dev/spellMatrixAudit';
 import { SilenceCurseField } from '../render/silenceCurseField';
 import { BlackoutCurseField } from '../render/blackoutCurseField';
 import { showRoomCurseBanner } from '../render/roomCurseBanner';
@@ -578,6 +580,19 @@ export class ProtoScene extends Phaser.Scene {
     // 실런 재측정용 디버그 접근자 — 콘솔에서 __autoShare()로 현재 누적 확인
     (window as unknown as { __autoShare?: () => unknown }).__autoShare
       = () => this.autoShareSnapshot();
+    // 주문 소비 매트릭스 감사 — 콘솔에서 __spellMatrix(step)로 effect×form×target 전수 점검.
+    // 프레임 진행은 호출측이 넘긴다(백그라운드 탭에서는 game.loop.step을 감싸야 하므로).
+    if (import.meta.env.DEV) {
+      (window as unknown as { __spellMatrix?: (step: () => void) => unknown }).__spellMatrix
+        = (step: () => void) => {
+          const rows = runSpellMatrixAudit(
+            this as unknown as Parameters<typeof runSpellMatrixAudit>[0],
+            step,
+          );
+          console.info(summarizeMatrix(rows));
+          return rows;
+        };
+    }
     const { width, height } = this.scale;
     this.worldBounds.setTo(
       0,
@@ -3309,6 +3324,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceSystemMessage(`회복 +${Math.round(healed)} HP`, '#72f1a8');
       return;
     }
+    // 전장 장벽은 보호막보다 먼저 — "장벽으로 길을 막는다"를 자기 보호막으로 삼키지 않는다.
+    if (isBattlefieldWall(spec)) {
+      this.createWall(from, spec, options);
+      return;
+    }
     if (spec.effect === 'shield') {
       const shielded = this.playerState.addShield(
         spellShieldFromPower(spec.power) * (options?.shieldAmountScale ?? 1),
@@ -3318,10 +3338,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
     if (spec.effect === 'buff') {
       this.castSelfBuff(spec);
-      return;
-    }
-    if (spec.form === 'wall' && (spec.effect === 'damage' || spec.effect === 'control')) {
-      this.createWall(from, spec, options);
       return;
     }
     if (spec.form === 'orbit' && (spec.effect === 'damage' || spec.effect === 'control')) {
