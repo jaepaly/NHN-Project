@@ -2,105 +2,93 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   SLASH_CONFIG,
-  slashArcPoints,
+  slashAnchor,
+  slashCutPoints,
+  slashCutRadius,
   slashHitCircle,
-  slashReach,
 } from '../src/combat-core/combat/slashConfig';
 import { SIZES } from '../src/spell/types';
 
-const near = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) < eps;
+const near = (a: number, b: number, eps = 1e-6) => Math.abs(a - b) < eps;
 const origin = { x: 0, y: 0 };
 
-// ── 사거리: 크기에 따라 단조 증가, 배율 반영 ─────────────────────
+// ── 발현 지점: **적이 있는 자리** (시전자 앞이 아니라) ──────────────
+// 앞만 베면 검술이지 마법이 아니다 — 이 폼의 설계 근거(총괄 결정).
 {
-  const reaches = SIZES.map((s) => slashReach(s));
-  for (let i = 1; i < reaches.length; i += 1) {
-    assert.ok(reaches[i] > reaches[i - 1], `사거리는 크기에 따라 커져야 함: ${SIZES[i]}`);
-  }
-  assert.equal(slashReach('medium', 2), SLASH_CONFIG.reach.medium * 2, 'rangeScale 반영');
-  // 비정상 배율은 1로 (0·음수·NaN이 사거리를 0으로 접지 않게)
-  assert.equal(slashReach('medium', 0), SLASH_CONFIG.reach.medium, '0 배율은 무시');
-  assert.equal(slashReach('medium', Number.NaN), SLASH_CONFIG.reach.medium, 'NaN 배율은 무시');
+  const anchor = slashAnchor(origin, { x: 200, y: 0 });
+  assert.ok(near(anchor.x, 200) && near(anchor.y, 0), '적 자리에 그대로 발현');
+  const d = slashAnchor(origin, { x: 90, y: 120 }); // 거리 150
+  assert.ok(near(d.x, 90) && near(d.y, 120), '대각선 적도 그 자리에');
 }
 
-// ── 호: 모든 점이 사거리 위에 있고, 표적 방향을 중심으로 arcDegrees를 덮는다 ──
+// ── 사거리 상한: 즉발이라 무제한이면 저격이 된다 ────────────────────
 {
-  const toward = { x: 100, y: 0 }; // 오른쪽
-  const pts = slashArcPoints(origin, toward, 'medium');
-  const r = slashReach('medium');
-
-  assert.equal(pts.length, SLASH_CONFIG.segments + 1, '선분 수 + 1개의 점');
-  for (const p of pts) {
-    assert.ok(near(Math.hypot(p.x, p.y), r, 1e-6), '모든 점이 사거리 위');
-  }
-
-  // 중앙 점은 조준 축 위 (y≈0, x≈r)
-  const mid = pts[Math.floor(pts.length / 2)];
-  assert.ok(near(mid.y, 0, 1e-6) && near(mid.x, r, 1e-6), '호 중앙이 조준 방향');
-
-  // 양 끝이 정확히 arcDegrees만큼 벌어진다
-  const a0 = Math.atan2(pts[0].y, pts[0].x);
-  const a1 = Math.atan2(pts[pts.length - 1].y, pts[pts.length - 1].x);
-  const spanDeg = ((a1 - a0) * 180) / Math.PI;
-  assert.ok(near(spanDeg, SLASH_CONFIG.arcDegrees, 1e-6), `호 각도 ${spanDeg}`);
+  const anchor = slashAnchor(origin, { x: 2000, y: 0 });
+  assert.ok(near(Math.hypot(anchor.x, anchor.y), SLASH_CONFIG.maxRange), '상한에서 끊긴다');
+  assert.ok(anchor.x > 0, '방향은 유지');
+  const scaled = slashAnchor(origin, { x: 2000, y: 0 }, 2);
+  assert.ok(near(Math.hypot(scaled.x, scaled.y), SLASH_CONFIG.maxRange * 2), 'rangeScale 반영');
 }
 
-// ── 조준 방향을 따라간다 (아래쪽 표적이면 호도 아래로) ──────────────
-{
-  const pts = slashArcPoints(origin, { x: 0, y: 100 }, 'medium');
-  const mid = pts[Math.floor(pts.length / 2)];
-  assert.ok(mid.y > 0 && near(mid.x, 0, 1e-6), '아래 표적 → 호도 아래');
-}
-
-// ── 표적이 없거나 자기 자신이면 안전한 기본 방향 ────────────────────
+// ── 표적이 없거나 자기 자신이면 안전한 기본값 ───────────────────────
 {
   for (const toward of [null, { x: 0, y: 0 }]) {
-    const pts = slashArcPoints(origin, toward, 'medium');
-    assert.equal(pts.length, SLASH_CONFIG.segments + 1, '표적 없어도 호는 나온다');
-    for (const p of pts) {
-      assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y), 'NaN 좌표 없음');
-    }
+    const a = slashAnchor(origin, toward);
+    assert.ok(Number.isFinite(a.x) && Number.isFinite(a.y), 'NaN 좌표 없음');
+    assert.ok(a.x > 0, '표적 없으면 앞쪽에 벤다');
   }
 }
 
-// ── 타격 원: 전방에 있고, **플레이어 자신은 원 밖** ─────────────────
-// 근접인데 등 뒤까지 맞으면 방향성이 무의미해진다 — 이 불변식이 핵심.
+// ── 벤 자국 크기: 크기 단조 + **위력 반영** ─────────────────────────
+// 이전 설계는 power를 무시해 위력 90짜리와 30짜리가 같은 크기였다(nova는 반영함).
 {
-  for (const size of SIZES) {
-    const toward = { x: 100, y: 0 };
-    const c = slashHitCircle(origin, toward, size);
-    assert.ok(c.x > 0 && near(c.y, 0, 1e-6), `${size}: 원 중심이 조준 방향 앞`);
-    const distanceToPlayer = Math.hypot(c.x, c.y);
-    assert.ok(
-      distanceToPlayer > c.radius,
-      `${size}: 시전자가 타격 원 안에 들어감 (거리 ${distanceToPlayer} ≤ 반지름 ${c.radius})`,
-    );
-    // 원이 사거리를 크게 넘지 않는다 (근접이 원거리처럼 보이지 않게)
-    assert.ok(
-      distanceToPlayer + c.radius <= slashReach(size) * 1.2,
-      `${size}: 타격 범위가 사거리를 과도하게 초과`,
-    );
+  const radii = SIZES.map((s) => slashCutRadius(s, 50));
+  for (let i = 1; i < radii.length; i += 1) {
+    assert.ok(radii[i] > radii[i - 1], `크기 단조 증가: ${SIZES[i]}`);
+  }
+  assert.ok(
+    slashCutRadius('medium', 90) > slashCutRadius('medium', 30),
+    '위력이 실릴수록 크게 벤다',
+  );
+  assert.ok(slashCutRadius('medium', Number.NaN) > 0, 'NaN power 방어');
+  assert.equal(slashCutRadius('medium', 50, 0), slashCutRadius('medium', 50), '0 배율 무시');
+}
+
+// ── 시각(호)과 판정(원)이 같은 지점에 정렬 ──────────────────────────
+// 이전 설계는 호를 96px에 그리고 판정은 58px 원이라 "보이는 곳 ≠ 맞는 곳"이었다.
+{
+  const hit = slashHitCircle(origin, { x: 200, y: 0 }, 'medium', 50);
+  assert.ok(near(hit.x, 200) && near(hit.y, 0), '판정 원이 적 자리에');
+  const anchor = slashAnchor(origin, { x: 200, y: 0 });
+  const pts = slashCutPoints(origin, anchor, 'medium', 50);
+  assert.equal(pts.length, SLASH_CONFIG.segments + 1, '호 점 개수');
+  for (const p of pts) {
+    const d = Math.hypot(p.x - hit.x, p.y - hit.y);
+    assert.ok(d <= hit.radius * 1.5,
+      `호가 판정 원에서 너무 벗어남 (거리 ${d.toFixed(1)} / 반지름 ${hit.radius.toFixed(1)})`);
   }
 }
 
-// ── 원거리 폼과 확실히 구분되는 스케일 (근접다움) ────────────────────
+// ── 호가 적을 '가로지른다' — 접근 축에 수직으로 벌어진다 ─────────────
 {
-  // nova 기본 반경(120*scale + power)과 비교해도 확연히 짧아야 한다
-  assert.ok(slashReach('huge') < 200, '최대 크기도 근접 사거리 유지');
-  assert.ok(slashReach('small') < slashReach('huge'), '크기 스케일 유효');
+  const anchor = slashAnchor(origin, { x: 200, y: 0 });
+  const pts = slashCutPoints(origin, anchor, 'large', 60);
+  const ys = pts.map((p) => p.y);
+  const xs = pts.map((p) => p.x);
+  assert.ok(
+    (Math.max(...ys) - Math.min(...ys)) > (Math.max(...xs) - Math.min(...xs)),
+    '접근 축(x)보다 가로(y)로 더 벌어져야 "가로질러 벤" 모양',
+  );
 }
 
-// ── 배선 회귀: castSpell이 form='slash'를 실제 참격으로 보내는가 ──────────
-// 이 한 줄(case 'slash')이 PR 정리 과정에서 유실됐다(#189 CLOSED → #191이 DSL만 반영).
-// 유실되면 판정은 slash인데 화면은 default→castBolt가 나가 "칼로 벤다가 탄환"이 재발한다.
+// ── 배선 회귀: castSpell이 form='slash'를 실제 참격으로 보내는가 ──────
+// 이 한 줄이 PR 정리 과정에서 유실된 적 있다(#189 CLOSED → #191이 DSL만 반영).
 {
   const src = readFileSync('src/render/spellRenderer.ts', 'utf8');
   const at = src.indexOf("case 'slash':");
   assert.ok(at >= 0, "castSpell 스위치에 case 'slash'가 없다");
-  assert.ok(
-    src.slice(at, at + 120).includes('castSlash('),
-    "case 'slash'가 castSlash를 부르지 않는다 (default→castBolt로 떨어짐)",
-  );
+  assert.ok(src.slice(at, at + 120).includes('castSlash('),
+    "case 'slash'가 castSlash를 부르지 않는다 (default→castBolt로 떨어짐)");
 }
 
-console.log('Slash form regression: 사거리·호 기하·조준 추종·전방 타격원(시전자 제외) 5군 통과');
+console.log('Slash form regression: 적위치 발현·사거리상한·위력반영·시각판정 정렬·가로베기·배선 6군 통과');
