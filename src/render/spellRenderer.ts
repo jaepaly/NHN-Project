@@ -123,6 +123,10 @@ export function castSpell(ctx: CastContext, spec: SpellSpec): void {
     case 'cage':
       castCage(impactCtx, spec);
       break;
+    case 'slash':
+      // TODO(#188): castSlash 근접 호(swing) 렌더 — 총괄/전투 코어. 현재는 bolt 폴백(악화 없음).
+      castBolt(impactCtx, spec);
+      break;
     case 'bolt':
     default:
       // 미구현 폼은 bolt로 대체 렌더링 (후속 개발에서 12폼 구현)

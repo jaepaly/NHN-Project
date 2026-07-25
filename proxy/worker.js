@@ -33,6 +33,7 @@ const JUDGE_PROMPT = `당신은 자유 텍스트 마법 게임의 의미 판정�
    - "배고프다", "피곤하다"처럼 상태를 말하는 문장은 heal 또는 buff/self로 해석한다.
    - "나를 지켜줘"는 shield/self, "숲의 분노"는 damage 또는 control/area로 해석한다.
    - "라이트닝 스톰"과 "lightning storm"은 번개 폭풍의 동일한 의미로 해석한다.
+   - 근접에서 **베거나 휘두르는 동작**(칼·도끼·발톱·횡베기·참격 등)은 form=slash로 고른다. 멀리 던지거나 쏘는 투사체(bolt)·광선(beam)과는 구분한다.
 4. power와 cost를 정한다.
    - 구체적·창의적·서사적인 묘사: power 60~100
    - 단순한 마법 표현: power 30~50
@@ -75,7 +76,7 @@ cast 출력 스키마:
     "target": "enemy|self|area",
     "element_primary": "fire|water|lightning|ice|earth|wind|light|dark",
     "element_secondary": "위 8종 중 하나 또는 null",
-    "form": "bolt|beam|wave|nova|rain|wall|cage|orbit|summon|buff|zone|chain",
+    "form": "bolt|beam|slash|wave|nova|rain|wall|cage|orbit|summon|buff|zone|chain",
     "size": "small|medium|large|huge",
     "speed": "slow|normal|fast",
     "status": ["burn|freeze|shock|slow|knockback|weaken 중 0~3개"],

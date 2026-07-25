@@ -201,6 +201,8 @@ const FORM_KEYWORDS: Record<SpellForm, string[]> = {
   buff: ['강화', '가호', '축복', '갑옷', '버프', 'buff', 'enchant', 'shield'],
   zone: ['장판', '영역', '지대', '늪', '필드', 'zone', 'field'],
   chain: ['연쇄', '도약', '전이', '체인', 'chain', 'jump'],
+  // 근접 참격. 부분 문자열 오탐 방지로 '검'(검은/검다)은 넣지 않는다 — 개념 판정은 Gemini 프롬프트 몫.
+  slash: ['칼', '칼날', '참격', '도끼', '발톱', '베기', '벤다', '횡베기', '슬래시', 'slash', 'sword', 'blade', 'cleave'],
 };
 
 /**

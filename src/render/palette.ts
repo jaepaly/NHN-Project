@@ -35,6 +35,7 @@ export const FORM_LABELS: Record<SpellForm, string> = {
   buff: '강화',
   zone: '장판',
   chain: '연쇄',
+  slash: '참격',
 };
 
 // Phase 5 재정비 — 코어는 채도 높게(블룸이 흰 후광을 얹도록), 원소 간 색상(hue)은 멀게.

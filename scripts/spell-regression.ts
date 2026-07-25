@@ -79,7 +79,7 @@ const remoteJudge = new GeminiJudge('https://invalid.example');
 assert.equal((await remoteJudge.judge('ㅁㄴㅇㄹ')).disposition, 'fizzle');
 assert.equal(remoteJudge.lastSource, 'local');
 assert.equal(JUDGE_SCHEMA_VERSION, 2);
-assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.12-seq-directional-r1'); // v2.12: custom-vector 방향 이동 + judge-output 정규화 (배포본 정합, #182 3.2초 유지)
+assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.13-seq-slash'); // v2.13: 근접 참격 form=slash 신설 (#188). ⚠️버전 문자열 #187(v2.13-absdir)과 조율 — 먼저 머지되는 쪽이 v2.13
 
 assert.equal(validateJudgement({ element_primary: 'fire', form: 'bolt' }), null,
   'v1 responses must not pass v2 validation');
