@@ -4,17 +4,21 @@
 > 규칙: **푸시할 때마다 이 파일에 "현재 어디까지 했는지"를 갱신해서 함께 커밋한다.**
 > (팀 공용 1줄 기록은 [AI_USAGE_LOG.md](AI_USAGE_LOG.md), 이 파일은 R2 상세 로그)
 
-## ☑ 지금 작업 흐름 — 프롬프트 작업 마감 (2026-07-25)
+## ☑ 지금 작업 흐름 — 번역 계층 수정 (말↔화면 배신 해소) (2026-07-25)
 
-> 목적: v2.12를 균형점으로 확정한 뒤 **소스·이슈·검증을 정합**시켜 닫는다. (탐색 국면 아님 — 아래 "하지 말 것" 준수)
+> **핵심 통찰**: 이번 세션 갭들은 Gemini 이해가 아니라 **이해→화면 "번역 계층"**(DSL 어휘·프롬프트 트리거·엔진 소비)에 있었다. 실측(probe)이 "융합=단일"·"창/구/검 동일"·"이동 잘됨" 같은 가정을 계속 뒤집었다. 방향 = "더 똑똑한 프롬프트"가 아니라 **"이해를 화면까지 충실히 나르기"**. (아래 "하지 말 것" 준수)
 
-- [x] 스파이크 브랜치의 프롬프트 문서를 main으로 살림 — [PR #185](https://github.com/jaepaly/NHN-Project/pull/185) (HANDOFF + AUDIT + 정정 머리말)
-- [x] 배포본 버전 확정 = **v2.12** (라이브 probe: move가 `custom-vector`·`angle:-90` 반환)
-- [x] **① 소스↔배포 정합** — 노트북에서 `proxy/worker.js` + `proxy/judge-output.js`(누락분) 커밋 → main으로 가져옴. geminiJudge는 **main 것 유지(#182 3.2초 보존)** + 버전 문자열만 v2.12. 버전핀 3곳 v2.12 동기화. typecheck·판정/시퀀스 회귀 5종·서버 문법 통과. (PR는 아래 링크) — ⚠️ 노트북 geminiJudge는 3.2초를 되돌린 상태였어 **안 가져옴**. judge-output.js = delivery→form 교차enum 교정용 좁은 정규화(현재 프롬프트에선 휴면), §7 repair 아님.
-- [x] **② 이슈 정리** — #180 **close**(총괄 IR NO-GO 결정 수용 + #182 3.2초·#186 정합 완료), #178 **close**(총괄 mechanic shadow 봉인 수용), #158 **open 유지**(실플레이 검증 = ③ 남음, 상태 코멘트 갱신)
-- [x] **③ size/speed + 시퀀스 실측(객관층)** — 라이브 17문장 검증: 순서·동시성 4/4, 방향각 정확(`@45`/`@-90`/`@90`), **size/speed는 크기·속도 큐에 뚜렷이 갈림**(작고빠른↔거대느린 huge/slow). 단서 없으면 기본값(medium/normal). 결과 #158 기록. 한계 2: (a) 단일 근접에 융합된 방향은 move 소실 (b) narrow축 없음(="가늘게"→small) — narrow 신설은 #170 패턴이라 **보류**. 화면 체감은 저우선.
-- [ ] **④ 방향 이동 버그 수정 (draft, 총괄 리뷰 대기)** — 실플레이서 "왼쪽/아래" 방향 이동이 어긋남 발견. 원인: `custom-vector` angle이 **표적 상대각**(프롬프트·엔진 일관)이라 화면 방향과 불일치+아래 미지원. → **화면 절대 방향**으로 전환(순수 헬퍼 `screenDirectionFromAngle`+단위테스트, 프롬프트 위0/아래180 추가, 버전핀 v2.13). [PR #187](https://github.com/jaepaly/NHN-Project/pull/187) — ⚠️머지 시 worker 재배포 필수·설계결정(상대→절대) 확인 필요.
-- [ ] **하지 말 것** — 실패 문장 프롬프트 예시 증식 · sanitizer/repair/2차호출 연쇄 · IR·compact 재도전 · form 축 추가 (전부 NO-GO 확인됨, HANDOFF §7)
+**✅ 완료·배포**
+- [x] 스파이크 프롬프트 문서 살림 [#185](https://github.com/jaepaly/NHN-Project/pull/185) · 배포본 v2.12 확정
+- [x] **① 소스↔배포 정합** [#186](https://github.com/jaepaly/NHN-Project/pull/186) — `worker.js`+`judge-output.js`(노트북 미커밋분) → main, #182 3.2초 보존, 버전핀 v2.12. judge-output=좁은 교차enum 정규화(휴면).
+- [x] **② 이슈 정리** — #180·#178 **close**(총괄 IR NO-GO·mechanic shadow 수용), #158 open(watch-list, 실측 데이터 기록).
+- [x] **③ size/speed 실측** — 크기·속도 큐엔 뚜렷이 갈림. 한계: (a)융합 이동 move 소실→**⑥에서 해소** (b)narrow축 없음→보류(#170패턴). #158 기록.
+- [x] **④ 방향 이동 = 화면 절대** [#187](https://github.com/jaepaly/NHN-Project/pull/187) — **머지+배포(worker `ccbac297`)+스모크 4방향 검증 완료.** 원인=`custom-vector`가 표적 상대각이라 "왼쪽"이 엉뚱한 화면방향. `screenDirectionFromAngle`(순수+단위테스트), 위0/아래180 신규. 총괄 승인.
+
+**⏳ 남은 할일 — 번역 계층 2조각 (마저 배포)**
+- [ ] **⑤ 근접 참격 `slash` form** — "칼로 벤다"가 75% bolt(투사체)로 뭉갬(실측). **총괄 렌더 #190(`castSlash`) 머지됨·휴면**(FORMS·프롬프트에 slash 없어 안 불림). 내 DSL [#189](https://github.com/jaepaly/NHN-Project/pull/189) open → main 위로 **rebase**(총괄 castSlash에 연결·내 bolt폴백 버림) + **v2.14** + 머지 + 배포. 총괄 승인(#188, "결함수정=진행"). → 완료 시 "벤다"가 진짜 베기.
+- [ ] **⑥ 융합 이동 인식** — "파고들어 벤다"류 이동을 29%만 잡던 것(프롬프트 트리거가 명시적 순차에만 걸려서). 프롬프트 넛지(위치이동 동사는 -며/-어 융합돼도 move 단계). **프리뷰 검증 완료(융합 29%→100%·순차100%·제자리83%, 오답=애매한 "돌며" 1종만 — A채택).** 브랜치 `feat/move-fusion-experiment`. 버전핀+회귀+PR+배포 남음. ③ 한계(a) 해소. 총괄 미고지(결함수정 계열).
+- [ ] **하지 말 것** — 실패문장 예시증식·repair/2차호출 연쇄·IR/compact 재도전·**근거 없는** 축 추가 (NO-GO, HANDOFF §7). ※단 **"기존 축의 결함 수정"**(방향·slash·move판정)은 총괄이 진행 승인한 계열 — 동결 대상 아님.
 
 ---
 
