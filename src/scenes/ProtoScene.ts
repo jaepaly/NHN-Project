@@ -116,6 +116,10 @@ import {
   ROOM_CURSE_CONFIG,
   silenceManaDrainPerSecond,
 } from '../combat-core/run/roomCurse';
+import {
+  WORD_LIMIT_CURSE_CONFIG,
+  wordLimitCost,
+} from '../combat-core/run/wordLimitCurse';
 import type {
   RoomCurseAssignment,
   RoomCursePlan,
@@ -438,7 +442,7 @@ export class ProtoScene extends Phaser.Scene {
   /** 격상 Tier 3부터 스테이지별 일부 방에 배정되는 결정적 저주 계획. */
   private roomCursePlan: RoomCursePlan = {
     selectedKinds: {},
-    curseWeights: { silence: 0.5, blackout: 0.5 },
+    curseWeights: { silence: 0.5, blackout: 0.5, 'word-limit': 0.5 },
     assignments: [],
   };
   private activeRoomCurse: RoomCurseAssignment | null = null;
@@ -1140,6 +1144,13 @@ export class ProtoScene extends Phaser.Scene {
           rule: '빛/불꽃 기술을 쓰면 밝아집니다',
           color: 0x8d7dff,
         });
+      } else if (assignment.kind === 'word-limit') {
+        this.activeCurseBanner = showRoomCurseBanner(this, {
+          title: '저주: 금언',
+          subtitle: '공허는 긴 주문을 허락하지 않습니다',
+          rule: `언령 예산 ${WORD_LIMIT_CURSE_CONFIG.budget} · 짧은 말로 마법을 완성하십시오`,
+          color: 0xc084fc,
+        });
       }
     });
   }
@@ -1167,6 +1178,7 @@ export class ProtoScene extends Phaser.Scene {
     this.silenceCurseField = null;
     this.blackoutCurseField?.destroy();
     this.blackoutCurseField = null;
+    this.clearWordLimitIncantStyle();
     this.activeRoomCurse = null;
   }
 
@@ -2484,6 +2496,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           this.closeIncant();
           return;
         }
+        if (
+          this.activeRoomCurse?.kind === 'word-limit'
+          && wordLimitCost(text) > WORD_LIMIT_CURSE_CONFIG.budget
+        ) {
+          this.blockWordLimitCast();
+          return;
+        }
         this.beginJudging();
         void this.castFromText(text);
       } else if (e.key === 'Escape') {
@@ -2588,6 +2607,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.input.keyboard!.disableGlobalCapture();
     this.incantWrap.classList.add('active');
     this.incantWrap.classList.remove('judging');
+    this.incantWrap.classList.toggle(
+      'word-limit',
+      this.activeRoomCurse?.kind === 'word-limit',
+    );
     this.incantWrap.setAttribute('aria-hidden', 'false');
     this.incantBar.disabled = false;
     this.incantBar.value = '';
@@ -2597,7 +2620,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 영창은 마나 예산 결정의 순간 — 보유량과 요금표를 창 안에서 바로 보이게 한다.
     // 요금표는 비용 공식(max(5, power×0.6))의 체감 구간 — 말의 크기를 고르는 기준.
     this.incantState.textContent = `시간 흐름 10% · 마나 ${Math.floor(this.playerState.mana)}`;
-    this.incantHint.textContent = '속삭임 ~10 · 영창 ~25 · 외침 40+ — Enter 발동 · Esc 취소';
+    this.incantHint.textContent = this.activeRoomCurse?.kind === 'word-limit'
+      ? '한글 6자 · 영문 10자 상당 — Enter 발동 · Esc 취소'
+      : '속삭임 ~10 · 영창 ~25 · 외침 40+ — Enter 발동 · Esc 취소';
     this.updateIncantCharge();
     this.focusIncantBar();
   }
@@ -2614,13 +2639,42 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.incanting = false;
     this.timeScale = 1;
     this.input.keyboard!.enableGlobalCapture();
-    this.incantWrap.classList.remove('active', 'judging');
+    this.incantWrap.classList.remove(
+      'active',
+      'judging',
+      'word-limit',
+      'word-limit-over',
+      'word-limit-blocked',
+    );
     this.incantWrap.setAttribute('aria-hidden', 'true');
     this.incantBar.disabled = false;
     this.incantBar.blur();
   }
 
   private updateIncantCharge(): void {
+    if (this.activeRoomCurse?.kind === 'word-limit') {
+      const cost = wordLimitCost(this.incantBar.value);
+      const overBudget = cost > WORD_LIMIT_CURSE_CONFIG.budget;
+      const percent = Math.min(
+        100,
+        Math.round((cost / WORD_LIMIT_CURSE_CONFIG.budget) * 100),
+      );
+      this.incantWrap.style.setProperty('--charge', `${percent}%`);
+      this.incantWrap.classList.remove('word-limit-blocked');
+      this.incantWrap.classList.toggle('word-limit-over', overBudget);
+      this.incantHint.textContent = '한글 6자 · 영문 10자 상당 — Enter 발동 · Esc 취소';
+      this.incantCount.textContent = `금언 ${cost} / ${WORD_LIMIT_CURSE_CONFIG.budget}`;
+      this.incantChargeLabel.textContent = cost === 0
+        ? '언령 대기'
+        : overBudget
+          ? '금언 초과'
+          : cost >= WORD_LIMIT_CURSE_CONFIG.budget * 0.7
+            ? '언령 한계 접근'
+            : '언령 압축 중';
+      return;
+    }
+
+    this.incantWrap.classList.remove('word-limit-over', 'word-limit-blocked');
     const length = Array.from(this.incantBar.value).length;
     const percent = Math.min(100, Math.round((length / 24) * 100));
     this.incantWrap.style.setProperty('--charge', `${percent}%`);
@@ -2632,6 +2686,29 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         : percent < 100
           ? '공명 상승'
           : '최대 공명';
+  }
+
+  private blockWordLimitCast(): void {
+    this.audio.playSfx('fizzle');
+    this.incantHint.textContent = '금언 · 더 짧은 언령으로 압축하세요';
+    this.incantWrap.classList.remove('word-limit-blocked');
+    void this.incantWrap.offsetWidth;
+    this.incantWrap.classList.add('word-limit-blocked');
+    this.announceSystemMessage(
+      '금언 · 더 짧은 언령으로 압축하세요',
+      '#e3b4ff',
+      2400,
+    );
+    this.focusIncantBar();
+  }
+
+  private clearWordLimitIncantStyle(): void {
+    if (!this.incantWrap) return;
+    this.incantWrap.classList.remove(
+      'word-limit',
+      'word-limit-over',
+      'word-limit-blocked',
+    );
   }
 
   private beginJudging(): void {
@@ -2652,7 +2729,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.clearSequenceProgress();
     this.timeScale = 1;
     this.input.keyboard!.enableGlobalCapture();
-    this.incantWrap.classList.remove('active', 'judging');
+    this.incantWrap.classList.remove(
+      'active',
+      'judging',
+      'word-limit',
+      'word-limit-over',
+      'word-limit-blocked',
+    );
     this.incantWrap.setAttribute('aria-hidden', 'true');
     this.incantBar.disabled = false;
   }

@@ -1,18 +1,20 @@
 import type { EncounterDefinition } from '../../run/runContract';
 import type { CurseBehaviorMemory } from '../../spell/runMemory';
+import { wordLimitBehaviorWeight } from './wordLimitCurse';
 
-export type RoomCurseKind = 'silence' | 'blackout';
+export type RoomCurseKind = 'silence' | 'blackout' | 'word-limit';
 export type RoomCurseCategory = 'movement' | 'element' | 'casting';
 
 export const ROOM_CURSE_CATEGORY_BY_KIND = {
   silence: 'movement',
   blackout: 'element',
+  'word-limit': 'casting',
 } as const satisfies Record<RoomCurseKind, RoomCurseCategory>;
 
 export const ROOM_CURSE_POOL_BY_CATEGORY = {
   movement: ['silence'],
   element: ['blackout'],
-  casting: [],
+  casting: ['word-limit'],
 } as const satisfies Record<RoomCurseCategory, readonly RoomCurseKind[]>;
 
 export interface RoomCurseAssignment {
@@ -22,7 +24,7 @@ export interface RoomCurseAssignment {
 }
 
 export interface RoomCursePlan {
-  /** 이번 런에서 카테고리별로 선택된 저주. 현재는 이동/원소 각 1종이다. */
+  /** 이번 런에서 실제 방 몫을 받은 카테고리별 선택 저주. */
   selectedKinds: Readonly<Partial<Record<RoomCurseCategory, RoomCurseKind>>>;
   /** 직전 런 행동으로 계산한 저주 후보별 우선도. */
   curseWeights: Readonly<Record<RoomCurseKind, number>>;
@@ -49,8 +51,8 @@ export const ROOM_CURSE_CONFIG = {
  * 스테이지별 적용 가능 전투방의 약 40%를 저주방으로 뽑는다.
  * 최소 한 방은 정상 규칙으로 남기며, 같은 난수열이면 같은 계획을 돌려준다.
  *
- * 현재 플레이 가능한 저주는 침묵뿐이다. 암전이 완성되면 candidates만 확장하고
- * 주/보조 1:1 배분은 이 계획 계층에서 담당한다.
+ * 활성 카테고리가 저주방 수보다 많으면 결정적 난수로 일부 카테고리만 노출하고,
+ * 선택된 저주들의 균등 배분은 이 계획 계층에서 담당한다.
  */
 export function createRoomCursePlan(
   encounters: readonly EncounterDefinition[],
@@ -112,6 +114,7 @@ export function roomCurseWeights(
     return {
       silence: ROOM_CURSE_BEHAVIOR_CONFIG.neutralWeight,
       blackout: ROOM_CURSE_BEHAVIOR_CONFIG.neutralWeight,
+      'word-limit': ROOM_CURSE_BEHAVIOR_CONFIG.neutralWeight,
     };
   }
   return {
@@ -121,6 +124,11 @@ export function roomCurseWeights(
     blackout: behavior.manualCastCount < ROOM_CURSE_BEHAVIOR_CONFIG.minimumManualCasts
       ? ROOM_CURSE_BEHAVIOR_CONFIG.neutralWeight
       : 1 - clamp01(behavior.lightFireCastCount / behavior.manualCastCount),
+    'word-limit': wordLimitBehaviorWeight(
+      behavior.wordLimitTopQuartileCost,
+      behavior.manualCastCount,
+      ROOM_CURSE_BEHAVIOR_CONFIG.neutralWeight,
+    ),
   };
 }
 

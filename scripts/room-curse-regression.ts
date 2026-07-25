@@ -11,6 +11,11 @@ import {
   selectRoomCursesByCategory,
   silenceManaDrainPerSecond,
 } from '../src/combat-core/run/roomCurse';
+import {
+  WORD_LIMIT_CURSE_CONFIG,
+  topQuartileWordLimitCost,
+  wordLimitCost,
+} from '../src/combat-core/run/wordLimitCurse';
 
 const encounters: EncounterDefinition[] = [
   { id: '1a', stage: 1, kind: 'combat', rewardAfterClear: true, waveSetId: 'a' },
@@ -25,20 +30,28 @@ assert.equal(ROOM_CURSE_CONFIG.silenceRadius, 185);
 assert.equal(ROOM_CURSE_CONFIG.silenceManaDrainRatio, 0.05);
 assert.equal(ROOM_CURSE_CONFIG.blackoutVisionRadius, 95);
 assert.equal(ROOM_CURSE_CONFIG.blackoutIlluminationSeconds, 4);
+assert.equal(WORD_LIMIT_CURSE_CONFIG.budget, 30);
+assert.equal(wordLimitCost('화염폭발'), 20, '한글은 grapheme당 5');
+assert.equal(wordLimitCost('fire blast'), 27, '영문은 글자당 3, 공백은 무료');
+assert.equal(wordLimitCost('fire폭발!'), 23, '혼합 언령과 기호 비용 합산');
+assert.equal(wordLimitCost('폭발하라!'), 21, '기호는 1');
+assert.equal(wordLimitCost('화염 폭발해라'), 30, '한글 6자는 예산 경계에서 허용');
+assert.equal(wordLimitCost('화염 폭발해라!'), 31, '기호 하나를 더하면 예산 초과');
+assert.equal(topQuartileWordLimitCost(['a', 'fire', '화염폭발', '거대한 화염 폭발']), 35);
 assert.equal(createRoomCursePlan(encounters, false, () => 0).assignments.length, 0);
 
 const plan = createRoomCursePlan(encounters, true, () => 0.25);
 assert.deepEqual(
   plan.selectedKinds,
-  { movement: 'silence', element: 'blackout' },
-  '런마다 이동/원소 카테고리에서 저주를 각각 1종 선택',
+  { element: 'blackout', casting: 'word-limit' },
+  '세 카테고리 중 이번 런 몫을 받은 두 카테고리에서 저주를 각각 1종 선택',
 );
 assert.equal(plan.assignments.length, 2, '3방 스테이지마다 40% 반올림 = 1방');
 assert.deepEqual(plan.assignments.map((assignment) => assignment.stage), [1, 2]);
 assert.deepEqual(
   plan.assignments.map((assignment) => assignment.kind),
-  ['blackout', 'silence'],
-  '스테이지 경계를 넘어 주·보조 저주를 1:1로 교대 배정',
+  ['blackout', 'word-limit'],
+  '스테이지 경계를 넘어 선택된 두 저주를 1:1로 교대 배정',
 );
 assert.ok(plan.assignments.every((assignment) => !('level' in assignment)));
 assert.equal(
@@ -56,15 +69,19 @@ assert.deepEqual(
     movementDistance: 12_000,
     manualCastCount: 10,
     lightFireCastCount: 2,
+    wordLimitTopQuartileCost: 36,
   }),
-  { silence: 1, blackout: 0.8 },
+  { silence: 1, blackout: 0.8, 'word-limit': 0.8 },
   '직전 행동을 저주 후보별 가중치로 계산',
 );
-assert.deepEqual(roomCurseWeights(), { silence: 0.5, blackout: 0.5 });
+assert.deepEqual(
+  roomCurseWeights(),
+  { silence: 0.5, blackout: 0.5, 'word-limit': 0.5 },
+);
 assert.equal(
   selectHighestWeightedCurse(
     ['silence', 'blackout'],
-    { silence: 0.2, blackout: 0.9 },
+    { silence: 0.2, blackout: 0.9, 'word-limit': 0.5 },
     () => 0.5,
   ),
   'blackout',
@@ -82,11 +99,20 @@ assert.deepEqual(
       element: ['silence', 'blackout'],
       casting: ['blackout'],
     },
-    { silence: 1, blackout: 0.8 },
+    { silence: 1, blackout: 0.8, 'word-limit': 0.5 },
     () => 0,
   ),
   { movement: 'silence', element: 'blackout' },
   '다른 행동 카테고리의 저주는 후보 풀에서 제외',
+);
+assert.deepEqual(
+  selectRoomCursesByCategory(
+    { casting: ['word-limit'] },
+    { silence: 0.5, blackout: 0.5, 'word-limit': 1 },
+    () => 0.5,
+  ),
+  { casting: 'word-limit' },
+  '금언은 영창 카테고리의 활성 후보로 등록',
 );
 
 const denseStage: EncounterDefinition[] = Array.from({ length: 5 }, (_, index) => ({
@@ -99,8 +125,8 @@ const denseStage: EncounterDefinition[] = Array.from({ length: 5 }, (_, index) =
 const mixedPlan = createRoomCursePlan(denseStage, true, () => 0.5);
 assert.deepEqual(
   mixedPlan.assignments.map((assignment) => assignment.kind),
-  ['silence', 'blackout'],
-  '저주방이 2개 이상이면 침묵과 암전을 교대로 배정',
+  ['silence', 'word-limit'],
+  '저주방이 2개 이상이면 선택된 두 카테고리 저주를 교대로 배정',
 );
 
 const tinyStage: EncounterDefinition[] = [
