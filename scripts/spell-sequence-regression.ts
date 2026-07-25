@@ -8,6 +8,7 @@ import {
   debugSpellPlan,
   maxSequenceDurationMs,
   resolveSpellPlan,
+  screenDirectionFromAngle,
   SEQUENCE_PLAN_LIMITS,
   type FormBehavior,
   type SpellPlan,
@@ -261,4 +262,27 @@ assert.equal(barrageEngrave.form, 'rain',
 assert.equal(barrageEngrave.power, 80,
   'four eligible attacks pool their budget while the excluded wall contributes nothing');
 
+// custom-vector 화면 절대 방향 매핑 (버그 수정: 표적 상대 → 화면 절대)
+// 위=0 기준 시계방향. "왼쪽"은 표적 위치와 무관하게 항상 화면 왼쪽이어야 한다.
+const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
+const dirCases: Array<[number, number, number, string]> = [
+  [0, 0, -1, '위(0) → (0,-1)'],
+  [90, 1, 0, '오른쪽(90) → (1,0)'],
+  [180, 0, 1, '아래(180) → (0,1)'],
+  [-90, -1, 0, '왼쪽(-90) → (-1,0)'],
+  [45, Math.SQRT1_2, -Math.SQRT1_2, '비스듬 위-오른쪽(45)'],
+  [-45, -Math.SQRT1_2, -Math.SQRT1_2, '비스듬 위-왼쪽(-45)'],
+];
+for (const [deg, ex, ey, label] of dirCases) {
+  const d = screenDirectionFromAngle(deg);
+  assert.ok(near(d.x, ex) && near(d.y, ey),
+    `screenDirectionFromAngle: ${label} 이어야 하는데 (${d.x.toFixed(3)},${d.y.toFixed(3)})`);
+}
+// 단위 벡터 보존
+for (const deg of [0, 33, 90, 137, 180, -12, -90, 271]) {
+  const d = screenDirectionFromAngle(deg);
+  assert.ok(near(Math.hypot(d.x, d.y), 1), `방향 벡터는 단위여야 함 (angle=${deg})`);
+}
+
 console.info('spell sequence regression: normalization, budgets, and debug fixtures passed');
+console.info('custom-vector 화면 절대 방향 매핑: 6방향 + 단위벡터 통과');
