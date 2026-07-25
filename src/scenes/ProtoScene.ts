@@ -187,6 +187,7 @@ import {
   behaviorUsesAnyElement,
   debugSpellPlan,
   resolveSpellPlan,
+  screenDirectionFromAngle,
   SEQUENCE_PLAN_LIMITS,
   tuningScale,
 } from '../spell/sequencePlan';
@@ -3284,11 +3285,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           .rotate(Phaser.Math.FloatBetween(-Math.PI, Math.PI))
           .scale(requestedDistance));
         break;
-      case 'custom-vector':
-        destination = from.clone().add(baseDirection.clone()
-          .rotate(Phaser.Math.DegToRad(behavior.angle ?? 0))
-          .scale(requestedDistance));
+      case 'custom-vector': {
+        // 화면 절대 방향(위=0 기준 시계방향). 표적 위치와 무관 — "왼쪽"은 항상 화면 왼쪽.
+        // (기존엔 baseDirection(표적 방향) 기준 상대각이라 적 위치에 따라 방향이 어긋났다.)
+        const dir = screenDirectionFromAngle(behavior.angle ?? 0);
+        destination = from.clone().add(
+          new Phaser.Math.Vector2(dir.x, dir.y).scale(requestedDistance),
+        );
         break;
+      }
       case 'away-from-target':
         destination = from.clone().subtract(baseDirection.clone().scale(requestedDistance));
         break;
