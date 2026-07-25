@@ -79,7 +79,7 @@ const remoteJudge = new GeminiJudge('https://invalid.example');
 assert.equal((await remoteJudge.judge('ㅁㄴㅇㄹ')).disposition, 'fizzle');
 assert.equal(remoteJudge.lastSource, 'local');
 assert.equal(JUDGE_SCHEMA_VERSION, 2);
-assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.6-seq'); // v2.6: 영창 시퀀스 spell_plan 프롬프트 + 캐시 접두 분리 (#128 gate)
+assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.12-seq-directional-r1'); // v2.12: custom-vector 방향 이동 + judge-output 정규화 (배포본 정합, #182 3.2초 유지)
 
 assert.equal(validateJudgement({ element_primary: 'fire', form: 'bolt' }), null,
   'v1 responses must not pass v2 validation');
