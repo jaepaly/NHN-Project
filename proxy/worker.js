@@ -57,7 +57,7 @@ const JUDGE_PROMPT = `당신은 자유 텍스트 마법 게임의 의미 판정�
    - sequences: 순차 사건을 앞에서부터 단계로 나눈다(최대 10). 같은 순간의 사건은 한 단계의 behaviors로 병렬 배치(최대 5).
    - behavior type은 셋뿐: form(공격·효과, spec은 위 cast 스키마와 같은 필드)·move(이동, element 필수)·wait(정적·박자).
    - move.destination은 이 6개만: cast-point|target-direction|away-from-target|random-direction|arena-center|custom-vector. move 하나마다 총 power의 10%를 쓴다.
-   - 왼쪽·오른쪽처럼 표적을 바라보는 기준의 상대 방향이 명시되면 custom-vector를 쓰고 angle을 넣는다(왼쪽 -90, 오른쪽 90, 비스듬한 왼쪽 -45, 비스듬한 오른쪽 45). distance는 1~420이다.
+   - 왼쪽·오른쪽·위·아래처럼 화면 절대 방향이 명시되면 custom-vector를 쓰고 angle을 넣는다(화면 위=0 기준 시계방향: 위 0, 오른쪽 90, 아래 180, 왼쪽 -90, 비스듬 위-왼쪽 -45, 비스듬 위-오른쪽 45). 표적 위치와 무관하게 그 화면 방향으로 이동한다. distance는 1~420이다.
    - power와 durationMs(500~3000)는 전체 예산이다. behavior마다 새로 만들지 않는다. spec.power와 spec.cost는 0으로 둔다(로컬이 재계산).
    - 절대 픽셀·초·피해값·적 위치·무적을 만들지 않는다. 스키마에 없는 type/원소/form을 창작하지 않는다.
    예시(아래 문장 자체를 외우지 말고 "여러 동작을 시간축/동시로 쪼갠다"는 원리를 익혀라):

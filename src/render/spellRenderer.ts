@@ -14,6 +14,11 @@ import {
   zoneDurationSeconds,
 } from '../combat-core/combat/areaSpellConfig';
 import { ELEMENT_PALETTES, SIZE_SCALE } from './palette';
+import {
+  SLASH_CONFIG,
+  slashArcPoints,
+  slashHitCircle,
+} from '../combat-core/combat/slashConfig';
 import { AFFINITY_VFX_CONFIG } from './affinityVfx';
 import { requestCameraShake } from './cameraShake';
 import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
@@ -124,8 +129,7 @@ export function castSpell(ctx: CastContext, spec: SpellSpec): void {
       castCage(impactCtx, spec);
       break;
     case 'slash':
-      // TODO(#188): castSlash 근접 호(swing) 렌더 — 총괄/전투 코어. 현재는 bolt 폴백(악화 없음).
-      castBolt(impactCtx, spec);
+      castSlash(impactCtx, spec);
       break;
     case 'bolt':
     default:
@@ -507,6 +511,60 @@ function endpointInDirection(
 }
 
 /** nova — 지정 지점까지 핵을 보내 도착 시 360° 방사 폭발 */
+/**
+ * 근접 참격 — 플레이어 앞을 한 번 훑는 부채꼴 호 (#188).
+ *
+ * 시각은 호를 따라 훑는 스윕, 판정은 **전방 원**(slashHitCircle)이다.
+ * 새 impact 종류를 만들지 않는 이유: onDamageHit·onControlHit 등 모든 소비처를
+ * 건드려야 해서 훨씬 큰 변경이 된다. 부채꼴을 원으로 근사하면 기존 판정이 그대로 따라온다.
+ *
+ * DSL(#189)이 FORMS에 'slash'를 추가하면서 castSpell 스위치에 연결됐다(#188).
+ */
+export function castSlash(ctx: CastContext, spec: SpellSpec): void {
+  const { scene, from } = ctx;
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const scale = SIZE_SCALE[spec.size];
+  const toward = ctx.to ? { x: ctx.to.x, y: ctx.to.y } : null;
+  const points = slashArcPoints(from, toward, spec.size, ctx.rangeScale);
+
+  // 호를 따라 훑는 스윙 — 진행도만큼만 그려 '베는 순간'이 읽히게 한다.
+  const blade = scene.add.graphics().setDepth(6)
+    .setBlendMode(Phaser.BlendModes.ADD);
+  const sweep = { progress: 0 };
+  scene.tweens.add({
+    targets: sweep,
+    progress: 1,
+    duration: SLASH_CONFIG.sweepMs,
+    ease: 'Cubic.easeOut',
+    onUpdate: () => {
+      const count = Math.max(2, Math.round(points.length * sweep.progress));
+      const drawn = points.slice(0, count)
+        .map((point) => new Phaser.Math.Vector2(point.x, point.y));
+      const fade = 1 - sweep.progress * 0.35;
+      blade.clear()
+        .lineStyle(9 * scale, pal.glow, 0.30 * fade).strokePoints(drawn, false)
+        .lineStyle(4 * scale, pal.core, 0.85 * fade).strokePoints(drawn, false)
+        .lineStyle(1.5, pal.accent, 0.95 * fade).strokePoints(drawn, false);
+    },
+    onComplete: () => {
+      scene.tweens.add({
+        targets: blade,
+        alpha: 0,
+        duration: 110,
+        onComplete: () => blade.destroy(),
+      });
+    },
+  });
+
+  if (ctx.allowCameraShake !== false) {
+    requestCameraShake(scene, 'weak', 1);
+  }
+
+  const hit = slashHitCircle(from, toward, spec.size, ctx.rangeScale);
+  const radius = hit.radius * (ctx.radiusScale ?? 1);
+  if (ctx.shouldResolveImpact?.() === false) return;
+  ctx.onHit?.({ kind: 'circle', x: hit.x, y: hit.y, radius }, spec);
+}
 function castNova(ctx: CastContext, spec: SpellSpec): void {
   const { scene, from } = ctx;
   const pal = ELEMENT_PALETTES[spec.element_primary];

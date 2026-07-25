@@ -52,6 +52,17 @@ export interface MoveBehavior {
   angle?: number;
 }
 
+/**
+ * 화면 절대 방향 각도(도 단위, **화면 위=0 기준 시계방향**)를 단위 방향 벡터로 변환한다.
+ *   위 0 → (0,-1) · 오른쪽 90 → (1,0) · 아래 180 → (0,1) · 왼쪽 -90 → (-1,0)
+ * custom-vector 이동이 표적 위치와 **무관하게** 플레이어가 말한 화면 방향으로 가도록 한다.
+ * (기존엔 표적 방향 기준 상대각이라 "왼쪽"이 적 위치에 따라 엉뚱한 화면 방향으로 갔다.)
+ */
+export function screenDirectionFromAngle(angleDeg: number): { x: number; y: number } {
+  const rad = (angleDeg * Math.PI) / 180;
+  return { x: Math.sin(rad), y: -Math.cos(rad) };
+}
+
 export interface WaitBehavior {
   type: 'wait';
 }
