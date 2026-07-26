@@ -12,6 +12,7 @@ import {
   screenDirectionFromAngle,
   SEQUENCE_PLAN_LIMITS,
   SEQUENCE_FLOW_CONFIG,
+  moveChainRoles,
   sequenceFlowTimeline,
   type FormBehavior,
   type SpellPlan,
@@ -336,6 +337,66 @@ console.info('custom-vector 화면 절대 방향 매핑: 6방향 + 단위벡터 
     '무적이 실효 시간과 어긋난다 — 오버랩 후 무적이 연출보다 길게 남는다');
   assert.ok(scene.includes('[...timeline.boundaries]'),
     '진행바 경계가 실효 타임라인을 쓰지 않는다');
+}
+
+// ── move 체인 이징 (총괄 피드백 2차: "아직 스무스하지 않다") ──────────
+// 오버랩만으론 부족 — easeInOut 연쇄가 매 인계마다 정지·재가속했다.
+{
+  const mv = (durationMs: number) => ({
+    durationMs,
+    behaviors: [{ type: 'move' as const, destination: 'target-direction' as const }],
+  });
+  const fm = (durationMs: number) => ({
+    durationMs,
+    behaviors: [{ type: 'form' as const, form: 'bolt' as const, element: 'fire' as const }],
+  });
+  const wt = (durationMs: number) => ({
+    durationMs,
+    behaviors: [{ type: 'wait' as const }],
+  });
+
+  assert.deepEqual(moveChainRoles([mv(500)]), ['solo'], '혼자면 solo');
+  assert.deepEqual(
+    moveChainRoles([mv(500), mv(500), mv(500)]),
+    ['lead', 'mid', 'tail'],
+    '3연속 이동 = 가속·등속·감속 — 이게 "슥슥"의 정체',
+  );
+  assert.deepEqual(
+    moveChainRoles([mv(500), fm(500), mv(500)]),
+    ['solo', null, 'solo'],
+    'move 아닌 시퀀스가 끼면 체인 아님',
+  );
+  assert.deepEqual(
+    moveChainRoles([mv(500), wt(300), mv(500)]),
+    ['solo', null, 'solo'],
+    'wait는 체인을 끊는다 — 정지가 의도인 자리',
+  );
+  assert.deepEqual(moveChainRoles([]), [], '빈 배열 안전');
+
+  // 씬 배선 — 역할이 실제 이징으로 이어지는가
+  const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+  assert.ok(scene.includes('moveChainRoles(plan.sequences)'), '씬이 체인 역할을 계산하지 않는다');
+  assert.ok(scene.includes("chainRole === 'lead'"), '이징 분기가 없다');
+  assert.ok(scene.includes("? 'Linear'"),
+    '중간 이동이 등속(Linear)이 아니다 — 인계 순간 속도가 끊긴다');
+
+  // 인계 1프레임 정지 방지 — 새 트윈이 다음 틱부터 움직이므로, 이전 트윈을
+  // 같은 프레임에 stop하면 인계 프레임 속도 0 + 다음 프레임 스파이크(실측 7.07).
+  // 이전 트윈은 살려두고 나중 add가 위치를 덮어쓰게 한다.
+  const moveBody = scene.slice(
+    scene.indexOf('private executeSequenceMove'),
+    scene.indexOf('private applySpellEffect'),
+  );
+  assert.ok(moveBody.length > 500, '전제: executeSequenceMove 본문을 못 찾음');
+  assert.ok(scene.includes('sequenceMoveTweens.push(tween)'),
+    '이동 트윈이 배열로 추적되지 않는다 — 시퀀스 종료 시 잔여 트윈이 안 멈춘다');
+  // stop은 즉시 이동(durationMs <= 0) 분기 안에만 허용 — 트윈 경로 직전 stop 금지
+  const instantAt = moveBody.indexOf('durationMs <= 0');
+  const tweenAddAt = moveBody.indexOf('this.tweens.add');
+  const beforeInstant = moveBody.slice(0, instantAt);
+  assert.ok(!beforeInstant.includes('.stop()'),
+    '트윈 인계 전에 이전 트윈을 멈춘다 — 인계 1프레임 정지가 재발한다');
+  assert.ok(instantAt >= 0 && tweenAddAt > instantAt, '전제: 분기 순서가 바뀜 — 검사 갱신 필요');
 }
 
 
