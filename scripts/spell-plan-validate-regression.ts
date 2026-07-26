@@ -269,9 +269,14 @@ assert.equal(validateSpellPlan({ sequences: [{ behaviors: [] }] }), null, '빈 b
   for (const text of [
     '화염구를 던진다',
     '며칠 전의 불꽃을 되살린다',
-    '불사조의 낙화',
   ]) {
     assert.equal(judgeTimeoutMs(text), 2500, `단일 입력이 복합으로 샜다: ${text}`);
+  }
+
+  // v2.15: 동작성 추상 이름은 이제 시퀀스로 확장되므로 3.2초 예산을 받아야 한다 (#200 C안·#203 공격적 절충안).
+  // (이전엔 단일이라 2.5초였다 — '불사조의 낙화'가 여기로 이동. MOTION_SIGNALS가 낙화·비행·추격을 잡는다.)
+  for (const text of ['불사조의 낙화', '천둥새의 비행', '얼어붙은 추격전']) {
+    assert.equal(judgeTimeoutMs(text), 3200, `동작성 추상은 3.2초 예산이어야 한다: ${text}`);
   }
 }
 

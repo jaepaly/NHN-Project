@@ -79,7 +79,7 @@ const remoteJudge = new GeminiJudge('https://invalid.example');
 assert.equal((await remoteJudge.judge('ㅁㄴㅇㄹ')).disposition, 'fizzle');
 assert.equal(remoteJudge.lastSource, 'local');
 assert.equal(JUDGE_SCHEMA_VERSION, 2);
-assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.14-slash-move'); // v2.14: 근접 slash form(#188) + 융합 이동 인식(위치이동 동사는 -며/-어 융합돼도 move)
+assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.15-abstract-seq'); // v2.15: 추상 영창→시퀀스 확장(#200 C안·#203 절충안 — 이름 신호 기반, heal/shield/buff 금지·수사 존중·≤3 캡)
 
 assert.equal(validateJudgement({ element_primary: 'fire', form: 'bolt' }), null,
   'v1 responses must not pass v2 validation');
