@@ -1,38 +1,26 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import {
-  AFFINITY_ROWS,
-  accrueUseAffinity,
-  rankAffinities,
-  USE_AFFINITY,
-} from '../src/combat-core/run/useAffinity';
+import { AFFINITY_ROWS, rankAffinities } from '../src/combat-core/run/useAffinity';
+import { CombatRunController } from '../src/combat-core/run/runController';
+import { PlayerCombatState } from '../src/combat-core/player/playerCombatState';
 
-// ── 원소별로 따로 오른다 — 두 번째 원소를 써도 성장한다 ──────────────
+// ── 제보된 시나리오 그대로: 화염1 → 얼음1 → 얼음1 ────────────────────
 // 총괄 제보: "첫 주문을 화염으로 하면 다음 주문을 다른 속성으로 해도 친화가 안 뜬다."
-// 내부 성장 자체는 원소별로 독립이어야 한다(HUD가 감췄을 뿐).
+// 성장 자체(accrual·상한·원소독립)는 use-affinity-regression이 이미 지킨다. 여기서
+// 지키는 건 **그 성장이 화면에 도달하는지** — 성장과 표시를 잇는 지점이다.
 {
-  const added: Record<string, number> = {};
-  const affinity: Record<string, number> = {};
-  const cast = (element: string) => {
-    const r = accrueUseAffinity(added[element] ?? 0);
-    added[element] = r.nextAddedSoFar;
-    affinity[element] = (affinity[element] ?? 0) + r.added;
-  };
-  cast('fire');
-  cast('ice');
-  cast('ice');
-  assert.ok(affinity.fire > 0, '첫 원소가 오른다');
-  assert.ok(affinity.ice > 0, '두 번째 원소도 오른다 — 소모가 아니다');
-  assert.ok(affinity.ice > affinity.fire, '더 많이 쓴 쪽이 더 높다');
-  // 상한도 원소별로 따로 걸린다 (한 원소를 채워도 다른 원소는 자유롭다)
-  for (let i = 0; i < 100; i += 1) cast('fire');
-  assert.ok(
-    Math.abs(added.fire - USE_AFFINITY.useCap) < 1e-9,
-    '사용 상한은 원소마다 개별 적용',
-  );
-  const before = affinity.ice;
-  cast('ice');
-  assert.ok(affinity.ice > before, '한 원소가 상한이어도 다른 원소는 계속 오른다');
+  const c = new CombatRunController({ playerState: new PlayerCombatState() });
+  const shown = () => rankAffinities(c.state.elementalAffinity).map((r) => r.element);
+
+  c.growAffinityFromUse('fire');
+  assert.deepEqual(shown(), ['fire'], '첫 원소가 뜬다');
+
+  c.growAffinityFromUse('ice');
+  assert.deepEqual(shown(), ['fire', 'ice'],
+    '두 번째 원소가 **주력을 넘기 전에도** 화면에 나타나야 한다 — 이게 제보된 결함');
+
+  c.growAffinityFromUse('ice');
+  assert.deepEqual(shown(), ['ice', 'fire'], '더 많이 쓴 쪽이 주력 자리로 올라온다');
 }
 
 // ── 순위: 큰 값부터, 0은 빼고, 상위 N개만 ──────────────────────────
@@ -84,5 +72,5 @@ import {
 }
 
 console.log(
-  'Affinity rank regression: 원소별 독립 성장·개별 상한·내림차순·0제외·NaN방어·동점안정·HUD배선 6군 통과',
+  'Affinity rank regression: 제보시나리오·내림차순·0제외·NaN방어·동점안정·HUD배선 6군 통과',
 );
