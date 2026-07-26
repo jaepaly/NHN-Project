@@ -3409,7 +3409,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       from,
       to,
       chainPath: chainTargets,
-      allowCameraShake: !auto,
+      // 자동 시전은 셰이크를 막는다(4초마다 흔들리면 피로하다). 단 **진화 각인만**
+      // 예외다 — auto인데 연출 격하가 0인 조합은 진화뿐이라 그걸로 판별한다.
+      // 진화는 huge라 spellRenderer가 셰이크 등급을 이미 한 단계 올려놨는데,
+      // auto 전체를 막는 바람에 그 격상이 사장돼 있었다.
+      allowCameraShake: !auto || vfxTierReduction === 0,
       damageScale: options?.damageScale,
       rangeScale: options?.rangeScale,
       radiusScale: options?.radiusScale,
@@ -3545,7 +3549,23 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         if (!this.playerState.alive
           || state.phase !== 'combat'
           || state.roomIndex !== roomIndex) return;
-        this.applySpellEffect(request.spell, undefined, true, 1);
+        // 진화 각인의 3발은 **서로 다른 적**을 문다. Lv3는 한 놈에게 2발을 박아
+        // 잡몹이 먼저 죽으면 나머지가 오버킬로 낭비됐다. 총피해는 그대로고
+        // 분배만 달라진다 — 적이 하나면 자동으로 기존 동작으로 수렴한다.
+        // 지연 발마다 시점이 다르므로 반드시 이 클로저 **안에서** 다시 고른다.
+        const shotIndex = Math.round(
+          request.delaySeconds / ENGRAVE_CONFIG.secondShotDelaySeconds,
+        );
+        const spread = request.evolved ? this.nthNearestEnemy(shotIndex) : null;
+        // 자동 시전은 연출을 한 단계 깎아 화면을 덜 어지럽힌다. 진화 각인만 예외로
+        // 깎지 않는다 — "진화하면 확연히 다르다"를 매 발동마다 보여주는 자리다.
+        this.applySpellEffect(
+          request.spell,
+          undefined,
+          true,
+          request.evolved ? 0 : 1,
+          spread ? { sequenceTarget: { lockedEnemy: spread, lastTargetPoint: null } } : undefined,
+        );
       };
       if (request.delaySeconds === 0) cast();
       else this.time.delayedCall(request.delaySeconds * 1000, cast);
@@ -3844,6 +3864,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       });
       const evolved = this.engraveManager.evolve(data.engraveKey, name);
       if (evolved) {
+        this.playEvolutionBurst(data.elements[0] ?? evolved.spell.element_primary);
         this.announceSystemMessage(`각인 진화 — 『${name}』`, '#ffd166', 2800);
       }
       return;
@@ -3856,9 +3877,60 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const fused = this.spiritManager.fuse(data.spiritIds, name);
       if (fused) {
         this.syncSpiritViews();
+        this.playEvolutionBurst(data.elements[0]);
         this.announceSystemMessage(`정령 융합 — 『${name}』`, '#ffd166', 2800);
       }
     }
+  }
+
+  /**
+   * 진화·융합 순간 연출 — 각인이 다시 새겨지는 한 컷.
+   *
+   * 이전엔 텍스트 한 줄이 전부라, Lv3 + 동일 원소 친화까지 모아 얻은 보상인데도
+   * 아무 일도 안 일어난 것처럼 보였다. 룬 링이 조여들었다 터지며 플레이어에게
+   * 각인된다 — 수렴은 참격 수렴선과 같은 어휘다(같은 게임의 같은 문법).
+   */
+  private playEvolutionBurst(element: SpellElement): void {
+    // applyEvolution은 LLM 작명을 **await** 한다(최대 수 초). 그 사이 사망·재시작으로
+    // 씬이 내려가면 여기 도달할 때 player가 이미 없다 — 실제로 그렇게 터뜨려 봤다.
+    if (!this.scene?.isActive?.() || !this.player) return;
+    const pal = ELEMENT_PALETTES[element];
+    const { x, y } = this.player;
+    const ring = this.add.graphics().setDepth(9)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const state = { t: 0 };
+    this.tweens.add({
+      targets: state,
+      t: 1,
+      duration: 620,
+      ease: 'Cubic.easeIn',
+      onUpdate: () => {
+        ring.clear();
+        // 3중 룬 링이 서로 다른 속도로 조여든다 — 하나면 그냥 원이 줄어드는 것으로 보인다.
+        for (let i = 0; i < 3; i += 1) {
+          const phase = Phaser.Math.Clamp(state.t * (1 + i * 0.22), 0, 1);
+          const radius = 150 * (1 - phase) + 26;
+          ring.lineStyle(3 - i * 0.6, i === 0 ? pal.accent : pal.core, 0.9 * (1 - phase * 0.5));
+          ring.strokeCircle(x, y - 20, radius);
+        }
+      },
+      onComplete: () => {
+        ring.destroy();
+        // 조여든 힘이 터져 나온다 — 각인이 완성된 순간
+        const burst = this.add.particles(x, y - 20, 'particle', {
+          speed: { min: 90, max: 300 },
+          scale: { start: 0.85, end: 0 },
+          lifespan: 620,
+          quantity: 46,
+          tint: [pal.core, pal.accent, pal.glow],
+          blendMode: Phaser.BlendModes.ADD,
+          emitting: false,
+        });
+        burst.explode();
+        this.time.delayedCall(900, () => burst.destroy());
+        requestCameraShake(this, 'medium', 1.2);
+      },
+    });
   }
 
   private currentJudgeSource(): JudgeSource {
@@ -4141,6 +4213,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private announceSystemMessage(message: string, color = '#ff8fa3', holdMs = 1800): void {
+    // 비동기 경로(진화 작명 await 등)에서 씬이 내려간 뒤 도달할 수 있다 — this.add가 없다.
+    if (!this.scene?.isActive?.()) return;
     const { width, height } = this.scale;
     const label = this.add.text(width / 2, height * 0.42, message, {
       fontSize: '24px',
@@ -4215,6 +4289,22 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       if (d < bestD) { bestD = d; best = enemy; }
     }
     return bestD <= maxDistance ? best : null;
+  }
+
+  /**
+   * n번째로 가까운 적 (0 = 가장 가까움). 모자라면 가까운 쪽으로 되감는다.
+   *
+   * 진화 각인의 3발을 서로 다른 적에게 물리기 위한 것 — 적이 하나뿐이면
+   * 자동으로 기존 동작(전부 그 적)으로 수렴한다.
+   */
+  private nthNearestEnemy(index: number): CombatEnemy | null {
+    const alive = this.enemies.filter((enemy) => enemy.alive);
+    if (alive.length === 0) return null;
+    alive.sort((a, b) => (
+      Phaser.Math.Distance.Between(this.player.x, this.player.y, a.x, a.y)
+      - Phaser.Math.Distance.Between(this.player.x, this.player.y, b.x, b.y)
+    ));
+    return alive[Math.max(0, index) % alive.length];
   }
 
   private findBoltCollision(
@@ -4659,7 +4749,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       from,
       to,
       chainPath: chainTargets,
-      allowCameraShake: !auto,
+      // 자동 시전은 셰이크를 막는다(4초마다 흔들리면 피로하다). 단 **진화 각인만**
+      // 예외다 — auto인데 연출 격하가 0인 조합은 진화뿐이라 그걸로 판별한다.
+      // 진화는 huge라 spellRenderer가 셰이크 등급을 이미 한 단계 올려놨는데,
+      // auto 전체를 막는 바람에 그 격상이 사장돼 있었다.
+      allowCameraShake: !auto || vfxTierReduction === 0,
       damageScale: options?.damageScale,
       rangeScale: options?.rangeScale,
       radiusScale: options?.radiusScale,
