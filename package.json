@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "test": "node scripts/run-all-tests.mjs",
     "test:spell": "esbuild scripts/spell-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-regression.mjs && node node_modules/.cache/incant-spell-regression.mjs",
     "test:judge-fallback": "esbuild scripts/gemini-fizzle-fallback-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-gemini-fizzle-fallback-regression.mjs && node node_modules/.cache/incant-gemini-fizzle-fallback-regression.mjs",
     "test:history": "esbuild scripts/spell-history-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-history-regression.mjs && node node_modules/.cache/incant-spell-history-regression.mjs",
@@ -40,6 +41,7 @@
     "test:ailment": "esbuild scripts/ailment-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-ailment-regression.mjs && node node_modules/.cache/incant-ailment-regression.mjs",
     "test:summonvariety": "esbuild scripts/summon-variety-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-summon-variety-regression.mjs && node node_modules/.cache/incant-summon-variety-regression.mjs",
     "test:summonbehavior": "esbuild scripts/summon-behavior-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-summon-behavior-regression.mjs && node node_modules/.cache/incant-summon-behavior-regression.mjs",
+    "test:affinityrank": "esbuild scripts/affinity-rank-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-affinity-rank-regression.mjs && node node_modules/.cache/incant-affinity-rank-regression.mjs",
     "test:affinityvfx": "esbuild scripts/affinity-vfx-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-affinity-vfx-regression.mjs && node node_modules/.cache/incant-affinity-vfx-regression.mjs",
     "test:onboarding": "esbuild scripts/onboarding-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-onboarding-regression.mjs && node node_modules/.cache/incant-onboarding-regression.mjs",
     "test:room-curse": "esbuild scripts/room-curse-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-curse-regression.mjs && node node_modules/.cache/incant-room-curse-regression.mjs",

@@ -126,6 +126,7 @@ import type {
   RoomCursePlan,
 } from '../combat-core/run/roomCurse';
 import { drawRewardOptions, RUN_REWARD_CONFIG } from '../combat-core/run/rewardConfig';
+import { AFFINITY_ROWS, rankAffinities } from '../combat-core/run/useAffinity';
 import { ENGRAVE_CONFIG, EngraveManager } from '../combat-core/engrave/engraveManager';
 import { SpiritManager, SPIRIT_CONFIG } from '../combat-core/spirit/spiritManager';
 import {
@@ -225,6 +226,9 @@ const HUD = {
 
 /** 친화 경험치 바가 채워지는 이정표 — 각성 임계(MASTERY_REDESIGN §5-b, 친화 0.9). */
 const AFFINITY_BAR_MILESTONE = 0.9;
+
+/** 친화 바 한 행(라벨+바)의 세로 간격 — 3행이면 HUD 아래 ~66px를 쓴다 */
+const AFFINITY_ROW_HEIGHT = 22;
 
 interface FriendlyMissile {
   body: Phaser.GameObjects.Arc;
@@ -415,8 +419,8 @@ export class ProtoScene extends Phaser.Scene {
   private manaText!: Phaser.GameObjects.Text;
   private shieldText!: Phaser.GameObjects.Text;
   private attunementText!: Phaser.GameObjects.Text;
-  /** 친화 경험치 바 라벨 — 가장 깊이 투자한 원소·% (HUD 박스 아래) */
-  private affinityLabelText!: Phaser.GameObjects.Text;
+  /** 친화 경험치 바 라벨 — 상위 원소별 1행씩 (HUD 박스 아래, 주력이 맨 위) */
+  private affinityLabelTexts: Phaser.GameObjects.Text[] = [];
   /** 필살기(융합) 게이지 라벨 — 하단 중앙 미터 위 (충전%·준비 알림) */
   private fusionLabelText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
@@ -1273,13 +1277,15 @@ export class ProtoScene extends Phaser.Scene {
       fontStyle: 'bold',
       color: '#c7f9e0',
     }).setScrollFactor(0).setDepth(100);
-    // 친화 경험치 바 라벨 — 메인 HUD 박스 아래, 가장 깊이 투자한 원소의 성장 (사용 성장 #166 체감)
-    this.affinityLabelText = this.add.text(HUD.x + 6, HUD.y + HUD.height + 6, '', {
-      fontFamily: '"Noto Serif KR", Consolas, monospace',
-      fontSize: '11px',
-      fontStyle: 'bold',
-      color: '#8fa4ff',
-    }).setScrollFactor(0).setDepth(100);
+    // 친화 경험치 바 라벨 — 메인 HUD 박스 아래. 원소별로 1행씩(주력이 맨 위) 세워
+    // "다른 원소도 오르고 있다"가 보이게 한다 (사용 성장 #166 체감 · 총괄 제보)
+    this.affinityLabelTexts = Array.from({ length: AFFINITY_ROWS }, (_, i) =>
+      this.add.text(HUD.x + 6, HUD.y + HUD.height + 6 + i * AFFINITY_ROW_HEIGHT, '', {
+        fontFamily: '"Noto Serif KR", Consolas, monospace',
+        fontSize: i === 0 ? '11px' : '10px',
+        fontStyle: 'bold',
+        color: '#8fa4ff',
+      }).setScrollFactor(0).setDepth(100));
     // 필살기(융합) 미터 라벨 — 하단 중앙, 궁극기 게이지처럼 항상 노출해 존재를 가르친다
     this.fusionLabelText = this.add.text(width / 2, height - 62, '', {
       fontFamily: '"Noto Serif KR", Consolas, monospace',
@@ -4022,44 +4028,51 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     g.strokeRoundedRect(width - 306, 62, 288, 72, 12);
   }
 
-  /** 가장 깊이 투자한 원소와 그 친화 총량 (없으면 null) */
-  private topAffinity(): { element: SpellElement; value: number } | null {
-    const affinity = this.combatRunController.state.elementalAffinity;
-    let best: { element: SpellElement; value: number } | null = null;
-    for (const [element, value] of Object.entries(affinity)) {
-      const v = value ?? 0;
-      if (v > 0 && (!best || v > best.value)) best = { element: element as SpellElement, value: v };
-    }
-    return best;
-  }
-
   /**
-   * 친화 경험치 바 — 가장 깊이 투자한 원소의 성장을 각성 이정표(§5-b, 0.9)까지 채운다.
-   * 사용 성장(#166)이 매 시전 조금씩 차오르는 게 눈에 보여야 그 성장이 체감된다.
+   * 친화 경험치 바 — **키운 원소마다 한 줄씩**, 각성 이정표(§5-b, 0.9)까지 채운다.
+   *
+   * 이전엔 최고치 하나만 그렸다. 그런데 친화는 원소별로 따로 오르므로(growAffinityFromUse),
+   * 불로 시작한 뒤 얼음을 쏘면 얼음 친화가 실제로 오르는데 화면은 그대로였다
+   * (총괄 제보). 성장이 화면에서 부정되면 플레이어는 그 선택지를 지운다.
+   *
+   * 다만 주력을 맨 위에 크고 밝게, 나머지는 작고 흐리게 둔다 — 이 게임의 친화는
+   * 집중형 보상(useCap 0.45)이라 "고루 찍어라"로 읽히면 안 된다.
    */
   private drawAffinityBar(g: Phaser.GameObjects.Graphics): void {
-    const top = this.topAffinity();
-    if (!top) {
-      this.affinityLabelText.setText('');
-      return;
-    }
-    const pal = ELEMENT_PALETTES[top.element];
-    const ratio = Phaser.Math.Clamp(top.value / AFFINITY_BAR_MILESTONE, 0, 1);
+    const rows = rankAffinities<SpellElement>(this.combatRunController.state.elementalAffinity);
     const barX = HUD.x + 6;
-    const barY = HUD.y + HUD.height + 22;
-    const barW = HUD.width - 12;
-    g.fillStyle(0x141a35, 1);
-    g.fillRoundedRect(barX, barY, barW, 6, 3);
-    g.fillStyle(pal.core, 1);
-    g.fillRoundedRect(barX, barY, barW * ratio, 6, 3);
-    if (ratio >= 1) {
-      // 이정표 도달 — 각성 예고 펄스 (§5-b 구현 시 여기서 각성 선택지)
-      g.fillStyle(pal.accent, 0.4 + 0.4 * Math.abs(Math.sin(this.time.now / 200)));
-      g.fillRoundedRect(barX, barY, barW, 6, 3);
+    const fullW = HUD.width - 12;
+
+    for (let i = 0; i < this.affinityLabelTexts.length; i += 1) {
+      const label = this.affinityLabelTexts[i];
+      const row = rows[i];
+      if (!row) {
+        label.setText('');
+        continue;
+      }
+      const pal = ELEMENT_PALETTES[row.element];
+      const ratio = Phaser.Math.Clamp(row.value / AFFINITY_BAR_MILESTONE, 0, 1);
+      // 주력(0행)만 폭·불투명도가 100%. 아래는 좁고 흐려 서열이 한눈에 보인다.
+      const main = i === 0;
+      const barW = main ? fullW : fullW * 0.62;
+      const barH = main ? 6 : 4;
+      const alpha = main ? 1 : 0.55;
+      const barY = HUD.y + HUD.height + 22 + i * AFFINITY_ROW_HEIGHT;
+
+      g.fillStyle(0x141a35, alpha);
+      g.fillRoundedRect(barX, barY, barW, barH, barH / 2);
+      g.fillStyle(pal.core, alpha);
+      g.fillRoundedRect(barX, barY, barW * ratio, barH, barH / 2);
+      if (ratio >= 1) {
+        // 이정표 도달 — 각성 예고 펄스 (§5-b 구현 시 여기서 각성 선택지)
+        g.fillStyle(pal.accent, (0.4 + 0.4 * Math.abs(Math.sin(this.time.now / 200))) * alpha);
+        g.fillRoundedRect(barX, barY, barW, barH, barH / 2);
+      }
+      label
+        .setText(`「${ELEMENT_LABELS[row.element]}」 친화 ${Math.round(row.value * 100)}%`)
+        .setColor(paletteColorToCss(pal.core))
+        .setAlpha(alpha);
     }
-    this.affinityLabelText
-      .setText(`「${ELEMENT_LABELS[top.element]}」 친화 ${Math.round(top.value * 100)}%`)
-      .setColor(paletteColorToCss(pal.core));
   }
 
   /**
