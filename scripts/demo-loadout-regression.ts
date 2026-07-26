@@ -15,6 +15,8 @@ import { SpiritManager, SPIRIT_CONFIG } from '../src/combat-core/spirit/spiritMa
 import { CombatRunController } from '../src/combat-core/run/runController';
 import { PlayerCombatState } from '../src/combat-core/player/playerCombatState';
 import { AFFINITY_VFX_CONFIG, affinityVfxIntensity } from '../src/render/affinityVfx';
+import { MockJudge } from '../src/spell/mockJudge';
+import { slashCutCount } from '../src/combat-core/combat/slashConfig';
 import type { SpellElement } from '../src/spell/types';
 
 const build = () => {
@@ -181,6 +183,46 @@ const build = () => {
   );
 }
 
+// ── 예시 문장이 **실제로 좋은 그림**을 만드는가 ───────────────────────
+// 심사위원에게 "이걸 쳐보라"고 띄우는 문장이다. 판정이 밋밋한 폼으로 떨어지면
+// 시연 전체가 약해진다. 실제로 "번개가 적들 사이를 뛰어다닌다"는 chain을 의도했는데
+// bolt로 판정돼 각인(chain)과 어긋나 있었다 — 그래서 이 회귀를 만들었다.
+// 판정은 라이브 Gemini가 우선이지만, 할당량 소진 시 쓰이는 MockJudge로 하한을 잡는다.
+{
+  const judge = new MockJudge();
+  const results = await Promise.all(
+    DEMO_SAMPLE_INCANTATIONS.map((text) => judge.judge(text).then((r) => ({ text, r }))),
+  );
+  const forms = new Set<string>();
+  for (const { text, r } of results) {
+    assert.equal(r.disposition, 'cast', `예시가 시전되지 않는다: ${text}`);
+    if (r.disposition !== 'cast') continue;
+    assert.ok(r.spell.power >= 45, `예시 위력이 낮다 (${r.spell.power}): ${text}`);
+    forms.add(r.spell.form);
+  }
+  assert.equal(forms.size, results.length, '예시들이 같은 폼으로 떨어진다 — 다양성이 안 보인다');
+
+  // 참격 예시는 **연참**이 보여야 한다 (위력이 임계를 넘는지)
+  const slash = results.find(({ r }) => r.disposition === 'cast' && r.spell.form === 'slash');
+  assert.ok(slash, '참격 예시가 slash로 판정되지 않는다');
+  if (slash?.r.disposition === 'cast') {
+    assert.ok(slashCutCount(slash.r.spell.power) >= 2,
+      `참격 예시가 연참에 못 미친다 (위력 ${slash.r.spell.power}) — 한 번만 베면 밋밋하다`);
+  }
+
+  // 각인으로 심은 주문 텍스트도 같은 폼으로 판정돼야 한다 — 어긋나면 수동 시전이
+  // 각인과 다른 마법을 낸다("이 문장이 저 각인"이라는 연결이 깨진다).
+  for (const entry of DEMO_ENGRAVES) {
+    const judged = await judge.judge(entry.key);
+    assert.equal(judged.disposition, 'cast', `각인 원문이 시전되지 않는다: ${entry.key}`);
+    if (judged.disposition !== 'cast') continue;
+    assert.equal(judged.spell.form, entry.spell.form,
+      `각인 원문의 판정 폼이 다르다: "${entry.key}" → ${judged.spell.form} (기대 ${entry.spell.form})`);
+    assert.equal(judged.spell.element_primary, entry.spell.element_primary,
+      `각인 원문의 판정 원소가 다르다: ${entry.key}`);
+  }
+}
+
 console.log(
-  'Demo loadout regression: 각인진화·폼분리·정령·친화강도·시작방·주입방어·1회성·예시·배선 9군 통과',
+  'Demo loadout regression: 각인진화·폼분리·정령·친화강도·시작방·주입방어·1회성·예시판정·배선 10군 통과',
 );
