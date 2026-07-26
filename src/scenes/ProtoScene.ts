@@ -3,7 +3,7 @@ import { createSpriteLayers } from '../render/spriteLayers';
 import { playHitReact, playImpactSquash } from '../combat-core/enemies/enemyJuice';
 import type { SpellJudge } from '../spell/judge';
 import { createJudge } from '../spell/createJudge';
-import type { SpellElement, SpellSpec } from '../spell/types';
+import type { SpellElement, SpellForm, SpellSpec } from '../spell/types';
 import { SpellHistory } from '../spell/spellHistory';
 import type { JudgeSource } from '../spell/spellHistory';
 import {
@@ -476,7 +476,7 @@ export class ProtoScene extends Phaser.Scene {
   private blackoutCurseField: BlackoutCurseField | null = null;
   private activeCurseBanner: Phaser.GameObjects.Container | null = null;
   /** 약화 안내를 이미 띄운 원소 — 방마다 비워 같은 경고가 시전마다 반복되지 않게 한다 */
-  private readonly escalationNoticed = new Set<SpellElement>();
+  private readonly escalationNoticed = new Set<SpellForm>();
   private waveManager = new WaveManager();
   private eliteModifierAssignments: EliteModifier[] = [];
   private eliteSpawnIndex = 0;
@@ -901,9 +901,9 @@ export class ProtoScene extends Phaser.Scene {
     this.legacySelecting = true;
     try {
       const options: RewardOption[] = offers.map((entry) => {
-        // 격상(#77)으로 약화된 원소는 카드에 명시한다 —
+        // 격상(#77)으로 약화된 **폼**은 카드에 명시한다 —
         // 모르고 고르면 "물려받았는데 약하다"가 되고, 알고 고르면 전략적 선택이 된다.
-        const weakened = this.runEscalation.weakenedElements.includes(entry.element);
+        const weakened = this.runEscalation.weakenedForms.includes(entry.form);
         const weakenPercent = Math.round((1 - this.runEscalation.weakenMultiplier) * 100);
         return {
           id: `legacy-${entry.normalized}`,
@@ -911,7 +911,7 @@ export class ProtoScene extends Phaser.Scene {
           title: `유산 · ${entry.name}`,
           description: `${ELEMENT_LABELS[entry.element]} ${FORM_LABELS[entry.form]} · 위력 ${Math.round(entry.power)}`
             + ` — 지난 런의 주문, Lv1 각인으로 시작`
-            + (weakened ? `\n⚠ ${ELEMENT_LABELS[entry.element]} 약화 −${weakenPercent}%` : ''),
+            + (weakened ? `\n⚠ ${FORM_LABELS[entry.form]} 약화 −${weakenPercent}%` : ''),
           element: entry.element,
           engrave: { spellKey: entry.normalized, level: 1 },
         };
@@ -3101,9 +3101,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
       const affinityBonus = this.combatRunController.state
         .elementalAffinity[spec.element_primary] ?? 0;
-      // 런 반복 격상(#77): 회차가 쌓이면 과의존한 원소가 이번 런 전체에서 약화된다.
-      // 프로필은 런 시작에 확정된 캐시를 쓴다 (시전마다 localStorage를 읽지 않는다).
-      const escalationWeaken = this.runEscalation.weakenedElements.includes(spec.element_primary)
+      // 런 반복 격상(#77): 회차가 쌓이면 과의존한 **폼**이 이번 런 전체에서 약화된다.
+      // 원소가 아니라 폼이다(#171) — 다채로운 화염 마스터는 안 맞고, 같은 수를
+      // 반복하는 사람만 맞는다. 프로필은 런 시작에 확정된 캐시를 쓴다.
+      const escalationWeaken = this.runEscalation.weakenedForms.includes(spec.form)
         ? this.runEscalation.weakenMultiplier
         : 1;
       // 다양성 보너스(당근, #92): 최근과 다른 원소·폼이면 데미지↑. basePower 불변, 여기서만 곱한다.
@@ -3154,11 +3155,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           2600,
         );
       }
-      // 같은 원소를 계속 쓰면 매 시전 반복되므로 방마다 원소별 1회만 알린다
-      if (escalationWeaken < 1 && !this.escalationNoticed.has(spec.element_primary)) {
-        this.escalationNoticed.add(spec.element_primary);
+      // 같은 폼을 계속 쓰면 매 시전 반복되므로 방마다 폼별 1회만 알린다
+      if (escalationWeaken < 1 && !this.escalationNoticed.has(spec.form)) {
+        this.escalationNoticed.add(spec.form);
         this.announceSystemMessage(
-          `${ELEMENT_LABELS[spec.element_primary]} 약화 ${Math.round((1 - escalationWeaken) * 100)}% · 세계가 네 수를 읽었다`,
+          `${FORM_LABELS[spec.form]} 약화 ${Math.round((1 - escalationWeaken) * 100)}% · 세계가 네 수를 읽었다`,
           '#b18cff',
         );
       }
@@ -3382,9 +3383,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const priorUsages = this.spellHistory.allBehaviorUsages;
     const affinityBonus = this.combatRunController.state
       .elementalAffinity[baseSpec.element_primary] ?? 0;
-    const escalationWeaken = this.runEscalation.weakenedElements.includes(
-      baseSpec.element_primary,
-    ) ? this.runEscalation.weakenMultiplier : 1;
+    const escalationWeaken = this.runEscalation.weakenedForms.includes(baseSpec.form)
+      ? this.runEscalation.weakenMultiplier
+      : 1;
     const diversity = diversityBonus(
       { element: baseSpec.element_primary, form: baseSpec.form },
       priorUsages.map((entry) => ({ element: entry.elementPrimary, form: entry.form })),
@@ -3400,10 +3401,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       ),
     };
     this.spellHistory.recordBehaviorUsage(baseSpec, Date.now());
-    if (escalationWeaken < 1 && !this.escalationNoticed.has(baseSpec.element_primary)) {
-      this.escalationNoticed.add(baseSpec.element_primary);
+    if (escalationWeaken < 1 && !this.escalationNoticed.has(baseSpec.form)) {
+      this.escalationNoticed.add(baseSpec.form);
       this.announceSystemMessage(
-        `${ELEMENT_LABELS[baseSpec.element_primary]} 약화 ${Math.round((1 - escalationWeaken) * 100)}% · 세계가 네 수를 읽었다`,
+        `${FORM_LABELS[baseSpec.form]} 약화 ${Math.round((1 - escalationWeaken) * 100)}% · 세계가 네 수를 읽었다`,
         '#b18cff',
       );
     }
@@ -4688,6 +4689,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       spec.element_primary,
       amplified,
       showResistanceNotice,
+      spec.form,
     );
   }
 
@@ -4696,6 +4698,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     element: SpellElement,
     baseDamage: number,
     showResistanceNotice = false,
+    // 격상이 폼 기반이 되며(#171) 하한 겹침 계산에 폼이 필요해졌다.
+    // null이면(정령 미사일 등 폼 정보가 없는 경로) 격상 겹침 없음으로 취급.
+    form: SpellForm | null = null,
   ): number {
     if (enemy.kind !== 'boss') return baseDamage;
     const multiplier = this.activeBossResistances.get(element) ?? 1;
@@ -4722,8 +4727,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceSystemMessage(`저항! ${label}이(가) 통하지 않는다 — 다른 원소를 창작하라`, '#ffa94d');
     }
     // 합산 감쇠 하한 (결정서 §3③): 격상×내성이 겹쳐도 ×0.5 밑으로 안 내려간다.
-    // baseDamage엔 격상이 이미 반영돼 있어, 이 원소의 격상 배율로 겹침을 계산한다.
-    const escalation = this.runEscalation.weakenedElements.includes(element)
+    // baseDamage엔 격상이 이미 반영돼 있고, 격상은 이제 폼 기반이다 — 약화된 폼으로
+    // 내성 원소를 칠 때(예: 볼트 약화 + 화염 내성 + 화염 볼트)만 겹침 구제가 발동한다.
+    const escalation = form !== null && this.runEscalation.weakenedForms.includes(form)
       ? this.runEscalation.weakenMultiplier
       : 1;
     return baseDamage * flooredResistMultiplier(escalation, multiplier);
