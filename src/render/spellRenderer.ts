@@ -17,8 +17,12 @@ import { ELEMENT_PALETTES, SIZE_SCALE } from './palette';
 import {
   SLASH_CONFIG,
   slashAnchor,
+  slashCrescentPolygon,
+  slashCutAngles,
   slashCutPoints,
+  slashCutRadius,
   slashHitCircle,
+  rotatePointsAbout,
 } from '../combat-core/combat/slashConfig';
 import { AFFINITY_VFX_CONFIG } from './affinityVfx';
 import { requestCameraShake } from './cameraShake';
@@ -532,40 +536,168 @@ export function castSlash(ctx: CastContext, spec: SpellSpec): void {
   const scale = SIZE_SCALE[spec.size];
   const toward = ctx.to ? { x: ctx.to.x, y: ctx.to.y } : null;
   const anchor = slashAnchor(from, toward, ctx.rangeScale);
-  const points = slashCutPoints(from, anchor, spec.size, spec.power, ctx.radiusScale);
+  const cutRadius = slashCutRadius(spec.size, spec.power, ctx.radiusScale);
+  // 기준 형상 — 연참은 이걸 앵커 기준으로 회전시켜 재사용한다(매번 다시 생성 안 함).
+  const basePoints = slashCutPoints(from, anchor, spec.size, spec.power, ctx.radiusScale);
+  const baseCrescent = slashCrescentPolygon(
+    from, anchor, spec.size, spec.power, ctx.radiusScale,
+  );
+  // 접근 축 — 스파크·수렴선은 이 축의 **수직**(= 벤 자국을 따라)으로 움직인다.
+  const axisDeg = Phaser.Math.RadToDeg(Math.atan2(anchor.y - from.y, anchor.x - from.x));
+  const sparkTints = spec.element_secondary
+    ? [pal.core, pal.accent, ELEMENT_PALETTES[spec.element_secondary].core]
+    : [pal.core, pal.glow, pal.accent];
+  // 씬이 내려간 뒤 지연 콜백이 살아나 죽은 객체를 건드리는 걸 막는다(#184와 같은 결).
+  const alive = (): boolean => Boolean(scene.sys?.isActive?.());
 
-  // 호를 따라 훑는 스윙 — 진행도만큼만 그려 '베고 지나간' 순간이 읽히게 한다.
-  const blade = scene.add.graphics().setDepth(6)
-    .setBlendMode(Phaser.BlendModes.ADD);
-  const sweep = { progress: 0 };
-  scene.tweens.add({
-    targets: sweep,
-    progress: 1,
-    duration: SLASH_CONFIG.sweepMs,
-    ease: 'Cubic.easeOut',
-    onUpdate: () => {
-      const count = Math.max(2, Math.round(points.length * sweep.progress));
-      const drawn = points.slice(0, count)
-        .map((point) => new Phaser.Math.Vector2(point.x, point.y));
-      const fade = 1 - sweep.progress * 0.35;
-      blade.clear()
-        .lineStyle(11 * scale, pal.glow, 0.30 * fade).strokePoints(drawn, false)
-        .lineStyle(5 * scale, pal.core, 0.85 * fade).strokePoints(drawn, false)
-        .lineStyle(1.5, pal.accent, 0.95 * fade).strokePoints(drawn, false);
-    },
-    onComplete: () => {
+  /** 한 번의 참격 — 칼날·잔상·섬광·절단흔·스파크. i가 커질수록 옅어진다. */
+  const runCut = (offsetDeg: number, index: number): void => {
+    if (!alive()) return;
+    const lead = index === 0;
+    // 뒤따르는 참격은 조금씩 옅게 — 첫 획이 주인공이고 나머지는 따라붙는 결이다.
+    const weight = lead ? 1 : 0.72 - index * 0.08;
+    const crescent = rotatePointsAbout(baseCrescent, anchor, offsetDeg)
+      .map((point) => new Phaser.Math.Vector2(point.x, point.y));
+    const vectors = rotatePointsAbout(basePoints, anchor, offsetDeg)
+      .map((point) => new Phaser.Math.Vector2(point.x, point.y));
+    const cutDeg = axisDeg + offsetDeg;
+
+    // ① 칼날 — 초승달을 채워 그린다. 스윕 진행도만큼 열려 '베고 지나간' 순간이 읽힌다.
+    const blade = scene.add.graphics().setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
+    // ② 잔상 — 살짝 늦게 따라오는 얇은 호. 한 줄만으로는 휘두른 무게가 안 실린다.
+    const echo = scene.add.graphics().setDepth(6).setBlendMode(Phaser.BlendModes.ADD);
+    const sweep = { progress: 0, echo: 0 };
+    const half = crescent.length / 2;
+    const drawBlade = (progress: number, alpha: number): void => {
+      blade.clear();
+      if (progress <= 0 || alpha <= 0) return;
+      // 바깥·안쪽 호를 같은 비율로 잘라 닫힌 도형을 유지한다.
+      const count = Math.max(2, Math.round(half * progress));
+      const outer = crescent.slice(0, count);
+      const inner = crescent.slice(crescent.length - count);
+      const shape = [...outer, ...inner];
+      blade.fillStyle(pal.glow, 0.28 * alpha).fillPoints(shape, true);
+      blade.fillStyle(pal.core, 0.8 * alpha).fillPoints(shape, true);
+      // 바깥 날만 가늘게 강조 — 베인 단면이 빛나는 느낌
+      blade.lineStyle(1.6, pal.accent, alpha).strokePoints(outer, false);
+    };
+    const drawEcho = (progress: number, alpha: number): void => {
+      echo.clear();
+      if (progress <= 0 || alpha <= 0) return;
+      const count = Math.max(2, Math.round(vectors.length * progress));
+      echo.lineStyle(3 * scale, pal.glow, 0.45 * alpha).strokePoints(vectors.slice(0, count), false);
+    };
+    scene.tweens.add({
+      targets: sweep,
+      progress: 1,
+      duration: SLASH_CONFIG.sweepMs,
+      ease: 'Cubic.easeOut',
+      onUpdate: () => {
+        drawBlade(sweep.progress, (1 - sweep.progress * 0.25) * weight);
+        drawEcho(sweep.echo, (1 - sweep.echo) * weight);
+      },
+      onComplete: () => {
+        scene.tweens.add({
+          targets: [blade, echo],
+          alpha: 0,
+          duration: 130,
+          onComplete: () => { blade.destroy(); echo.destroy(); },
+        });
+      },
+    });
+    scene.tweens.add({
+      targets: sweep,
+      echo: 1,
+      duration: SLASH_CONFIG.sweepMs,
+      delay: SLASH_CONFIG.echoDelayMs,
+      ease: 'Cubic.easeOut',
+    });
+
+    // ③ 절단흔 — 벤 자리가 잠깐 남아 스러진다. 전부 0.3초 안에 사라지면
+    // "번쩍했다"로만 남고 "베였다"가 안 읽힌다. 남는 흔적이 그 차이를 만든다.
+    const scar = scene.add.graphics().setDepth(5).setBlendMode(Phaser.BlendModes.ADD);
+    scar.lineStyle(1.4, pal.accent, 0.75 * weight).strokePoints(vectors, false);
+    scene.tweens.add({
+      targets: scar,
+      alpha: 0,
+      duration: SLASH_CONFIG.scarMs,
+      delay: SLASH_CONFIG.sweepMs,
+      ease: 'Quad.easeIn',
+      onComplete: () => scar.destroy(),
+    });
+
+    // ④ 베는 섬광 — 잘린 자리가 순간 하얗게 벌어졌다 닫힌다. 참격의 '한 방'을 만든다.
+    const flash = scene.add
+      .rectangle(anchor.x, anchor.y, cutRadius * 1.5, 3 * scale, pal.accent)
+      .setRotation(Phaser.Math.DegToRad(cutDeg + 90))
+      .setDepth(8)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    scene.tweens.add({
+      targets: flash,
+      scaleY: { from: 1, to: 4 },
+      alpha: { from: weight, to: 0 },
+      duration: SLASH_CONFIG.flashMs,
+      ease: 'Cubic.easeOut',
+      onComplete: () => flash.destroy(),
+    });
+
+    // ⑤ 수렴선 — 마력이 벤 자리로 빨려든다. 멀리서 발현하는 근거를 화면에 만든다.
+    // 첫 획에서만. 매 획마다 하면 화면이 지저분해진다.
+    if (lead) {
+      const converge = scene.add.graphics().setDepth(6)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      const pull = { t: 0 };
       scene.tweens.add({
-        targets: blade,
-        alpha: 0,
-        duration: 110,
-        onComplete: () => blade.destroy(),
+        targets: pull,
+        t: 1,
+        duration: SLASH_CONFIG.convergeMs,
+        ease: 'Quad.easeIn',
+        onUpdate: () => {
+          converge.clear();
+          const reach = cutRadius * (2.4 - pull.t * 2.1);
+          const inner = cutRadius * 0.9;
+          converge.lineStyle(2 * scale, pal.accent, 0.85 * (1 - pull.t));
+          for (const deg of [cutDeg + 90, cutDeg - 90]) {
+            const rad = Phaser.Math.DegToRad(deg);
+            converge.lineBetween(
+              anchor.x + Math.cos(rad) * reach, anchor.y + Math.sin(rad) * reach,
+              anchor.x + Math.cos(rad) * inner, anchor.y + Math.sin(rad) * inner,
+            );
+          }
+        },
+        onComplete: () => converge.destroy(),
       });
-    },
-  });
+    }
 
-  if (ctx.allowCameraShake !== false) {
-    requestCameraShake(scene, 'weak', 1);
-  }
+    // ⑥ 절단면 스파크 — 벤 선을 따라 양쪽으로 튄다. 원형 폭발과 구분되는 결.
+    const emitters = [cutDeg + 90, cutDeg - 90].map((direction) => {
+      const sparks = scene.add.particles(anchor.x, anchor.y, 'particle', {
+        speed: { min: cutRadius * 1.4, max: cutRadius * 3 },
+        angle: { min: direction - 18, max: direction + 18 },
+        scale: { start: 0.5 * scale * weight, end: 0 },
+        lifespan: 320,
+        quantity: Math.max(4, Math.round((10 + spec.power / 6) * weight)),
+        tint: sparkTints,
+        blendMode: Phaser.BlendModes.ADD,
+        emitting: false,
+      });
+      sparks.explode();
+      return sparks;
+    });
+    scene.time.delayedCall(500, () => emitters.forEach((e) => e.destroy()));
+
+    if (ctx.allowCameraShake !== false) {
+      // 위력이 실린 참격은 화면이 더 크게 흔들린다. 연참은 획마다 — 게이트가
+      // 과도한 연타를 알아서 걸러낸다(requestCameraShake의 rate limit).
+      requestCameraShake(scene, spec.power >= 70 && lead ? 'medium' : 'weak', 1.1 * weight);
+    }
+  };
+
+  // 연참 — 위력이 높을수록 여러 번 교차한다. 판정은 그대로 하나(순수 연출).
+  slashCutAngles(spec.power).forEach((offsetDeg, index) => {
+    if (index === 0) runCut(offsetDeg, 0);
+    else scene.time.delayedCall(index * SLASH_CONFIG.multiCutDelayMs, () => runCut(offsetDeg, index));
+  });
 
   const hit = slashHitCircle(
     from, toward, spec.size, spec.power, ctx.rangeScale, ctx.radiusScale,
@@ -573,6 +705,7 @@ export function castSlash(ctx: CastContext, spec: SpellSpec): void {
   if (ctx.shouldResolveImpact?.() === false) return;
   ctx.onHit?.({ kind: 'circle', x: hit.x, y: hit.y, radius: hit.radius }, spec);
 }
+
 function castNova(ctx: CastContext, spec: SpellSpec): void {
   const { scene, from } = ctx;
   const pal = ELEMENT_PALETTES[spec.element_primary];

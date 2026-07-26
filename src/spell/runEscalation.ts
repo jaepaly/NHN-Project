@@ -1,4 +1,4 @@
-import type { SpellElement } from './types';
+import type { SpellForm } from './types';
 import type { RunMemory } from './runMemory';
 
 /**
@@ -27,8 +27,15 @@ export const RUN_ESCALATION_CONFIG = {
 export interface RunEscalationProfile {
   /** 이번 런의 격상 티어 (1-based, 상한 maxTier) */
   tier: number;
-  /** 런 전체에서 약화되는 원소 (플레이어가 최근 과의존한 것). 티어<2면 빈 배열 */
-  weakenedElements: SpellElement[];
+  /**
+   * 런 전체에서 약화되는 **폼** (플레이어가 최근 과의존한 패턴). 티어<2면 빈 배열.
+   *
+   * 원소 → 폼 전환 (#171 합의, MASTERY_REDESIGN §3①): 원소를 벌하면 다채로운
+   * 화염 마스터(볼트→벽→폭발→분신)까지 때려 친화 보상과 자기모순이었다.
+   * 폼을 벌하면 "같은 수를 반복하는 사람"만 맞는다 — 원소 집중은 숙련이고,
+   * 벌해야 할 것은 표현의 정체다. 보스 장기 저항(원소·서사 축)은 별개로 유지.
+   */
+  weakenedForms: SpellForm[];
   /** 약화 원소에 적용할 위력 배율 (1=정상, <1=약화, 하한 weakenFloor) */
   weakenMultiplier: number;
   /** 방 기믹 해금 여부 (R1이 침묵대·정전 등 노출 판단에 사용) */
@@ -50,7 +57,7 @@ export function runEscalationProfile(memory: RunMemory): RunEscalationProfile {
 
   return {
     tier,
-    weakenedElements: escalating ? overRelliedElements(memory) : [],
+    weakenedForms: escalating ? overRelliedForms(memory) : [],
     weakenMultiplier: escalating
       ? Math.max(
         RUN_ESCALATION_CONFIG.weakenFloor,
@@ -62,12 +69,12 @@ export function runEscalationProfile(memory: RunMemory): RunEscalationProfile {
   };
 }
 
-/** 최근 과의존 원소 — recentDominantElements 우선, 없으면 favoriteElement. 중복 제거. */
-function overRelliedElements(memory: RunMemory): SpellElement[] {
-  const source = memory.recentDominantElements.length > 0
-    ? memory.recentDominantElements
-    : memory.favoriteElement
-      ? [memory.favoriteElement]
-      : [];
-  return [...new Set(source)];
+/**
+ * 최근 과의존 폼 — recentDominantForms에서 중복 제거.
+ * 구버전 프로필(폼 이력 없음)은 빈 배열 → 데이터가 쌓일 때까지 약화 없음.
+ * 원소 시절의 favoriteElement 폴백 같은 대체 축은 두지 않는다 — 잘못된 축으로
+ * 벌하느니 한 런 쉬는 게 낫다.
+ */
+function overRelliedForms(memory: RunMemory): SpellForm[] {
+  return [...new Set(memory.recentDominantForms)];
 }

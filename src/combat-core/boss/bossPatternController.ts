@@ -9,7 +9,13 @@ export type BossPatternAction =
   | 'charge-telegraph'
   | 'charge-start'
   | 'surround'
-  | 'hazard';
+  | 'hazard'
+  // 비전 마법 (bossArcana, 총괄 발안 07-26) — 씬이 예고·시전을 실행한다.
+  // 최종 보스가 물리 패턴만 쓰던 문제의 해법: 보스도 영창한다.
+  | 'arcane-cast'   // 스펠북 원소 마법 (rain/nova/bolt/wave 순환)
+  | 'shroud'        // 어둠 장막 — 시야 축소 (피해 0, 짧게)
+  | 'pull'          // 중력 인력 — 보스 쪽으로 흡인 (걸어서 저항 가능)
+  | 'mirror';       // 미러 캐스트 재발동 (페이즈3 순환 전용)
 
 export interface BossPatternUpdate {
   phase: 1 | 2 | 3;
@@ -88,8 +94,10 @@ export class BossPatternController {
     }
 
     if (this.phase === 1) {
+      // 첫 페이즈부터 '이 보스는 마법사다'가 보이게 원소 마법을 순환에 넣는다.
       const phase1Pattern: readonly BossPatternAction[] = [
         'volley-telegraph',
+        'arcane-cast',
         'hazard',
         'charge-telegraph',
       ];
@@ -99,26 +107,30 @@ export class BossPatternController {
 
     const sequenceSlot = this.sequenceIndex++;
     if (sequenceSlot % 4 === 2 && livingMinions < TIMING.minionCap) return 'summon-elite';
+    // 페이즈3 절정 — 주기적으로 미러 캐스트를 다시 꺼낸다 (씬이 재료 유무를 재검사)
+    if (sequenceSlot % 8 === 5) return 'mirror';
     return this.memoryCombatAction(sequenceSlot);
   }
 
   private nextCounterAction(livingMinions: number): BossPatternAction {
     const sequenceSlot = this.sequenceIndex++ % 5;
     if (this.counterStrategy === 'rush') {
+      // rush = 거리를 좁히려는 보스 — 끌어당김(pull)이 주제와 정확히 맞는다.
       const rushPattern: readonly BossPatternAction[] = [
         'charge-telegraph',
+        'pull',
+        'arcane-cast',
         'charge-telegraph',
-        'volley-telegraph',
-        'hazard',
-        livingMinions < TIMING.minionCap ? 'surround' : 'charge-telegraph',
+        livingMinions < TIMING.minionCap ? 'surround' : 'hazard',
       ];
       return rushPattern[sequenceSlot];
     }
     if (this.counterStrategy === 'ranged') {
+      // ranged 억제 = 원거리 조준을 방해 — 시야를 빼앗는 장막이 주제와 맞는다.
       const rangedPattern: readonly BossPatternAction[] = [
         'volley-telegraph',
-        'hazard',
-        'volley-telegraph',
+        'shroud',
+        'arcane-cast',
         'charge-telegraph',
         'hazard',
       ];
@@ -149,6 +161,7 @@ export class BossPatternController {
     }
     const neutralPattern: readonly BossPatternAction[] = [
       'volley-telegraph',
+      'arcane-cast',
       'hazard',
       'charge-telegraph',
     ];

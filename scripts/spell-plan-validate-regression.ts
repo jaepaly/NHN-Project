@@ -251,6 +251,33 @@ assert.equal(validateSpellPlan({ sequences: [{ behaviors: [] }] }), null, '빈 b
   );
   assert.ok(looksSequential('불덩이를 던진 뒤 얼음창을 쏜다'));
   assert.equal(looksSequential('회오리바람을 일으킨다'), false);
+
+  // 병렬(동시) 표현도 복합이다 (#200 조사에서 발견한 누락).
+  // 스키마는 `A하면서 B`를 지원하고 이슈도 그걸 명시적 복합의 예로 드는데,
+  // 마커 목록에 순차만 있어 병렬 문장이 전부 2.5초 예산에 걸려 있었다.
+  // 복합 응답은 spell_plan을 실어 실측 1.86~2.55s라 그 경계에 그대로 부딪힌다.
+  for (const text of [
+    '후퇴하면서 얼음창을 쏜다',
+    '달리며 불화살을 쏜다',
+    '옆으로 구르면서 번개를 내리친다',
+    '동시에 얼음과 불을 터뜨린다',
+  ]) {
+    assert.equal(judgeTimeoutMs(text), 3200, `병렬 표현이 짧은 예산에 걸린다: ${text}`);
+  }
+
+  // 오탐 방어 — 단일 주문이 복합으로 새면 안 된다 ('며칠'·'며느리' 같은 낱말)
+  for (const text of [
+    '화염구를 던진다',
+    '며칠 전의 불꽃을 되살린다',
+  ]) {
+    assert.equal(judgeTimeoutMs(text), 2500, `단일 입력이 복합으로 샜다: ${text}`);
+  }
+
+  // v2.15: 동작성 추상 이름은 이제 시퀀스로 확장되므로 3.2초 예산을 받아야 한다 (#200 C안·#203 공격적 절충안).
+  // (이전엔 단일이라 2.5초였다 — '불사조의 낙화'가 여기로 이동. MOTION_SIGNALS가 낙화·비행·추격을 잡는다.)
+  for (const text of ['불사조의 낙화', '천둥새의 비행', '얼어붙은 추격전']) {
+    assert.equal(judgeTimeoutMs(text), 3200, `동작성 추상은 3.2초 예산이어야 한다: ${text}`);
+  }
 }
 
-console.log('SpellPlan validate regression: 검증·클램프·화이트리스트·대표유도·판정연결·캐시왕복·타임아웃 14군 통과');
+console.log('SpellPlan validate regression: 검증·클램프·화이트리스트·대표유도·판정연결·캐시왕복·타임아웃·병렬마커 15군 통과');

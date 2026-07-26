@@ -1,8 +1,11 @@
-name: Deploy to GitHub Pages
+name: CI & Deploy to GitHub Pages
 
 on:
   push:
     branches: [main]
+  # PR에서도 돌려야 의미가 있다. main에 들어간 뒤에 알면 이미 늦다 —
+  # 참격 배선이 세 번 유실된 게 정확히 이 구간에서 아무도 안 보고 있어서였다.
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -10,12 +13,28 @@ permissions:
   pages: write
   id-token: write
 
+# ref별로 묶는다. 하나로 묶으면 PR 검사가 main 배포를 취소해버린다.
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # package.json의 test:* 를 전부 자동으로 긁어 돈다 (현재 45종, ~15초).
+      # 스위트를 추가해도 여기 손댈 필요 없다 — 목록을 손으로 관리하면 등록을
+      # 잊는 순간 조용히 빠지고, 그럼 이 잡을 둔 의미가 사라진다.
+      - run: npm test
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,12 +44,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - uses: actions/upload-pages-artifact@v3
+      # PR에선 빌드가 되는지만 보면 된다. 아티팩트는 배포용이라 main에서만 올린다.
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
   deploy:
     needs: build
+    # PR은 검사까지만. 배포는 main에 들어간 것만.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

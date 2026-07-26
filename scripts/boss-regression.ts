@@ -93,25 +93,31 @@ console.log('boss core regression: 내성수치게이트·3방 런·리셋 4군 
   assert.deepEqual(stage.update(0.7, 2, 0).actions, ['charge-start']);
   assert.deepEqual(stage.update(0.8, 2, 0).actions, ['summon']);
 
+  // rush 페이즈2 — 비전 마법 편입(#총괄 07-26): [charge, pull, arcane, charge, ...]
   const rush = new BossPatternController('memory');
   rush.setCounterStrategy('rush');
   assert.deepEqual(rush.update(0.35, 2, 0).actions, ['charge-telegraph']);
   assert.deepEqual(rush.update(0.7, 2, 0).actions, ['charge-start']);
-  assert.deepEqual(rush.update(0.8, 2, 0).actions, ['charge-telegraph']);
+  assert.deepEqual(rush.update(0.8, 2, 0).actions, ['pull']);
+  assert.deepEqual(rush.update(3.2, 2, 0).actions, ['arcane-cast']);
+  assert.deepEqual(rush.update(3.2, 2, 0).actions, ['charge-telegraph']);
   assert.deepEqual(rush.update(0.7, 2, 0).actions, ['charge-start']);
 
+  // 페이즈1 — 첫 페이즈부터 원소 마법이 순환에 들어간다
   const intro = new BossPatternController('memory');
   assert.deepEqual(intro.update(2, 1, 0).actions, ['volley-telegraph']);
   assert.deepEqual(intro.update(0.7, 1, 0).actions, ['volley-start']);
-  assert.deepEqual(intro.update(2.5, 1, 0).actions, ['hazard']);
+  assert.deepEqual(intro.update(2.5, 1, 0).actions, ['arcane-cast']);
+  assert.deepEqual(intro.update(3.2, 1, 0).actions, ['hazard']);
   assert.deepEqual(intro.update(3.2, 1, 0).actions, ['charge-telegraph']);
   assert.deepEqual(intro.update(0.7, 1, 0).actions, ['charge-start']);
 
+  // ranged 페이즈2 — 장막(shroud)이 원거리 조준을 방해
   const ranged = new BossPatternController('memory');
   ranged.setCounterStrategy('ranged');
   assert.deepEqual(ranged.update(0.35, 2, 0).actions, ['volley-telegraph']);
   assert.deepEqual(ranged.update(0.7, 2, 0).actions, ['volley-start']);
-  assert.deepEqual(ranged.update(3.2, 2, 0).actions, ['hazard']);
+  assert.deepEqual(ranged.update(3.2, 2, 0).actions, ['shroud']);
   assert.deepEqual(ranged.update(0.35, 3, 0).actions, ['volley-telegraph']);
   assert.deepEqual(ranged.update(0.7, 3, 0).actions, ['volley-start']);
   assert.deepEqual(ranged.update(2.6, 3, 0).actions, ['hazard']);

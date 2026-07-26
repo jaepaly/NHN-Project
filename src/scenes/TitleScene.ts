@@ -3,6 +3,7 @@ import { applyWorldFx } from '../render/postFx';
 import { loadCodex } from '../spell/spellCodex';
 import { showCodexOverlay } from '../ui/codexOverlay';
 import { clearRunHud } from '../ui/runHud';
+import { requestDemoRun } from '../run/demoLoadout';
 
 const TITLE_COLORS = {
   background: 0x05060f,
@@ -40,9 +41,12 @@ export class TitleScene extends Phaser.Scene {
     this.createTitle(width, height);
     this.createStartPrompt(width, height);
     this.createCodexTab(width, height);
+    this.createDemoTab(width, height);
 
     // once가 아닌 on — 도감을 열었다 닫아도 시작 트리거가 살아 있어야 한다.
-    this.input.keyboard?.on('keydown-ENTER', this.startGame, this);
+    // 화살표로 감싼다 — startGame을 직접 넘기면 Phaser가 키 이벤트를 첫 인자로 실어
+    // demo 플래그가 truthy가 되어 ENTER마다 시연 런으로 들어간다.
+    this.input.keyboard?.on('keydown-ENTER', () => this.startGame());
     // 빈 공간 클릭만 시작 — 도감 탭 위 클릭은 currentlyOver에 잡혀 여기서 걸러진다.
     // (이벤트 순서에 기대던 codexOpen 가드가 실플레이에서 어긋나 도감이 안 열리던 버그)
     this.input.on('pointerdown', (_pointer: Phaser.Input.Pointer, currentlyOver: unknown[]) => {
@@ -64,6 +68,41 @@ export class TitleScene extends Phaser.Scene {
     tab.on('pointerover', () => tab.setAlpha(1).setColor('#c7d0ff'));
     tab.on('pointerout', () => tab.setAlpha(0.75).setColor('#8fa4ff'));
     tab.on('pointerdown', () => { void this.openCodex(); });
+  }
+
+  /**
+   * 시연 탭 — 후반 성장 상태로 바로 시작한다 (총괄 발안).
+   *
+   * 이 게임의 자산(진화 각인·정령·친화 격상)은 런을 여러 번 굴려야 나온다. 짧게
+   * 만지고 떠나는 사람은 아무것도 못 본다. 처음부터 하는 경로는 그대로 두고,
+   * "계속하면 이렇게 된다"를 미리 보여주는 두 번째 문을 낸다.
+   *
+   * 라벨을 "심사위원용"으로 달지 않는다 — "본 게임은 못 보여주나?"로 읽힌다.
+   * 게임 안의 말로 부르고, 의도는 제출 문서에 적는다.
+   */
+  private createDemoTab(width: number, height: number): void {
+    const tab = this.add.text(width / 2, height * 0.935, '〔 각성한 영창가로 시작 〕', {
+      fontFamily: '"Noto Serif KR", "Malgun Gothic", serif',
+      fontSize: '15px',
+      color: '#ffd166',
+      letterSpacing: 2,
+    }).setOrigin(0.5).setAlpha(0.75).setInteractive({ useHandCursor: true });
+
+    const hint = this.add.text(
+      width / 2,
+      height * 0.968,
+      '각인·정령·친화가 쌓인 후반부터 — 무엇을 쳐야 할지는 화면이 알려준다',
+      {
+        fontFamily: '"Noto Serif KR", "Malgun Gothic", serif',
+        fontSize: '11px',
+        color: '#7a6a45',
+        align: 'center',
+      },
+    ).setOrigin(0.5).setAlpha(0.8);
+
+    tab.on('pointerover', () => { tab.setAlpha(1).setColor('#ffe6a3'); hint.setAlpha(1); });
+    tab.on('pointerout', () => { tab.setAlpha(0.75).setColor('#ffd166'); hint.setAlpha(0.8); });
+    tab.on('pointerdown', () => this.startGame(true));
   }
 
   private async openCodex(): Promise<void> {
@@ -269,8 +308,9 @@ export class TitleScene extends Phaser.Scene {
     });
   }
 
-  private startGame(): void {
+  private startGame(demo = false): void {
     if (this.starting || this.codexOpen) return;
+    if (demo) requestDemoRun();
     this.starting = true;
     this.input.enabled = false;
     this.cameras.main.fadeOut(420, 5, 6, 15);

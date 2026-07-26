@@ -3,7 +3,7 @@ import { createSpriteLayers } from '../render/spriteLayers';
 import { playHitReact, playImpactSquash } from '../combat-core/enemies/enemyJuice';
 import type { SpellJudge } from '../spell/judge';
 import { createJudge } from '../spell/createJudge';
-import type { SpellElement, SpellSpec } from '../spell/types';
+import type { SpellElement, SpellForm, SpellSpec } from '../spell/types';
 import { SpellHistory } from '../spell/spellHistory';
 import type { JudgeSource } from '../spell/spellHistory';
 import {
@@ -126,6 +126,7 @@ import type {
   RoomCursePlan,
 } from '../combat-core/run/roomCurse';
 import { drawRewardOptions, RUN_REWARD_CONFIG } from '../combat-core/run/rewardConfig';
+import { AFFINITY_ROWS, rankAffinities } from '../combat-core/run/useAffinity';
 import { ENGRAVE_CONFIG, EngraveManager } from '../combat-core/engrave/engraveManager';
 import { SpiritManager, SPIRIT_CONFIG } from '../combat-core/spirit/spiritManager';
 import {
@@ -153,6 +154,7 @@ import { BOSS_CONFIG } from '../combat-core/boss/bossConfig';
 import { BossPatternController } from '../combat-core/boss/bossPatternController';
 import type { BossPatternAction } from '../combat-core/boss/bossPatternController';
 import {
+  RESISTANCE,
   computeResistance,
   diversityBonus,
   getBossLine,
@@ -168,6 +170,18 @@ import { EMPTY_RUN_MEMORY } from '../spell/runMemory';
 import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { showRewardCards } from '../ui/rewardCardOverlay';
 import { summarizeRunRewards } from '../run/runRewardSummary';
+import {
+  DEMO_SAMPLE_INCANTATIONS,
+  DEMO_START_ROOM,
+  applyDemoLoadout,
+  consumeDemoRunRequest,
+} from '../run/demoLoadout';
+import {
+  MIRROR_CAST_CONFIG,
+  mirrorImpactHitsPlayer,
+  pickMirrorSpell,
+} from '../combat-core/boss/mirrorCast';
+import { BOSS_ARCANA_CONFIG, bossArcanaSpell } from '../combat-core/boss/bossArcana';
 import {
   addEntry,
   bestEntryFromRun,
@@ -225,6 +239,15 @@ const HUD = {
 
 /** 친화 경험치 바가 채워지는 이정표 — 각성 임계(MASTERY_REDESIGN §5-b, 친화 0.9). */
 const AFFINITY_BAR_MILESTONE = 0.9;
+
+/** 친화 바 한 행(라벨+바)의 세로 간격 — 3행이면 HUD 아래 ~66px를 쓴다 */
+const AFFINITY_ROW_HEIGHT = 22;
+
+/**
+ * 미러 캐스트 판정용 플레이어 히트 반경(px). 적 탄환 판정(bulletHitDistance 14)과
+ * 같은 결 — 시각 스프라이트보다 약간 후하게 잡아 "스쳤는데 맞았다"를 피한다.
+ */
+const PLAYER_HIT_RADIUS = 16;
 
 interface FriendlyMissile {
   body: Phaser.GameObjects.Arc;
@@ -415,8 +438,8 @@ export class ProtoScene extends Phaser.Scene {
   private manaText!: Phaser.GameObjects.Text;
   private shieldText!: Phaser.GameObjects.Text;
   private attunementText!: Phaser.GameObjects.Text;
-  /** 친화 경험치 바 라벨 — 가장 깊이 투자한 원소·% (HUD 박스 아래) */
-  private affinityLabelText!: Phaser.GameObjects.Text;
+  /** 친화 경험치 바 라벨 — 상위 원소별 1행씩 (HUD 박스 아래, 주력이 맨 위) */
+  private affinityLabelTexts: Phaser.GameObjects.Text[] = [];
   /** 필살기(융합) 게이지 라벨 — 하단 중앙 미터 위 (충전%·준비 알림) */
   private fusionLabelText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
@@ -453,7 +476,7 @@ export class ProtoScene extends Phaser.Scene {
   private blackoutCurseField: BlackoutCurseField | null = null;
   private activeCurseBanner: Phaser.GameObjects.Container | null = null;
   /** 약화 안내를 이미 띄운 원소 — 방마다 비워 같은 경고가 시전마다 반복되지 않게 한다 */
-  private readonly escalationNoticed = new Set<SpellElement>();
+  private readonly escalationNoticed = new Set<SpellForm>();
   private waveManager = new WaveManager();
   private eliteModifierAssignments: EliteModifier[] = [];
   private eliteSpawnIndex = 0;
@@ -495,6 +518,39 @@ export class ProtoScene extends Phaser.Scene {
   private growthMarks!: GrowthMarks;
   /** 주문서 유산 선택 중 — 카드가 키를 캡처하는 동안 전투를 멈춘다 */
   private legacySelecting = false;
+  /** 시연 런("각성한 영창가로 시작")인가 — 유산 선택을 건너뛰는 데 쓴다 */
+  private demoRun = false;
+  /**
+   * 진행 중인 미러 캐스트(예고 단계). 타이머는 update에서 **스케일된 델타**로
+   * 감소한다 — 영창 슬로모(timeScale 0.1) 중엔 예고도 같이 느려져, "예고를 보고
+   * 슬로모를 열어 보호막을 친다"는 카운터플레이가 성립한다.
+   */
+  private pendingMirrorCast: {
+    spec: SpellSpec;
+    targetX: number;
+    targetY: number;
+    remainingSeconds: number;
+    marker: Phaser.GameObjects.Graphics;
+    /** 화면 가장자리 붉은 맥동 — "티가 안 남" 피드백의 답 */
+    vignette: Phaser.GameObjects.Graphics;
+    /** 수축 링 + 보스→표적 수렴 마력선 (매 프레임 다시 그림) */
+    beamLine: Phaser.GameObjects.Graphics;
+    caster: BossEnemy;
+  } | null = null;
+  /** 이 보스전에서 미러 캐스트를 이미 썼는가 — 페이즈2 1회 (페이즈3 패턴은 force) */
+  private mirrorCastUsed = false;
+  /** 비전 마법(bossArcana) 상태 — 스펠북 예고·어둠 장막·중력 인력 */
+  private pendingBossArcana: {
+    spec: SpellSpec;
+    targetX: number;
+    targetY: number;
+    remainingSeconds: number;
+    marker: Phaser.GameObjects.Graphics;
+  } | null = null;
+  private bossArcanaIndex = 0;
+  private bossShroud: BlackoutCurseField | null = null;
+  private bossShroudRemaining = 0;
+  private bossPullRemaining = 0;
   private readonly spiritViews = new Map<string, SpiritOrbView>();
   private spiritOrbitAngle = -Math.PI / 2;
   private readonly enemyControlState = new EnemyControlState();
@@ -508,6 +564,8 @@ export class ProtoScene extends Phaser.Scene {
   /** 페이즈를 넘어 유지되는 원소별 내성. 같은 원소는 더 강한(낮은) 배수 하나만 유지한다. */
   private readonly activeBossResistances = new Map<SpellElement, number>();
   private lastResistNoticeAt = 0;
+  /** 마스터리 관통 안내는 보스전당 1회 — 매 타격마다 뜨면 잔소리가 된다 */
+  private masteryPierceAnnounced = false;
   private activeBossPhase: 1 | 2 | 3 = 1;
   private bossPatternController: BossPatternController | null = null;
   private bossChargeTelegraph: Phaser.GameObjects.Graphics | null = null;
@@ -635,6 +693,10 @@ export class ProtoScene extends Phaser.Scene {
     // 씬 재진입(런 종료→타이틀→새 런) 대비: 매니저·컨트롤러는 필드라 create마다
     // 리셋해야 이전 런의 친화·각인·정령·HP·루프가 남지 않는다 (총괄 제보 버그).
     this.resetForNewRun();
+    // 시연 로드아웃 — 타이틀의 "각성한 영창가로 시작"으로 들어온 경우에만.
+    // resetForNewRun 뒤에 심어야 리셋에 지워지지 않는다.
+    const demo = consumeDemoRunRequest();
+    if (demo) this.seedDemoRun();
     this.prepareRunEscalation();
     this.startRoom(this.combatRunController.state.roomIndex);
     this.updateStatusText();
@@ -644,8 +706,39 @@ export class ProtoScene extends Phaser.Scene {
       if (!this.incanting && !this.casting) this.tryOpenIncant();
     });
 
-    // 주문서에 유산이 있으면 첫 전투 전에 하나를 고른다 (첫 런은 비어 있어 조용히 넘어감)
-    void this.offerLegacyEngrave();
+    // 시연 런은 유산 선택을 건너뛴다 — 이미 후반 상태라 카드가 겹치고,
+    // 심사위원을 시작하자마자 선택 UI로 막는 게 이 모드의 취지에 어긋난다.
+    if (!this.demoRun) void this.offerLegacyEngrave();
+  }
+
+  /**
+   * 시연 상태 주입 — 각인 2종(Lv3 진화)·정령 2체 Lv2·친화 2원소, 5번 방(엘리트)부터.
+   * 실제 보상 경로(applyReward)를 그대로 쓴다 — 별도 주입로면 도달 불가능한 상태를
+   * 보여주게 되고, 그건 심사위원에게 거짓말이다.
+   */
+  private seedDemoRun(): void {
+    this.demoRun = true;
+    // 방 지정 리셋을 **먼저** 한다 — reset()이 elementalAffinity를 비우므로
+    // 친화를 심은 뒤에 부르면 그대로 지워진다.
+    this.combatRunController.reset(Date.now(), false, DEMO_START_ROOM);
+    applyDemoLoadout(this.engraveManager, this.spiritManager, this.combatRunController);
+    this.syncSpiritViews();
+    this.announceSystemMessage(
+      `각성한 영창가 — ${DEMO_START_ROOM}번 방부터`,
+      '#ffd166',
+      3200,
+    );
+    // 온보딩 힌트는 1번 방에서만 뜬다(startRoom). 시연은 5번 방에서 시작하므로
+    // 여기서 따로 알려줘야 한다 — **강해진 상태로 떨어뜨려도 뭘 칠지 모르면
+    // 아무 일도 안 일어난다.** 이 게임의 훅은 성장이 아니라 자유 영창이다.
+    this.time.delayedCall(1600, () => {
+      if (!this.scene?.isActive?.()) return;
+      this.announceSystemMessage(
+        `ENTER — 문장을 쳐서 마법을 만든다\n${DEMO_SAMPLE_INCANTATIONS.map((s) => `· ${s}`).join('\n')}`,
+        '#c7f9e0',
+        6000,
+      );
+    });
   }
 
   override update(_time: number, delta: number): void {
@@ -665,6 +758,8 @@ export class ProtoScene extends Phaser.Scene {
       this.updateHazards(d);
       this.updateBasicAttack();
       this.updateEngravedSpells(d);
+      this.updateMirrorCast(d);
+      this.updateBossArcana(d);
       this.updateSpirits(d);
       this.updateSummon(d);
       this.updateFriendlyMissiles(d);
@@ -822,9 +917,9 @@ export class ProtoScene extends Phaser.Scene {
     this.legacySelecting = true;
     try {
       const options: RewardOption[] = offers.map((entry) => {
-        // 격상(#77)으로 약화된 원소는 카드에 명시한다 —
+        // 격상(#77)으로 약화된 **폼**은 카드에 명시한다 —
         // 모르고 고르면 "물려받았는데 약하다"가 되고, 알고 고르면 전략적 선택이 된다.
-        const weakened = this.runEscalation.weakenedElements.includes(entry.element);
+        const weakened = this.runEscalation.weakenedForms.includes(entry.form);
         const weakenPercent = Math.round((1 - this.runEscalation.weakenMultiplier) * 100);
         return {
           id: `legacy-${entry.normalized}`,
@@ -832,7 +927,7 @@ export class ProtoScene extends Phaser.Scene {
           title: `유산 · ${entry.name}`,
           description: `${ELEMENT_LABELS[entry.element]} ${FORM_LABELS[entry.form]} · 위력 ${Math.round(entry.power)}`
             + ` — 지난 런의 주문, Lv1 각인으로 시작`
-            + (weakened ? `\n⚠ ${ELEMENT_LABELS[entry.element]} 약화 −${weakenPercent}%` : ''),
+            + (weakened ? `\n⚠ ${FORM_LABELS[entry.form]} 약화 −${weakenPercent}%` : ''),
           element: entry.element,
           engrave: { spellKey: entry.normalized, level: 1 },
         };
@@ -1045,6 +1140,12 @@ export class ProtoScene extends Phaser.Scene {
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.activeBossResistances.clear();
     this.activeBossPhase = 1;
+    // 미러 캐스트는 보스전마다 1회 — 새 보스전이 시작되면 다시 쓸 수 있다.
+    this.mirrorCastUsed = false;
+    this.clearPendingMirrorCast();
+    this.clearBossArcana();
+    this.bossArcanaIndex = 0;
+    this.masteryPierceAnnounced = false;
     const runMemory = loadRunMemory();
     // 장기(지난 런들) 기억 — 단기 표본 부족 시 부분 내성으로 발동 (GDD §4.2)
     if (usesMemory) {
@@ -1223,6 +1324,18 @@ export class ProtoScene extends Phaser.Scene {
     this.clearActiveWall();
     this.clearActiveOrbit();
     this.clearUnstableWarnings();
+    this.clearPendingMirrorCast();
+    this.clearBossArcana();
+  }
+
+  /** 예고 중인 미러 캐스트 취소 — 방 전환·사망 후 마커가 남거나 유령 발사되는 것 방지 */
+  private clearPendingMirrorCast(): void {
+    if (this.pendingMirrorCast) {
+      this.pendingMirrorCast.marker.destroy();
+      this.pendingMirrorCast.vignette.destroy();
+      this.pendingMirrorCast.beamLine.destroy();
+    }
+    this.pendingMirrorCast = null;
   }
 
   /** 투사체 update 순회가 끝난 다음 tick에 안전하게 일괄 제거한다. */
@@ -1273,13 +1386,15 @@ export class ProtoScene extends Phaser.Scene {
       fontStyle: 'bold',
       color: '#c7f9e0',
     }).setScrollFactor(0).setDepth(100);
-    // 친화 경험치 바 라벨 — 메인 HUD 박스 아래, 가장 깊이 투자한 원소의 성장 (사용 성장 #166 체감)
-    this.affinityLabelText = this.add.text(HUD.x + 6, HUD.y + HUD.height + 6, '', {
-      fontFamily: '"Noto Serif KR", Consolas, monospace',
-      fontSize: '11px',
-      fontStyle: 'bold',
-      color: '#8fa4ff',
-    }).setScrollFactor(0).setDepth(100);
+    // 친화 경험치 바 라벨 — 메인 HUD 박스 아래. 원소별로 1행씩(주력이 맨 위) 세워
+    // "다른 원소도 오르고 있다"가 보이게 한다 (사용 성장 #166 체감 · 총괄 제보)
+    this.affinityLabelTexts = Array.from({ length: AFFINITY_ROWS }, (_, i) =>
+      this.add.text(HUD.x + 6, HUD.y + HUD.height + 6 + i * AFFINITY_ROW_HEIGHT, '', {
+        fontFamily: '"Noto Serif KR", Consolas, monospace',
+        fontSize: i === 0 ? '11px' : '10px',
+        fontStyle: 'bold',
+        color: '#8fa4ff',
+      }).setScrollFactor(0).setDepth(100));
     // 필살기(융합) 미터 라벨 — 하단 중앙, 궁극기 게이지처럼 항상 노출해 존재를 가르친다
     this.fusionLabelText = this.add.text(width / 2, height - 62, '', {
       fontFamily: '"Noto Serif KR", Consolas, monospace',
@@ -1556,6 +1671,249 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   /** 플레이어 피격 반응 — 적과 동일한 규칙(흰 플래시 + squash)을 그대로 쓴다. */
+  /**
+   * 미러 캐스트 예고 — 표적은 **이 순간의 플레이어 위치로 고정**된다.
+   * 예고 동안 이동하면 즉발 폼도 빗나간다 — 즉발(beam/slash/chain)은 이동 시간이
+   * 없어 이 예고가 유일한 회피 창이다. 지연 폼은 발사 후에도 이동으로 피한다.
+   *
+   * 예고 연출은 3겹이다(총괄 피드백 "티가 안 남, 위압감 없음" 반영):
+   * 화면 가장자리 붉은 맥동(어딜 보고 있어도 전달) + 보스→표적 수렴 마력선
+   * (누가 쏘는지) + 수축 링(착탄까지 남은 시간이 몸으로 읽힘).
+   *
+   * @param force 페이즈3 패턴 재발동 — 1회 제한(mirrorCastUsed)을 넘되
+   *              예고 중복·재료 검사는 그대로 지킨다.
+   */
+  private queueMirrorCast(boss: BossEnemy, force = false): void {
+    if ((this.mirrorCastUsed && !force) || this.pendingMirrorCast) return;
+    const spec = pickMirrorSpell(this.spellHistory);
+    // 재료가 없으면(수동 damage 주문 미달) 조용히 생략 — 밋밋한 미러는 역효과다.
+    if (!spec) return;
+    this.mirrorCastUsed = true;
+
+    const targetX = this.player.x;
+    const targetY = this.player.y;
+    const pal = ELEMENT_PALETTES[spec.element_primary];
+    // 표적 마커 — 되돌아오는 주문의 원소색. 위험 관례색(주황)은 링·비네트가 맡는다.
+    const marker = this.add.graphics().setDepth(6);
+    marker.lineStyle(3, pal.core, 0.95).strokeCircle(targetX, targetY, 44);
+    marker.lineStyle(1.5, pal.glow, 0.5).strokeCircle(targetX, targetY, 66);
+    // 화면 가장자리 붉은 맥동 — 구석에서 벌어져도 "큰 게 온다"가 전달된다.
+    const vignette = this.add.graphics().setScrollFactor(0).setDepth(96);
+    const { width, height } = this.scale;
+    vignette.fillStyle(0xff3b30, 1);
+    const EDGE = 26;
+    vignette.fillRect(0, 0, width, EDGE);
+    vignette.fillRect(0, height - EDGE, width, EDGE);
+    vignette.fillRect(0, 0, EDGE, height);
+    vignette.fillRect(width - EDGE, 0, EDGE, height);
+    // 보스 → 표적 수렴 마력선 (updateMirrorCast가 매 프레임 다시 그린다)
+    const beamLine = this.add.graphics().setDepth(6).setBlendMode(Phaser.BlendModes.ADD);
+
+    this.pendingMirrorCast = {
+      spec,
+      targetX,
+      targetY,
+      remainingSeconds: MIRROR_CAST_CONFIG.telegraphSeconds,
+      marker,
+      vignette,
+      beamLine,
+      caster: boss,
+    };
+    this.audio.playSfx('boss-appear');
+    requestCameraShake(this, 'weak', 1);
+    this.announceSystemMessage(
+      `보스가 『${spec.name}』을(를) 역영창한다 —`,
+      '#ff8f70',
+      2200,
+    );
+    devInfo('[MirrorCast] queued', { spec: spec.name, form: spec.form, force });
+  }
+
+  /** 예고 타이머 진행(스케일된 델타 = 슬로모 존중) → 만료 시 발사 */
+  private updateMirrorCast(deltaSeconds: number): void {
+    const pending = this.pendingMirrorCast;
+    if (!pending) return;
+    pending.remainingSeconds -= deltaSeconds;
+    const total = MIRROR_CAST_CONFIG.telegraphSeconds;
+    const progress = Phaser.Math.Clamp(1 - pending.remainingSeconds / total, 0, 1);
+    // 맥동 — 남은 시간이 줄수록 빨라져 "곧 온다"를 몸으로 알린다
+    const pulse = 0.55 + 0.45 * Math.abs(Math.sin(this.time.now / (90 - 40 * progress)));
+    pending.marker.setAlpha(pulse);
+    pending.vignette.setAlpha(0.10 + 0.14 * pulse * (0.5 + progress));
+    // 수축 링 — 남은 시간에 비례해 조여든다. 착탄 타이밍의 카운트다운.
+    pending.beamLine.clear();
+    const ringR = 150 - 106 * progress;
+    pending.beamLine.lineStyle(2.5, 0xff8f70, 0.5 + 0.5 * progress);
+    pending.beamLine.strokeCircle(pending.targetX, pending.targetY, ringR);
+    // 수렴 마력선 — 보스가 살아 있으면 보스 몸에서 표적으로 흐른다
+    if (pending.caster.alive) {
+      pending.beamLine.lineStyle(2 + 2 * progress, 0xff5a6e, 0.35 + 0.45 * pulse);
+      pending.beamLine.lineBetween(
+        pending.caster.x, pending.caster.y, pending.targetX, pending.targetY,
+      );
+    }
+    if (pending.remainingSeconds > 0) return;
+
+    pending.marker.destroy();
+    pending.vignette.destroy();
+    pending.beamLine.destroy();
+    this.pendingMirrorCast = null;
+    this.fireMirrorCast(pending.spec, pending.targetX, pending.targetY);
+  }
+
+  private fireMirrorCast(spec: SpellSpec, targetX: number, targetY: number): void {
+    this.bossCastSpellAt(spec, targetX, targetY, MIRROR_CAST_CONFIG.damageScale);
+    devInfo('[MirrorCast] fired', { spec: spec.name, targetX, targetY });
+  }
+
+  /**
+   * 보스 영창 공통 발사부 — 미러 캐스트와 비전(스펠북) 마법이 같은 관문을 쓴다.
+   * 렌더는 castSpell 그대로(시전자 중립), 피해만 **임팩트 시점의 플레이어 위치**와
+   * 대조한다 — 이동 회피가 성립하는 근거.
+   */
+  private bossCastSpellAt(
+    spec: SpellSpec,
+    targetX: number,
+    targetY: number,
+    damageScale: number,
+  ): void {
+    const boss = this.enemies.find(
+      (enemy): enemy is BossEnemy => enemy instanceof BossEnemy && enemy.alive,
+    );
+    // 예고 중 보스가 죽었으면 불발 — 시전자가 없는 마법은 없다.
+    if (!boss) return;
+    const castRoomIndex = this.combatRunController.state.roomIndex;
+    // 다중 임팩트(nova 링·zone 틱) 연타 방지 — 시전 단위 지역 쿨다운
+    let lastHitAt = 0;
+
+    castSpell({
+      scene: this,
+      from: new Phaser.Math.Vector2(boss.x, boss.y),
+      to: new Phaser.Math.Vector2(targetX, targetY),
+      // chain은 경로가 비면 미스 연출만 나온다 — 고정 표적 지점을 1홉 경로로 준다.
+      chainPath: spec.form === 'chain' ? [{ x: targetX, y: targetY }] : undefined,
+      allowCameraShake: true,
+      shouldResolveImpact: () => {
+        const state = this.combatRunController.state;
+        return state.phase === 'combat' && state.roomIndex === castRoomIndex;
+      },
+      onHit: (impact) => {
+        // 명중 시점의 플레이어 위치와 대조 — 이동 회피의 근거가 되는 한 줄.
+        if (!this.playerState.alive) return;
+        if (this.time.now - lastHitAt
+          < MIRROR_CAST_CONFIG.hitCooldownSeconds * 1000) return;
+        if (!mirrorImpactHitsPlayer(
+          impact, this.player.x, this.player.y, PLAYER_HIT_RADIUS,
+        )) return;
+        lastHitAt = this.time.now;
+        const per = Number.isFinite(impact.damageMultiplier)
+          ? Math.max(0, impact.damageMultiplier as number)
+          : 1;
+        this.damagePlayer(Math.max(0, spec.power) * damageScale * per);
+        this.playPlayerHit('medium');
+      },
+    }, spec);
+  }
+
+  // ── 보스 비전 마법 (bossArcana, 총괄 발안 07-26) ─────────────────────
+
+  /** 스펠북 원소 마법 예고 — 미러보다 가볍다(일상 패턴). 표적은 예고 시점 고정. */
+  private queueBossArcana(): void {
+    if (this.pendingBossArcana) return;
+    const spec = bossArcanaSpell(this.bossArcanaIndex++);
+    const pal = ELEMENT_PALETTES[spec.element_primary];
+    const targetX = this.player.x;
+    const targetY = this.player.y;
+    const marker = this.add.graphics().setDepth(6);
+    marker.lineStyle(2, pal.core, 0.85).strokeCircle(targetX, targetY, 36);
+    this.pendingBossArcana = {
+      spec,
+      targetX,
+      targetY,
+      remainingSeconds: BOSS_ARCANA_CONFIG.castTelegraphSeconds,
+      marker,
+    };
+    devInfo('[BossArcana] queued', { spec: spec.name, form: spec.form });
+  }
+
+  /** 어둠 장막 — 암전 저주의 시야 시스템을 짧은 방해로 재사용 (피해 0) */
+  private castBossShroud(): void {
+    // 암전 저주 방이면 이미 어두움 — 겹치면 아무것도 안 보인다. 생략.
+    if (this.bossShroud || this.blackoutCurseField) return;
+    this.bossShroud = new BlackoutCurseField(
+      this, this.worldBounds, this.player.x, this.player.y,
+    );
+    this.bossShroudRemaining = BOSS_ARCANA_CONFIG.shroudSeconds;
+    this.announceSystemMessage('어둠의 장막 — 시야가 조여든다', '#b18cff', 2200);
+  }
+
+  /** 중력 인력 — 보스 쪽으로 흡인. 이속(220)보다 느려 걸어서 저항 가능. */
+  private castBossPull(): void {
+    if (this.bossPullRemaining > 0) return;
+    this.bossPullRemaining = BOSS_ARCANA_CONFIG.pullDurationSeconds
+      + BOSS_ARCANA_CONFIG.pullTelegraphSeconds;
+    this.announceSystemMessage('중력 인력 — 붙잡히기 전에 벗어나라', '#b18cff', 2200);
+  }
+
+  /** 비전 마법 상태 진행 — 스케일된 델타(슬로모 존중) */
+  private updateBossArcana(deltaSeconds: number): void {
+    const pending = this.pendingBossArcana;
+    if (pending) {
+      pending.remainingSeconds -= deltaSeconds;
+      pending.marker.setAlpha(0.5 + 0.5 * Math.abs(Math.sin(this.time.now / 80)));
+      if (pending.remainingSeconds <= 0) {
+        pending.marker.destroy();
+        this.pendingBossArcana = null;
+        this.bossCastSpellAt(
+          pending.spec, pending.targetX, pending.targetY, BOSS_ARCANA_CONFIG.damageScale,
+        );
+      }
+    }
+
+    if (this.bossShroud) {
+      this.bossShroudRemaining -= deltaSeconds;
+      this.bossShroud.update(deltaSeconds, this.player.x, this.player.y);
+      if (this.bossShroudRemaining <= 0) {
+        this.bossShroud.destroy();
+        this.bossShroud = null;
+      }
+    }
+
+    if (this.bossPullRemaining > 0) {
+      this.bossPullRemaining -= deltaSeconds;
+      const telegraphLeft = this.bossPullRemaining - BOSS_ARCANA_CONFIG.pullDurationSeconds;
+      // 예고 구간(첫 0.6초)에는 끌지 않는다 — 반응할 시간을 준다.
+      if (telegraphLeft <= 0) {
+        const boss = this.enemies.find(
+          (enemy): enemy is BossEnemy => enemy instanceof BossEnemy && enemy.alive,
+        );
+        if (boss && this.playerState.alive) {
+          const dx = boss.x - this.player.x;
+          const dy = boss.y - this.player.y;
+          const distance = Math.hypot(dx, dy);
+          // 접촉 거리 안까지 끌어붙이지 않는다 — 흡인은 위치 교란이지 즉사 콤보가 아니다.
+          if (distance > BOSS_CONFIG.contactDistance * 1.6) {
+            const step = BOSS_ARCANA_CONFIG.pullSpeedPerSecond * deltaSeconds;
+            this.player.x += (dx / distance) * step;
+            this.player.y += (dy / distance) * step;
+          }
+        } else {
+          this.bossPullRemaining = 0; // 보스가 죽으면 인력도 사라진다
+        }
+      }
+    }
+  }
+
+  /** 비전 마법 상태 정리 — 방 전환·사망 후 장막·인력·예고가 남지 않게 */
+  private clearBossArcana(): void {
+    this.pendingBossArcana?.marker.destroy();
+    this.pendingBossArcana = null;
+    this.bossShroud?.destroy();
+    this.bossShroud = null;
+    this.bossShroudRemaining = 0;
+    this.bossPullRemaining = 0;
+  }
+
   private playPlayerHit(shakeTier: CameraShakeTier = 'weak'): void {
     if (!this.player?.active || !this.playerBody) return;
     playHitReact(this, this.player, this.playerBody, 0x8fa4ff);
@@ -1899,6 +2257,9 @@ if (applied) this.playPlayerHit(
         '#d0a8ff',
         2800,
       );
+      // 미러 캐스트 — "기억 적응" 발표 직후, 플레이어의 최강 주문을 되돌려 영창한다.
+      // 발표 텍스트가 스쳐도 이건 못 놓친다 — 내 주문이 그 모습 그대로 날아오니까.
+      this.queueMirrorCast(boss);
       return;
     }
     if (isMemoryBoss && boss.phase === 3) {
@@ -1970,6 +2331,20 @@ if (applied) this.playPlayerHit(
       case 'hazard':
         requestCameraShake(this, 'medium');
         this.spawnBossHazard(boss);
+        break;
+      // ── 비전 마법 (bossArcana, 총괄 발안) — 보스도 영창한다 ──
+      case 'arcane-cast':
+        this.queueBossArcana();
+        break;
+      case 'shroud':
+        this.castBossShroud();
+        break;
+      case 'pull':
+        this.castBossPull();
+        break;
+      case 'mirror':
+        // 페이즈3 순환 재발동 — 1회 제한을 넘되 재료·중복 검사는 그대로.
+        this.queueMirrorCast(boss, true);
         break;
     }
   }
@@ -2791,7 +3166,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
     // 융합 게이지 — 시퀀스도 수동 영창이므로 충전한다 (방출 격상은 v1에선 단일 주문만)
     if (this.fusionGauge.charge(plan.manaCost)) {
-      this.announceSystemMessage('융합의 힘이 응축됐다 — 두 원소를 담아 영창하라', '#e2b7ff', 3400);
+      this.announceSystemMessage('융합의 힘이 응축됐다 — 두 원소를 담아 영창하라 (마나 무소모)', '#e2b7ff', 3400);
     }
     const sequenceElements = [...new Set(plan.sequences.flatMap((sequence) => (
       sequence.behaviors.flatMap(behaviorElements)
@@ -2880,8 +3255,17 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
 
       const spec = judgement.spell;
+      // 필살기(융합 게이지) — 만충 + 이중 원소 판정이면 이 시전이 융합 방출로 격상된다.
+      // 방출 시전은 충전하지 않는다(리셋 직후 자기 마나로 재충전 방지).
+      //
+      // **마나 검사보다 먼저** 판정한다(총괄 결정: 필살기는 마나 소모 없음).
+      // 자원은 게이지 자체다 — 순서가 반대면 마나가 바닥일 때 만충 필살기가
+      // 거부되는 모순이 생긴다. 다 떨어졌을 때 뒤집는 한 방이 필살기의 존재 이유다.
+      const fusedSpec = this.fusionGauge.tryRelease(spec);
       // 감쇠 시전 — 마나 부족은 거부가 아니라 잦아든 주문 (바닥 미만일 때만 거부)
-      const castPlan = degradedCastPlan(spec.cost, this.playerState.mana);
+      const castPlan = fusedSpec
+        ? { spend: 0, ratio: 1 }
+        : degradedCastPlan(spec.cost, this.playerState.mana);
       if (!castPlan) {
         this.audio.playSfx('fizzle');
         this.announceManaShortage(spec.cost);
@@ -2889,12 +3273,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
       this.playerState.trySpendMana(castPlan.spend);
 
-      // 필살기(융합 게이지) — 만충 + 이중 원소 판정이면 이 시전이 융합 방출로 격상된다.
-      // 방출 시전은 충전하지 않는다(리셋 직후 자기 마나로 재충전 방지).
-      const fusedSpec = this.fusionGauge.tryRelease(spec);
       if (!fusedSpec && this.fusionGauge.charge(castPlan.spend)) {
         this.announceSystemMessage(
-          '융합의 힘이 응축됐다 — 두 원소를 담아 영창하라',
+          '융합의 힘이 응축됐다 — 두 원소를 담아 영창하라 (마나 무소모)',
           '#e2b7ff',
           3400,
         );
@@ -2919,9 +3300,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
       const affinityBonus = this.combatRunController.state
         .elementalAffinity[spec.element_primary] ?? 0;
-      // 런 반복 격상(#77): 회차가 쌓이면 과의존한 원소가 이번 런 전체에서 약화된다.
-      // 프로필은 런 시작에 확정된 캐시를 쓴다 (시전마다 localStorage를 읽지 않는다).
-      const escalationWeaken = this.runEscalation.weakenedElements.includes(spec.element_primary)
+      // 런 반복 격상(#77): 회차가 쌓이면 과의존한 **폼**이 이번 런 전체에서 약화된다.
+      // 원소가 아니라 폼이다(#171) — 다채로운 화염 마스터는 안 맞고, 같은 수를
+      // 반복하는 사람만 맞는다. 프로필은 런 시작에 확정된 캐시를 쓴다.
+      const escalationWeaken = this.runEscalation.weakenedForms.includes(spec.form)
         ? this.runEscalation.weakenMultiplier
         : 1;
       // 다양성 보너스(당근, #92): 최근과 다른 원소·폼이면 데미지↑. basePower 불변, 여기서만 곱한다.
@@ -2972,11 +3354,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           2600,
         );
       }
-      // 같은 원소를 계속 쓰면 매 시전 반복되므로 방마다 원소별 1회만 알린다
-      if (escalationWeaken < 1 && !this.escalationNoticed.has(spec.element_primary)) {
-        this.escalationNoticed.add(spec.element_primary);
+      // 같은 폼을 계속 쓰면 매 시전 반복되므로 방마다 폼별 1회만 알린다
+      if (escalationWeaken < 1 && !this.escalationNoticed.has(spec.form)) {
+        this.escalationNoticed.add(spec.form);
         this.announceSystemMessage(
-          `${ELEMENT_LABELS[spec.element_primary]} 약화 ${Math.round((1 - escalationWeaken) * 100)}% · 세계가 네 수를 읽었다`,
+          `${FORM_LABELS[spec.form]} 약화 ${Math.round((1 - escalationWeaken) * 100)}% · 세계가 네 수를 읽었다`,
           '#b18cff',
         );
       }
@@ -3200,9 +3582,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const priorUsages = this.spellHistory.allBehaviorUsages;
     const affinityBonus = this.combatRunController.state
       .elementalAffinity[baseSpec.element_primary] ?? 0;
-    const escalationWeaken = this.runEscalation.weakenedElements.includes(
-      baseSpec.element_primary,
-    ) ? this.runEscalation.weakenMultiplier : 1;
+    const escalationWeaken = this.runEscalation.weakenedForms.includes(baseSpec.form)
+      ? this.runEscalation.weakenMultiplier
+      : 1;
     const diversity = diversityBonus(
       { element: baseSpec.element_primary, form: baseSpec.form },
       priorUsages.map((entry) => ({ element: entry.elementPrimary, form: entry.form })),
@@ -3218,10 +3600,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       ),
     };
     this.spellHistory.recordBehaviorUsage(baseSpec, Date.now());
-    if (escalationWeaken < 1 && !this.escalationNoticed.has(baseSpec.element_primary)) {
-      this.escalationNoticed.add(baseSpec.element_primary);
+    if (escalationWeaken < 1 && !this.escalationNoticed.has(baseSpec.form)) {
+      this.escalationNoticed.add(baseSpec.form);
       this.announceSystemMessage(
-        `${ELEMENT_LABELS[baseSpec.element_primary]} 약화 ${Math.round((1 - escalationWeaken) * 100)}% · 세계가 네 수를 읽었다`,
+        `${FORM_LABELS[baseSpec.form]} 약화 ${Math.round((1 - escalationWeaken) * 100)}% · 세계가 네 수를 읽었다`,
         '#b18cff',
       );
     }
@@ -3403,7 +3785,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       from,
       to,
       chainPath: chainTargets,
-      allowCameraShake: !auto,
+      // 자동 시전은 셰이크를 막는다(4초마다 흔들리면 피로하다). 단 **진화 각인만**
+      // 예외다 — auto인데 연출 격하가 0인 조합은 진화뿐이라 그걸로 판별한다.
+      // 진화는 huge라 spellRenderer가 셰이크 등급을 이미 한 단계 올려놨는데,
+      // auto 전체를 막는 바람에 그 격상이 사장돼 있었다.
+      allowCameraShake: !auto || vfxTierReduction === 0,
       damageScale: options?.damageScale,
       rangeScale: options?.rangeScale,
       radiusScale: options?.radiusScale,
@@ -3539,7 +3925,23 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         if (!this.playerState.alive
           || state.phase !== 'combat'
           || state.roomIndex !== roomIndex) return;
-        this.applySpellEffect(request.spell, undefined, true, 1);
+        // 진화 각인의 3발은 **서로 다른 적**을 문다. Lv3는 한 놈에게 2발을 박아
+        // 잡몹이 먼저 죽으면 나머지가 오버킬로 낭비됐다. 총피해는 그대로고
+        // 분배만 달라진다 — 적이 하나면 자동으로 기존 동작으로 수렴한다.
+        // 지연 발마다 시점이 다르므로 반드시 이 클로저 **안에서** 다시 고른다.
+        const shotIndex = Math.round(
+          request.delaySeconds / ENGRAVE_CONFIG.secondShotDelaySeconds,
+        );
+        const spread = request.evolved ? this.nthNearestEnemy(shotIndex) : null;
+        // 자동 시전은 연출을 한 단계 깎아 화면을 덜 어지럽힌다. 진화 각인만 예외로
+        // 깎지 않는다 — "진화하면 확연히 다르다"를 매 발동마다 보여주는 자리다.
+        this.applySpellEffect(
+          request.spell,
+          undefined,
+          true,
+          request.evolved ? 0 : 1,
+          spread ? { sequenceTarget: { lockedEnemy: spread, lastTargetPoint: null } } : undefined,
+        );
       };
       if (request.delaySeconds === 0) cast();
       else this.time.delayedCall(request.delaySeconds * 1000, cast);
@@ -3838,6 +4240,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       });
       const evolved = this.engraveManager.evolve(data.engraveKey, name);
       if (evolved) {
+        this.playEvolutionBurst(data.elements[0] ?? evolved.spell.element_primary);
         this.announceSystemMessage(`각인 진화 — 『${name}』`, '#ffd166', 2800);
       }
       return;
@@ -3850,9 +4253,60 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const fused = this.spiritManager.fuse(data.spiritIds, name);
       if (fused) {
         this.syncSpiritViews();
+        this.playEvolutionBurst(data.elements[0]);
         this.announceSystemMessage(`정령 융합 — 『${name}』`, '#ffd166', 2800);
       }
     }
+  }
+
+  /**
+   * 진화·융합 순간 연출 — 각인이 다시 새겨지는 한 컷.
+   *
+   * 이전엔 텍스트 한 줄이 전부라, Lv3 + 동일 원소 친화까지 모아 얻은 보상인데도
+   * 아무 일도 안 일어난 것처럼 보였다. 룬 링이 조여들었다 터지며 플레이어에게
+   * 각인된다 — 수렴은 참격 수렴선과 같은 어휘다(같은 게임의 같은 문법).
+   */
+  private playEvolutionBurst(element: SpellElement): void {
+    // applyEvolution은 LLM 작명을 **await** 한다(최대 수 초). 그 사이 사망·재시작으로
+    // 씬이 내려가면 여기 도달할 때 player가 이미 없다 — 실제로 그렇게 터뜨려 봤다.
+    if (!this.scene?.isActive?.() || !this.player) return;
+    const pal = ELEMENT_PALETTES[element];
+    const { x, y } = this.player;
+    const ring = this.add.graphics().setDepth(9)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const state = { t: 0 };
+    this.tweens.add({
+      targets: state,
+      t: 1,
+      duration: 620,
+      ease: 'Cubic.easeIn',
+      onUpdate: () => {
+        ring.clear();
+        // 3중 룬 링이 서로 다른 속도로 조여든다 — 하나면 그냥 원이 줄어드는 것으로 보인다.
+        for (let i = 0; i < 3; i += 1) {
+          const phase = Phaser.Math.Clamp(state.t * (1 + i * 0.22), 0, 1);
+          const radius = 150 * (1 - phase) + 26;
+          ring.lineStyle(3 - i * 0.6, i === 0 ? pal.accent : pal.core, 0.9 * (1 - phase * 0.5));
+          ring.strokeCircle(x, y - 20, radius);
+        }
+      },
+      onComplete: () => {
+        ring.destroy();
+        // 조여든 힘이 터져 나온다 — 각인이 완성된 순간
+        const burst = this.add.particles(x, y - 20, 'particle', {
+          speed: { min: 90, max: 300 },
+          scale: { start: 0.85, end: 0 },
+          lifespan: 620,
+          quantity: 46,
+          tint: [pal.core, pal.accent, pal.glow],
+          blendMode: Phaser.BlendModes.ADD,
+          emitting: false,
+        });
+        burst.explode();
+        this.time.delayedCall(900, () => burst.destroy());
+        requestCameraShake(this, 'medium', 1.2);
+      },
+    });
   }
 
   private currentJudgeSource(): JudgeSource {
@@ -4022,44 +4476,51 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     g.strokeRoundedRect(width - 306, 62, 288, 72, 12);
   }
 
-  /** 가장 깊이 투자한 원소와 그 친화 총량 (없으면 null) */
-  private topAffinity(): { element: SpellElement; value: number } | null {
-    const affinity = this.combatRunController.state.elementalAffinity;
-    let best: { element: SpellElement; value: number } | null = null;
-    for (const [element, value] of Object.entries(affinity)) {
-      const v = value ?? 0;
-      if (v > 0 && (!best || v > best.value)) best = { element: element as SpellElement, value: v };
-    }
-    return best;
-  }
-
   /**
-   * 친화 경험치 바 — 가장 깊이 투자한 원소의 성장을 각성 이정표(§5-b, 0.9)까지 채운다.
-   * 사용 성장(#166)이 매 시전 조금씩 차오르는 게 눈에 보여야 그 성장이 체감된다.
+   * 친화 경험치 바 — **키운 원소마다 한 줄씩**, 각성 이정표(§5-b, 0.9)까지 채운다.
+   *
+   * 이전엔 최고치 하나만 그렸다. 그런데 친화는 원소별로 따로 오르므로(growAffinityFromUse),
+   * 불로 시작한 뒤 얼음을 쏘면 얼음 친화가 실제로 오르는데 화면은 그대로였다
+   * (총괄 제보). 성장이 화면에서 부정되면 플레이어는 그 선택지를 지운다.
+   *
+   * 다만 주력을 맨 위에 크고 밝게, 나머지는 작고 흐리게 둔다 — 이 게임의 친화는
+   * 집중형 보상(useCap 0.45)이라 "고루 찍어라"로 읽히면 안 된다.
    */
   private drawAffinityBar(g: Phaser.GameObjects.Graphics): void {
-    const top = this.topAffinity();
-    if (!top) {
-      this.affinityLabelText.setText('');
-      return;
-    }
-    const pal = ELEMENT_PALETTES[top.element];
-    const ratio = Phaser.Math.Clamp(top.value / AFFINITY_BAR_MILESTONE, 0, 1);
+    const rows = rankAffinities<SpellElement>(this.combatRunController.state.elementalAffinity);
     const barX = HUD.x + 6;
-    const barY = HUD.y + HUD.height + 22;
-    const barW = HUD.width - 12;
-    g.fillStyle(0x141a35, 1);
-    g.fillRoundedRect(barX, barY, barW, 6, 3);
-    g.fillStyle(pal.core, 1);
-    g.fillRoundedRect(barX, barY, barW * ratio, 6, 3);
-    if (ratio >= 1) {
-      // 이정표 도달 — 각성 예고 펄스 (§5-b 구현 시 여기서 각성 선택지)
-      g.fillStyle(pal.accent, 0.4 + 0.4 * Math.abs(Math.sin(this.time.now / 200)));
-      g.fillRoundedRect(barX, barY, barW, 6, 3);
+    const fullW = HUD.width - 12;
+
+    for (let i = 0; i < this.affinityLabelTexts.length; i += 1) {
+      const label = this.affinityLabelTexts[i];
+      const row = rows[i];
+      if (!row) {
+        label.setText('');
+        continue;
+      }
+      const pal = ELEMENT_PALETTES[row.element];
+      const ratio = Phaser.Math.Clamp(row.value / AFFINITY_BAR_MILESTONE, 0, 1);
+      // 주력(0행)만 폭·불투명도가 100%. 아래는 좁고 흐려 서열이 한눈에 보인다.
+      const main = i === 0;
+      const barW = main ? fullW : fullW * 0.62;
+      const barH = main ? 6 : 4;
+      const alpha = main ? 1 : 0.55;
+      const barY = HUD.y + HUD.height + 22 + i * AFFINITY_ROW_HEIGHT;
+
+      g.fillStyle(0x141a35, alpha);
+      g.fillRoundedRect(barX, barY, barW, barH, barH / 2);
+      g.fillStyle(pal.core, alpha);
+      g.fillRoundedRect(barX, barY, barW * ratio, barH, barH / 2);
+      if (ratio >= 1) {
+        // 이정표 도달 — 각성 예고 펄스 (§5-b 구현 시 여기서 각성 선택지)
+        g.fillStyle(pal.accent, (0.4 + 0.4 * Math.abs(Math.sin(this.time.now / 200))) * alpha);
+        g.fillRoundedRect(barX, barY, barW, barH, barH / 2);
+      }
+      label
+        .setText(`「${ELEMENT_LABELS[row.element]}」 친화 ${Math.round(row.value * 100)}%`)
+        .setColor(paletteColorToCss(pal.core))
+        .setAlpha(alpha);
     }
-    this.affinityLabelText
-      .setText(`「${ELEMENT_LABELS[top.element]}」 친화 ${Math.round(top.value * 100)}%`)
-      .setColor(paletteColorToCss(pal.core));
   }
 
   /**
@@ -4106,7 +4567,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     this.fusionLabelText
       .setText(ready
-        ? '✦ 필살기 준비 — 이중 원소로 방출 ✦'
+        ? '✦ 필살기 준비 — 이중 원소로 방출 · 마나 무소모 ✦'
         : `필살기 융합  ${Math.round(ratio * 100)}%`)
       .setColor(ready ? '#f0d9ff' : '#a99cff')
       .setPosition(width / 2, y - 6);
@@ -4128,6 +4589,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private announceSystemMessage(message: string, color = '#ff8fa3', holdMs = 1800): void {
+    // 비동기 경로(진화 작명 await 등)에서 씬이 내려간 뒤 도달할 수 있다 — this.add가 없다.
+    if (!this.scene?.isActive?.()) return;
     const { width, height } = this.scale;
     const label = this.add.text(width / 2, height * 0.42, message, {
       fontSize: '24px',
@@ -4202,6 +4665,22 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       if (d < bestD) { bestD = d; best = enemy; }
     }
     return bestD <= maxDistance ? best : null;
+  }
+
+  /**
+   * n번째로 가까운 적 (0 = 가장 가까움). 모자라면 가까운 쪽으로 되감는다.
+   *
+   * 진화 각인의 3발을 서로 다른 적에게 물리기 위한 것 — 적이 하나뿐이면
+   * 자동으로 기존 동작(전부 그 적)으로 수렴한다.
+   */
+  private nthNearestEnemy(index: number): CombatEnemy | null {
+    const alive = this.enemies.filter((enemy) => enemy.alive);
+    if (alive.length === 0) return null;
+    alive.sort((a, b) => (
+      Phaser.Math.Distance.Between(this.player.x, this.player.y, a.x, a.y)
+      - Phaser.Math.Distance.Between(this.player.x, this.player.y, b.x, b.y)
+    ));
+    return alive[Math.max(0, index) % alive.length];
   }
 
   private findBoltCollision(
@@ -4409,6 +4888,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       spec.element_primary,
       amplified,
       showResistanceNotice,
+      spec.form,
     );
   }
 
@@ -4417,9 +4897,27 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     element: SpellElement,
     baseDamage: number,
     showResistanceNotice = false,
+    // 격상이 폼 기반이 되며(#171) 하한 겹침 계산에 폼이 필요해졌다.
+    // null이면(정령 미사일 등 폼 정보가 없는 경로) 격상 겹침 없음으로 취급.
+    form: SpellForm | null = null,
   ): number {
     if (enemy.kind !== 'boss') return baseDamage;
     const multiplier = this.activeBossResistances.get(element) ?? 1;
+    // 마스터리 면역 (#171 R1 발안, 총괄 채택): 친화가 각성 이정표(0.9)에 도달한
+    // 원소는 그 원소의 보스 내성을 **완전히 무시**한다 — "네가 불에 저항해?
+    // 내가 곧 불이다." 단기·장기·이중 저항 전부에 걸린다(같은 관문이므로).
+    const affinity = this.combatRunController.state.elementalAffinity[element] ?? 0;
+    if (multiplier < 1 && affinity >= RESISTANCE.masteryImmunityAffinity) {
+      if (!this.masteryPierceAnnounced) {
+        this.masteryPierceAnnounced = true;
+        this.announceSystemMessage(
+          `마스터리 관통 — ${ELEMENT_LABELS[element]}은(는) 이미 나의 것이다`,
+          '#ffd166',
+          2800,
+        );
+      }
+      return baseDamage;
+    }
     if (showResistanceNotice
       && multiplier < 1
       && this.time.now - this.lastResistNoticeAt > 1500) {
@@ -4428,8 +4926,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceSystemMessage(`저항! ${label}이(가) 통하지 않는다 — 다른 원소를 창작하라`, '#ffa94d');
     }
     // 합산 감쇠 하한 (결정서 §3③): 격상×내성이 겹쳐도 ×0.5 밑으로 안 내려간다.
-    // baseDamage엔 격상이 이미 반영돼 있어, 이 원소의 격상 배율로 겹침을 계산한다.
-    const escalation = this.runEscalation.weakenedElements.includes(element)
+    // baseDamage엔 격상이 이미 반영돼 있고, 격상은 이제 폼 기반이다 — 약화된 폼으로
+    // 내성 원소를 칠 때(예: 볼트 약화 + 화염 내성 + 화염 볼트)만 겹침 구제가 발동한다.
+    const escalation = form !== null && this.runEscalation.weakenedForms.includes(form)
       ? this.runEscalation.weakenMultiplier
       : 1;
     return baseDamage * flooredResistMultiplier(escalation, multiplier);
@@ -4646,7 +5145,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       from,
       to,
       chainPath: chainTargets,
-      allowCameraShake: !auto,
+      // 자동 시전은 셰이크를 막는다(4초마다 흔들리면 피로하다). 단 **진화 각인만**
+      // 예외다 — auto인데 연출 격하가 0인 조합은 진화뿐이라 그걸로 판별한다.
+      // 진화는 huge라 spellRenderer가 셰이크 등급을 이미 한 단계 올려놨는데,
+      // auto 전체를 막는 바람에 그 격상이 사장돼 있었다.
+      allowCameraShake: !auto || vfxTierReduction === 0,
       damageScale: options?.damageScale,
       rangeScale: options?.rangeScale,
       radiusScale: options?.radiusScale,

@@ -35,3 +35,32 @@ export function accrueUseAffinity(
   const added = Math.min(perCast, room);
   return { added, nextAddedSoFar: safe + added };
 }
+
+/** HUD 친화 바에 동시에 세울 원소 수 — 주력 1 + 곁가지 2 (그 이상은 잡음) */
+export const AFFINITY_ROWS = 3;
+
+/**
+ * 친화 순위 — 값이 큰 순으로 정렬해 상위 몇 개만 돌려준다.
+ *
+ * 왜 필요한가 (총괄 제보): 친화는 **원소별로 따로** 오르는데 HUD는 최고치 하나만
+ * 그렸다. 그래서 불로 시작한 뒤 얼음을 쏘면 얼음 친화가 실제로는 올라가는데도
+ * 화면엔 아무 변화가 없어, "다른 속성은 안 오른다"로 읽혔다. 성장이 일어나는데
+ * 화면이 부정하면 플레이어는 그 선택지를 지워버린다.
+ *
+ * 그래도 상위 몇 개만 세우는 이유: 이 게임의 친화 설계는 **집중형 보상**이다
+ * (useCap 0.45 · 카드로만 그 위). 8개를 다 늘어놓으면 "고루 찍어라"로 잘못 읽힌다.
+ * 주력을 맨 위 큰 바로 두고 나머지는 작게 — 둘 다 사실대로 보인다.
+ */
+export function rankAffinities<T extends string>(
+  affinity: Partial<Record<T, number>>,
+  limit = AFFINITY_ROWS,
+): Array<{ element: T; value: number }> {
+  const rows: Array<{ element: T; value: number }> = [];
+  for (const [element, raw] of Object.entries(affinity) as Array<[T, number | undefined]>) {
+    const value = Number.isFinite(raw) ? (raw as number) : 0;
+    if (value > 0) rows.push({ element, value });
+  }
+  // 동점은 원소 이름으로 갈라 프레임마다 순서가 흔들리지 않게 한다(깜빡임 방지).
+  rows.sort((a, b) => (b.value - a.value) || a.element.localeCompare(b.element));
+  return rows.slice(0, Math.max(0, limit));
+}

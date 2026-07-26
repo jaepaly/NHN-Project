@@ -89,11 +89,15 @@ function spiritReward(spiritId: string, role: 'attack' | 'heal' | 'guard', level
   assert.ok(casts.length > 0, '진화 각인 자동 시전 발생');
   assert.equal(casts[0].spell.size, 'huge', '진화 시전은 huge');
   assert.equal(casts[0].spell.name, '멸망의 태양 낙하', '시전 spec에 격상명');
+  // ⚠️ **발당** 위력은 그대로다. 예전엔 이 한 줄로 "40% 게이트 유지"라 적었지만,
+  // 진화가 발수를 2→3으로 늘린 뒤로는 그 추론이 성립하지 않는다(DPS 1.5배).
+  // 게이트 수치 자체는 engrave-regression의 진화DPS 군이 따로 못박는다.
   assert.equal(
     casts[0].spell.power,
     scaledPowerForLevel(50, 3),
-    '진화해도 power 예산 불변 (40% 게이트)',
+    '진화해도 **발당** 위력은 불변 — 나눠 갖는 게 아니라 한 발 더 얹는 구조',
   );
+  assert.equal(casts.length, ENGRAVE_CONFIG.evolvedShotCount, '진화 각인은 3발');
 }
 
 // 2) 정령 융합 — 공격 2체만 후보, 소모→이중 원소 1체(2슬롯·2배 예산·huge).
