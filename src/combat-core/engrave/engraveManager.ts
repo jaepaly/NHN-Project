@@ -1,6 +1,7 @@
 import type { GrowthLevel, RewardOption } from '../../run/runContract';
 import type { SpellSize, SpellSpec } from '../../spell/types';
 import { ELEMENT_LABELS, FORM_LABELS } from '../../render/palette';
+import { FUSION_ELEMENT_STATUS } from '../player/fusionGauge';
 
 /**
  * 각인 v1 임시 밸런스.
@@ -154,7 +155,14 @@ export class EngraveManager {
     const name = evolvedName.trim();
     if (!name) return null;
     slot.evolved = true;
-    slot.spell = { ...cloneSpell(slot.spell), name };
+    // 진화하면 그 원소의 **본성**이 드러난다 — 빙결은 얼려 세우고, 대지는 붙잡고,
+    // 화염은 태운다. Lv3 정령이 이미 같은 문법을 쓴다(spiritManager ELEMENT_STATUSES).
+    // 각인만 안 하고 있었다. 위력 숫자가 아니라 **성질**이 달라지는 축이다.
+    const innate = FUSION_ELEMENT_STATUS[slot.spell.element_primary];
+    const status = slot.spell.status.includes(innate)
+      ? [...slot.spell.status]
+      : [...slot.spell.status, innate];
+    slot.spell = { ...cloneSpell(slot.spell), name, status };
     return snapshot(slot);
   }
 

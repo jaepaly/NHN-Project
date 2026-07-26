@@ -26,7 +26,10 @@ export function buildEvolveOption(
       id: `room-${roomIndex}-evolve-engrave-${slot.spellKey.length}-${slot.spell.element_primary}`,
       kind: 'evolve',
       title: `각인 진화 · ${slot.spell.name}`,
-      description: `${ELEMENT_LABELS[slot.spell.element_primary]} 친화와 공명해 대격변한다 — 새로운 이름을 얻는다`,
+      // 실체를 그대로 적는다. "대격변한다 — 새로운 이름을 얻는다"였을 땐 정말로
+      // 이름만 바뀌었지만, 이제 발수·원소 본성·표적이 함께 바뀐다.
+      description: `${ELEMENT_LABELS[slot.spell.element_primary]} 친화와 공명한다 — `
+        + `셋으로 갈라져 각기 다른 적을 물고, ${ELEMENT_LABELS[slot.spell.element_primary]}의 본성이 깨어난다`,
       element: slot.spell.element_primary,
       evolve: {
         target: 'engrave',

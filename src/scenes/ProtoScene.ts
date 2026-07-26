@@ -3403,7 +3403,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       from,
       to,
       chainPath: chainTargets,
-      allowCameraShake: !auto,
+      // 자동 시전은 셰이크를 막는다(4초마다 흔들리면 피로하다). 단 **진화 각인만**
+      // 예외다 — auto인데 연출 격하가 0인 조합은 진화뿐이라 그걸로 판별한다.
+      // 진화는 huge라 spellRenderer가 셰이크 등급을 이미 한 단계 올려놨는데,
+      // auto 전체를 막는 바람에 그 격상이 사장돼 있었다.
+      allowCameraShake: !auto || vfxTierReduction === 0,
       damageScale: options?.damageScale,
       rangeScale: options?.rangeScale,
       radiusScale: options?.radiusScale,
@@ -3539,9 +3543,23 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         if (!this.playerState.alive
           || state.phase !== 'combat'
           || state.roomIndex !== roomIndex) return;
+        // 진화 각인의 3발은 **서로 다른 적**을 문다. Lv3는 한 놈에게 2발을 박아
+        // 잡몹이 먼저 죽으면 나머지가 오버킬로 낭비됐다. 총피해는 그대로고
+        // 분배만 달라진다 — 적이 하나면 자동으로 기존 동작으로 수렴한다.
+        // 지연 발마다 시점이 다르므로 반드시 이 클로저 **안에서** 다시 고른다.
+        const shotIndex = Math.round(
+          request.delaySeconds / ENGRAVE_CONFIG.secondShotDelaySeconds,
+        );
+        const spread = request.evolved ? this.nthNearestEnemy(shotIndex) : null;
         // 자동 시전은 연출을 한 단계 깎아 화면을 덜 어지럽힌다. 진화 각인만 예외로
         // 깎지 않는다 — "진화하면 확연히 다르다"를 매 발동마다 보여주는 자리다.
-        this.applySpellEffect(request.spell, undefined, true, request.evolved ? 0 : 1);
+        this.applySpellEffect(
+          request.spell,
+          undefined,
+          true,
+          request.evolved ? 0 : 1,
+          spread ? { sequenceTarget: { lockedEnemy: spread, lastTargetPoint: null } } : undefined,
+        );
       };
       if (request.delaySeconds === 0) cast();
       else this.time.delayedCall(request.delaySeconds * 1000, cast);
@@ -4260,6 +4278,22 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     return bestD <= maxDistance ? best : null;
   }
 
+  /**
+   * n번째로 가까운 적 (0 = 가장 가까움). 모자라면 가까운 쪽으로 되감는다.
+   *
+   * 진화 각인의 3발을 서로 다른 적에게 물리기 위한 것 — 적이 하나뿐이면
+   * 자동으로 기존 동작(전부 그 적)으로 수렴한다.
+   */
+  private nthNearestEnemy(index: number): CombatEnemy | null {
+    const alive = this.enemies.filter((enemy) => enemy.alive);
+    if (alive.length === 0) return null;
+    alive.sort((a, b) => (
+      Phaser.Math.Distance.Between(this.player.x, this.player.y, a.x, a.y)
+      - Phaser.Math.Distance.Between(this.player.x, this.player.y, b.x, b.y)
+    ));
+    return alive[Math.max(0, index) % alive.length];
+  }
+
   private findBoltCollision(
     fromX: number,
     fromY: number,
@@ -4702,7 +4736,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       from,
       to,
       chainPath: chainTargets,
-      allowCameraShake: !auto,
+      // 자동 시전은 셰이크를 막는다(4초마다 흔들리면 피로하다). 단 **진화 각인만**
+      // 예외다 — auto인데 연출 격하가 0인 조합은 진화뿐이라 그걸로 판별한다.
+      // 진화는 huge라 spellRenderer가 셰이크 등급을 이미 한 단계 올려놨는데,
+      // auto 전체를 막는 바람에 그 격상이 사장돼 있었다.
+      allowCameraShake: !auto || vfxTierReduction === 0,
       damageScale: options?.damageScale,
       rangeScale: options?.rangeScale,
       radiusScale: options?.radiusScale,

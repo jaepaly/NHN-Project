@@ -136,6 +136,21 @@ for (const level of [1, 2, 3] as const) {
   assert.equal(ev.entries[0].shotCount, 3, '스냅샷 발수');
   assert.equal(ev.entries[0].evolved, true);
 
+  // 원소 본성 — 진화하면 그 원소의 상태이상이 붙는다 (Lv3 정령과 같은 문법).
+  // fixture가 이미 burn을 달고 있으므로 여기선 **중복이 안 생기는지**를 본다.
+  assert.deepEqual(afterCasts[0].spell.status, ['burn'], '화염 진화 → burn 중복 없음');
+
+  // 없던 원소 본성이 실제로 **추가**되는지는 빙결 각인으로 따로 본다.
+  {
+    const ice = new EngraveManager();
+    const iceSpell: SpellSpec = { ...spell('얼음창'), element_primary: 'ice', status: [] };
+    ice.rememberManualCast('ice spear', iceSpell);
+    for (const level of [1, 2, 3] as const) ice.applyReward(reward('ice spear', level));
+    assert.deepEqual(ice.update(4)[0].spell.status, [], '진화 전엔 상태이상 없음');
+    ice.evolve('ice spear', '설한의 창');
+    assert.deepEqual(ice.update(4)[0].spell.status, ['freeze'], '빙결 진화 → freeze 추가');
+  }
+
   // 두 번 진화되지 않는다
   assert.equal(ev.evolve('fire ball', '두번째'), null, '이미 진화한 슬롯은 재진화 불가');
   assert.equal(ev.entries[0].spell.name, '겁화의 창', '재진화 시도가 이름을 덮으면 안 된다');
