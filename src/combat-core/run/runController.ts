@@ -115,6 +115,18 @@ export class CombatRunController implements RunController {
     return { added, total: this.elementalAffinity[element] ?? 0 };
   }
 
+  /**
+   * 친화를 직접 세팅한다 — **시연 로드아웃 전용**("각성한 영창가로 시작").
+   * 본 게임은 보상 카드와 growAffinityFromUse로만 친화가 오른다. state는 snapshot
+   * 사본이라 바깥에서 못 고치므로, 시연 주입에는 이 명시적 입구가 필요하다.
+   */
+  seedAffinity(affinity: Readonly<Partial<Record<SpellElement, number>>>): void {
+    for (const [element, raw] of Object.entries(affinity)) {
+      const value = Number.isFinite(raw) ? Math.max(0, raw as number) : 0;
+      if (value > 0) this.elementalAffinity[element as SpellElement] = value;
+    }
+  }
+
   /** 마지막 활성 적 처치 후 전투 씬이 호출하는 R1 내부 진입점. */
   notifyRoomCleared(): void {
     if (this.phase !== 'combat') return;
@@ -167,8 +179,10 @@ export class CombatRunController implements RunController {
    * 새 런 초기화. `emit=false`면 room-started를 발화하지 않는다 — 씬 재진입(create)에서
    * 씬이 직접 startRoom을 부를 때, 이벤트로 방이 이중 시작되는 걸 막는다.
    */
-  reset(seed = Date.now(), emit = true): void {
-    this.roomIndex = this.initialRoomIndex;
+  reset(seed = Date.now(), emit = true, startRoomIndex = this.initialRoomIndex): void {
+    // startRoomIndex는 시연 로드아웃("각성한 영창가로 시작") 전용이다 — 후반 상태를
+    // 1번 방에 떨어뜨리면 잡몹만 뭉개 오히려 얕아 보인다. 기본값은 기존 동작 그대로.
+    this.roomIndex = clampRoomIndex(startRoomIndex, this.maxRooms);
     this.phase = 'combat';
     this.rewards = [];
     this.elementalAffinity = {};

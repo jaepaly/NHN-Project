@@ -170,6 +170,12 @@ import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { showRewardCards } from '../ui/rewardCardOverlay';
 import { summarizeRunRewards } from '../run/runRewardSummary';
 import {
+  DEMO_SAMPLE_INCANTATIONS,
+  DEMO_START_ROOM,
+  applyDemoLoadout,
+  consumeDemoRunRequest,
+} from '../run/demoLoadout';
+import {
   addEntry,
   bestEntryFromRun,
   loadGrimoire,
@@ -499,6 +505,8 @@ export class ProtoScene extends Phaser.Scene {
   private growthMarks!: GrowthMarks;
   /** 주문서 유산 선택 중 — 카드가 키를 캡처하는 동안 전투를 멈춘다 */
   private legacySelecting = false;
+  /** 시연 런("각성한 영창가로 시작")인가 — 유산 선택을 건너뛰는 데 쓴다 */
+  private demoRun = false;
   private readonly spiritViews = new Map<string, SpiritOrbView>();
   private spiritOrbitAngle = -Math.PI / 2;
   private readonly enemyControlState = new EnemyControlState();
@@ -639,6 +647,10 @@ export class ProtoScene extends Phaser.Scene {
     // 씬 재진입(런 종료→타이틀→새 런) 대비: 매니저·컨트롤러는 필드라 create마다
     // 리셋해야 이전 런의 친화·각인·정령·HP·루프가 남지 않는다 (총괄 제보 버그).
     this.resetForNewRun();
+    // 시연 로드아웃 — 타이틀의 "각성한 영창가로 시작"으로 들어온 경우에만.
+    // resetForNewRun 뒤에 심어야 리셋에 지워지지 않는다.
+    const demo = consumeDemoRunRequest();
+    if (demo) this.seedDemoRun();
     this.prepareRunEscalation();
     this.startRoom(this.combatRunController.state.roomIndex);
     this.updateStatusText();
@@ -648,8 +660,39 @@ export class ProtoScene extends Phaser.Scene {
       if (!this.incanting && !this.casting) this.tryOpenIncant();
     });
 
-    // 주문서에 유산이 있으면 첫 전투 전에 하나를 고른다 (첫 런은 비어 있어 조용히 넘어감)
-    void this.offerLegacyEngrave();
+    // 시연 런은 유산 선택을 건너뛴다 — 이미 후반 상태라 카드가 겹치고,
+    // 심사위원을 시작하자마자 선택 UI로 막는 게 이 모드의 취지에 어긋난다.
+    if (!this.demoRun) void this.offerLegacyEngrave();
+  }
+
+  /**
+   * 시연 상태 주입 — 각인 2종(Lv3 진화)·정령 2체 Lv2·친화 2원소, 5번 방(엘리트)부터.
+   * 실제 보상 경로(applyReward)를 그대로 쓴다 — 별도 주입로면 도달 불가능한 상태를
+   * 보여주게 되고, 그건 심사위원에게 거짓말이다.
+   */
+  private seedDemoRun(): void {
+    this.demoRun = true;
+    // 방 지정 리셋을 **먼저** 한다 — reset()이 elementalAffinity를 비우므로
+    // 친화를 심은 뒤에 부르면 그대로 지워진다.
+    this.combatRunController.reset(Date.now(), false, DEMO_START_ROOM);
+    applyDemoLoadout(this.engraveManager, this.spiritManager, this.combatRunController);
+    this.syncSpiritViews();
+    this.announceSystemMessage(
+      `각성한 영창가 — ${DEMO_START_ROOM}번 방부터`,
+      '#ffd166',
+      3200,
+    );
+    // 온보딩 힌트는 1번 방에서만 뜬다(startRoom). 시연은 5번 방에서 시작하므로
+    // 여기서 따로 알려줘야 한다 — **강해진 상태로 떨어뜨려도 뭘 칠지 모르면
+    // 아무 일도 안 일어난다.** 이 게임의 훅은 성장이 아니라 자유 영창이다.
+    this.time.delayedCall(1600, () => {
+      if (!this.scene?.isActive?.()) return;
+      this.announceSystemMessage(
+        `ENTER — 문장을 쳐서 마법을 만든다\n${DEMO_SAMPLE_INCANTATIONS.map((s) => `· ${s}`).join('\n')}`,
+        '#c7f9e0',
+        6000,
+      );
+    });
   }
 
   override update(_time: number, delta: number): void {
