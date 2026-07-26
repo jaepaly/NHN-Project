@@ -3467,15 +3467,24 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       lockedEnemy: null,
       lastTargetPoint: null,
     };
-    const totalDurationMs = plan.sequences.reduce(
-      (sum, sequence) => sum + sequence.durationMs,
-      0,
+    // 단계 겹침(lead-in) — 다음 단계는 현재 단계의 SEQUENCE_LEAD_IN 지점에서 출발한다.
+    // form·move는 fire-and-forget이라 제 durationMs로 계속 그려지므로, 이전 동작의 꼬리가
+    // 다음 동작의 머리와 겹쳐 "벤 뒤 물러남"이 아니라 "베며 물러남"처럼 이어진다(총괄 요청 #209 후속).
+    // 마지막 단계만 온전히 기다린다(뒤에 겹칠 게 없다). 단일 단계면 겹침이 없어 기존과 동일.
+    const SEQUENCE_LEAD_IN = 0.7;
+    const steps = plan.sequences;
+    const advanceMs = steps.map((sequence, i) =>
+      i === steps.length - 1
+        ? sequence.durationMs
+        : Math.round(sequence.durationMs * SEQUENCE_LEAD_IN),
     );
-    this.beginSequenceProgress(plan, totalDurationMs);
+    const totalDurationMs = advanceMs.reduce((sum, ms) => sum + ms, 0);
+    this.beginSequenceProgress(plan, advanceMs, totalDurationMs);
     this.playerState.applyInvulnerability(totalDurationMs / 1000);
     let blackoutIlluminated = false;
 
-    for (const sequence of plan.sequences) {
+    for (let i = 0; i < steps.length; i += 1) {
+      const sequence = steps[i];
       if (!this.playerState.alive || !this.isCombatActive()) break;
       this.refreshSequenceTarget(targetState);
       for (const behavior of sequence.behaviors) {
@@ -3489,14 +3498,16 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           blackoutIlluminated = true;
         }
         if (behavior.type === 'move') {
+          // 이동 애니메이션은 온전한 durationMs로 재생한다(겹침 대상). 다음 단계로의 대기만 짧아진다.
           this.executeSequenceMove(behavior, sequence.durationMs, targetState);
         } else if (behavior.type === 'form') {
           this.executeSequenceForm(behavior, targetState, repeatPowerScale);
         }
       }
-      if (sequence.durationMs > 0) {
+      const waitMs = advanceMs[i];
+      if (waitMs > 0) {
         await new Promise<void>((resolve) => {
-          this.time.delayedCall(sequence.durationMs, resolve);
+          this.time.delayedCall(waitMs, resolve);
         });
       }
     }
@@ -3506,13 +3517,18 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.clearSequenceProgress();
   }
 
-  private beginSequenceProgress(plan: ResolvedSpellPlan, durationMs: number): void {
+  private beginSequenceProgress(
+    plan: ResolvedSpellPlan,
+    advanceMs: number[],
+    durationMs: number,
+  ): void {
     this.sequenceProgressStartedAt = this.time.now;
     this.sequenceProgressDurationMs = Math.max(0, durationMs);
     this.sequenceProgressName = plan.name;
+    // 경계는 "다음 단계가 실제로 시작되는" 시점 — 겹침 반영한 advanceMs 누적으로 긋는다.
     let elapsed = 0;
-    this.sequenceProgressBoundaries = plan.sequences.slice(0, -1).map((sequence) => {
-      elapsed += sequence.durationMs;
+    this.sequenceProgressBoundaries = advanceMs.slice(0, -1).map((ms) => {
+      elapsed += ms;
       return durationMs > 0 ? elapsed / durationMs : 0;
     });
     this.sequenceProgressGraphics.setVisible(durationMs > 0);
