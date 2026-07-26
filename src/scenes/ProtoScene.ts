@@ -170,6 +170,9 @@ import { EMPTY_RUN_MEMORY } from '../spell/runMemory';
 import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { showRewardCards } from '../ui/rewardCardOverlay';
 import { summarizeRunRewards } from '../run/runRewardSummary';
+import { MinimapHud } from '../ui/minimapHud';
+import { PortalField } from '../render/portalField';
+import { mockMinimapModel } from '../run/mapGraphMock';
 import {
   DEMO_SAMPLE_INCANTATIONS,
   DEMO_START_ROOM,
@@ -532,6 +535,9 @@ export class ProtoScene extends Phaser.Scene {
   private legacySelecting = false;
   /** 시연 런("각성한 영창가로 시작")인가 — 유산 선택을 건너뛰는 데 쓴다 */
   private demoRun = false;
+  /** #214 선행 개발 프리뷰 전용 (DEV 콘솔 훅이 생성) — 본 게임 경로 미배선 */
+  private devMinimap: MinimapHud | null = null;
+  private devPortalField: PortalField | null = null;
   /**
    * 진행 중인 미러 캐스트(예고 단계). 타이머는 update에서 **스케일된 델타**로
    * 감소한다 — 영창 슬로모(timeScale 0.1) 중엔 예고도 같이 느려져, "예고를 보고
@@ -658,6 +664,31 @@ export class ProtoScene extends Phaser.Scene {
     // 주문 소비 매트릭스 감사 — 콘솔에서 __spellMatrix(step)로 effect×form×target 전수 점검.
     // 프레임 진행은 호출측이 넘긴다(백그라운드 탭에서는 game.loop.step을 감싸야 하므로).
     if (import.meta.env.DEV) {
+      // #214 미니맵·포탈 선행 개발 프리뷰 — R1 그래프 없이 목데이터로 렌더 확인.
+      // 콘솔에서 __mapPreview() 호출. 본 게임 경로에는 배선되지 않는다(프리뷰 전용).
+      (window as unknown as { __mapPreview?: () => unknown }).__mapPreview = () => {
+        this.devMinimap?.destroy();
+        this.devPortalField?.destroy();
+        const { width } = this.scale;
+        this.devMinimap = new MinimapHud(this, width - 306, 150);
+        this.devMinimap.update(mockMinimapModel());
+        this.devPortalField = new PortalField(
+          this,
+          this.player.x,
+          this.player.y - 120,
+          [
+            { nodeId: 'b1', kind: 'elite' },
+            { nodeId: 'b2', kind: 'altar' },
+            { nodeId: 'b3', kind: 'trap' },
+          ],
+          (choice) => {
+            this.announceSystemMessage(`[프리뷰] 포탈 진입 — ${choice.nodeId}`, '#8fa4ff');
+            this.devPortalField?.destroy();
+            this.devPortalField = null;
+          },
+        );
+        return '미니맵 + 포탈 3개 프리뷰 생성';
+      };
       (window as unknown as { __spellMatrix?: (step: () => void) => unknown }).__spellMatrix
         = (step: () => void) => {
           const rows = runSpellMatrixAudit(
@@ -772,6 +803,9 @@ export class ProtoScene extends Phaser.Scene {
       this.updateEngravedSpells(d);
       this.updateMirrorCast(d);
       this.updateBossArcana(d);
+      // #214 프리뷰 전용 (DEV 훅이 만든 경우만 — 본 게임에선 항상 null)
+      this.devPortalField?.update(this.player.x, this.player.y);
+      this.devMinimap?.pulse();
       this.updateSpirits(d);
       this.updateSummon(d);
       this.updateFriendlyMissiles(d);

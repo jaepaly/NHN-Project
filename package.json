@@ -40,6 +40,7 @@
     "snapshot:quality": "esbuild scripts/spell-quality-snapshot.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-quality-snapshot.mjs && node node_modules/.cache/incant-spell-quality-snapshot.mjs",
     "preview": "vite preview",
     "test:bossarcana": "esbuild scripts/boss-arcana-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-boss-arcana-regression.mjs && node node_modules/.cache/incant-boss-arcana-regression.mjs",
+    "test:minimap": "esbuild scripts/minimap-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-minimap-regression.mjs && node node_modules/.cache/incant-minimap-regression.mjs",
     "test:mirrorcast": "esbuild scripts/mirror-cast-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-mirror-cast-regression.mjs && node node_modules/.cache/incant-mirror-cast-regression.mjs",
     "test:boss-core": "esbuild scripts/boss-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-boss-regression.mjs && node node_modules/.cache/incant-boss-regression.mjs",
     "test:selfbuff": "esbuild scripts/self-buff-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-self-buff-regression.mjs && node node_modules/.cache/incant-self-buff-regression.mjs",
