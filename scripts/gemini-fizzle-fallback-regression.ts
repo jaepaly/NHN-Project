@@ -97,7 +97,7 @@ try {
   assert.equal(driftJudge.lastSource, 'fallback');
   assert.equal(fetchCount, countBeforePoisoned + 1, '오염된 fizzle 캐시를 읽지 않음');
 
-  assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.14-slash-move');
+  assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.15-abstract-seq');
 } finally {
   globalThis.fetch = originalFetch;
 }

@@ -29,8 +29,25 @@ const SEQUENCE_MARKERS = [
  * 복합(순차) 영창으로 보이는가 — Mock의 시퀀스 산출과 **판정 타임아웃 분기**(#180)가
  * 같은 신호를 공유한다. 복합은 응답 JSON이 커 tail이 길어지므로 더 오래 기다린다.
  */
+/**
+ * 이동·연속 동작 신호 — 명시적 순차 마커가 없어도 spell_plan(다단계)을 유발하는 입력 모양.
+ * v2.14 move-fusion·추상 추출로 이런 입력이 plan(느림 ~2.2~2.3s)을 내는데, 마커가 없으면
+ * `judgeTimeoutMs`가 2.5초만 줘서 절벽에 붙는다. 이 신호가 있으면 3.2초를 줘 폴백을 막는다.
+ * (looksSequential은 타임아웃 상한 결정에만 쓰이므로, 과매칭은 "느릴 때만 더 기다림"이라 무해하다.)
+ */
+const MOTION_SIGNALS = [
+  // 융합 이동 동사
+  '파고들', '돌진', '도약', '굴러', '대시', '물러', '백스텝', '회피', '달려들', '뛰어들', '질주', '솟구', '접근',
+  // 화면 방향 (custom-vector 이동 유발)
+  '왼쪽', '오른쪽', '아래로', '앞으로', '뒤로',
+  // 동작성 추상 이름
+  '낙화', '비행', '추격', '왈츠', '답보', '검무',
+];
+
+/** 순차 마커 또는 이동·동작 신호가 있으면 복합(plan 유발)으로 본다 — 타임아웃 상한용. */
 export function looksSequential(text: string): boolean {
-  return splitSequenceClauses(text).length >= 2;
+  if (splitSequenceClauses(text).length >= 2) return true;
+  return MOTION_SIGNALS.some((s) => text.includes(s));
 }
 
 /** 순차 마커로 원문을 절로 나눈다. 마커가 없으면 단일 절. */
