@@ -154,6 +154,7 @@ import { BOSS_CONFIG } from '../combat-core/boss/bossConfig';
 import { BossPatternController } from '../combat-core/boss/bossPatternController';
 import type { BossPatternAction } from '../combat-core/boss/bossPatternController';
 import {
+  RESISTANCE,
   computeResistance,
   diversityBonus,
   getBossLine,
@@ -548,6 +549,8 @@ export class ProtoScene extends Phaser.Scene {
   /** 페이즈를 넘어 유지되는 원소별 내성. 같은 원소는 더 강한(낮은) 배수 하나만 유지한다. */
   private readonly activeBossResistances = new Map<SpellElement, number>();
   private lastResistNoticeAt = 0;
+  /** 마스터리 관통 안내는 보스전당 1회 — 매 타격마다 뜨면 잔소리가 된다 */
+  private masteryPierceAnnounced = false;
   private activeBossPhase: 1 | 2 | 3 = 1;
   private bossPatternController: BossPatternController | null = null;
   private bossChargeTelegraph: Phaser.GameObjects.Graphics | null = null;
@@ -1124,6 +1127,7 @@ export class ProtoScene extends Phaser.Scene {
     // 미러 캐스트는 보스전마다 1회 — 새 보스전이 시작되면 다시 쓸 수 있다.
     this.mirrorCastUsed = false;
     this.clearPendingMirrorCast();
+    this.masteryPierceAnnounced = false;
     const runMemory = loadRunMemory();
     // 장기(지난 런들) 기억 — 단기 표본 부족 시 부분 내성으로 발동 (GDD §4.2)
     if (usesMemory) {
@@ -4695,6 +4699,21 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   ): number {
     if (enemy.kind !== 'boss') return baseDamage;
     const multiplier = this.activeBossResistances.get(element) ?? 1;
+    // 마스터리 면역 (#171 R1 발안, 총괄 채택): 친화가 각성 이정표(0.9)에 도달한
+    // 원소는 그 원소의 보스 내성을 **완전히 무시**한다 — "네가 불에 저항해?
+    // 내가 곧 불이다." 단기·장기·이중 저항 전부에 걸린다(같은 관문이므로).
+    const affinity = this.combatRunController.state.elementalAffinity[element] ?? 0;
+    if (multiplier < 1 && affinity >= RESISTANCE.masteryImmunityAffinity) {
+      if (!this.masteryPierceAnnounced) {
+        this.masteryPierceAnnounced = true;
+        this.announceSystemMessage(
+          `마스터리 관통 — ${ELEMENT_LABELS[element]}은(는) 이미 나의 것이다`,
+          '#ffd166',
+          2800,
+        );
+      }
+      return baseDamage;
+    }
     if (showResistanceNotice
       && multiplier < 1
       && this.time.now - this.lastResistNoticeAt > 1500) {

@@ -82,12 +82,17 @@ export const DEMO_SPIRITS: readonly { element: SpellElement; level: number }[] =
 /**
  * 시연 친화 — 각인 원소에 맞춰 깊게.
  *
- * affinityVfx는 강도 = 친화 / 0.15다. 0.75면 강도 5 → 마스터리 섬광까지 켜지고,
+ * affinityVfx는 강도 = 친화 / 0.15다. 0.9면 강도 6 → 마스터리 섬광까지 켜지고,
  * 0.45면 강도 3 → 엠버 잔광이 켜진다. 둘을 다르게 준 건 **깊이 차이가 화면에서
  * 구분된다**는 걸 보여주기 위해서다 — 하나만 주면 비교 대상이 없다.
+ *
+ * ice를 정확히 0.9(각성 이정표 = 마스터리 면역 임계)로 둔 이유: 심사위원이 빙결을
+ * 3회 이상 치면 기억 보스가 빙결 내성을 걸어오는데, 그 순간 **"마스터리 관통 —
+ * 빙결은 이미 나의 것이다"**가 뜨며 내성이 무효화된다. 보스의 기억 적응과
+ * 플레이어의 숙련 보상이 한 장면에서 충돌하는, 이 게임에서 가장 밀도 높은 순간이다.
  */
 export const DEMO_AFFINITY: Readonly<Partial<Record<SpellElement, number>>> = {
-  ice: 0.75,
+  ice: 0.9,
   lightning: 0.45,
 };
 
