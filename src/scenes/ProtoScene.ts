@@ -2973,7 +2973,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
     // 융합 게이지 — 시퀀스도 수동 영창이므로 충전한다 (방출 격상은 v1에선 단일 주문만)
     if (this.fusionGauge.charge(plan.manaCost)) {
-      this.announceSystemMessage('융합의 힘이 응축됐다 — 두 원소를 담아 영창하라', '#e2b7ff', 3400);
+      this.announceSystemMessage('융합의 힘이 응축됐다 — 두 원소를 담아 영창하라 (마나 무소모)', '#e2b7ff', 3400);
     }
     const sequenceElements = [...new Set(plan.sequences.flatMap((sequence) => (
       sequence.behaviors.flatMap(behaviorElements)
@@ -3062,8 +3062,17 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
 
       const spec = judgement.spell;
+      // 필살기(융합 게이지) — 만충 + 이중 원소 판정이면 이 시전이 융합 방출로 격상된다.
+      // 방출 시전은 충전하지 않는다(리셋 직후 자기 마나로 재충전 방지).
+      //
+      // **마나 검사보다 먼저** 판정한다(총괄 결정: 필살기는 마나 소모 없음).
+      // 자원은 게이지 자체다 — 순서가 반대면 마나가 바닥일 때 만충 필살기가
+      // 거부되는 모순이 생긴다. 다 떨어졌을 때 뒤집는 한 방이 필살기의 존재 이유다.
+      const fusedSpec = this.fusionGauge.tryRelease(spec);
       // 감쇠 시전 — 마나 부족은 거부가 아니라 잦아든 주문 (바닥 미만일 때만 거부)
-      const castPlan = degradedCastPlan(spec.cost, this.playerState.mana);
+      const castPlan = fusedSpec
+        ? { spend: 0, ratio: 1 }
+        : degradedCastPlan(spec.cost, this.playerState.mana);
       if (!castPlan) {
         this.audio.playSfx('fizzle');
         this.announceManaShortage(spec.cost);
@@ -3071,12 +3080,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
       this.playerState.trySpendMana(castPlan.spend);
 
-      // 필살기(융합 게이지) — 만충 + 이중 원소 판정이면 이 시전이 융합 방출로 격상된다.
-      // 방출 시전은 충전하지 않는다(리셋 직후 자기 마나로 재충전 방지).
-      const fusedSpec = this.fusionGauge.tryRelease(spec);
       if (!fusedSpec && this.fusionGauge.charge(castPlan.spend)) {
         this.announceSystemMessage(
-          '융합의 힘이 응축됐다 — 두 원소를 담아 영창하라',
+          '융합의 힘이 응축됐다 — 두 원소를 담아 영창하라 (마나 무소모)',
           '#e2b7ff',
           3400,
         );
@@ -4368,7 +4374,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     this.fusionLabelText
       .setText(ready
-        ? '✦ 필살기 준비 — 이중 원소로 방출 ✦'
+        ? '✦ 필살기 준비 — 이중 원소로 방출 · 마나 무소모 ✦'
         : `필살기 융합  ${Math.round(ratio * 100)}%`)
       .setColor(ready ? '#f0d9ff' : '#a99cff')
       .setPosition(width / 2, y - 6);

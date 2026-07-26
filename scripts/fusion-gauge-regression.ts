@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { FUSION_CONFIG, FusionGauge } from '../src/combat-core/player/fusionGauge';
 import type { SpellSpec } from '../src/spell/types';
 
@@ -70,4 +71,22 @@ assert.equal(g3.ratio, 0);
 //    만충 기준이 지나치게 낮으면 상시 필살기가 된다 — 중형 주문(≈30) 서너 발 이상.
 assert.ok(FUSION_CONFIG.fullCharge >= 90, '만충 기준이 중형 주문 3발 미만으로 내려가면 재검토');
 
-console.log('fusion gauge regression: 충전·방출게이트·격상내용·소모/보존·합집합·리셋 7군 통과');
+// 8) 필살기 마나 무소모 (총괄 결정 2026-07-26) — 씬 배선 검사
+// 방출 판정이 마나 검사보다 **앞**이어야 한다. 순서가 반대면 마나가 바닥일 때
+// 만충 필살기가 거부되는 모순이 생긴다 — 다 떨어졌을 때 뒤집는 한 방이 존재 이유다.
+{
+  const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+  const body = scene.slice(
+    scene.indexOf('private async castFromText'),
+    scene.indexOf('private currentJudgeSource'),
+  );
+  const releaseAt = body.indexOf('this.fusionGauge.tryRelease(spec)');
+  const manaPlanAt = body.indexOf('degradedCastPlan(spec.cost');
+  assert.ok(releaseAt >= 0 && manaPlanAt >= 0, '전제: 두 지점을 못 찾음 — 회귀가 헛돈다');
+  assert.ok(releaseAt < manaPlanAt,
+    '방출 판정이 마나 검사 뒤에 있다 — 마나 바닥이면 만충 필살기가 거부된다');
+  assert.ok(body.includes('{ spend: 0, ratio: 1 }'),
+    '방출 시전이 마나를 낸다 — 필살기는 마나 무소모(spend 0)여야 한다');
+}
+
+console.log('fusion gauge regression: 충전·방출게이트·격상내용·소모/보존·합집합·리셋·마나무소모 8군 통과');
