@@ -70,7 +70,7 @@ const engrave = (
  */
 export const DEMO_ENGRAVES: readonly DemoEngrave[] = [
   engrave('서리 칼날로 벤다', '서리 칼날', 'ice', 'slash', 88, '설한의 참'),
-  engrave('번개가 적들 사이를 뛰어다닌다', '연쇄 뇌격', 'lightning', 'chain', 84, '뇌명의 사슬'),
+  engrave('번개가 적에서 적으로 연쇄한다', '연쇄 뇌격', 'lightning', 'chain', 84, '뇌명의 사슬'),
 ];
 
 /** 시연 정령 — 공격 2체를 Lv2까지 (융합 후보가 되어 "다음"도 보인다) */
@@ -95,7 +95,7 @@ export const DEMO_AFFINITY: Readonly<Partial<Record<SpellElement, number>>> = {
 export const DEMO_SAMPLE_INCANTATIONS: readonly string[] = [
   '서리 칼날로 적을 벤다',
   '분신을 만들어서 지그재그로 돌진시켜라',
-  '번개가 적들 사이를 뛰어다닌다',
+  '번개가 적에서 적으로 연쇄한다',
 ];
 
 const engraveCard = (key: string, level: number): RewardOption => ({
