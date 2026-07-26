@@ -176,6 +176,12 @@ import {
   consumeDemoRunRequest,
 } from '../run/demoLoadout';
 import {
+  MIRROR_CAST_CONFIG,
+  mirrorImpactDamage,
+  mirrorImpactHitsPlayer,
+  pickMirrorSpell,
+} from '../combat-core/boss/mirrorCast';
+import {
   addEntry,
   bestEntryFromRun,
   loadGrimoire,
@@ -235,6 +241,12 @@ const AFFINITY_BAR_MILESTONE = 0.9;
 
 /** 친화 바 한 행(라벨+바)의 세로 간격 — 3행이면 HUD 아래 ~66px를 쓴다 */
 const AFFINITY_ROW_HEIGHT = 22;
+
+/**
+ * 미러 캐스트 판정용 플레이어 히트 반경(px). 적 탄환 판정(bulletHitDistance 14)과
+ * 같은 결 — 시각 스프라이트보다 약간 후하게 잡아 "스쳤는데 맞았다"를 피한다.
+ */
+const PLAYER_HIT_RADIUS = 16;
 
 interface FriendlyMissile {
   body: Phaser.GameObjects.Arc;
@@ -507,6 +519,22 @@ export class ProtoScene extends Phaser.Scene {
   private legacySelecting = false;
   /** 시연 런("각성한 영창가로 시작")인가 — 유산 선택을 건너뛰는 데 쓴다 */
   private demoRun = false;
+  /**
+   * 진행 중인 미러 캐스트(예고 단계). 타이머는 update에서 **스케일된 델타**로
+   * 감소한다 — 영창 슬로모(timeScale 0.1) 중엔 예고도 같이 느려져, "예고를 보고
+   * 슬로모를 열어 보호막을 친다"는 카운터플레이가 성립한다.
+   */
+  private pendingMirrorCast: {
+    spec: SpellSpec;
+    targetX: number;
+    targetY: number;
+    remainingSeconds: number;
+    marker: Phaser.GameObjects.Graphics;
+  } | null = null;
+  /** 이 보스전에서 미러 캐스트를 이미 썼는가 — 페이즈2 1회 한정 */
+  private mirrorCastUsed = false;
+  /** 같은 미러 캐스트의 다중 임팩트(nova 링·zone 틱) 연타 방지 */
+  private mirrorLastHitAt = 0;
   private readonly spiritViews = new Map<string, SpiritOrbView>();
   private spiritOrbitAngle = -Math.PI / 2;
   private readonly enemyControlState = new EnemyControlState();
@@ -712,6 +740,7 @@ export class ProtoScene extends Phaser.Scene {
       this.updateHazards(d);
       this.updateBasicAttack();
       this.updateEngravedSpells(d);
+      this.updateMirrorCast(d);
       this.updateSpirits(d);
       this.updateSummon(d);
       this.updateFriendlyMissiles(d);
@@ -1092,6 +1121,9 @@ export class ProtoScene extends Phaser.Scene {
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.activeBossResistances.clear();
     this.activeBossPhase = 1;
+    // 미러 캐스트는 보스전마다 1회 — 새 보스전이 시작되면 다시 쓸 수 있다.
+    this.mirrorCastUsed = false;
+    this.clearPendingMirrorCast();
     const runMemory = loadRunMemory();
     // 장기(지난 런들) 기억 — 단기 표본 부족 시 부분 내성으로 발동 (GDD §4.2)
     if (usesMemory) {
@@ -1270,6 +1302,13 @@ export class ProtoScene extends Phaser.Scene {
     this.clearActiveWall();
     this.clearActiveOrbit();
     this.clearUnstableWarnings();
+    this.clearPendingMirrorCast();
+  }
+
+  /** 예고 중인 미러 캐스트 취소 — 방 전환·사망 후 마커가 남거나 유령 발사되는 것 방지 */
+  private clearPendingMirrorCast(): void {
+    this.pendingMirrorCast?.marker.destroy();
+    this.pendingMirrorCast = null;
   }
 
   /** 투사체 update 순회가 끝난 다음 tick에 안전하게 일괄 제거한다. */
@@ -1605,6 +1644,93 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   /** 플레이어 피격 반응 — 적과 동일한 규칙(흰 플래시 + squash)을 그대로 쓴다. */
+  /**
+   * 미러 캐스트 예고 — 표적은 **이 순간의 플레이어 위치로 고정**된다.
+   * 예고(0.9초) 동안 이동하면 즉발 폼도 빗나간다 — 즉발(beam/slash/chain)은
+   * 이동 시간이 없어 이 예고가 유일한 회피 창이다. 지연 폼(bolt/wave/...)은
+   * 발사 후에도 이동으로 피할 수 있다(임팩트 시점 위치 판정).
+   */
+  private queueMirrorCast(boss: BossEnemy): void {
+    if (this.mirrorCastUsed || this.pendingMirrorCast) return;
+    const spec = pickMirrorSpell(this.spellHistory);
+    // 재료가 없으면(수동 damage 주문 미달) 조용히 생략 — 밋밋한 미러는 역효과다.
+    if (!spec) return;
+    this.mirrorCastUsed = true;
+
+    const targetX = this.player.x;
+    const targetY = this.player.y;
+    const marker = this.add.graphics().setDepth(6);
+    // 예고 마커 — 위험 표기는 기존 관례색(주황 계열), 원소색은 발사체 본체가 말한다.
+    marker.lineStyle(2, 0xff8f70, 0.9).strokeCircle(targetX, targetY, 34);
+    marker.lineStyle(1, 0xff8f70, 0.45).strokeCircle(targetX, targetY, 52);
+
+    this.pendingMirrorCast = {
+      spec,
+      targetX,
+      targetY,
+      remainingSeconds: MIRROR_CAST_CONFIG.telegraphSeconds,
+      marker,
+    };
+    this.announceSystemMessage(
+      `보스가 『${spec.name}』을(를) 역영창한다 —`,
+      '#ff8f70',
+      2200,
+    );
+    devInfo('[MirrorCast] queued', { spec: spec.name, form: spec.form, bossX: boss.x });
+  }
+
+  /** 예고 타이머 진행(스케일된 델타 = 슬로모 존중) → 만료 시 발사 */
+  private updateMirrorCast(deltaSeconds: number): void {
+    const pending = this.pendingMirrorCast;
+    if (!pending) return;
+    pending.remainingSeconds -= deltaSeconds;
+    // 마커 맥동 — 남은 시간이 줄수록 빨라져 "곧 온다"를 몸으로 알린다
+    const pulse = 0.55 + 0.45 * Math.abs(Math.sin(this.time.now / 90));
+    pending.marker.setAlpha(pulse);
+    if (pending.remainingSeconds > 0) return;
+
+    pending.marker.destroy();
+    this.pendingMirrorCast = null;
+    this.fireMirrorCast(pending.spec, pending.targetX, pending.targetY);
+  }
+
+  private fireMirrorCast(spec: SpellSpec, targetX: number, targetY: number): void {
+    const boss = this.enemies.find(
+      (enemy): enemy is BossEnemy => enemy instanceof BossEnemy && enemy.alive,
+    );
+    // 예고 중 보스가 죽었으면 불발 — 시전자가 없는 마법은 없다.
+    if (!boss) return;
+    const castRoomIndex = this.combatRunController.state.roomIndex;
+    this.mirrorLastHitAt = 0;
+
+    castSpell({
+      scene: this,
+      from: new Phaser.Math.Vector2(boss.x, boss.y),
+      to: new Phaser.Math.Vector2(targetX, targetY),
+      // chain은 경로가 비면 미스 연출만 나온다 — 고정 표적 지점을 1홉 경로로 준다.
+      chainPath: spec.form === 'chain' ? [{ x: targetX, y: targetY }] : undefined,
+      allowCameraShake: true,
+      shouldResolveImpact: () => {
+        const state = this.combatRunController.state;
+        return state.phase === 'combat' && state.roomIndex === castRoomIndex;
+      },
+      onHit: (impact) => {
+        // 명중 시점의 플레이어 위치와 대조 — 이동 회피의 근거가 되는 한 줄.
+        if (!this.playerState.alive) return;
+        if (this.time.now - this.mirrorLastHitAt
+          < MIRROR_CAST_CONFIG.hitCooldownSeconds * 1000) return;
+        if (!mirrorImpactHitsPlayer(
+          impact, this.player.x, this.player.y, PLAYER_HIT_RADIUS,
+        )) return;
+        this.mirrorLastHitAt = this.time.now;
+        const damage = mirrorImpactDamage(spec, impact.damageMultiplier);
+        this.damagePlayer(damage);
+        this.playPlayerHit('medium');
+      },
+    }, spec);
+    devInfo('[MirrorCast] fired', { spec: spec.name, targetX, targetY });
+  }
+
   private playPlayerHit(shakeTier: CameraShakeTier = 'weak'): void {
     if (!this.player?.active || !this.playerBody) return;
     playHitReact(this, this.player, this.playerBody, 0x8fa4ff);
@@ -1948,6 +2074,9 @@ if (applied) this.playPlayerHit(
         '#d0a8ff',
         2800,
       );
+      // 미러 캐스트 — "기억 적응" 발표 직후, 플레이어의 최강 주문을 되돌려 영창한다.
+      // 발표 텍스트가 스쳐도 이건 못 놓친다 — 내 주문이 그 모습 그대로 날아오니까.
+      this.queueMirrorCast(boss);
       return;
     }
     if (isMemoryBoss && boss.phase === 3) {
