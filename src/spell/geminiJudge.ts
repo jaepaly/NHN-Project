@@ -121,3 +121,43 @@ export class GeminiJudge implements SpellJudge {
     }
   }
 }
+
+/** 캐시 프리워밍 시드 — 시연 코퍼스의 사전 판정. `scripts/generate-cache-seed.ts`가 생성. */
+export interface JudgeCacheSeed {
+  /** 생성 당시 프롬프트 버전. 현재와 다르면 스테일이므로 주입하지 않는다. */
+  version: string;
+  /** 생성 당시 스키마 버전. */
+  schema: number;
+  /** 문장 → 워커 판정(원문). 읽을 때 `validateJudgement`가 한 번 더 검증한다. */
+  entries: Record<string, unknown>;
+}
+
+/**
+ * 캐시 프리워밍 — 시연 코퍼스의 사전 판정을 localStorage 캐시에 주입한다 (③, #158).
+ * 심사위원의 첫 영창이 네트워크 왕복 없이 즉시 나가게 하고, 라이브 호출을 줄여
+ * 할당량(RPD) 압박도 낮춘다.
+ *
+ * 규율:
+ * - **버전·스키마가 현재와 다르면 주입 안 함** — 프롬프트가 바뀌면 시드 판정은 스테일이다.
+ * - **기존 캐시는 덮지 않는다** — 실제 라이브 판정이 항상 우선.
+ * - **fizzle은 심지 않는다** — 캐시 정책(cast/blocked만) 준수.
+ *
+ * @returns 실제로 주입한 항목 수.
+ */
+export function seedJudgeCache(storage: Storage, seed: JudgeCacheSeed): number {
+  if (seed.version !== JUDGE_PROMPT_VERSION || seed.schema !== JUDGE_SCHEMA_VERSION) return 0;
+  let injected = 0;
+  for (const [text, judgement] of Object.entries(seed.entries)) {
+    const disposition = (judgement as { disposition?: unknown })?.disposition;
+    if (disposition === 'fizzle') continue;
+    const key = CACHE_PREFIX + text.trim();
+    try {
+      if (storage.getItem(key) !== null) continue; // 실제/기존 캐시 우선
+      storage.setItem(key, JSON.stringify(judgement));
+      injected += 1;
+    } catch {
+      // localStorage 가득참·비활성 — 프리워밍은 선택적이므로 무시
+    }
+  }
+  return injected;
+}
