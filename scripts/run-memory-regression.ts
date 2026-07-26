@@ -100,4 +100,40 @@ const bad = fakeStorage();
 bad.map.set('incant:runmemory:v1:profile', '{깨진');
 assert.deepEqual(loadRunMemory(bad), EMPTY_RUN_MEMORY, '깨진 JSON → 기본값');
 
-console.log('RunMemory regression: 요약·갱신·누적완화·저장로드 4군 통과');
+// 5) 폼 이력 (#171 격상 원소→폼 전환의 데이터 축)
+{
+  let m: RunMemory = { ...EMPTY_RUN_MEMORY };
+  for (const f of ['bolt', 'bolt', 'nova', 'zone', 'zone', 'zone'] as const) {
+    m = updateRunMemory(m, {
+      result: 'win', dominantElement: 'fire', dominantForm: f,
+      topSpellName: null, topSpellPower: 0,
+    });
+  }
+  assert.equal(m.recentDominantForms.length, 5, '폼도 최근 5런만');
+  assert.deepEqual(m.recentDominantForms, ['bolt', 'nova', 'zone', 'zone', 'zone'], '오래된 폼 밀려남');
+  // dominantForm이 null이면(시전 기록 부족) 이력을 오염시키지 않는다
+  const before = m.recentDominantForms.slice();
+  m = updateRunMemory(m, {
+    result: 'lose', dominantElement: null, dominantForm: null,
+    topSpellName: null, topSpellPower: 0,
+  });
+  assert.deepEqual(m.recentDominantForms, before, 'null 폼은 무시');
+  // 라운드트립에 폼 이력 보존
+  const st = fakeStorage();
+  saveRunMemory(m, st);
+  assert.deepEqual(loadRunMemory(st).recentDominantForms, m.recentDominantForms, '폼 이력 라운드트립');
+}
+
+// 6) 구버전 프로필(폼 필드 없음) — 빈 배열로 정규화 (크래시·오염 없음)
+{
+  const st = fakeStorage();
+  st.map.set('incant:runmemory:v1:profile', JSON.stringify({
+    deaths: 2, clears: 3, favoriteElement: 'fire',
+    recentDominantElements: ['fire', 'ice'],
+  }));
+  const loaded = loadRunMemory(st);
+  assert.deepEqual(loaded.recentDominantForms, [], '구프로필 → 폼 이력 빈 배열');
+  assert.deepEqual(loaded.recentDominantElements, ['fire', 'ice'], '기존 필드는 보존');
+}
+
+console.log('RunMemory regression: 요약·갱신·누적완화·저장로드·폼이력·구프로필 6군 통과');

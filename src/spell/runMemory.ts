@@ -1,5 +1,5 @@
-import { ELEMENTS } from './types';
-import type { SpellElement } from './types';
+import { ELEMENTS, FORMS } from './types';
+import type { SpellElement, SpellForm } from './types';
 import type { SpellHistory } from './spellHistory';
 import { topQuartileWordLimitCost } from '../combat-core/run/wordLimitCurse';
 
@@ -43,6 +43,13 @@ export interface RunMemory {
   lastResult: 'win' | 'lose' | null;
   /** 최근 런들의 최다 원소 (최신이 뒤, 최대 RECENT_WINDOW) */
   recentDominantElements: SpellElement[];
+  /**
+   * 최근 런들의 최다 **폼** (최신이 뒤, 최대 RECENT_WINDOW).
+   * 격상(#77)의 약화 기전이 원소 → 폼 기반으로 전환되며 추가 (#171 합의).
+   * 원소 이력은 보스 장기 저항(서사·기억 축)이 계속 쓰므로 둘 다 유지한다 —
+   * 기전(폼)과 내러티브(원소)의 분리.
+   */
+  recentDominantForms: SpellForm[];
   /** 직전 런의 저주 후보별 가중치 계산에 사용하는 행동 요약. */
   lastCurseBehavior: CurseBehaviorMemory;
 }
@@ -55,6 +62,7 @@ export const EMPTY_RUN_MEMORY: RunMemory = {
   topSpellPower: 0,
   lastResult: null,
   recentDominantElements: [],
+  recentDominantForms: [],
   lastCurseBehavior: { ...EMPTY_CURSE_BEHAVIOR },
 };
 
@@ -62,6 +70,7 @@ export const EMPTY_RUN_MEMORY: RunMemory = {
 export interface RunOutcome {
   result: 'win' | 'lose';
   dominantElement: SpellElement | null;
+  dominantForm: SpellForm | null;
   topSpellName: string | null;
   topSpellPower: number;
   curseBehavior?: CurseBehaviorMemory;
@@ -87,6 +96,7 @@ export function summarizeRun(
   return {
     result,
     dominantElement: history.bossMemory().dominantElement,
+    dominantForm: history.bossMemory().dominantForm,
     topSpellName,
     topSpellPower,
     curseBehavior: {
@@ -107,6 +117,9 @@ export function updateRunMemory(prev: RunMemory, outcome: RunOutcome): RunMemory
   const recent = outcome.dominantElement
     ? [...prev.recentDominantElements, outcome.dominantElement].slice(-RECENT_WINDOW)
     : prev.recentDominantElements.slice();
+  const recentForms = outcome.dominantForm
+    ? [...prev.recentDominantForms, outcome.dominantForm].slice(-RECENT_WINDOW)
+    : prev.recentDominantForms.slice();
   const beatsTop = outcome.topSpellPower > prev.topSpellPower;
   return {
     deaths: prev.deaths + (outcome.result === 'lose' ? 1 : 0),
@@ -116,6 +129,7 @@ export function updateRunMemory(prev: RunMemory, outcome: RunOutcome): RunMemory
     topSpellPower: beatsTop ? outcome.topSpellPower : prev.topSpellPower,
     lastResult: outcome.result,
     recentDominantElements: recent,
+    recentDominantForms: recentForms,
     lastCurseBehavior: normalizeCurseBehavior(
       outcome.curseBehavior ?? EMPTY_CURSE_BEHAVIOR,
     ),
@@ -174,6 +188,12 @@ function normalize(raw: unknown): RunMemory {
   const recent = Array.isArray(o.recentDominantElements)
     ? o.recentDominantElements.map(el).filter((x): x is SpellElement => x !== null).slice(-RECENT_WINDOW)
     : [];
+  // 구버전 프로필엔 폼 이력이 없다 → 빈 배열 = 데이터가 쌓일 때까지 폼 약화 없음 (우아한 이행)
+  const fm = (v: unknown): SpellForm | null =>
+    typeof v === 'string' && (FORMS as readonly string[]).includes(v) ? (v as SpellForm) : null;
+  const recentForms = Array.isArray(o.recentDominantForms)
+    ? o.recentDominantForms.map(fm).filter((x): x is SpellForm => x !== null).slice(-RECENT_WINDOW)
+    : [];
   return {
     deaths: num(o.deaths, 0),
     clears: num(o.clears, 0),
@@ -182,6 +202,7 @@ function normalize(raw: unknown): RunMemory {
     topSpellPower: num(o.topSpellPower, 0),
     lastResult: o.lastResult === 'win' || o.lastResult === 'lose' ? o.lastResult : null,
     recentDominantElements: recent,
+    recentDominantForms: recentForms,
     lastCurseBehavior: normalizeCurseBehavior(o.lastCurseBehavior),
   };
 }
