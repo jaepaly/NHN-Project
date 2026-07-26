@@ -228,6 +228,44 @@ export function sequenceFlowTimeline(
   return { waitsMs, totalMs, boundaries };
 }
 
+/**
+ * move 체인 역할 — 연속된 이동이 "감속-정지-재가속" 없이 이어지게 하는 이징 힌트
+ * (총괄 피드백 2차: "아직도 완전 스무스하지 않다").
+ *
+ * 오버랩(70% 발동)만으로는 부족했다. 모든 move가 easeInOut이라 끝에서 완전
+ * 정지하고, 다음 move가 이전 트윈을 끊고 속도 0에서 재가속했다 — "슥—뚝—슥".
+ *
+ * 해법: 이동이 이어질 자리는 끝에서 멈추지 않는다.
+ * - solo: 앞뒤에 move 없음 → easeInOut (혼자면 부드럽게 출발·도착)
+ * - lead: 뒤에 move가 이어짐 → easeIn (최고속으로 다음에 인계)
+ * - mid : 앞뒤 모두 move → Linear (등속 연결)
+ * - tail: 앞에서 이어받음 → easeOut (관성을 받아 감속 마무리)
+ * wait 전용 시퀀스는 체인을 끊는다 — 정지가 의도인 자리다.
+ */
+export type MoveChainRole = 'solo' | 'lead' | 'mid' | 'tail';
+
+export function moveChainRoles(
+  sequences: readonly ResolvedSpellSequence[],
+): (MoveChainRole | null)[] {
+  const hasMove = sequences.map((sequence) => (
+    sequence.behaviors.some((behavior) => behavior.type === 'move')
+  ));
+  const waitOnly = sequences.map((sequence) => (
+    sequence.behaviors.every((behavior) => behavior.type === 'wait')
+  ));
+  return sequences.map((_, index) => {
+    if (!hasMove[index]) return null;
+    // wait가 끼면 체인이 끊긴다 — 인접 판정에서 wait 너머는 보지 않는다.
+    const prevLinked = index > 0 && hasMove[index - 1] && !waitOnly[index - 1];
+    const nextLinked = index < sequences.length - 1
+      && hasMove[index + 1] && !waitOnly[index + 1];
+    if (prevLinked && nextLinked) return 'mid';
+    if (nextLinked) return 'lead';
+    if (prevLinked) return 'tail';
+    return 'solo';
+  });
+}
+
 export function resolveSpellPlan(plan: SpellPlan): ResolvedSpellPlan {
   const power = Math.max(0, Math.min(100, finiteNonNegative(plan.power, 0)));
   const durationMs = Math.min(

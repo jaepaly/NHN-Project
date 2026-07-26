@@ -201,6 +201,7 @@ import {
   behaviorUsesAnyElement,
   debugSpellPlan,
   resolveSpellPlan,
+  moveChainRoles,
   screenDirectionFromAngle,
   SEQUENCE_PLAN_LIMITS,
   sequenceFlowTimeline,
@@ -209,6 +210,7 @@ import {
 import type {
   FormBehavior,
   MoveBehavior,
+  MoveChainRole,
   SequenceFlowTimeline,
   ResolvedSpellPlan,
   SpellPlan,
@@ -490,7 +492,15 @@ export class ProtoScene extends Phaser.Scene {
   private incantChargeLabel!: HTMLElement;
   private incanting = false;
   private casting = false;
-  private activeSequenceMove: Phaser.Tweens.Tween | null = null;
+  /**
+   * 시퀀스 이동 트윈들 — **이전 트윈을 멈추지 않는다.**
+   * tweens.add는 다음 틱부터 움직이는데 이전 것을 같은 프레임에 stop하면
+   * 인계 프레임이 1프레임 정지(속도 0)됐다가 다음 프레임에 2프레임치를 몰아
+   * 이동한다(실측: 인계마다 0 → 스파이크). 이전 트윈을 살려두면 그 프레임을
+   * 이전 경로가 채우고, 새 트윈이 첫 틱에 현재 위치를 캡처해 자연 인계된다
+   * (같은 속성은 나중 add가 덮어쓴다). 배열은 시퀀스 종료 시 일괄 정리용.
+   */
+  private sequenceMoveTweens: Phaser.Tweens.Tween[] = [];
   /** 영창 연 횟수 — 온보딩 예시 placeholder를 순환시키는 인덱스 */
   private incantOpenCount = 0;
   /** 첫 영창 안내를 이미 띄웠는지 (localStorage로 재플레이엔 생략) */
@@ -3472,6 +3482,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 오버랩 타임라인(총괄 발안): 이전 시퀀스 70% 시점에 다음 발동 — 행동이 끊기지
     // 않고 이어진다. 무적·진행바도 실효 시간 기준이라 화면·판정·보호가 전부 일치.
     const timeline = sequenceFlowTimeline(plan.sequences);
+    const chainRoles = moveChainRoles(plan.sequences);
     this.beginSequenceProgress(plan, timeline);
     this.playerState.applyInvulnerability(timeline.totalMs / 1000);
     let blackoutIlluminated = false;
@@ -3490,7 +3501,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           blackoutIlluminated = true;
         }
         if (behavior.type === 'move') {
-          this.executeSequenceMove(behavior, sequence.durationMs, targetState);
+          this.executeSequenceMove(
+            behavior, sequence.durationMs, targetState, chainRoles[sequenceIndex] ?? 'solo',
+          );
         } else if (behavior.type === 'form') {
           this.executeSequenceForm(behavior, targetState, repeatPowerScale);
         }
@@ -3503,8 +3516,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
     }
 
-    this.activeSequenceMove?.stop();
-    this.activeSequenceMove = null;
+    for (const tween of this.sequenceMoveTweens) tween.stop();
+    this.sequenceMoveTweens = [];
     this.clearSequenceProgress();
   }
 
@@ -3629,6 +3642,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     behavior: MoveBehavior,
     durationMs: number,
     targetState: SequenceTargetState,
+    chainRole: MoveChainRole = 'solo',
   ): void {
     const from = new Phaser.Math.Vector2(this.player.x, this.player.y);
     const livingEnemies = this.enemies.filter((enemy) => enemy.alive);
@@ -3691,27 +3705,41 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     this.lastMoveDir.copy(destination).subtract(from).normalize();
 
-    this.activeSequenceMove?.stop();
     if (durationMs <= 0) {
+      // 즉시 이동은 예외적으로 잔여 트윈을 멈춘다 — 안 멈추면 다음 프레임에
+      // 살아 있는 이전 트윈이 순간이동을 도로 덮어쓴다.
+      for (const tween of this.sequenceMoveTweens) tween.stop();
+      this.sequenceMoveTweens = [];
       this.player.setPosition(destination.x, destination.y);
       return;
     }
-    this.activeSequenceMove = this.tweens.add({
+    // 체인 이징 — 이동이 이어질 자리는 끝에서 멈추지 않는다 (moveChainRoles 주석 참조).
+    // 인계는 오버랩 70% 시점에 일어나므로, lead/mid는 그 시점에 아직 고속이어야
+    // 다음 move가 속도감을 이어받는다. easeInOut 연쇄는 "슥—뚝—슥"이 된다.
+    const chainEase = chainRole === 'lead'
+      ? 'Sine.easeIn'
+      : chainRole === 'mid'
+        ? 'Linear'
+        : chainRole === 'tail'
+          ? 'Sine.easeOut'
+          : 'Sine.easeInOut';
+    const tween = this.tweens.add({
       targets: this.player,
       x: destination.x,
       y: destination.y,
       duration: durationMs,
-      ease: 'Sine.easeInOut',
-      onUpdate: (tween) => {
-        if (!this.playerState.alive || !this.isCombatActive()) tween.stop();
+      ease: chainEase,
+      onUpdate: (activeTween) => {
+        if (!this.playerState.alive || !this.isCombatActive()) activeTween.stop();
       },
       onComplete: () => {
-        this.activeSequenceMove = null;
+        this.sequenceMoveTweens = this.sequenceMoveTweens.filter((t) => t !== tween);
       },
       onStop: () => {
-        this.activeSequenceMove = null;
+        this.sequenceMoveTweens = this.sequenceMoveTweens.filter((t) => t !== tween);
       },
     });
+    this.sequenceMoveTweens.push(tween);
   }
 
   private applySpellEffect(
