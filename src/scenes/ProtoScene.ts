@@ -178,10 +178,10 @@ import {
 } from '../run/demoLoadout';
 import {
   MIRROR_CAST_CONFIG,
-  mirrorImpactDamage,
   mirrorImpactHitsPlayer,
   pickMirrorSpell,
 } from '../combat-core/boss/mirrorCast';
+import { BOSS_ARCANA_CONFIG, bossArcanaSpell } from '../combat-core/boss/bossArcana';
 import {
   addEntry,
   bestEntryFromRun,
@@ -531,11 +531,26 @@ export class ProtoScene extends Phaser.Scene {
     targetY: number;
     remainingSeconds: number;
     marker: Phaser.GameObjects.Graphics;
+    /** 화면 가장자리 붉은 맥동 — "티가 안 남" 피드백의 답 */
+    vignette: Phaser.GameObjects.Graphics;
+    /** 수축 링 + 보스→표적 수렴 마력선 (매 프레임 다시 그림) */
+    beamLine: Phaser.GameObjects.Graphics;
+    caster: BossEnemy;
   } | null = null;
-  /** 이 보스전에서 미러 캐스트를 이미 썼는가 — 페이즈2 1회 한정 */
+  /** 이 보스전에서 미러 캐스트를 이미 썼는가 — 페이즈2 1회 (페이즈3 패턴은 force) */
   private mirrorCastUsed = false;
-  /** 같은 미러 캐스트의 다중 임팩트(nova 링·zone 틱) 연타 방지 */
-  private mirrorLastHitAt = 0;
+  /** 비전 마법(bossArcana) 상태 — 스펠북 예고·어둠 장막·중력 인력 */
+  private pendingBossArcana: {
+    spec: SpellSpec;
+    targetX: number;
+    targetY: number;
+    remainingSeconds: number;
+    marker: Phaser.GameObjects.Graphics;
+  } | null = null;
+  private bossArcanaIndex = 0;
+  private bossShroud: BlackoutCurseField | null = null;
+  private bossShroudRemaining = 0;
+  private bossPullRemaining = 0;
   private readonly spiritViews = new Map<string, SpiritOrbView>();
   private spiritOrbitAngle = -Math.PI / 2;
   private readonly enemyControlState = new EnemyControlState();
@@ -744,6 +759,7 @@ export class ProtoScene extends Phaser.Scene {
       this.updateBasicAttack();
       this.updateEngravedSpells(d);
       this.updateMirrorCast(d);
+      this.updateBossArcana(d);
       this.updateSpirits(d);
       this.updateSummon(d);
       this.updateFriendlyMissiles(d);
@@ -1127,6 +1143,8 @@ export class ProtoScene extends Phaser.Scene {
     // 미러 캐스트는 보스전마다 1회 — 새 보스전이 시작되면 다시 쓸 수 있다.
     this.mirrorCastUsed = false;
     this.clearPendingMirrorCast();
+    this.clearBossArcana();
+    this.bossArcanaIndex = 0;
     this.masteryPierceAnnounced = false;
     const runMemory = loadRunMemory();
     // 장기(지난 런들) 기억 — 단기 표본 부족 시 부분 내성으로 발동 (GDD §4.2)
@@ -1307,11 +1325,16 @@ export class ProtoScene extends Phaser.Scene {
     this.clearActiveOrbit();
     this.clearUnstableWarnings();
     this.clearPendingMirrorCast();
+    this.clearBossArcana();
   }
 
   /** 예고 중인 미러 캐스트 취소 — 방 전환·사망 후 마커가 남거나 유령 발사되는 것 방지 */
   private clearPendingMirrorCast(): void {
-    this.pendingMirrorCast?.marker.destroy();
+    if (this.pendingMirrorCast) {
+      this.pendingMirrorCast.marker.destroy();
+      this.pendingMirrorCast.vignette.destroy();
+      this.pendingMirrorCast.beamLine.destroy();
+    }
     this.pendingMirrorCast = null;
   }
 
@@ -1650,12 +1673,18 @@ export class ProtoScene extends Phaser.Scene {
   /** 플레이어 피격 반응 — 적과 동일한 규칙(흰 플래시 + squash)을 그대로 쓴다. */
   /**
    * 미러 캐스트 예고 — 표적은 **이 순간의 플레이어 위치로 고정**된다.
-   * 예고(0.9초) 동안 이동하면 즉발 폼도 빗나간다 — 즉발(beam/slash/chain)은
-   * 이동 시간이 없어 이 예고가 유일한 회피 창이다. 지연 폼(bolt/wave/...)은
-   * 발사 후에도 이동으로 피할 수 있다(임팩트 시점 위치 판정).
+   * 예고 동안 이동하면 즉발 폼도 빗나간다 — 즉발(beam/slash/chain)은 이동 시간이
+   * 없어 이 예고가 유일한 회피 창이다. 지연 폼은 발사 후에도 이동으로 피한다.
+   *
+   * 예고 연출은 3겹이다(총괄 피드백 "티가 안 남, 위압감 없음" 반영):
+   * 화면 가장자리 붉은 맥동(어딜 보고 있어도 전달) + 보스→표적 수렴 마력선
+   * (누가 쏘는지) + 수축 링(착탄까지 남은 시간이 몸으로 읽힘).
+   *
+   * @param force 페이즈3 패턴 재발동 — 1회 제한(mirrorCastUsed)을 넘되
+   *              예고 중복·재료 검사는 그대로 지킨다.
    */
-  private queueMirrorCast(boss: BossEnemy): void {
-    if (this.mirrorCastUsed || this.pendingMirrorCast) return;
+  private queueMirrorCast(boss: BossEnemy, force = false): void {
+    if ((this.mirrorCastUsed && !force) || this.pendingMirrorCast) return;
     const spec = pickMirrorSpell(this.spellHistory);
     // 재료가 없으면(수동 damage 주문 미달) 조용히 생략 — 밋밋한 미러는 역효과다.
     if (!spec) return;
@@ -1663,10 +1692,22 @@ export class ProtoScene extends Phaser.Scene {
 
     const targetX = this.player.x;
     const targetY = this.player.y;
+    const pal = ELEMENT_PALETTES[spec.element_primary];
+    // 표적 마커 — 되돌아오는 주문의 원소색. 위험 관례색(주황)은 링·비네트가 맡는다.
     const marker = this.add.graphics().setDepth(6);
-    // 예고 마커 — 위험 표기는 기존 관례색(주황 계열), 원소색은 발사체 본체가 말한다.
-    marker.lineStyle(2, 0xff8f70, 0.9).strokeCircle(targetX, targetY, 34);
-    marker.lineStyle(1, 0xff8f70, 0.45).strokeCircle(targetX, targetY, 52);
+    marker.lineStyle(3, pal.core, 0.95).strokeCircle(targetX, targetY, 44);
+    marker.lineStyle(1.5, pal.glow, 0.5).strokeCircle(targetX, targetY, 66);
+    // 화면 가장자리 붉은 맥동 — 구석에서 벌어져도 "큰 게 온다"가 전달된다.
+    const vignette = this.add.graphics().setScrollFactor(0).setDepth(96);
+    const { width, height } = this.scale;
+    vignette.fillStyle(0xff3b30, 1);
+    const EDGE = 26;
+    vignette.fillRect(0, 0, width, EDGE);
+    vignette.fillRect(0, height - EDGE, width, EDGE);
+    vignette.fillRect(0, 0, EDGE, height);
+    vignette.fillRect(width - EDGE, 0, EDGE, height);
+    // 보스 → 표적 수렴 마력선 (updateMirrorCast가 매 프레임 다시 그린다)
+    const beamLine = this.add.graphics().setDepth(6).setBlendMode(Phaser.BlendModes.ADD);
 
     this.pendingMirrorCast = {
       spec,
@@ -1674,13 +1715,18 @@ export class ProtoScene extends Phaser.Scene {
       targetY,
       remainingSeconds: MIRROR_CAST_CONFIG.telegraphSeconds,
       marker,
+      vignette,
+      beamLine,
+      caster: boss,
     };
+    this.audio.playSfx('boss-appear');
+    requestCameraShake(this, 'weak', 1);
     this.announceSystemMessage(
       `보스가 『${spec.name}』을(를) 역영창한다 —`,
       '#ff8f70',
       2200,
     );
-    devInfo('[MirrorCast] queued', { spec: spec.name, form: spec.form, bossX: boss.x });
+    devInfo('[MirrorCast] queued', { spec: spec.name, form: spec.form, force });
   }
 
   /** 예고 타이머 진행(스케일된 델타 = 슬로모 존중) → 만료 시 발사 */
@@ -1688,24 +1734,57 @@ export class ProtoScene extends Phaser.Scene {
     const pending = this.pendingMirrorCast;
     if (!pending) return;
     pending.remainingSeconds -= deltaSeconds;
-    // 마커 맥동 — 남은 시간이 줄수록 빨라져 "곧 온다"를 몸으로 알린다
-    const pulse = 0.55 + 0.45 * Math.abs(Math.sin(this.time.now / 90));
+    const total = MIRROR_CAST_CONFIG.telegraphSeconds;
+    const progress = Phaser.Math.Clamp(1 - pending.remainingSeconds / total, 0, 1);
+    // 맥동 — 남은 시간이 줄수록 빨라져 "곧 온다"를 몸으로 알린다
+    const pulse = 0.55 + 0.45 * Math.abs(Math.sin(this.time.now / (90 - 40 * progress)));
     pending.marker.setAlpha(pulse);
+    pending.vignette.setAlpha(0.10 + 0.14 * pulse * (0.5 + progress));
+    // 수축 링 — 남은 시간에 비례해 조여든다. 착탄 타이밍의 카운트다운.
+    pending.beamLine.clear();
+    const ringR = 150 - 106 * progress;
+    pending.beamLine.lineStyle(2.5, 0xff8f70, 0.5 + 0.5 * progress);
+    pending.beamLine.strokeCircle(pending.targetX, pending.targetY, ringR);
+    // 수렴 마력선 — 보스가 살아 있으면 보스 몸에서 표적으로 흐른다
+    if (pending.caster.alive) {
+      pending.beamLine.lineStyle(2 + 2 * progress, 0xff5a6e, 0.35 + 0.45 * pulse);
+      pending.beamLine.lineBetween(
+        pending.caster.x, pending.caster.y, pending.targetX, pending.targetY,
+      );
+    }
     if (pending.remainingSeconds > 0) return;
 
     pending.marker.destroy();
+    pending.vignette.destroy();
+    pending.beamLine.destroy();
     this.pendingMirrorCast = null;
     this.fireMirrorCast(pending.spec, pending.targetX, pending.targetY);
   }
 
   private fireMirrorCast(spec: SpellSpec, targetX: number, targetY: number): void {
+    this.bossCastSpellAt(spec, targetX, targetY, MIRROR_CAST_CONFIG.damageScale);
+    devInfo('[MirrorCast] fired', { spec: spec.name, targetX, targetY });
+  }
+
+  /**
+   * 보스 영창 공통 발사부 — 미러 캐스트와 비전(스펠북) 마법이 같은 관문을 쓴다.
+   * 렌더는 castSpell 그대로(시전자 중립), 피해만 **임팩트 시점의 플레이어 위치**와
+   * 대조한다 — 이동 회피가 성립하는 근거.
+   */
+  private bossCastSpellAt(
+    spec: SpellSpec,
+    targetX: number,
+    targetY: number,
+    damageScale: number,
+  ): void {
     const boss = this.enemies.find(
       (enemy): enemy is BossEnemy => enemy instanceof BossEnemy && enemy.alive,
     );
     // 예고 중 보스가 죽었으면 불발 — 시전자가 없는 마법은 없다.
     if (!boss) return;
     const castRoomIndex = this.combatRunController.state.roomIndex;
-    this.mirrorLastHitAt = 0;
+    // 다중 임팩트(nova 링·zone 틱) 연타 방지 — 시전 단위 지역 쿨다운
+    let lastHitAt = 0;
 
     castSpell({
       scene: this,
@@ -1721,18 +1800,118 @@ export class ProtoScene extends Phaser.Scene {
       onHit: (impact) => {
         // 명중 시점의 플레이어 위치와 대조 — 이동 회피의 근거가 되는 한 줄.
         if (!this.playerState.alive) return;
-        if (this.time.now - this.mirrorLastHitAt
+        if (this.time.now - lastHitAt
           < MIRROR_CAST_CONFIG.hitCooldownSeconds * 1000) return;
         if (!mirrorImpactHitsPlayer(
           impact, this.player.x, this.player.y, PLAYER_HIT_RADIUS,
         )) return;
-        this.mirrorLastHitAt = this.time.now;
-        const damage = mirrorImpactDamage(spec, impact.damageMultiplier);
-        this.damagePlayer(damage);
+        lastHitAt = this.time.now;
+        const per = Number.isFinite(impact.damageMultiplier)
+          ? Math.max(0, impact.damageMultiplier as number)
+          : 1;
+        this.damagePlayer(Math.max(0, spec.power) * damageScale * per);
         this.playPlayerHit('medium');
       },
     }, spec);
-    devInfo('[MirrorCast] fired', { spec: spec.name, targetX, targetY });
+  }
+
+  // ── 보스 비전 마법 (bossArcana, 총괄 발안 07-26) ─────────────────────
+
+  /** 스펠북 원소 마법 예고 — 미러보다 가볍다(일상 패턴). 표적은 예고 시점 고정. */
+  private queueBossArcana(): void {
+    if (this.pendingBossArcana) return;
+    const spec = bossArcanaSpell(this.bossArcanaIndex++);
+    const pal = ELEMENT_PALETTES[spec.element_primary];
+    const targetX = this.player.x;
+    const targetY = this.player.y;
+    const marker = this.add.graphics().setDepth(6);
+    marker.lineStyle(2, pal.core, 0.85).strokeCircle(targetX, targetY, 36);
+    this.pendingBossArcana = {
+      spec,
+      targetX,
+      targetY,
+      remainingSeconds: BOSS_ARCANA_CONFIG.castTelegraphSeconds,
+      marker,
+    };
+    devInfo('[BossArcana] queued', { spec: spec.name, form: spec.form });
+  }
+
+  /** 어둠 장막 — 암전 저주의 시야 시스템을 짧은 방해로 재사용 (피해 0) */
+  private castBossShroud(): void {
+    // 암전 저주 방이면 이미 어두움 — 겹치면 아무것도 안 보인다. 생략.
+    if (this.bossShroud || this.blackoutCurseField) return;
+    this.bossShroud = new BlackoutCurseField(
+      this, this.worldBounds, this.player.x, this.player.y,
+    );
+    this.bossShroudRemaining = BOSS_ARCANA_CONFIG.shroudSeconds;
+    this.announceSystemMessage('어둠의 장막 — 시야가 조여든다', '#b18cff', 2200);
+  }
+
+  /** 중력 인력 — 보스 쪽으로 흡인. 이속(220)보다 느려 걸어서 저항 가능. */
+  private castBossPull(): void {
+    if (this.bossPullRemaining > 0) return;
+    this.bossPullRemaining = BOSS_ARCANA_CONFIG.pullDurationSeconds
+      + BOSS_ARCANA_CONFIG.pullTelegraphSeconds;
+    this.announceSystemMessage('중력 인력 — 붙잡히기 전에 벗어나라', '#b18cff', 2200);
+  }
+
+  /** 비전 마법 상태 진행 — 스케일된 델타(슬로모 존중) */
+  private updateBossArcana(deltaSeconds: number): void {
+    const pending = this.pendingBossArcana;
+    if (pending) {
+      pending.remainingSeconds -= deltaSeconds;
+      pending.marker.setAlpha(0.5 + 0.5 * Math.abs(Math.sin(this.time.now / 80)));
+      if (pending.remainingSeconds <= 0) {
+        pending.marker.destroy();
+        this.pendingBossArcana = null;
+        this.bossCastSpellAt(
+          pending.spec, pending.targetX, pending.targetY, BOSS_ARCANA_CONFIG.damageScale,
+        );
+      }
+    }
+
+    if (this.bossShroud) {
+      this.bossShroudRemaining -= deltaSeconds;
+      this.bossShroud.update(deltaSeconds, this.player.x, this.player.y);
+      if (this.bossShroudRemaining <= 0) {
+        this.bossShroud.destroy();
+        this.bossShroud = null;
+      }
+    }
+
+    if (this.bossPullRemaining > 0) {
+      this.bossPullRemaining -= deltaSeconds;
+      const telegraphLeft = this.bossPullRemaining - BOSS_ARCANA_CONFIG.pullDurationSeconds;
+      // 예고 구간(첫 0.6초)에는 끌지 않는다 — 반응할 시간을 준다.
+      if (telegraphLeft <= 0) {
+        const boss = this.enemies.find(
+          (enemy): enemy is BossEnemy => enemy instanceof BossEnemy && enemy.alive,
+        );
+        if (boss && this.playerState.alive) {
+          const dx = boss.x - this.player.x;
+          const dy = boss.y - this.player.y;
+          const distance = Math.hypot(dx, dy);
+          // 접촉 거리 안까지 끌어붙이지 않는다 — 흡인은 위치 교란이지 즉사 콤보가 아니다.
+          if (distance > BOSS_CONFIG.contactDistance * 1.6) {
+            const step = BOSS_ARCANA_CONFIG.pullSpeedPerSecond * deltaSeconds;
+            this.player.x += (dx / distance) * step;
+            this.player.y += (dy / distance) * step;
+          }
+        } else {
+          this.bossPullRemaining = 0; // 보스가 죽으면 인력도 사라진다
+        }
+      }
+    }
+  }
+
+  /** 비전 마법 상태 정리 — 방 전환·사망 후 장막·인력·예고가 남지 않게 */
+  private clearBossArcana(): void {
+    this.pendingBossArcana?.marker.destroy();
+    this.pendingBossArcana = null;
+    this.bossShroud?.destroy();
+    this.bossShroud = null;
+    this.bossShroudRemaining = 0;
+    this.bossPullRemaining = 0;
   }
 
   private playPlayerHit(shakeTier: CameraShakeTier = 'weak'): void {
@@ -2152,6 +2331,20 @@ if (applied) this.playPlayerHit(
       case 'hazard':
         requestCameraShake(this, 'medium');
         this.spawnBossHazard(boss);
+        break;
+      // ── 비전 마법 (bossArcana, 총괄 발안) — 보스도 영창한다 ──
+      case 'arcane-cast':
+        this.queueBossArcana();
+        break;
+      case 'shroud':
+        this.castBossShroud();
+        break;
+      case 'pull':
+        this.castBossPull();
+        break;
+      case 'mirror':
+        // 페이즈3 순환 재발동 — 1회 제한을 넘되 재료·중복 검사는 그대로.
+        this.queueMirrorCast(boss, true);
         break;
     }
   }
