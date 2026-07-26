@@ -1,6 +1,7 @@
 import type { SpellJudge } from './judge';
 import { MockJudge } from './mockJudge';
-import { GeminiJudge } from './geminiJudge';
+import { GeminiJudge, seedJudgeCache } from './geminiJudge';
+import { CACHE_SEED } from './cacheSeed.generated';
 import { LoggingJudge } from './loggingJudge';
 
 /**
@@ -20,6 +21,14 @@ export function createJudge(): SpellJudge {
     return withDevLogging(new MockJudge());
   }
   const proxyUrl = import.meta.env.VITE_JUDGE_PROXY_URL?.trim() || DEFAULT_PROXY_URL;
+  // 캐시 프리워밍(③, #158) — 시연 코퍼스의 사전 판정을 localStorage에 주입한다.
+  // 심사위원 첫 영창이 네트워크 왕복 없이 즉시 나가고, 라이브 호출이 줄어 할당량(RPD)
+  // 압박도 낮아진다. 버전 불일치·기존 캐시·fizzle은 seedJudgeCache가 알아서 건너뛴다.
+  try {
+    seedJudgeCache(localStorage, CACHE_SEED);
+  } catch {
+    // localStorage 비활성 등 — 프리워밍은 선택적이므로 게임 진행에 영향 없다.
+  }
   return withDevLogging(new GeminiJudge(proxyUrl));
 }
 
