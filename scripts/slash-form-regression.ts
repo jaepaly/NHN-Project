@@ -5,8 +5,11 @@ import {
   slashAnchor,
   slashCrescentPolygon,
   slashCutPoints,
+  slashCutAngles,
+  slashCutCount,
   slashCutRadius,
   slashHitCircle,
+  rotatePointsAbout,
 } from '../src/combat-core/combat/slashConfig';
 import { SIZES } from '../src/spell/types';
 
@@ -118,6 +121,93 @@ const origin = { x: 0, y: 0 };
   assert.ok(strongMid > thickness(Math.floor(half / 2)), '위력이 실리면 날이 두꺼워진다');
 }
 
+
+// ── 연참: 위력이 오를수록 더 많이 벤다 ──────────────────────────────
+// 이 게임의 보상은 "말을 잘 벼리면 강해진다"인데 위력이 화면에 드러나는 건
+// 크기·셰이크뿐이라 차이가 안 읽혔다. 벤 횟수는 세어지는 값이라 한눈에 다르다.
+// MockJudge 실측: "벤다" 27 · "검으로 적을 벤다" 40 · 공들인 영창 78~84.
+{
+  assert.equal(slashCutCount(27), 1, '"벤다" 수준은 한 번');
+  assert.equal(slashCutCount(40), 1, '짧은 영창은 한 번');
+  assert.equal(slashCutCount(78), 2, '공들인 영창은 두 번');
+  assert.equal(slashCutCount(84), 3, '더 벼린 영창은 세 번');
+  assert.equal(slashCutCount(100), 3, '최대 3회 — 그 이상은 화면이 지저분해진다');
+  assert.equal(slashCutCount(undefined), 1, 'power 없으면 한 번');
+  assert.equal(slashCutCount(Number.NaN), 1, 'NaN 방어');
+  assert.equal(slashCutCount(-50), 1, '음수 방어');
+
+  // 단조: 위력이 오르는데 횟수가 줄면 안 된다
+  let prev = 0;
+  for (let p = 0; p <= 100; p += 1) {
+    const n = slashCutCount(p);
+    assert.ok(n >= prev, `위력 ${p}에서 연참 횟수가 줄었다`);
+    prev = n;
+  }
+}
+
+// ── 연참 각도: 좌우 대칭이고 서로 겹쳐 '교차'로 읽혀야 한다 ───────────
+{
+  assert.deepEqual(slashCutAngles(20), [0], '1회는 축 그대로');
+  for (const power of [60, 90]) {
+    const angles = slashCutAngles(power);
+    assert.equal(angles.length, slashCutCount(power), '횟수와 각도 수가 같다');
+    const sum = angles.reduce((a, b) => a + b, 0);
+    assert.ok(Math.abs(sum) < 1e-9, `위력 ${power}: 좌우 대칭이 아니다 (합 ${sum})`);
+    // 호가 arcDegrees를 덮으므로 이웃 간 간격이 그보다 작아야 서로 겹쳐 교차로 보인다
+    for (let i = 1; i < angles.length; i += 1) {
+      assert.ok(angles[i] - angles[i - 1] < SLASH_CONFIG.arcDegrees,
+        '참격 간격이 호보다 넓다 — 교차가 아니라 따로 논다');
+    }
+  }
+}
+
+// ── 회전: 형상이 앵커 기준으로 돌되 모양은 보존된다 ──────────────────
+{
+  const anchor = slashAnchor(origin, { x: 200, y: 0 });
+  const poly = slashCrescentPolygon(origin, anchor, 'medium', 60);
+  const spun = rotatePointsAbout(poly, anchor, 34);
+
+  assert.equal(spun.length, poly.length, '점 개수 보존');
+  // 앵커로부터의 거리가 모두 그대로여야 회전이다(찌그러지면 다른 변형)
+  for (let i = 0; i < poly.length; i += 1) {
+    const before = Math.hypot(poly[i].x - anchor.x, poly[i].y - anchor.y);
+    const after = Math.hypot(spun[i].x - anchor.x, spun[i].y - anchor.y);
+    assert.ok(near(before, after, 1e-9), `회전이 형상을 찌그러뜨렸다 (i=${i})`);
+  }
+  // 실제로 움직이긴 해야 한다
+  assert.ok(!near(spun[0].x, poly[0].x) || !near(spun[0].y, poly[0].y), '회전이 안 먹었다');
+  // 0도는 그대로, 그리고 원본을 건드리지 않는다(새 배열)
+  const same = rotatePointsAbout(poly, anchor, 0);
+  assert.ok(near(same[3].x, poly[3].x) && near(same[3].y, poly[3].y), '0도는 항등');
+  same[3].x = 12345;
+  assert.ok(!near(poly[3].x, 12345), '원본 배열을 공유하면 안 된다');
+  // 360도 되돌리기
+  const round = rotatePointsAbout(rotatePointsAbout(poly, anchor, 120), anchor, -120);
+  assert.ok(near(round[5].x, poly[5].x, 1e-6) && near(round[5].y, poly[5].y, 1e-6), '왕복 복원');
+}
+
+// ── 연참은 **순수 연출** — 판정은 그대로 하나 ────────────────────────
+// 화면만 화려해져야 한다. 여기가 무너지면 위력 높은 영창이 몰래 여러 번 때린다.
+{
+  const weak = slashHitCircle(origin, { x: 200, y: 0 }, 'medium', 20);
+  const strong = slashHitCircle(origin, { x: 200, y: 0 }, 'medium', 95);
+  assert.ok(slashCutCount(95) > slashCutCount(20), '전제: 위력이 높으면 연참');
+  assert.ok(near(weak.x, strong.x) && near(weak.y, strong.y), '판정 위치는 연참과 무관');
+  const src = readFileSync('src/render/spellRenderer.ts', 'utf8');
+  const at = src.indexOf('export function castSlash');
+  const body = src.slice(at, src.indexOf('function castNova'));
+  assert.equal((body.match(/ctx\.onHit\?\.\(/g) ?? []).length, 1,
+    'castSlash가 onHit를 두 번 이상 부른다 — 연참이 피해를 늘리면 안 된다');
+  // runCut 본문(= 획 하나를 그리는 함수) 안에 onHit이 있으면 획마다 때리게 된다.
+  const runCutBody = body.slice(
+    body.indexOf('const runCut ='),
+    body.indexOf('slashCutAngles(spec.power).forEach'),
+  );
+  assert.ok(runCutBody.length > 200, '전제: runCut 본문을 못 찾았다 — 회귀가 헛돈다');
+  assert.ok(!runCutBody.includes('ctx.onHit'),
+    'onHit가 runCut(획 하나) 안에 있다 — 연참이 피해를 여러 번 준다');
+}
+
 // ── 배선 회귀: castSpell이 form='slash'를 실제 참격으로 보내는가 ──────
 // 이 한 줄이 PR 정리 과정에서 유실된 적 있다(#189 CLOSED → #191이 DSL만 반영).
 {
@@ -128,4 +218,4 @@ const origin = { x: 0, y: 0 };
     "case 'slash'가 castSlash를 부르지 않는다 (default→castBolt로 떨어짐)");
 }
 
-console.log('Slash form regression: 적위치 발현·사거리상한·위력반영·시각판정 정렬·가로베기·배선 6군 통과');
+console.log('Slash form regression: 적위치 발현·사거리상한·위력반영·시각판정 정렬·가로베기·연참·회전·판정불변·배선 9군 통과');
