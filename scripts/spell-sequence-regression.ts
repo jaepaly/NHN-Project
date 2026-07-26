@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { PlayerCombatState } from '../src/combat-core/player/playerCombatState';
 import { SpellHistory } from '../src/spell/spellHistory';
 import { SEQUENCE_FIXTURE_CATALOG } from '../src/spell/sequenceFixtureCatalog';
@@ -10,6 +11,8 @@ import {
   resolveSpellPlan,
   screenDirectionFromAngle,
   SEQUENCE_PLAN_LIMITS,
+  SEQUENCE_FLOW_CONFIG,
+  sequenceFlowTimeline,
   type FormBehavior,
   type SpellPlan,
 } from '../src/spell/sequencePlan';
@@ -285,4 +288,54 @@ for (const deg of [0, 33, 90, 137, 180, -12, -90, 271]) {
 }
 
 console.info('spell sequence regression: normalization, budgets, and debug fixtures passed');
-console.info('custom-vector 화면 절대 방향 매핑: 6방향 + 단위벡터 통과');
+console.info('custom-vector 화면 절대 방향 매핑: 6방향 + 단위벡터 통과');// ── 시퀀스 흐름 오버랩 (총괄 발안 07-26) — "완결 대기"의 답답함 제거 ─────
+{
+  const seq = (durationMs: number, type: 'form' | 'wait' = 'form') => ({
+    durationMs,
+    behaviors: type === 'form'
+      ? [{ type: 'form' as const, form: 'bolt' as const, element: 'fire' as const }]
+      : [{ type: 'wait' as const }],
+  });
+
+  // 기본: 마지막 빼고 70%만 기다린다 → 다음 행동이 70% 시점에 겹쳐 발동
+  const t3 = sequenceFlowTimeline([seq(1000), seq(1000), seq(1000)]);
+  assert.deepEqual(t3.waitsMs, [700, 700, 1000], '앞 시퀀스는 70%, 마지막은 온전');
+  assert.equal(t3.totalMs, 2400, '실효 총 시간 = 3000 → 2400 (20% 단축)');
+  assert.deepEqual(
+    t3.boundaries.map((b) => +b.toFixed(4)),
+    [+(700 / 2400).toFixed(4), +(1400 / 2400).toFixed(4)],
+    '진행바 경계 = 실제 발동 시점 — 화면과 발동이 어긋나면 안 된다',
+  );
+
+  // wait 전용 시퀀스는 오버랩 금지 — "심장이 두 번 뛰는 동안"의 간격은 내용이다
+  const tw = sequenceFlowTimeline([seq(1000), seq(800, 'wait'), seq(1000)]);
+  assert.deepEqual(tw.waitsMs, [700, 800, 1000], 'wait 시퀀스는 온전히 기다린다');
+
+  // 단일 시퀀스 = 오버랩 대상 없음
+  const t1 = sequenceFlowTimeline([seq(900)]);
+  assert.deepEqual(t1.waitsMs, [900]);
+  assert.deepEqual(t1.boundaries, [], '단일이면 경계 없음');
+
+  // 방어: 빈 배열·0 duration
+  assert.deepEqual(sequenceFlowTimeline([]), { waitsMs: [], totalMs: 0, boundaries: [] });
+  assert.equal(sequenceFlowTimeline([seq(0), seq(0)]).totalMs, 0, '0 duration 안전');
+
+  // 상수 가드 — 0.5 밑이면 연출이 뭉개지고, 1이면 오버랩이 없다
+  assert.ok(
+    SEQUENCE_FLOW_CONFIG.overlapStart >= 0.5 && SEQUENCE_FLOW_CONFIG.overlapStart < 1,
+    'overlapStart 범위(0.5~1) 이탈',
+  );
+
+  // 씬 배선 — 루프가 durationMs가 아니라 타임라인 waits로 기다리는가
+  const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+  assert.ok(scene.includes('sequenceFlowTimeline(plan.sequences)'),
+    '씬이 타임라인을 만들지 않는다');
+  assert.ok(scene.includes('timeline.waitsMs[sequenceIndex]'),
+    '루프가 여전히 완결 대기(durationMs)로 기다린다');
+  assert.ok(scene.includes('this.playerState.applyInvulnerability(timeline.totalMs / 1000)'),
+    '무적이 실효 시간과 어긋난다 — 오버랩 후 무적이 연출보다 길게 남는다');
+  assert.ok(scene.includes('[...timeline.boundaries]'),
+    '진행바 경계가 실효 타임라인을 쓰지 않는다');
+}
+
+

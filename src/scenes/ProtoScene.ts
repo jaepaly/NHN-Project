@@ -203,11 +203,13 @@ import {
   resolveSpellPlan,
   screenDirectionFromAngle,
   SEQUENCE_PLAN_LIMITS,
+  sequenceFlowTimeline,
   tuningScale,
 } from '../spell/sequencePlan';
 import type {
   FormBehavior,
   MoveBehavior,
+  SequenceFlowTimeline,
   ResolvedSpellPlan,
   SpellPlan,
 } from '../spell/sequencePlan';
@@ -3467,15 +3469,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       lockedEnemy: null,
       lastTargetPoint: null,
     };
-    const totalDurationMs = plan.sequences.reduce(
-      (sum, sequence) => sum + sequence.durationMs,
-      0,
-    );
-    this.beginSequenceProgress(plan, totalDurationMs);
-    this.playerState.applyInvulnerability(totalDurationMs / 1000);
+    // 오버랩 타임라인(총괄 발안): 이전 시퀀스 70% 시점에 다음 발동 — 행동이 끊기지
+    // 않고 이어진다. 무적·진행바도 실효 시간 기준이라 화면·판정·보호가 전부 일치.
+    const timeline = sequenceFlowTimeline(plan.sequences);
+    this.beginSequenceProgress(plan, timeline);
+    this.playerState.applyInvulnerability(timeline.totalMs / 1000);
     let blackoutIlluminated = false;
 
-    for (const sequence of plan.sequences) {
+    for (const [sequenceIndex, sequence] of plan.sequences.entries()) {
       if (!this.playerState.alive || !this.isCombatActive()) break;
       this.refreshSequenceTarget(targetState);
       for (const behavior of sequence.behaviors) {
@@ -3494,9 +3495,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           this.executeSequenceForm(behavior, targetState, repeatPowerScale);
         }
       }
-      if (sequence.durationMs > 0) {
+      const waitMs = timeline.waitsMs[sequenceIndex];
+      if (waitMs > 0) {
         await new Promise<void>((resolve) => {
-          this.time.delayedCall(sequence.durationMs, resolve);
+          this.time.delayedCall(waitMs, resolve);
         });
       }
     }
@@ -3506,17 +3508,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.clearSequenceProgress();
   }
 
-  private beginSequenceProgress(plan: ResolvedSpellPlan, durationMs: number): void {
+  private beginSequenceProgress(plan: ResolvedSpellPlan, timeline: SequenceFlowTimeline): void {
     this.sequenceProgressStartedAt = this.time.now;
-    this.sequenceProgressDurationMs = Math.max(0, durationMs);
+    this.sequenceProgressDurationMs = Math.max(0, timeline.totalMs);
     this.sequenceProgressName = plan.name;
-    let elapsed = 0;
-    this.sequenceProgressBoundaries = plan.sequences.slice(0, -1).map((sequence) => {
-      elapsed += sequence.durationMs;
-      return durationMs > 0 ? elapsed / durationMs : 0;
-    });
-    this.sequenceProgressGraphics.setVisible(durationMs > 0);
-    this.sequenceProgressText.setVisible(durationMs > 0);
+    // 경계 = 각 시퀀스의 **실제 발동 시점** (오버랩 반영) — 바와 화면이 어긋나지 않는다
+    this.sequenceProgressBoundaries = [...timeline.boundaries];
+    this.sequenceProgressGraphics.setVisible(timeline.totalMs > 0);
+    this.sequenceProgressText.setVisible(timeline.totalMs > 0);
     this.updateSequenceProgress();
   }
 

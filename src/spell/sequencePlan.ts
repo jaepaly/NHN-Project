@@ -176,6 +176,58 @@ function normalizeBehaviors(behaviors: readonly SpellBehavior[]): SpellBehavior[
   });
 }
 
+/**
+ * 시퀀스 흐름 — 행동이 "완결 대기" 없이 이어지게 하는 오버랩 타임라인 (총괄 발안 07-26).
+ *
+ * 기존: 시퀀스 i의 behaviors를 발동하고 durationMs를 **통째로** 기다린 뒤 i+1 시작.
+ * 행동 사이가 턴제처럼 뚝뚝 끊겨 답답하다. 영창은 안무여야 한다.
+ *
+ * 변경: 시퀀스 i가 70% 진행된 시점에 i+1을 발동한다 — 이전 연출의 꼬리와 다음
+ * 행동의 머리가 겹쳐 "슥슥" 이어진다. 판정·피해는 발동 시점의 각 form이 내므로
+ * 총량 불변 — 시간 배치만 달라진다.
+ *
+ * 예외 2개:
+ * - **wait 전용 시퀀스는 오버랩하지 않는다** — "심장이 두 번 뛰는 동안"처럼
+ *   간격 자체가 내용인 행동을 당기면 의미가 죽는다.
+ * - **마지막 시퀀스는 온전히 기다린다** — 겹칠 다음이 없고, 여기서 줄이면
+ *   무적·진행바가 마지막 연출보다 먼저 끝난다.
+ */
+export const SEQUENCE_FLOW_CONFIG = {
+  /** 다음 시퀀스가 발동되는 이전 시퀀스 진행률 (0.7 = 70% 시점) */
+  overlapStart: 0.7,
+} as const;
+
+export interface SequenceFlowTimeline {
+  /** 시퀀스 i 발동 후 다음 발동까지 실제로 기다릴 ms */
+  waitsMs: number[];
+  /** 실효 총 실행 시간(ms) — 무적·진행바가 이걸 쓴다 */
+  totalMs: number;
+  /** 진행바 경계(0~1) — 각 시퀀스 **발동 시점** 기준. 화면과 실제 발동이 일치한다 */
+  boundaries: number[];
+}
+
+function isWaitOnly(sequence: ResolvedSpellSequence): boolean {
+  return sequence.behaviors.every((behavior) => behavior.type === 'wait');
+}
+
+export function sequenceFlowTimeline(
+  sequences: readonly ResolvedSpellSequence[],
+): SequenceFlowTimeline {
+  const waitsMs = sequences.map((sequence, index) => {
+    const duration = Math.max(0, sequence.durationMs);
+    const isLast = index === sequences.length - 1;
+    if (isLast || isWaitOnly(sequence)) return duration;
+    return duration * SEQUENCE_FLOW_CONFIG.overlapStart;
+  });
+  const totalMs = waitsMs.reduce((sum, ms) => sum + ms, 0);
+  let elapsed = 0;
+  const boundaries = sequences.slice(0, -1).map((_, index) => {
+    elapsed += waitsMs[index];
+    return totalMs > 0 ? elapsed / totalMs : 0;
+  });
+  return { waitsMs, totalMs, boundaries };
+}
+
 export function resolveSpellPlan(plan: SpellPlan): ResolvedSpellPlan {
   const power = Math.max(0, Math.min(100, finiteNonNegative(plan.power, 0)));
   const durationMs = Math.min(
