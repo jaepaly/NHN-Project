@@ -1,7 +1,7 @@
 import type { CodexEntry, CodexSortMode } from '../spell/spellCodex';
 import { sortCodex } from '../spell/spellCodex';
-import type { SpellForm } from '../spell/types';
 import { ELEMENT_LABELS, ELEMENT_PALETTES, FORM_LABELS, paletteColorToCss } from '../render/palette';
+import { glyphSvg } from '../render/formGlyphs';
 
 /**
  * 주문 도감 오버레이 — 타이틀의 도감 탭에서 연다 (게임성 분석 ③).
@@ -95,30 +95,6 @@ const CSS = `
 const SORT_LABELS: Record<CodexSortMode, string> = {
   recent: '최근순', discovered: '발견순', power: '위력순', element: '속성별', form: '폼별',
 };
-
-/** 폼별 SVG 글리프 — 원소색 타일 위에 밝은 선으로 형태를 상징한다 (currentColor). */
-const FORM_GLYPHS: Record<SpellForm, string> = {
-  bolt: '<path d="M14 3 6 15h4l-1 6 8-12h-4z" fill="currentColor"/>',
-  beam: '<line x1="3" y1="12" x2="19" y2="12"/><circle cx="20" cy="12" r="2.4" fill="currentColor" stroke="none"/>',
-  wave: '<path d="M3 12q3-7 6 0t6 0 6 0" fill="none"/>',
-  nova: '<circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/>',
-  rain: '<path d="M7 4 5 11M12 3l-2 7M17 4l-2 7M8 14l-1 5M13 13l-1 5M18 14l-1 5"/>',
-  wall: '<rect x="4" y="8" width="16" height="9" rx="1" fill="none"/><path d="M4 12.5h16M9 8v4.5M14 12.5V17"/>',
-  cage: '<rect x="5" y="5" width="14" height="14" rx="1" fill="none"/><path d="M9.5 5v14M14 5v14M5 9.5h14M5 14h14"/>',
-  orbit: '<circle cx="12" cy="12" r="7" fill="none"/><circle cx="12" cy="5" r="2.2" fill="currentColor" stroke="none"/>',
-  summon: '<circle cx="12" cy="13" r="5.5" fill="none"/><circle cx="10" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="14" cy="12" r="1" fill="currentColor" stroke="none"/><path d="M9 4l1.5 3M15 4l-1.5 3"/>',
-  buff: '<path d="M12 20V6M6.5 11.5 12 6l5.5 5.5" fill="none"/>',
-  zone: '<circle cx="12" cy="12" r="8" fill="none" stroke-dasharray="3 3"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>',
-  chain: '<circle cx="7.5" cy="12" r="3.2" fill="none"/><circle cx="16.5" cy="12" r="3.2" fill="none"/><line x1="10.7" y1="12" x2="13.3" y2="12"/>',
-  slash: '<path d="M6 18 16 6M10 19 20 7" fill="none"/>',
-};
-const SEQUENCE_GLYPH = '<circle cx="5" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="2" fill="currentColor" stroke="none"/><path d="M7.5 12h2M14.5 12h2"/>';
-
-function glyphSvg(form: SpellForm | undefined): string {
-  const inner = form ? FORM_GLYPHS[form] : SEQUENCE_GLYPH;
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
-    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
-}
 
 function ensureDom(): { wrap: HTMLDivElement; panel: HTMLDivElement } {
   if (!document.getElementById(STYLE_ID)) {

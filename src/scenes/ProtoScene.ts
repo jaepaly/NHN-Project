@@ -4563,6 +4563,27 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
    * 슬롯이 비어 있어도 `0/2`를 보여준다: "채울 수 있는 자리가 있다"는 정보 자체가
    * 보상 선택의 근거가 되기 때문이다.
    */
+  /**
+   * 보상 카드의 폼 글리프 해석 — runUiBinding이 주입받아 쓴다 (main.ts에서 배선).
+   * 계약(RewardOption)에는 폼이 없고 spellKey/spiritId만 있으므로, 키→스펙을 아는
+   * 씬이 여기서 풀어준다. 폼을 못 찾으면 null → 카드는 기존 원형 그대로.
+   */
+  rewardFormFor(option: RewardOption): SpellForm | null {
+    if (option.engrave) {
+      const slot = this.engraveManager.entries
+        .find((e) => e.spellKey === option.engrave!.spellKey);
+      return slot?.spell.form
+        ?? this.engraveManager.candidateSpell(option.engrave.spellKey)?.form
+        ?? null;
+    }
+    if (option.evolve?.target === 'engrave' && option.evolve.engraveKey) {
+      const key = option.evolve.engraveKey;
+      return this.engraveManager.entries.find((e) => e.spellKey === key)?.spell.form ?? null;
+    }
+    // 정령·융합은 폼이 아니라 역할이 정체성이라 글리프를 붙이지 않는다 (원형 유지)
+    return null;
+  }
+
   private buildSummaryLines(): string[] {
     const engraves = this.engraveManager.entries;
     const engraveLabel = engraves.length === 0
