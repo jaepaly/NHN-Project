@@ -227,35 +227,40 @@ export class CombatRunController implements RunController {
   }
 
   private applyReward(reward: RewardOption): void {
+    // 제단방(#214) "상급" 보상은 powerScale(>1)을 실어 수치 효과를 키운다. 미지정=1(표준).
+    // 과도한 배율은 playerState 내부 클램프(입력락 하한 0.15초 등)가 흡수한다.
+    const scale = reward.powerScale ?? 1;
     switch (reward.kind) {
       case 'max-hp':
-        this.playerState.increaseMaxHp(RUN_REWARD_CONFIG.maxHpIncrease);
-        this.playerState.heal(RUN_REWARD_CONFIG.hpRecovery);
+        this.playerState.increaseMaxHp(Math.round(RUN_REWARD_CONFIG.maxHpIncrease * scale));
+        this.playerState.heal(Math.round(RUN_REWARD_CONFIG.hpRecovery * scale));
         break;
       case 'max-mana':
-        this.playerState.increaseMaxMana(RUN_REWARD_CONFIG.maxManaIncrease);
-        this.playerState.restoreMana(RUN_REWARD_CONFIG.manaRecovery);
+        this.playerState.increaseMaxMana(Math.round(RUN_REWARD_CONFIG.maxManaIncrease * scale));
+        this.playerState.restoreMana(Math.round(RUN_REWARD_CONFIG.manaRecovery * scale));
         break;
       case 'affinity': {
         if (!reward.element) return;
         const previous = this.elementalAffinity[reward.element] ?? 0;
-        this.elementalAffinity[reward.element] = previous + RUN_REWARD_CONFIG.affinityBonus;
+        this.elementalAffinity[reward.element] = previous + RUN_REWARD_CONFIG.affinityBonus * scale;
         break;
       }
       case 'swift-incant':
-        this.playerState.addCastLockReduction(RUN_REWARD_CONFIG.swiftIncantLockReduction);
+        this.playerState.addCastLockReduction(RUN_REWARD_CONFIG.swiftIncantLockReduction * scale);
         break;
       case 'mana-surge':
-        this.playerState.addManaGainMultiplier(RUN_REWARD_CONFIG.manaSurgeGainBonus);
+        this.playerState.addManaGainMultiplier(RUN_REWARD_CONFIG.manaSurgeGainBonus * scale);
         this.playerState.addManaPickupRadiusMultiplier(
-          RUN_REWARD_CONFIG.manaSurgePickupRadiusBonus,
+          RUN_REWARD_CONFIG.manaSurgePickupRadiusBonus * scale,
         );
         break;
       case 'ward-start':
-        this.wardOnRoomStart += RUN_REWARD_CONFIG.wardStartShield;
+        this.wardOnRoomStart += Math.round(RUN_REWARD_CONFIG.wardStartShield * scale);
         break;
       case 'spirit-haste':
         // 정령 관리자는 씬 소유 — reward-applied 이벤트에서 적용한다.
+        // powerScale은 cloneReward로 옵션에 실려 전달되므로, 씬이 프리미엄을 곱하려면
+        // 그쪽에서 처리한다(현재 미적용 — 씬 배선은 별도 조율).
         break;
       case 'engrave':
         // 각인은 전투 스탯 보상이 아니다. 씬이 reward-applied 이벤트에서 적용한다.
