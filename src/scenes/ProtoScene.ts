@@ -2275,8 +2275,14 @@ export class ProtoScene extends Phaser.Scene {
   private tickFloorHazards(): void {
     if (!this.playerState.alive || !this.isCombatActive()) return;
     for (const zone of this.floorHazards) {
-      if (isInFloorHazard(this.player.x, this.player.y, zone)) {
-        this.damagePlayer(floorHazardTickDamage(zone.kind));
+      if (!isInFloorHazard(this.player.x, this.player.y, zone)) continue;
+      this.damagePlayer(floorHazardTickDamage(zone.kind));
+      // 독지대는 약화(주는피해↓)·둔화(이동속도↓) 디버프도 건다. 틱마다 리프레시 →
+      // 밟는 동안 유지되고 이탈 후 debuffSeconds 뒤 사라진다. (용암=화상 DOT라 디버프 없음)
+      if (zone.kind === 'poison') {
+        const p = FLOOR_HAZARD_CONFIG.poison;
+        this.playerState.applyTimedBuff('sap', p.sapMultiplier, p.debuffSeconds);
+        this.playerState.applyTimedBuff('mire', p.mireMultiplier, p.debuffSeconds);
       }
     }
   }

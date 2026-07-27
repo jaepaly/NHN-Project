@@ -8,7 +8,10 @@ import type { SpellElement } from '../../spell/types';
  * 순수 함수 — 게임 상태 없이 결정되므로 회귀로 고정한다.
  */
 
-export type SelfBuffKind = 'haste' | 'empower' | 'ward';
+// haste·empower·ward는 긍정 버프(≥1 또는 ward는 ≤1 유리). sap·mire는 지형(#214)이 거는
+// 디버프 — 같은 buffs Map·만료 루프·HUD를 타되 배율이 불리한 쪽(≤1)이다.
+// sap=주는피해↓, mire=이동속도↓. (화상은 DOT라 여기 없음)
+export type SelfBuffKind = 'haste' | 'empower' | 'ward' | 'sap' | 'mire';
 
 /** 지속 버프: 배율을 duration초 동안 적용 */
 export interface TimedBuffOutcome {
@@ -35,6 +38,9 @@ export const SELF_BUFF_CONFIG = {
   empower: { perPower: 0.007, min: 1.12, max: 1.8, baseSeconds: 3, secPerPower: 0.045, color: 0xffa62b },
   // ward: 받는 피해 배율 = 1 - power/100 (위력100 → 0 = 무적). 강력하므로 지속은 짧게.
   ward: { reducePerPower: 0.01, floor: 0, baseSeconds: 2, secPerPower: 0.03, color: 0x8fa4ff },
+  // 디버프(지형이 건다) — HUD 색만. 배율·지속은 지형이 applyTimedBuff로 직접 준다.
+  sap: { color: 0xb07be8 },  // 약화(주는피해↓) — 독 보라
+  mire: { color: 0x9bbd6a }, // 둔화(이동속도↓) — 탁한 초록
   dash: { baseDistance: 130, perPower: 2.2, iframeSeconds: 0.35 },
 } as const;
 
@@ -59,6 +65,8 @@ const LABELS: Record<SelfBuffKind, string> = {
   haste: '가속',
   empower: '맹렬',
   ward: '철벽',
+  sap: '약화',
+  mire: '둔화',
 };
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -72,10 +80,10 @@ export function formatSelfBuffStatus(
   remaining: number,
 ): string {
   const t = Math.max(0, remaining).toFixed(1);
-  if (kind === 'ward') {
-    return multiplier <= 0
-      ? `무적 ${t}s`
-      : `${LABELS.ward} −${Math.round((1 - multiplier) * 100)}% ${t}s`;
+  // ward·sap·mire는 ≤1 배율 → −%로 표시. (ward 0 = 무적 특례)
+  if (kind === 'ward' || kind === 'sap' || kind === 'mire') {
+    if (kind === 'ward' && multiplier <= 0) return `무적 ${t}s`;
+    return `${LABELS[kind]} −${Math.round((1 - multiplier) * 100)}% ${t}s`;
   }
   return `${LABELS[kind]} +${Math.round((multiplier - 1) * 100)}% ${t}s`;
 }
