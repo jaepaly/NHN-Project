@@ -5,7 +5,8 @@
  *
  * 실행: `npm run seed:cache` (기본 프록시) 또는 `WORKER_URL=... npm run seed:cache`.
  * 규율: **curl 인라인 금지** — Node fetch는 깨끗한 UTF-8을 보낸다(Windows Git Bash 한글 함정 회피).
- * fizzle/오류는 transient일 수 있으므로 재시도하고, 끝내 cast 못 얻으면 그 문장은 시드에서 뺀다.
+ * **429(HTTP 오류)엔 재시도하지 않는다**(쿼터 증폭 방지, 2026-07-27 인시던트). fizzle만 1회 재시도,
+ * 끝내 cast 못 얻으면 그 문장은 시드에서 뺀다.
  *
  * ⚠️ 프롬프트 버전이 바뀌면 반드시 재생성한다 — 시드는 생성 당시 버전으로 태깅되며,
  * 클라의 `seedJudgeCache`는 현재 버전과 다르면 주입하지 않는다(스테일 방지).
@@ -43,30 +44,32 @@ async function judgeOnce(text: string): Promise<Record<string, unknown> | null> 
 }
 
 /**
- * cast/blocked를 얻을 때까지 재시도. 못 얻으면 null.
- * 백오프를 원인별로 나눈다:
- *  - HTTP 오류(429 등, judgeOnce가 null 반환) → **길게(65s)** 분당창(15 RPM)이 완전히 비도록.
- *    짧게 재시도하면 같은 창에서 계속 429가 나 오히려 창을 더 채운다.
- *  - fizzle(응답은 왔으나 nonsense) → **짧게(5s)** transient 회복만 기다린다.
+ * cast/blocked를 얻으면 반환. 못 얻으면 null(그 문장은 시드에서 뺀다).
+ *
+ * ⚠️ **HTTP 오류(429/upstream)엔 재시도하지 않는다** — 429는 "요청이 몰렸다"는 신호라
+ * 재시도하면 **공용 프로젝트 쿼터를 더 태우며 상황을 악화**시킨다. 문장당 6회 재시도가
+ * 2026-07-27 인시던트(무료 쿼터 순간 초과 → 팀 전체 Mock 폴백)의 증폭 원인이었다.
+ * 자세한 건 docs/INCIDENT_2026-07-27_gemini-quota-429.md.
+ *
+ * fizzle(응답은 왔으나 nonsense)만 transient일 수 있어 **짧게 1회** 재시도한다(총 2시도).
  */
 async function judgeWithRetry(text: string): Promise<Record<string, unknown> | null> {
-  for (let attempt = 1; attempt <= 6; attempt += 1) {
-    let httpError = false;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       const j = await judgeOnce(text);
       if (j === null) {
-        httpError = true;
-      } else {
-        const disposition = j.disposition;
-        if (disposition === 'cast' || disposition === 'blocked') return j;
-        process.stdout.write(`  · "${text}" ${String(disposition)} (재시도 ${attempt}/6)\n`);
+        // HTTP 오류(429 등) — 재시도 금지(쿼터 증폭 방지). 이 문장은 건너뛴다.
+        process.stdout.write(`  · "${text}" HTTP 오류(429?) → 재시도 안 함, 건너뜀\n`);
+        return null;
       }
+      const disposition = j.disposition;
+      if (disposition === 'cast' || disposition === 'blocked') return j;
+      process.stdout.write(`  · "${text}" ${String(disposition)} (fizzle 재시도 ${attempt}/2)\n`);
     } catch (err) {
-      httpError = true;
-      process.stdout.write(`  · "${text}" 예외 (재시도 ${attempt}/6): ${String(err)}\n`);
+      process.stdout.write(`  · "${text}" 예외 → 건너뜀: ${String(err)}\n`);
+      return null;
     }
-    if (httpError) process.stdout.write(`  · "${text}" HTTP 오류(429?) → 65s 백오프 (재시도 ${attempt}/6)\n`);
-    await sleep(httpError ? 65000 : 5000);
+    await sleep(5000);
   }
   return null;
 }
