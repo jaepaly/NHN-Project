@@ -694,6 +694,8 @@ export class ProtoScene extends Phaser.Scene {
   private floorHazardView: Phaser.GameObjects.Graphics | null = null;
   /** 지형 틱 타이머 — 밟고 있으면 틱 간격마다 피해. 지형이 있을 때만 돈다. */
   private floorHazardTimer: Phaser.Time.TimerEvent | null = null;
+  /** 독지대 이탈 후 잔류 도트 남은 시간(초) — 존 안에서 리필, 밖에서 소진. */
+  private poisonLingerRemaining = 0;
   /**
    * 진행 중인 미러 캐스트(예고 단계). 타이머는 update에서 **스케일된 델타**로
    * 감소한다 — 영창 슬로모(timeScale 0.1) 중엔 예고도 같이 느려져, "예고를 보고
@@ -2262,6 +2264,7 @@ export class ProtoScene extends Phaser.Scene {
   private clearFloorHazards(): void {
     this.floorHazardTimer?.remove();
     this.floorHazardTimer = null;
+    this.poisonLingerRemaining = 0;
     this.floorHazardView?.destroy();
     this.floorHazardView = null;
     this.floorHazards = [];
@@ -2274,16 +2277,29 @@ export class ProtoScene extends Phaser.Scene {
    */
   private tickFloorHazards(): void {
     if (!this.playerState.alive || !this.isCombatActive()) return;
+    let inPoison = false;
     for (const zone of this.floorHazards) {
       if (!isInFloorHazard(this.player.x, this.player.y, zone)) continue;
       this.damagePlayer(floorHazardTickDamage(zone.kind));
       // 독지대는 약화(주는피해↓)·둔화(이동속도↓) 디버프도 건다. 틱마다 리프레시 →
       // 밟는 동안 유지되고 이탈 후 debuffSeconds 뒤 사라진다. (용암=화상 DOT라 디버프 없음)
       if (zone.kind === 'poison') {
+        inPoison = true;
         const p = FLOOR_HAZARD_CONFIG.poison;
         this.playerState.applyTimedBuff('sap', p.sapMultiplier, p.debuffSeconds);
         this.playerState.applyTimedBuff('mire', p.mireMultiplier, p.debuffSeconds);
       }
+    }
+    // 독지대 잔류 도트 — 존 안이면 리필, 이탈 후엔 남은 시간만큼 계속 갉는다.
+    // (EnemyAilmentState 미러: remaining + 틱 펄스. 새 타이머 없이 이 틱에 얹는다.)
+    if (inPoison) {
+      this.poisonLingerRemaining = FLOOR_HAZARD_CONFIG.poison.lingerSeconds;
+    } else if (this.poisonLingerRemaining > 0) {
+      this.damagePlayer(floorHazardTickDamage('poison'));
+      this.poisonLingerRemaining = Math.max(
+        0,
+        this.poisonLingerRemaining - FLOOR_HAZARD_CONFIG.tickIntervalSeconds,
+      );
     }
   }
 
