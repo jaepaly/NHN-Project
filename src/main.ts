@@ -45,6 +45,7 @@ const game = new Phaser.Game({
 // 폼 글리프 해석은 씬만 할 수 있다(spellKey→스펙) — 결합 모듈에 주입해 계약을 지킨다
 const hooksFor = (scene: ProtoScene) => ({
   formFor: (option: Parameters<ProtoScene['rewardFormFor']>[0]) => scene.rewardFormFor(option),
+  contextLines: () => scene.rewardContextLines(),
 });
 
 const bindRunUiWhenSceneReady = (): void => {

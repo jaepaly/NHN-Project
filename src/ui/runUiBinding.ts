@@ -1,7 +1,7 @@
 import type { RewardOption, RunController } from '../run/runContract';
 import type { SpellForm } from '../spell/types';
 import { showRewardCards } from './rewardCardOverlay';
-import { ownedLabelFor } from '../run/runRewardSummary';
+import { ownedLabelFor, summarizeRunRewards } from '../run/runRewardSummary';
 import { playRoomTransition } from './roomTransition';
 import { updateRunHud } from './runHud';
 
@@ -21,6 +21,8 @@ export interface RunUiHooks {
    * 않는다는 계약(위 주석)을 지켜야 하고, spellKey→스펙은 씬만 안다.
    */
   formFor?: (option: RewardOption) => SpellForm | null;
+  /** 보상 화면에 함께 띄울 씬 쪽 맥락 (주문서 보유 등 — 컨트롤러가 모르는 것) */
+  contextLines?: () => string[];
 }
 
 export function bindRunUi(controller: RunController, hooks: RunUiHooks = {}): void {
@@ -30,9 +32,15 @@ export function bindRunUi(controller: RunController, hooks: RunUiHooks = {}): vo
   controller.on('room-cleared', (options) => {
     // 이미 보유 배지 — 이번 런에서 고른 스택형 보상을 카드에 표시 (게임성 ②)
     const ownedAtOffer = controller.state.rewards;
+    // 이번 런 누적 — 전투 HUD가 아니라 "무엇을 더할까"를 고르는 이 화면에 붙인다
+    const contextLines = [
+      summarizeRunRewards(ownedAtOffer),
+      ...(hooks.contextLines?.() ?? []),
+    ].filter((line) => line.length > 0);
     void showRewardCards(options, {
       ownedLabelFor: (option) => ownedLabelFor(option, ownedAtOffer),
       formFor: hooks.formFor,
+      contextLines,
     }).then((chosen) => {
       controller.chooseReward(chosen.id);
     });
