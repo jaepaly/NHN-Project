@@ -51,12 +51,16 @@ export function glyphSvg(form: SpellForm | undefined): string {
 /**
  * Phaser용 data URI — 래스터화 시점엔 CSS 컨텍스트가 없어 currentColor가 죽으므로
  * 흰색으로 치환해 굽고, 색은 씬에서 setTint로 입힌다 (한 텍스처 × 8원소 재사용).
+ *
+ * **base64여야 한다**: Phaser의 SVGFile 로더는 data URI를 만나면 atob로 디코드하므로
+ * 퍼센트 인코딩을 주면 InvalidCharacterError로 로드가 통째로 실패한다.
  */
 export function formGlyphDataUri(form: SpellForm | undefined): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"`
     + ` fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round"`
     + ` stroke-linejoin="round">${glyphInner(form).replace(/currentColor/g, '#ffffff')}</svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  // 글리프는 전부 ASCII(경로·hex색)라 btoa로 충분하다. 이 모듈은 렌더 레이어(브라우저) 전용.
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
 }
 
 /** 굽어야 할 전체 목록 — 씬 preload가 이걸 돌며 load.svg 한다. */
