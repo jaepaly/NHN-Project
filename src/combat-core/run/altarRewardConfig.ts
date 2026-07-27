@@ -31,11 +31,12 @@ export function drawAltarRewardOptions(
   roomIndex: number,
   rand: () => number,
 ): readonly RewardOption[] {
-  return drawRewardOptions(roomIndex, rand).map((option) => ({
+  // scale을 draw에 넘기면 buildOption이 설명·powerScale을 함께 배율 반영한다(카드=실제 일치).
+  // spirit-haste는 씬 적용이라 buildOption이 배율을 안 실으므로 그 카드만 표준 — "상급" 접두사도 붙이지 않는다.
+  return drawRewardOptions(roomIndex, rand, ALTAR_CONFIG.premiumScale).map((option) => ({
     ...option,
     id: `altar-${option.id}`,
-    title: `상급 ${option.title}`,
-    powerScale: ALTAR_CONFIG.premiumScale,
+    title: option.powerScale ? `상급 ${option.title}` : option.title,
   }));
 }
 

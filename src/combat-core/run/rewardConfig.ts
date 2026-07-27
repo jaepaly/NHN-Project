@@ -34,50 +34,71 @@ export function affinityElementForRoom(roomIndex: number): SpellElement {
 
 type StaticRewardKind = Exclude<RewardKind, 'engrave' | 'spirit' | 'evolve'>;
 
+/**
+ * 보상 카드 하나를 만든다.
+ *
+ * `scale`(기본 1)은 보물방·제단방(#214) 같은 강화 보상의 배율이다. 설명 수치와
+ * `powerScale`을 함께 배율 반영해 **카드 표시 = 실제 적용 값**이 일치하게 한다
+ * (applyReward가 powerScale을 곱하므로 — 표시만 표준이면 거짓말이 된다).
+ * scale=1이면 문자열·필드가 기존과 정확히 동일하다.
+ *
+ * ⚠️ spirit-haste는 정령 매니저(씬)가 적용해 applyReward가 배율을 못 곱한다 →
+ * 표시·powerScale 모두 표준으로 둔다(거짓 표시 방지). 씬 배선 후 함께 강화.
+ */
 function buildOption(
   kind: StaticRewardKind,
   roomIndex: number,
   element: SpellElement,
+  scale = 1,
 ): RewardOption {
-  const affinityPercent = Math.round(RUN_REWARD_CONFIG.affinityBonus * 100);
+  const premium = scale !== 1 ? { powerScale: scale } : {};
+  const roundS = (v: number) => Math.round(v * scale);            // 정수 (HP·마나·수호)
+  const decS = (v: number) => Math.round(v * scale * 100) / 100;  // 소수 (초)
+  const pctS = (v: number) => Math.round(v * 100 * scale);        // 퍼센트
   switch (kind) {
     case 'max-hp':
       return {
         id: `room-${roomIndex}-max-hp`,
         kind,
         title: '생명 증폭',
-        description: `최대 HP +${RUN_REWARD_CONFIG.maxHpIncrease}, 즉시 ${RUN_REWARD_CONFIG.hpRecovery} 회복`,
+        description: `최대 HP +${roundS(RUN_REWARD_CONFIG.maxHpIncrease)}, 즉시 ${roundS(RUN_REWARD_CONFIG.hpRecovery)} 회복`,
+        ...premium,
       };
     case 'max-mana':
       return {
         id: `room-${roomIndex}-max-mana`,
         kind,
         title: '마나 증폭',
-        description: `최대 마나 +${RUN_REWARD_CONFIG.maxManaIncrease}, 즉시 ${RUN_REWARD_CONFIG.manaRecovery} 회복`,
+        description: `최대 마나 +${roundS(RUN_REWARD_CONFIG.maxManaIncrease)}, 즉시 ${roundS(RUN_REWARD_CONFIG.manaRecovery)} 회복`,
+        ...premium,
       };
     case 'affinity':
       return {
         id: `room-${roomIndex}-affinity-${element}`,
         kind,
         title: `${ELEMENT_LABELS[element]} 친화`,
-        description: `${ELEMENT_LABELS[element]} 원소 위력 +${affinityPercent}% · 이펙트 격상 (3단계까지)`,
+        description: `${ELEMENT_LABELS[element]} 원소 위력 +${pctS(RUN_REWARD_CONFIG.affinityBonus)}% · 이펙트 격상 (3단계까지)`,
         element,
+        ...premium,
       };
     case 'swift-incant':
       return {
         id: `room-${roomIndex}-swift-incant`,
         kind,
         title: '신속 영창',
-        description: `영창 후 딜레이 -${RUN_REWARD_CONFIG.swiftIncantLockReduction}초 (하한 0.15초 · 영창가 빌드)`,
+        description: `영창 후 딜레이 -${decS(RUN_REWARD_CONFIG.swiftIncantLockReduction)}초 (하한 0.15초 · 영창가 빌드)`,
+        ...premium,
       };
     case 'mana-surge':
       return {
         id: `room-${roomIndex}-mana-surge`,
         kind,
         title: '마나 격류',
-        description: `마나 획득 +${Math.round(RUN_REWARD_CONFIG.manaSurgeGainBonus * 100)}% · 수정 흡수 범위 +${Math.round(RUN_REWARD_CONFIG.manaSurgePickupRadiusBonus * 100)}%`,
+        description: `마나 획득 +${pctS(RUN_REWARD_CONFIG.manaSurgeGainBonus)}% · 수정 흡수 범위 +${pctS(RUN_REWARD_CONFIG.manaSurgePickupRadiusBonus)}%`,
+        ...premium,
       };
     case 'spirit-haste':
+      // 씬(정령 매니저)이 적용 → applyReward가 배율 못 곱함. 표준 표시·powerScale 없음.
       return {
         id: `room-${roomIndex}-spirit-haste`,
         kind: 'spirit-haste',
@@ -89,7 +110,8 @@ function buildOption(
         id: `room-${roomIndex}-ward-start`,
         kind,
         title: '수호 기점',
-        description: `이후 매 방 시작 시 보호막 +${RUN_REWARD_CONFIG.wardStartShield}`,
+        description: `이후 매 방 시작 시 보호막 +${roundS(RUN_REWARD_CONFIG.wardStartShield)}`,
+        ...premium,
       };
   }
 }
@@ -103,10 +125,12 @@ const REWARD_POOL: readonly StaticRewardKind[] = [
 /**
  * 런 시드 랜덤 3택 — LLM 호출 없음, 같은 시드면 같은 결과(재현 가능).
  * 종류 중복 없이 3장. 친화 원소도 rand로 결정.
+ * `scale`(기본 1)은 보물방·제단방(#214) 강화 배율 — 설명·powerScale에 함께 반영된다.
  */
 export function drawRewardOptions(
   roomIndex: number,
   rand: () => number,
+  scale = 1,
 ): readonly RewardOption[] {
   const pool = [...REWARD_POOL];
   const picked: StaticRewardKind[] = [];
@@ -115,7 +139,7 @@ export function drawRewardOptions(
     picked.push(pool.splice(index, 1)[0]);
   }
   const element = ELEMENTS[Math.floor(rand() * ELEMENTS.length) % ELEMENTS.length];
-  return picked.map((kind) => buildOption(kind, roomIndex, element));
+  return picked.map((kind) => buildOption(kind, roomIndex, element, scale));
 }
 
 /** 고정 3택 (회귀 하네스용 — 매번 동일: 생명/마나/방 원소 친화) */
