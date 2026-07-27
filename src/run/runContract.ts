@@ -72,6 +72,12 @@ export interface RewardOption {
   spirit?: SpiritRewardData;
   /** kind='evolve' 전용 — 진화·융합 대상 */
   evolve?: EvolveRewardData;
+  /**
+   * 강화 배율 — 표준 보상은 미지정(=1). 제단방(#214) 같은 "상급" 보상이 1보다 큰 값을
+   * 실어 `applyReward`가 수치형 효과(HP·마나·친화·수호 등)에 곱한다. 미지정이면 1로 본다.
+   * (적용부 = RunController.applyReward, R3 소유 — 배선은 별도 조율.)
+   */
+  powerScale?: number;
 }
 
 export type RunPhase = 'combat' | 'reward-select' | 'room-transition' | 'run-over';
