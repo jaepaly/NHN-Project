@@ -69,12 +69,20 @@ import { VFX_BUDGET_CONFIG } from '../render/vfxBudget';
 import { allGlyphTextures, formGlyphTextureKey } from '../render/formGlyphs';
 import type { BuildChip } from '../run/buildChipModel';
 import { buildChipModel } from '../run/buildChipModel';
+import {
+  PAUSE_BAR,
+  PAUSE_LAYOUT,
+  pauseBarRect,
+  pauseSliderHitArea,
+  pauseSliderRatio,
+} from '../ui/pauseLayout';
 import type { GameSettings, SettingKey } from '../run/gameSettings';
 import {
   DEFAULT_SETTINGS,
   adjustSetting,
   loadSettings,
   saveSettings,
+  setSettingFromRatio,
   settingDisplay,
   settingRatio,
 } from '../run/gameSettings';
@@ -277,7 +285,6 @@ const PAUSE_SETTINGS: readonly PauseRow[] = [
   { id: 'back', label: '뒤로' },
 ];
 
-const PAUSE_LAYOUT = { titleY: 186, firstY: 252, rowGap: 42 } as const;
 
 /**
  * 빌드 칩 기하 — 2×2로 65×65px. 기존 텍스트 2줄(229×27=6183px²)보다 작은
@@ -528,6 +535,11 @@ export class ProtoScene extends Phaser.Scene {
   private pausePane: 'main' | 'settings' = 'main';
 
   private pauseGauges!: Phaser.GameObjects.Graphics;
+
+  private pauseSliderZones: Phaser.GameObjects.Zone[] = [];
+
+  /** 지금 끌고 있는 설정 (없으면 null) — 바 밖으로 나가도 끌림이 이어진다 */
+  private draggingSetting: SettingKey | null = null;
 
   private settings: GameSettings = { ...DEFAULT_SETTINGS };
 
@@ -798,6 +810,7 @@ export class ProtoScene extends Phaser.Scene {
     this.pausePane = 'main';
     this.pauseMenuIndex = 0;
     this.quitArmed = false;
+    this.draggingSetting = null;
     this.time.paused = false;
     // 저장된 설정 — 씬 재진입마다 다시 읽어 적용한다(오디오·밝기는 씬 소유 객체다)
     try {
@@ -4789,6 +4802,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     // 게이지는 설정 화면에서만 쓰지만 항목과 같은 레이어에 둔다
     this.pauseGauges = this.add.graphics().setScrollFactor(0).setDepth(106).setVisible(false);
+    this.createPauseSliders();
 
     // 두 화면 중 항목이 많은 쪽만큼 미리 만들어 두고 라벨만 갈아끼운다
     const rows = Math.max(PAUSE_MAIN.length, PAUSE_SETTINGS.length);
@@ -4819,6 +4833,60 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
   private pauseRows(): readonly PauseRow[] {
     return this.pausePane === 'settings' ? PAUSE_SETTINGS : PAUSE_MAIN;
+  }
+
+  /** 게이지 바 기하 — 렌더와 드래그 히트 테스트가 **같은 값**을 쓴다 (pauseLayout에서 검증). */
+  private pauseBarRect(rowIndex: number): { x: number; y: number; w: number } {
+    return pauseBarRect(this.scale.width, rowIndex);
+  }
+
+  /**
+   * 설정 게이지 드래그 — 포인터 x를 바 안의 비율로 바꿔 값에 반영한다.
+   *
+   * Phaser의 draggable 대신 존의 pointerdown + 씬 전역 pointermove를 쓴다: draggable은
+   * 오브젝트를 따라 움직이는 의미라 값 조작에 안 맞고, 바 밖으로 손이 나가도 끌림이
+   * 이어져야 슬라이더답기 때문이다(존 밖 이벤트는 존이 못 받는다).
+   */
+  private createPauseSliders(): void {
+    const settingRows = PAUSE_SETTINGS
+      .map((row, i) => ({ row, i }))
+      .filter((r) => r.row.setting);
+
+    this.pauseSliderZones = settingRows.map(({ row, i }) => {
+      const hit = pauseSliderHitArea(this.scale.width, i);
+      // 비활성으로 만든다 — 활성인 채 두면 전투 중에도 화면 중앙에서 손 모양 커서가
+      // 뜬다(핸들러는 가드로 막히지만 커서는 바뀐다). 설정 화면에서만 renderPauseMenu가 켠다.
+      const zone = this.add.zone(hit.centerX, hit.centerY, hit.width, hit.height)
+        .setScrollFactor(0).setDepth(107);
+      zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        if (!this.buildInspectOpen || this.pausePane !== 'settings') return;
+        this.draggingSetting = row.setting ?? null;
+        this.pauseMenuIndex = i;
+        this.quitArmed = false;
+        this.applySliderFromPointer(pointer.x);
+      });
+      return zone;
+    });
+
+    // 끌기 중에는 바 밖으로 나가도 따라온다 — 슬라이더의 기본 기대
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (!this.draggingSetting || !pointer.isDown) return;
+      this.applySliderFromPointer(pointer.x);
+    });
+    this.input.on('pointerup', () => { this.draggingSetting = null; });
+    this.input.on('gameout', () => { this.draggingSetting = null; });
+  }
+
+  private applySliderFromPointer(pointerX: number): void {
+    const key = this.draggingSetting;
+    if (!key) return;
+    const bar = this.pauseBarRect(this.pauseMenuIndex);
+    const next = setSettingFromRatio(this.settings, key, pauseSliderRatio(bar, pointerX));
+    if (next[key] === this.settings[key]) return; // 같은 격자면 저장·재생 생략
+    this.settings = next;
+    this.persistSettings();
+    if (key === 'sfxVolume') this.audio.playSfx('incant-enter');
+    this.renderPauseMenu();
   }
 
   /**
@@ -4860,7 +4928,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.pauseGauges.setVisible(visible);
     this.pauseMenuItems.forEach((t) => t.setVisible(false));
     this.pauseGauges.clear();
-    if (!visible) return;
+    // 슬라이더는 설정 화면에서만 잡힌다 — 전투 중이나 메인 메뉴에서 빈 영역이
+    // 포인터를 먹으면 안 된다
+    const slidersLive = visible && this.pausePane === 'settings';
+    this.pauseSliderZones.forEach((z) => {
+      if (slidersLive) z.setInteractive({ useHandCursor: true });
+      else z.disableInteractive();
+    });
+    if (!visible) { this.draggingSetting = null; return; }
 
     const { width, height } = this.scale;
     const rows = this.pauseRows();
@@ -4883,13 +4958,18 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
       if (row.setting) {
         const ratio = settingRatio(this.settings, row.setting);
-        const barW = 150;
-        const bx = width / 2 - barW / 2;
-        const by = PAUSE_LAYOUT.firstY + i * PAUSE_LAYOUT.rowGap + 13;
+        const bar = this.pauseBarRect(i);
+        const active = selected || this.draggingSetting === row.setting;
+        const h = PAUSE_BAR.height;
         this.pauseGauges.fillStyle(0x1d2445, 1);
-        this.pauseGauges.fillRoundedRect(bx, by, barW, 5, 2.5);
-        this.pauseGauges.fillStyle(selected ? 0x8fa4ff : 0x4a5891, 1);
-        this.pauseGauges.fillRoundedRect(bx, by, Math.max(3, barW * ratio), 5, 2.5);
+        this.pauseGauges.fillRoundedRect(bar.x, bar.y, bar.w, h, h / 2);
+        this.pauseGauges.fillStyle(active ? 0x8fa4ff : 0x4a5891, 1);
+        this.pauseGauges.fillRoundedRect(bar.x, bar.y, Math.max(h, bar.w * ratio), h, h / 2);
+        // 손잡이 — "끌 수 있다"를 형태로 알린다 (드래그 조작의 발견성)
+        this.pauseGauges.fillStyle(active ? 0xeef1ff : 0x8fa4ff, 1);
+        this.pauseGauges.fillCircle(bar.x + bar.w * ratio, bar.y + h / 2, PAUSE_BAR.knob);
+        this.pauseGauges.lineStyle(1.5, 0x0b1030, 0.9);
+        this.pauseGauges.strokeCircle(bar.x + bar.w * ratio, bar.y + h / 2, PAUSE_BAR.knob);
       }
     });
 

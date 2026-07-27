@@ -6,6 +6,7 @@ import {
   loadSettings,
   normalizeSettings,
   saveSettings,
+  setSettingFromRatio,
   settingDisplay,
   settingRatio,
 } from '../src/run/gameSettings';
@@ -100,4 +101,43 @@ const throwing = {
 assert.deepEqual(loadSettings(throwing), d, '스토리지 예외 → 기본값');
 saveSettings(throwing, custom); // throw 없이 조용히 무시돼야 한다
 
-console.log('game settings regression: 기본값·정규화·조절·부동소수·게이지·표시·저장 7군 통과');
+// 8) 드래그 — 비율(0~1) → 값. 양 끝이 정확히 min·max에 닿고 격자에 스냅된다
+for (const key of ['sfxVolume', 'bgmVolume'] as const) {
+  assert.equal(setSettingFromRatio(d, key, 0)[key], 0, `${key} 왼쪽 끝 = 0`);
+  assert.equal(setSettingFromRatio(d, key, 1)[key], 1, `${key} 오른쪽 끝 = 1`);
+  assert.equal(setSettingFromRatio(d, key, 0.5)[key], 0.5, `${key} 중앙 = 0.5`);
+}
+assert.equal(
+  setSettingFromRatio(d, 'brightness', 0).brightness, SETTINGS_CONFIG.brightnessMin,
+  '밝기 왼쪽 끝 = 하한 (완전 암전 아님)',
+);
+assert.equal(
+  setSettingFromRatio(d, 'brightness', 1).brightness, SETTINGS_CONFIG.brightnessMax,
+  '밝기 오른쪽 끝 = 상한',
+);
+// 범위 밖 비율·NaN 방어 (포인터가 바 밖으로 나가도 안전해야 한다)
+assert.equal(setSettingFromRatio(d, 'sfxVolume', -2).sfxVolume, 0, '음수 비율 → 하한');
+assert.equal(setSettingFromRatio(d, 'sfxVolume', 7).sfxVolume, 1, '초과 비율 → 상한');
+assert.equal(setSettingFromRatio(d, 'sfxVolume', Number.NaN).sfxVolume, 0, 'NaN → 하한');
+// 격자 스냅 — 드래그로 격자 밖 값이 생기면 이후 ←→ 조작이 어긋난다
+const dragged = setSettingFromRatio(d, 'sfxVolume', 0.37);
+assert.equal(Math.round(dragged.sfxVolume * 10) / 10, dragged.sfxVolume, '한 자리로 스냅');
+assert.equal(settingDisplay(dragged, 'sfxVolume'), '40%', '0.37 → 40% (격자)');
+// 드래그 뒤 ←→가 이어진다 (두 조작이 같은 격자를 쓴다)
+assert.equal(adjustSetting(dragged, 'sfxVolume', +1).sfxVolume, 0.5, '드래그 후 한 칸 = 0.5');
+// 왕복 — 비율로 넣고 비율로 읽으면 제자리 (스냅 오차 범위 안)
+for (const ratio of [0, 0.25, 0.5, 0.75, 1]) {
+  const set = setSettingFromRatio(d, 'bgmVolume', ratio);
+  assert.ok(
+    Math.abs(settingRatio(set, 'bgmVolume') - ratio) <= SETTINGS_CONFIG.step,
+    `왕복 오차가 step 이내 (ratio ${ratio})`,
+  );
+}
+// 다른 키는 안 건드리고 원본도 불변
+const src = { ...d };
+const only = setSettingFromRatio(src, 'brightness', 0.2);
+assert.equal(only.sfxVolume, d.sfxVolume);
+assert.equal(only.bgmVolume, d.bgmVolume);
+assert.deepEqual(src, d, '원본 불변');
+
+console.log('game settings regression: 기본값·정규화·조절·부동소수·게이지·표시·저장·드래그 8군 통과');
