@@ -1,5 +1,7 @@
 import type { RewardOption } from '../run/runContract';
+import type { SpellForm } from '../spell/types';
 import { ELEMENT_LABELS, ELEMENT_PALETTES, paletteColorToCss } from '../render/palette';
+import { glyphSvg } from '../render/formGlyphs';
 
 /**
  * 보상 카드 3택 오버레이 — R3 소유 UI (PHASE_2 R3 P0, 계약: docs/R3_RUN_UI_CONTRACT.md)
@@ -93,7 +95,10 @@ const CSS = `
   width: 52px; height: 52px; margin: 14px auto 12px; border-radius: 50%;
   background: radial-gradient(circle, var(--card-core) 18%, color-mix(in srgb, var(--card-glow) 45%, transparent) 60%, transparent 75%);
   filter: drop-shadow(0 0 14px var(--card-glow));
+  display: grid; place-items: center;
 }
+/* 폼이 있는 카드는 원형 위에 형태 글리프를 얹는다 — 빌드 HUD 칩과 같은 어휘 */
+#${WRAP_ID} .card-glyph svg { width: 30px; height: 30px; color: #f4f6ff; }
 #${WRAP_ID} .card-title { font-size: 17px; font-weight: 700; color: #f4f6ff; }
 #${WRAP_ID} .card-desc { margin-top: 8px; font-size: 13px; line-height: 1.5; color: #a9b4e6; }
 #${WRAP_ID} .card-kind {
@@ -171,6 +176,13 @@ export interface CardFraming {
   title?: string;
   /** 카드별 "이미 보유" 라벨 (게임성 ②) — null이면 배지 없음 */
   ownedLabelFor?: (option: RewardOption) => string | null;
+  /**
+   * 카드가 가리키는 주문의 폼 (있으면 원형 대신 폼 글리프를 그린다).
+   * RewardOption 계약(runContract)에는 폼이 없고 spellKey만 있으므로, 키→스펙을 아는
+   * 씬이 여기로 넘긴다 — 공용 계약을 건드리지 않고 R3 안에서 해결한다.
+   * 획득 순간에 글리프를 배워야 빌드 HUD 칩이 의미를 갖는다 (학습 루프).
+   */
+  formFor?: (option: RewardOption) => SpellForm | null;
 }
 
 function escapeText(text: string): string {
@@ -241,6 +253,9 @@ export function showRewardCards(
         }</div>`;
       btn.querySelector('.card-title')!.textContent = option.title;
       btn.querySelector('.card-desc')!.textContent = option.description;
+      // 폼 글리프 — 씬이 알려준 카드만. 스탯 보상 등 폼이 없는 카드는 원형 그대로.
+      const form = framing.formFor?.(option) ?? null;
+      if (form) btn.querySelector('.card-glyph')!.innerHTML = glyphSvg(form);
       // 이미 보유 배지 — "친화를 더 쌓을까, 갈아탈까"의 근거 (게임성 ②)
       const ownedLabel = framing.ownedLabelFor?.(option) ?? null;
       if (ownedLabel) {

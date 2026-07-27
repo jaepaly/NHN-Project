@@ -42,6 +42,11 @@ const game = new Phaser.Game({
  * 씬 인스턴스는 부팅 직후 존재하므로, CREATE 이벤트를 미리 예약해 create 완료 즉시 결합한다.
  * (HUD는 전투 씬 진입 후 나타나야 하므로 인스턴스 생성 시점이 아니라 CREATE 시점에 붙인다)
  */
+// 폼 글리프 해석은 씬만 할 수 있다(spellKey→스펙) — 결합 모듈에 주입해 계약을 지킨다
+const hooksFor = (scene: ProtoScene) => ({
+  formFor: (option: Parameters<ProtoScene['rewardFormFor']>[0]) => scene.rewardFormFor(option),
+});
+
 const bindRunUiWhenSceneReady = (): void => {
   const scene = game.scene.getScene('proto') as ProtoScene | null;
   if (!scene) {
@@ -50,9 +55,9 @@ const bindRunUiWhenSceneReady = (): void => {
   }
   // 이미 create가 끝난 뒤라면(HMR 등) 즉시 결합
   if (game.scene.isActive('proto')) {
-    bindRunUi(scene.runController);
+    bindRunUi(scene.runController, hooksFor(scene));
     return;
   }
-  scene.events.once(Phaser.Scenes.Events.CREATE, () => bindRunUi(scene.runController));
+  scene.events.once(Phaser.Scenes.Events.CREATE, () => bindRunUi(scene.runController, hooksFor(scene)));
 };
 bindRunUiWhenSceneReady();

@@ -198,6 +198,11 @@ export class EngraveManager {
     return this.slots.map(snapshot);
   }
 
+  /** 후보 주문 스펙 조회 — 보상 카드가 spellKey만 들고 폼 글리프를 찾을 때 쓴다. */
+  candidateSpell(spellKey: string): SpellSpec | null {
+    return this.candidates.get(spellKey) ?? null;
+  }
+
   reset(): void {
     this.candidates.clear();
     this.slots = [];
