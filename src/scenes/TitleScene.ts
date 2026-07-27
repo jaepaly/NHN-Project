@@ -3,6 +3,8 @@ import { applyWorldFx } from '../render/postFx';
 import { loadCodex } from '../spell/spellCodex';
 import { showCodexOverlay } from '../ui/codexOverlay';
 import { clearRunHud } from '../ui/runHud';
+import { showSettingsOverlay } from '../ui/settingsOverlay';
+import { loadSettings } from '../run/gameSettings';
 import { requestDemoRun } from '../run/demoLoadout';
 
 const TITLE_COLORS = {
@@ -17,8 +19,11 @@ const TITLE_COLORS = {
 export class TitleScene extends Phaser.Scene {
   private starting = false;
 
-  /** 도감이 열려 있는 동안 시작 트리거(클릭·Enter)를 막는다 */
+  /** 도감·설정이 열려 있는 동안 시작 트리거(클릭·Enter)를 막는다 */
   private codexOpen = false;
+
+  /** 밝기 막 — 설정에서 조절하면 타이틀에서도 즉시 반영된다 */
+  private brightnessVeil!: Phaser.GameObjects.Graphics;
 
   constructor() {
     super('title');
@@ -40,8 +45,11 @@ export class TitleScene extends Phaser.Scene {
     this.createArcaneSeal(width / 2, height * 0.44);
     this.createTitle(width, height);
     this.createStartPrompt(width, height);
-    this.createCodexTab(width, height);
+    this.createLobbyTabs(width, height);
     this.createDemoTab(width, height);
+    // 밝기 막은 탭보다 위에 — 타이틀엔 지켜야 할 HUD가 없다
+    this.brightnessVeil = this.add.graphics().setScrollFactor(0).setDepth(50).setVisible(false);
+    this.applyBrightness(loadSettings(window.localStorage).brightness);
 
     // once가 아닌 on — 도감을 열었다 닫아도 시작 트리거가 살아 있어야 한다.
     // 화살표로 감싼다 — startGame을 직접 넘기면 Phaser가 키 이벤트를 첫 인자로 실어
@@ -56,18 +64,56 @@ export class TitleScene extends Phaser.Scene {
     applyWorldFx(this.cameras.main); // Phase 5 네온 후처리 (블룸+비네트)
   }
 
-  /** 주문 도감 탭 — 런과 승패를 넘어 쌓인 "내가 만든 마법"의 기록 (게임성 분석 ③) */
-  private createCodexTab(width: number, height: number): void {
-    const tab = this.add.text(width / 2, height * 0.885, '〔 주문 도감 〕', {
-      fontFamily: '"Noto Serif KR", "Malgun Gothic", serif',
-      fontSize: '15px',
-      color: '#8fa4ff',
-      letterSpacing: 2,
-    }).setOrigin(0.5).setAlpha(0.75).setInteractive({ useHandCursor: true });
+  /**
+   * 로비 탭 줄 — 주문 도감 · 설정 (총괄: "시작 화면을 로비처럼").
+   * 하단은 시연 탭이 이미 쓰고 있어 두 항목을 한 줄에 나란히 놓는다.
+   */
+  private createLobbyTabs(width: number, height: number): void {
+    const makeTab = (x: number, label: string, onPick: () => void): void => {
+      const tab = this.add.text(x, height * 0.885, label, {
+        fontFamily: '"Noto Serif KR", "Malgun Gothic", serif',
+        fontSize: '15px',
+        color: '#8fa4ff',
+        letterSpacing: 2,
+      }).setOrigin(0.5).setAlpha(0.75).setInteractive({ useHandCursor: true });
+      tab.on('pointerover', () => tab.setAlpha(1).setColor('#c7d0ff'));
+      tab.on('pointerout', () => tab.setAlpha(0.75).setColor('#8fa4ff'));
+      tab.on('pointerdown', onPick);
+    };
+    makeTab(width / 2 - 78, '〔 주문 도감 〕', () => { void this.openCodex(); });
+    makeTab(width / 2 + 78, '〔 설정 〕', () => { void this.openSettings(); });
+  }
 
-    tab.on('pointerover', () => tab.setAlpha(1).setColor('#c7d0ff'));
-    tab.on('pointerout', () => tab.setAlpha(0.75).setColor('#8fa4ff'));
-    tab.on('pointerdown', () => { void this.openCodex(); });
+  /**
+   * 설정 — 전투 중 일시정지 메뉴와 **같은 순수 코어**(gameSettings)를 쓴다.
+   * 타이틀엔 오디오가 없어(GameAudio는 ProtoScene 소유) 볼륨은 소리로 확인되지 않고
+   * 저장만 된다. 밝기는 여기서도 즉시 반영해 조절이 눈으로 확인되게 한다.
+   */
+  private async openSettings(): Promise<void> {
+    if (this.codexOpen || this.starting) return;
+    this.codexOpen = true; // 시작 트리거 차단 — 도감과 같은 가드를 공유한다
+    try {
+      await showSettingsOverlay({
+        audioNote: '소리 크기는 전투에서 적용된다 · 밝기는 지금 바로',
+        onChange: (settings) => this.applyBrightness(settings.brightness),
+      });
+    } finally {
+      this.time.delayedCall(50, () => { this.codexOpen = false; });
+    }
+  }
+
+  /** 타이틀 밝기 막 — 전투 HUD가 없으므로 최상단에 덮어도 가릴 정보가 없다. */
+  private applyBrightness(brightness: number): void {
+    const { width, height } = this.scale;
+    const g = this.brightnessVeil.clear();
+    if (Math.abs(brightness - 1) < 0.01) {
+      this.brightnessVeil.setVisible(false);
+      return;
+    }
+    if (brightness < 1) g.fillStyle(0x000000, Math.min(0.6, 1 - brightness));
+    else g.fillStyle(0xffffff, Math.min(0.22, (brightness - 1) * 0.7));
+    g.fillRect(0, 0, width, height);
+    this.brightnessVeil.setVisible(true);
   }
 
   /**
