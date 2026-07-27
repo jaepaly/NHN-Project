@@ -496,6 +496,37 @@ export class ProtoScene extends Phaser.Scene {
   private incanting = false;
   private casting = false;
   /**
+   * 영창 바 리스너 — #incant-bar는 씬 밖 영속 DOM이라, 익명 등록은 씬 재진입
+   * (런 종료→타이틀→새 런)마다 누적돼 Enter 한 번에 영창이 겹으로 나갔다
+   * (#216 P0: 알림 2회·가짜 마나부족). 안정된 참조로 보관해 제거 후 재등록한다.
+   */
+  private readonly onIncantInput = (): void => this.updateIncantCharge();
+
+  private readonly onIncantKeydown = (e: KeyboardEvent): void => {
+    e.stopPropagation(); // 게임 키 입력과 충돌 방지
+    if (e.key === 'Enter') {
+      const text = this.incantBar.value.trim();
+      if (!text) {
+        this.closeIncant();
+        return;
+      }
+      if (
+        this.activeRoomCurse?.kind === 'word-limit'
+        && wordLimitCost(text) > WORD_LIMIT_CURSE_CONFIG.budget
+      ) {
+        this.blockWordLimitCast();
+        return;
+      }
+      this.beginJudging();
+      void this.castFromText(text);
+    } else if (e.key === 'Escape') {
+      this.closeIncant();
+    }
+  };
+
+  /** setupRunFlow 1회 가드 — 컨트롤러도 씬 필드로 영속이라 재진입마다 on()을 걸면 겹알림 */
+  private runFlowBound = false;
+  /**
    * 시퀀스 이동 트윈들 — **이전 트윈을 멈추지 않는다.**
    * tweens.add는 다음 틱부터 움직이는데 이전 것을 같은 프레임에 stop하면
    * 인계 프레임이 1프레임 정지(속도 0)됐다가 다음 프레임에 2프레임치를 몰아
@@ -826,6 +857,11 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private setupRunFlow(): void {
+    // 컨트롤러는 씬 필드로 1회 생성·영속 — 씬 재진입마다 on()을 다시 걸면 핸들러가
+    // 겹으로 쌓여 알림·연출이 2회씩 나간다 (#216 P0). 핸들러는 this만 캡처하므로
+    // 한 번만 걸면 씬이 재시작돼도 계속 유효하다.
+    if (this.runFlowBound) return;
+    this.runFlowBound = true;
     this.combatRunController.on('room-cleared', (options, state) => {
       this.audio.playSfx('room-clear');
       this.deferTransientCombatCleanup();
@@ -2941,29 +2977,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.incantHint = document.getElementById('incant-hint')!;
     this.incantChargeLabel = document.getElementById('incant-charge-label')!;
 
-    this.incantBar.addEventListener('input', () => this.updateIncantCharge());
-
-    this.incantBar.addEventListener('keydown', (e) => {
-      e.stopPropagation(); // 게임 키 입력과 충돌 방지
-      if (e.key === 'Enter') {
-        const text = this.incantBar.value.trim();
-        if (!text) {
-          this.closeIncant();
-          return;
-        }
-        if (
-          this.activeRoomCurse?.kind === 'word-limit'
-          && wordLimitCost(text) > WORD_LIMIT_CURSE_CONFIG.budget
-        ) {
-          this.blockWordLimitCast();
-          return;
-        }
-        this.beginJudging();
-        void this.castFromText(text);
-      } else if (e.key === 'Escape') {
-        this.closeIncant();
-      }
-    });
+    // 재진입 대비 — 같은 참조를 제거 후 등록해 누적을 차단한다 (#216 P0 겹시전).
+    // 첫 호출에선 remove가 no-op이라 안전하고, 몇 번 들어와도 리스너는 정확히 1쌍이다.
+    this.incantBar.removeEventListener('input', this.onIncantInput);
+    this.incantBar.removeEventListener('keydown', this.onIncantKeydown);
+    this.incantBar.addEventListener('input', this.onIncantInput);
+    this.incantBar.addEventListener('keydown', this.onIncantKeydown);
   }
 
   private tryOpenIncant(): void {
