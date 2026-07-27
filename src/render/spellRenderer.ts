@@ -24,7 +24,13 @@ import {
   slashHitCircle,
   rotatePointsAbout,
 } from '../combat-core/combat/slashConfig';
-import { AFFINITY_VFX_CONFIG } from './affinityVfx';
+import {
+  AFFINITY_VFX_CONFIG,
+  flourishEmberCount,
+  flourishMaxRadius,
+  flourishRingCount,
+  flourishSparkCount,
+} from './affinityVfx';
 import {
   VFX_BUDGET_CONFIG,
   decorParticleFrequencyMs,
@@ -1131,9 +1137,10 @@ export function playAffinityImpactFlourish(
   if (t < cfg.minIntensity) return;
   const pal = ELEMENT_PALETTES[spec.element_primary];
 
-  // 확장 링 — 개수는 강도 반올림(최대 maxRings), 반경은 강도에 연속 비례
-  const rings = Math.min(cfg.maxRings, Math.max(1, Math.round(t)));
-  const maxRadius = cfg.radiusBase + t * cfg.radiusPerStack;
+  // 확장 링 — 개수·반경·스파크·엠버는 순수 함수(affinityVfx.ts)가 결정한다.
+  // nova는 폼배율(#216 항목7)로 축소 — 조준점 폭발이 적 무리를 덮지 않게.
+  const rings = flourishRingCount(t, spec.form);
+  const maxRadius = flourishMaxRadius(t, spec.form);
   for (let i = 0; i < rings; i += 1) {
     const ring = scene.add.circle(x, y, 10, 0x000000, 0)
       .setStrokeStyle(5 - i * 0.5, i === 0 ? pal.core : i === 1 ? pal.glow : pal.accent, 1)
@@ -1152,7 +1159,7 @@ export function playAffinityImpactFlourish(
   }
 
   // 스파크 버스트 — 양·속도가 강도에 연속 비례 (매 시전의 작은 성장도 보인다)
-  const sparkCount = Math.round(cfg.sparksBase + t * cfg.sparksPerStack);
+  const sparkCount = flourishSparkCount(t, spec.form);
   const sparks = scene.add.particles(x, y, 'particle', {
     speed: { min: 60, max: 150 + t * 30 },
     scale: { start: 0.5 + t * 0.05, end: 0 },
@@ -1166,11 +1173,8 @@ export function playAffinityImpactFlourish(
   scene.time.delayedCall(620, () => sparks.destroy());
 
   // 엠버 잔광 — 강도 3(친화 0.45)부터, 강도에 비례해 더 많이 (마스터리의 표식)
-  if (t >= cfg.emberFromIntensity) {
-    const embers = Math.min(
-      cfg.emberCap,
-      Math.round((t - cfg.emberFromIntensity + 1) * cfg.emberPerStack),
-    );
+  const embers = flourishEmberCount(t, spec.form);
+  if (embers > 0) {
     for (let i = 0; i < embers; i += 1) {
       const angle = (Math.PI * 2 * i) / embers;
       const ember = scene.add.circle(

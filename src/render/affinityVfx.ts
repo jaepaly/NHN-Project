@@ -1,4 +1,5 @@
 import { RUN_REWARD_CONFIG } from '../combat-core/run/rewardConfig';
+import type { SpellForm } from '../spell/types';
 
 /**
  * 원소 친화 VFX 격상 — 영창가 빌드의 선택 동기 (총괄 결정 2026-07-22, 연속화 07-24).
@@ -48,4 +49,61 @@ export function affinityVfxIntensity(affinityBonus: number): number {
 export function reducedAffinityVfxIntensity(affinityBonus: number, reduction: number): number {
   const safeReduction = Number.isFinite(reduction) ? Math.max(0, reduction) : 0;
   return Math.max(0, affinityVfxIntensity(affinityBonus) - safeReduction);
+}
+
+/**
+ * 폼별 플러리시 배율 (#216 항목7) — nova는 조준점(적 무리 한가운데)에서 터지는
+ * 현행 구조인데, 플레이어 자기중심 폭발 시절의 플러리시 규모가 그대로 남아
+ * 고친화에서 링·섬광이 적과 위험구역을 덮었다. 1=변경 없음(기본).
+ */
+export const FLOURISH_FORM_SCALE: Partial<Record<SpellForm, number>> = {
+  nova: 0.55,
+};
+
+export function flourishFormScale(form: SpellForm): number {
+  return FLOURISH_FORM_SCALE[form] ?? 1;
+}
+
+/** 렌더러와 같은 강도 클램프 — 순수 계산 함수들의 공용 전제 */
+function clampIntensity(intensity: number): number {
+  const t = Number.isFinite(intensity) ? intensity : 0;
+  return Math.max(0, Math.min(AFFINITY_VFX_CONFIG.intensityCap, t));
+}
+
+/** 확장 링 개수 — 강도×폼배율 반올림, [1, maxRings] */
+export function flourishRingCount(intensity: number, form: SpellForm): number {
+  const t = clampIntensity(intensity);
+  return Math.min(
+    AFFINITY_VFX_CONFIG.maxRings,
+    Math.max(1, Math.round(t * flourishFormScale(form))),
+  );
+}
+
+/** 링 최대 반경 — 연속 비례 후 폼배율 */
+export function flourishMaxRadius(intensity: number, form: SpellForm): number {
+  const t = clampIntensity(intensity);
+  return (AFFINITY_VFX_CONFIG.radiusBase + t * AFFINITY_VFX_CONFIG.radiusPerStack)
+    * flourishFormScale(form);
+}
+
+/** 스파크 수 — 연속 비례 후 폼배율 (최소 1) */
+export function flourishSparkCount(intensity: number, form: SpellForm): number {
+  const t = clampIntensity(intensity);
+  return Math.max(1, Math.round(
+    (AFFINITY_VFX_CONFIG.sparksBase + t * AFFINITY_VFX_CONFIG.sparksPerStack)
+      * flourishFormScale(form),
+  ));
+}
+
+/** 엠버 수 — 임계 미만 0, 이상이면 비례×폼배율(상한 emberCap) */
+export function flourishEmberCount(intensity: number, form: SpellForm): number {
+  const t = clampIntensity(intensity);
+  if (t < AFFINITY_VFX_CONFIG.emberFromIntensity) return 0;
+  return Math.min(
+    AFFINITY_VFX_CONFIG.emberCap,
+    Math.max(1, Math.round(
+      (t - AFFINITY_VFX_CONFIG.emberFromIntensity + 1) * AFFINITY_VFX_CONFIG.emberPerStack
+        * flourishFormScale(form),
+    )),
+  );
 }
