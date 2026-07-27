@@ -12,6 +12,7 @@ import type { RunStateSnapshot } from '../run/runContract';
 const STYLE_ID = 'r3-runhud-style';
 const WRAP_ID = 'r3-runhud';
 let resizeBound = false;
+let observedCanvas: HTMLCanvasElement | null = null;
 
 const CSS = `
 #${WRAP_ID} {
@@ -44,14 +45,40 @@ function ensureDom(): HTMLElement {
     wrap.setAttribute('aria-hidden', 'true');
     document.body.appendChild(wrap);
   }
-  if (!resizeBound) {
-    resizeBound = true;
-    window.addEventListener('resize', () => {
+  bindReposition();
+  return wrap;
+}
+
+/**
+ * 리사이즈 재배치 재시도 지연 (#216 항목3) — 같은 resize 이벤트를 Phaser(FIT)보다
+ * 먼저 받으면 캔버스 CSS 갱신 전의 크기로 자리를 잡아, 창을 늘려도 ROOM 칩만
+ * 작게 화면 안쪽에 남았다. Phaser의 갱신은 이벤트 직후일 수도, 폴링
+ * (resizeInterval 500ms) 뒤일 수도 있어 늦은 경우까지 덮도록 몇 차례 재시도한다.
+ * rAF가 아니라 setTimeout인 이유: 백그라운드 탭에선 rAF가 멈춰 영영 밀린다.
+ */
+const REPOSITION_RETRY_DELAYS_MS = [32, 300, 700] as const;
+
+function scheduleReposition(): void {
+  for (const delay of REPOSITION_RETRY_DELAYS_MS) {
+    window.setTimeout(() => {
       const current = document.getElementById(WRAP_ID);
       if (current) positionOverGameHud(current);
-    });
+    }, delay);
   }
-  return wrap;
+}
+
+function bindReposition(): void {
+  if (!resizeBound) {
+    resizeBound = true;
+    window.addEventListener('resize', scheduleReposition);
+  }
+  // 캔버스 박스 자체를 관찰 — 전체화면 진입·해제, Phaser의 지연 갱신(resizeInterval)
+  // 등 window resize와 어긋나는 변화까지 순서 경쟁 없이 따라간다.
+  const canvas = document.querySelector<HTMLCanvasElement>('#game-root canvas');
+  if (canvas && canvas !== observedCanvas && typeof ResizeObserver !== 'undefined') {
+    observedCanvas = canvas;
+    new ResizeObserver(scheduleReposition).observe(canvas);
+  }
 }
 
 function positionOverGameHud(wrap: HTMLElement): void {
