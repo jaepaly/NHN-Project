@@ -69,6 +69,15 @@ import { VFX_BUDGET_CONFIG } from '../render/vfxBudget';
 import { allGlyphTextures, formGlyphTextureKey } from '../render/formGlyphs';
 import type { BuildChip } from '../run/buildChipModel';
 import { buildChipModel } from '../run/buildChipModel';
+import type { GameSettings, SettingKey } from '../run/gameSettings';
+import {
+  DEFAULT_SETTINGS,
+  adjustSetting,
+  loadSettings,
+  saveSettings,
+  settingDisplay,
+  settingRatio,
+} from '../run/gameSettings';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import { devInfo } from '../debug/devLog';
 import { FusionGauge } from '../combat-core/player/fusionGauge';
@@ -246,6 +255,29 @@ const HUD = {
   barWidth: 270,
   barHeight: 7,
 } as const;
+
+interface PauseRow {
+  id: 'resume' | 'settings' | 'back' | 'mute' | 'quit' | 'setting';
+  label: string;
+  /** 설정 행이면 조절 대상 키 (←→로 움직인다) */
+  setting?: SettingKey;
+}
+
+const PAUSE_MAIN: readonly PauseRow[] = [
+  { id: 'resume', label: '게임 재개' },
+  { id: 'settings', label: '설정' },
+  { id: 'quit', label: '타이틀로 나가기' },
+];
+
+const PAUSE_SETTINGS: readonly PauseRow[] = [
+  { id: 'setting', label: '효과음', setting: 'sfxVolume' },
+  { id: 'setting', label: '배경음악', setting: 'bgmVolume' },
+  { id: 'setting', label: '화면 밝기', setting: 'brightness' },
+  { id: 'mute', label: '음소거' },
+  { id: 'back', label: '뒤로' },
+];
+
+const PAUSE_LAYOUT = { titleY: 186, firstY: 252, rowGap: 42 } as const;
 
 /**
  * 빌드 칩 기하 — 2×2로 65×65px. 기존 텍스트 2줄(229×27=6183px²)보다 작은
@@ -477,6 +509,30 @@ export class ProtoScene extends Phaser.Scene {
 
   /** Tab 검사 모드 — 전투를 멈추고 칩에 마우스를 올려 상세를 본다 */
   private buildInspectOpen = false;
+
+  /** 일시정지 암막 — 게임 월드만 덮는다(깊이 97). HUD·칩은 위에 남아 밝게 읽힌다. */
+  private pauseDim!: Phaser.GameObjects.Graphics;
+
+  private pauseMenuPlate!: Phaser.GameObjects.Graphics;
+
+  private pauseMenuTitle!: Phaser.GameObjects.Text;
+
+  private pauseMenuItems: Phaser.GameObjects.Text[] = [];
+
+  private pauseMenuIndex = 0;
+
+  /** 나가기 오확인 방지 — 한 번 더 눌러야 확정된다 (런이 사라지는 되돌릴 수 없는 선택) */
+  private quitArmed = false;
+
+  /** 메뉴 화면 — 'main' 또는 'settings' */
+  private pausePane: 'main' | 'settings' = 'main';
+
+  private pauseGauges!: Phaser.GameObjects.Graphics;
+
+  private settings: GameSettings = { ...DEFAULT_SETTINGS };
+
+  /** 밝기 오버레이 — 1 미만은 검은 막, 초과는 흰 막 (깊이 98: 월드 위·HUD 아래) */
+  private brightnessVeil!: Phaser.GameObjects.Graphics;
 
   private buildInspectPlate!: Phaser.GameObjects.Graphics;
 
@@ -739,7 +795,16 @@ export class ProtoScene extends Phaser.Scene {
     // 씬은 재사용된다 — 검사 모드가 열린 채 나갔다면 정지가 남는다. 진입 시 무조건 해제.
     this.buildInspectOpen = false;
     this.hoveredChipIndex = -1;
+    this.pausePane = 'main';
+    this.pauseMenuIndex = 0;
+    this.quitArmed = false;
     this.time.paused = false;
+    // 저장된 설정 — 씬 재진입마다 다시 읽어 적용한다(오디오·밝기는 씬 소유 객체다)
+    try {
+      this.settings = loadSettings(localStorage);
+    } catch {
+      this.settings = { ...DEFAULT_SETTINGS };
+    }
     // 주문 소비 매트릭스 감사 — 콘솔에서 __spellMatrix(step)로 effect×form×target 전수 점검.
     // 프레임 진행은 호출측이 넘긴다(백그라운드 탭에서는 game.loop.step을 감싸야 하므로).
     if (import.meta.env.DEV) {
@@ -789,6 +854,8 @@ export class ProtoScene extends Phaser.Scene {
     const startY = this.worldBounds.centerY;
     ensureParticleTexture(this);
     this.audio = new GameAudio(this);
+    // BGM을 켜기 전에 설정을 반영해야 첫 재생부터 저장된 볼륨으로 나온다
+    this.audio.applySettings(this.settings);
     this.audio.playBgm();
 
     this.drawBackdrop(this.worldBounds.width, this.worldBounds.height);
@@ -811,6 +878,8 @@ export class ProtoScene extends Phaser.Scene {
       right: Phaser.Input.Keyboard.KeyCodes.D,
     }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
     this.createHud(width, height);
+    // 밝기 막은 createHud(→createPauseMenu)에서 만들어지므로 그 뒤에 적용한다
+    this.applyBrightness();
     this.setupRunFlow();
     // 씬 재진입(런 종료→타이틀→새 런) 대비: 매니저·컨트롤러는 필드라 create마다
     // 리셋해야 이전 런의 친화·각인·정령·HP·루프가 남지 않는다 (총괄 제보 버그).
@@ -825,7 +894,21 @@ export class ProtoScene extends Phaser.Scene {
 
     this.setupIncantBar();
     this.input.keyboard!.on('keydown-ENTER', () => {
+      // 일시정지 중엔 Enter가 메뉴 선택 — 영창 열기보다 우선한다
+      if (this.buildInspectOpen) { this.activatePauseMenuItem(); return; }
       if (!this.incanting && !this.casting) this.tryOpenIncant();
+    });
+    this.input.keyboard!.on('keydown-UP', () => {
+      if (this.buildInspectOpen) this.movePauseMenu(-1);
+    });
+    this.input.keyboard!.on('keydown-DOWN', () => {
+      if (this.buildInspectOpen) this.movePauseMenu(+1);
+    });
+    this.input.keyboard!.on('keydown-LEFT', () => {
+      if (this.buildInspectOpen) this.adjustPauseSetting(-1);
+    });
+    this.input.keyboard!.on('keydown-RIGHT', () => {
+      if (this.buildInspectOpen) this.adjustPauseSetting(+1);
     });
     // Tab 빌드 검사 — 브라우저 기본 포커스 이동을 반드시 막아야 한다.
     // 안 막으면 포커스가 영창 입력창이나 브라우저 UI로 튀어 이후 키 입력이 엉킨다.
@@ -4667,6 +4750,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.buildChipZones.push(zone);
     }
 
+    this.createPauseMenu(width, height);
+
     // 검사 모드 오버레이 — 평소엔 완전히 숨는다(전투 시야 점유 0)
     this.buildInspectPlate = this.add.graphics().setScrollFactor(0).setDepth(103).setVisible(false);
     this.buildInspectText = this.add.text(0, 0, '', {
@@ -4677,6 +4762,226 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       lineSpacing: 4,
       wordWrap: { width: BUILD_CHIP.tooltipWidth - 20, useAdvancedWrap: true },
     }).setOrigin(0, 1).setScrollFactor(0).setDepth(104).setVisible(false);
+  }
+
+  /**
+   * 일시정지 메뉴 — Tab 검사 모드의 전역 신호 (총괄 피드백: "멈춘 게 티가 나야 한다").
+   *
+   * 암막은 **깊이 97**이다: 미러캐스트 경고(96) 위, HUD(99+) 아래. 그래서 게임 월드만
+   * 어두워지고 HUD·빌드 칩은 밝게 남는다 — "일시정지 메뉴 + 내 빌드 점검"이 한 화면에
+   * 들어가고, 중앙 메뉴가 칩 검사를 가리지 않는다.
+   */
+  private createPauseMenu(width: number, height: number): void {
+    // 밝기 막 — 깊이 98(월드·암막 위, HUD 아래)이라 어둡게 해도 HUD·칩은 읽힌다
+    this.brightnessVeil = this.add.graphics().setScrollFactor(0).setDepth(98).setVisible(false);
+    this.pauseDim = this.add.graphics().setScrollFactor(0).setDepth(97).setVisible(false);
+    this.pauseDim.fillStyle(0x03050f, 0.62);
+    this.pauseDim.fillRect(0, 0, width, height);
+
+    this.pauseMenuPlate = this.add.graphics().setScrollFactor(0).setDepth(105).setVisible(false);
+    this.pauseMenuTitle = this.add.text(width / 2, height * 0.3, '일시정지', {
+      fontFamily: '"Noto Serif KR", Georgia, serif',
+      fontSize: '30px',
+      fontStyle: 'bold',
+      color: '#eef1ff',
+      letterSpacing: 6,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(106).setVisible(false);
+
+    // 게이지는 설정 화면에서만 쓰지만 항목과 같은 레이어에 둔다
+    this.pauseGauges = this.add.graphics().setScrollFactor(0).setDepth(106).setVisible(false);
+
+    // 두 화면 중 항목이 많은 쪽만큼 미리 만들어 두고 라벨만 갈아끼운다
+    const rows = Math.max(PAUSE_MAIN.length, PAUSE_SETTINGS.length);
+    this.pauseMenuItems = Array.from({ length: rows }, (_, i) => this.add.text(
+      width / 2,
+      PAUSE_LAYOUT.firstY + i * PAUSE_LAYOUT.rowGap,
+      '',
+      {
+        fontFamily: '"Noto Serif KR", Consolas, monospace',
+        fontSize: '16px',
+        fontStyle: 'bold',
+        color: '#aeb9e8',
+      },
+    ).setOrigin(0.5).setScrollFactor(0).setDepth(107).setVisible(false)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerover', () => {
+        if (!this.buildInspectOpen || i >= this.pauseRows().length) return;
+        if (this.pauseMenuIndex !== i) this.quitArmed = false;
+        this.pauseMenuIndex = i;
+        this.renderPauseMenu();
+      })
+      .on('pointerdown', () => {
+        if (!this.buildInspectOpen || i >= this.pauseRows().length) return;
+        this.pauseMenuIndex = i;
+        this.activatePauseMenuItem();
+      }));
+  }
+
+  private pauseRows(): readonly PauseRow[] {
+    return this.pausePane === 'settings' ? PAUSE_SETTINGS : PAUSE_MAIN;
+  }
+
+  /**
+   * 화면 밝기 적용 — 카메라 postFX 대신 전체 화면 막을 쓴다.
+   * 깊이 98이라 게임 월드·암막(97) 위, HUD(99+) 아래다: **밝기를 낮춰도 HUD와 빌드 칩은
+   * 그대로 읽힌다**. 밝기 조절이 정보 가독성을 깎으면 접근성 장치의 취지에 어긋난다.
+   */
+  private applyBrightness(): void {
+    const { width, height } = this.scale;
+    const g = this.brightnessVeil.clear();
+    const b = this.settings.brightness;
+    if (Math.abs(b - 1) < 0.01) {
+      this.brightnessVeil.setVisible(false);
+      return;
+    }
+    // 1 미만은 검은 막, 초과는 흰 막. 최대 세기에서도 완전히 가리지 않는다.
+    if (b < 1) g.fillStyle(0x000000, Math.min(0.6, (1 - b) * 1.0));
+    else g.fillStyle(0xffffff, Math.min(0.22, (b - 1) * 0.7));
+    g.fillRect(0, 0, width, height);
+    this.brightnessVeil.setVisible(true);
+  }
+
+  private persistSettings(): void {
+    this.audio.applySettings(this.settings);
+    this.applyBrightness();
+    try {
+      saveSettings(localStorage, this.settings);
+    } catch {
+      // 저장 실패는 무시 — 이번 세션 동안은 적용된 채로 둔다
+    }
+  }
+
+  /** 메뉴 라벨·선택 표시·설정 게이지 갱신. */
+  private renderPauseMenu(): void {
+    const visible = this.buildInspectOpen;
+    this.pauseDim.setVisible(visible);
+    this.pauseMenuPlate.setVisible(visible);
+    this.pauseMenuTitle.setVisible(visible);
+    this.pauseGauges.setVisible(visible);
+    this.pauseMenuItems.forEach((t) => t.setVisible(false));
+    this.pauseGauges.clear();
+    if (!visible) return;
+
+    const { width, height } = this.scale;
+    const rows = this.pauseRows();
+    this.pauseMenuTitle.setText(this.pausePane === 'settings' ? '설정' : '일시정지');
+
+    rows.forEach((row, i) => {
+      const text = this.pauseMenuItems[i];
+      const selected = i === this.pauseMenuIndex;
+      let label = row.label;
+      if (row.id === 'mute') label = `음소거   ${this.audio.muted ? '[켬]' : '[끔]'}`;
+      if (row.id === 'quit' && this.quitArmed) label = '정말 나갈까? 한 번 더';
+      if (row.setting) {
+        // 설정 행은 라벨을 왼쪽에 붙이고 오른쪽에 게이지를 그린다
+        label = `${row.label}   ${settingDisplay(this.settings, row.setting)}`;
+      }
+      text.setText(`${selected ? '▸ ' : '   '}${label}`)
+        .setColor(row.id === 'quit' && this.quitArmed ? '#ff8fa3'
+          : selected ? '#eef1ff' : '#7f8aba')
+        .setVisible(true);
+
+      if (row.setting) {
+        const ratio = settingRatio(this.settings, row.setting);
+        const barW = 150;
+        const bx = width / 2 - barW / 2;
+        const by = PAUSE_LAYOUT.firstY + i * PAUSE_LAYOUT.rowGap + 13;
+        this.pauseGauges.fillStyle(0x1d2445, 1);
+        this.pauseGauges.fillRoundedRect(bx, by, barW, 5, 2.5);
+        this.pauseGauges.fillStyle(selected ? 0x8fa4ff : 0x4a5891, 1);
+        this.pauseGauges.fillRoundedRect(bx, by, Math.max(3, barW * ratio), 5, 2.5);
+      }
+    });
+
+    const plateW = 340;
+    const top = PAUSE_LAYOUT.titleY - 34;
+    const lastY = PAUSE_LAYOUT.firstY + (rows.length - 1) * PAUSE_LAYOUT.rowGap;
+    const bottom = lastY + (rows.some((r) => r.setting) ? 34 : 24);
+    const g = this.pauseMenuPlate.clear();
+    g.fillStyle(0x080b1c, 0.92);
+    g.fillRoundedRect((width - plateW) / 2, top, plateW, bottom - top, 14);
+    g.lineStyle(1, 0x33447f, 0.75);
+    g.strokeRoundedRect((width - plateW) / 2, top, plateW, bottom - top, 14);
+    this.pauseMenuTitle.setPosition(width / 2, PAUSE_LAYOUT.titleY);
+    // height는 아직 안 쓰지만 레이아웃 상수가 화면 비율을 타면 여기서 쓴다
+    void height;
+  }
+
+  private movePauseMenu(delta: number): void {
+    const len = this.pauseRows().length;
+    this.pauseMenuIndex = (this.pauseMenuIndex + delta + len) % len;
+    this.quitArmed = false; // 다른 항목으로 옮기면 나가기 확인은 풀린다
+    this.renderPauseMenu();
+  }
+
+  /** ←→ — 설정 행에서만 의미가 있다 (볼륨·밝기 조절) */
+  private adjustPauseSetting(direction: number): void {
+    const row = this.pauseRows()[this.pauseMenuIndex];
+    if (!row?.setting) return;
+    this.settings = adjustSetting(this.settings, row.setting, direction);
+    this.persistSettings();
+    // 효과음은 조절 즉시 들려줘야 크기가 체감된다
+    if (row.setting === 'sfxVolume') this.audio.playSfx('incant-enter');
+    this.renderPauseMenu();
+  }
+
+  private openPausePane(pane: 'main' | 'settings'): void {
+    this.pausePane = pane;
+    this.pauseMenuIndex = 0;
+    this.quitArmed = false;
+    this.renderPauseMenu();
+  }
+
+  private activatePauseMenuItem(): void {
+    const row = this.pauseRows()[this.pauseMenuIndex];
+    if (!row) return;
+    switch (row.id) {
+      case 'resume':
+        this.closeBuildInspect();
+        return;
+      case 'settings':
+        this.openPausePane('settings');
+        return;
+      case 'back':
+        this.openPausePane('main');
+        return;
+      case 'mute':
+        this.audio.toggleMute();
+        this.renderPauseMenu();
+        return;
+      case 'quit':
+        // 런이 사라지는 되돌릴 수 없는 선택이라 두 번 눌러야 확정된다
+        if (!this.quitArmed) {
+          this.quitArmed = true;
+          this.renderPauseMenu();
+          return;
+        }
+        this.abandonRun();
+        return;
+      default:
+        // 설정 행은 Enter로 한 칸 올린다 (←→를 못 찾은 사람도 조절할 수 있게)
+        if (row.setting) this.adjustPauseSetting(+1);
+    }
+  }
+
+  /**
+   * 런 포기 — **패배로 기록**한다 (총괄 결정). 무기록으로 두면 "불리하면 포기하고
+   * 재시작"이 최적 전략이 되어 런의 무게가 사라진다. 보스가 도망도 기억하는 게 맞다.
+   * 보스 처치로 이미 은행에 들어간 유산은 그대로 남는다.
+   *
+   * 사망과 같은 요약 화면을 거쳐 타이틀로 간다 — 나가기가 "그냥 사라짐"이 아니라
+   * 이번 런의 결산으로 마무리되도록 (총괄 요청).
+   */
+  private abandonRun(): void {
+    if (this.deathHandled) return;
+    this.deathHandled = true;
+    this.closeBuildInspect();
+    this.reportAutoShare('런 포기');
+    this.persistRunMemory('lose');
+    this.stopCastingForRunPause();
+    this.deferTransientCombatCleanup();
+    void showRunSummaryOverlay(this.buildRunSummary('defeat'))
+      .then(() => this.scene.start('title'));
   }
 
   /** 칩 i의 컨테이너 로컬 중심 (0·1=각인 윗줄, 2·3=정령 아랫줄) */
@@ -4774,6 +5079,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.buildInspectOpen = !this.buildInspectOpen;
     this.time.paused = this.buildInspectOpen;
     this.hoveredChipIndex = -1;
+    // 열 때마다 메인 화면부터 — 지난번 설정 화면이 남아 있으면 "재개"를 못 찾는다
+    if (this.buildInspectOpen) {
+      this.pausePane = 'main';
+      this.pauseMenuIndex = 0;
+    }
+    this.quitArmed = false;
+    this.renderPauseMenu();
     this.buildChipZones.forEach((zone) => {
       if (this.buildInspectOpen) zone.setInteractive({ useHandCursor: true });
       else zone.disableInteractive();
