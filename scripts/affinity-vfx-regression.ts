@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import {
   AFFINITY_VFX_CONFIG,
+  FLOURISH_FORM_SCALE,
   affinityVfxIntensity,
+  flourishEmberCount,
+  flourishFormScale,
+  flourishMaxRadius,
+  flourishRingCount,
+  flourishSparkCount,
   reducedAffinityVfxIntensity,
 } from '../src/render/affinityVfx';
 import { RUN_REWARD_CONFIG } from '../src/combat-core/run/rewardConfig';
@@ -43,4 +49,40 @@ assert.ok(cfg.emberFromIntensity < cfg.flashFromIntensity, '섬광은 엠버 위
 assert.ok(cfg.flashFromIntensity <= cfg.intensityCap, '섬광 임계가 상한 안');
 assert.ok(cfg.sparksPerStack > 0 && cfg.radiusPerStack > 0, '스파크·반경이 강도에 증가');
 
-console.log('AffinityVfx regression: 연속 강도·사용성장 반영·자동 감쇠·깊이 구분·임계정합 5군 통과');
+// 6) 폼별 플러리시 배율 (#216 항목7) — nova는 조준점 폭발이라 축소, 그 외 불변
+assert.ok(flourishFormScale('nova') < 1, 'nova는 축소');
+assert.equal(flourishFormScale('bolt'), 1, 'bolt는 불변');
+assert.equal(flourishFormScale('zone'), 1, 'zone은 불변');
+for (const [form, scale] of Object.entries(FLOURISH_FORM_SCALE)) {
+  assert.ok(scale! > 0 && scale! <= 1, `${form} 배율 ∈ (0,1] — 폼배율로 커지는 역전 금지`);
+}
+const T = 8; // 최대 강도에서 비교
+assert.ok(
+  flourishMaxRadius(T, 'nova') < flourishMaxRadius(T, 'bolt'),
+  'nova 링 반경 < 기본',
+);
+assert.ok(
+  flourishSparkCount(T, 'nova') < flourishSparkCount(T, 'bolt'),
+  'nova 스파크 수 < 기본',
+);
+assert.ok(
+  flourishRingCount(T, 'nova') <= flourishRingCount(T, 'bolt'),
+  'nova 링 수 ≤ 기본',
+);
+assert.ok(
+  flourishEmberCount(T, 'nova') < flourishEmberCount(T, 'bolt'),
+  'nova 엠버 수 < 기본',
+);
+// 저강도 규약 보존 — 링 최소 1, 엠버 임계 미만 0 (폼 무관)
+assert.equal(flourishRingCount(0.5, 'nova'), 1, '저강도에도 링 1개는 유지');
+assert.equal(flourishEmberCount(1, 'nova'), 0, '엠버 임계 미만은 0 (폼 배율과 무관)');
+assert.equal(
+  flourishEmberCount(AFFINITY_VFX_CONFIG.emberFromIntensity, 'nova') > 0,
+  true,
+  '임계 도달 시 엠버 최소 1',
+);
+// 순수·방어 — NaN 강도도 안전
+assert.equal(flourishRingCount(Number.NaN, 'nova'), 1);
+assert.equal(flourishEmberCount(Number.NaN, 'bolt'), 0);
+
+console.log('AffinityVfx regression: 연속 강도·사용성장 반영·자동 감쇠·깊이 구분·임계정합·폼배율 6군 통과');
