@@ -606,6 +606,14 @@ export class ProtoScene extends Phaser.Scene {
   private readonly enemyControlState = new EnemyControlState();
   /** 적별 지속 상태이상 — burn(지속피해)·weaken(취약). freeze/slow는 enemyControlState. */
   private readonly enemyAilments = new EnemyAilmentState();
+
+  /**
+   * 화상 잔불 — 타는 적에 붙는 작은 불씨 이미터 (#216 항목5).
+   * 화상 틱이 일반 피격 연출(SFX·squash·hitstop)을 타서 "안 때렸는데 맞는
+   * 소리·모션"이 나던 것을, 지속 상태 VFX + 약한 틱 펄스로 원인을 보여주는
+   * 방식으로 바꾼다. 틱 자체는 무음이다 — 잔불이 "타고 있다"를 전담한다.
+   */
+  private readonly burnEmbers = new Map<CombatEnemy, Phaser.GameObjects.Particles.ParticleEmitter>();
   /** 연쇄 감전 남발 방지 — 적별 마지막 발동 시각 */
   private readonly shockCooldowns = new Map<CombatEnemy, number>();
   private readonly controlIndicators = new Map<CombatEnemy, Phaser.GameObjects.Arc>();
@@ -1100,6 +1108,7 @@ export class ProtoScene extends Phaser.Scene {
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
+    this.clearBurnEmbers();
     this.shockCooldowns.clear();
     this.lastResistNoticeAt = 0;
     this.runMovementDistance = 0;
@@ -1124,6 +1133,7 @@ export class ProtoScene extends Phaser.Scene {
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
+    this.clearBurnEmbers();
     this.shockCooldowns.clear();
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
@@ -1142,6 +1152,7 @@ export class ProtoScene extends Phaser.Scene {
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
+    this.clearBurnEmbers();
     this.shockCooldowns.clear();
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
@@ -2199,13 +2210,82 @@ if (applied) this.playPlayerHit();
     if (nextWave) this.spawnWave(nextWave);
   }
 
+  /**
+   * 화상 잔불 동기화 — 타는 적에게만 작은 불씨 이미터를 붙이고, 꺼지면 뗀다.
+   * "적이 계속 맞는 것처럼 보인다" 대신 "타고 있다"가 보이게 하는 원인 표시 (#216 항목5).
+   * 적 하나에 붙는 국소 저강도 연출이라 장식 예산(vfxBudget)과는 무관하다.
+   */
+  private syncBurnEmbers(): void {
+    for (const enemy of this.enemies) {
+      const burning = enemy.alive && this.enemyAilments.isBurning(enemy);
+      const existing = this.burnEmbers.get(enemy);
+      if (burning && !existing) {
+        const pal = ELEMENT_PALETTES.fire;
+        const emitter = this.add.particles(enemy.x, enemy.y - 8, 'particle', {
+          speedY: { min: -36, max: -16 },
+          speedX: { min: -10, max: 10 },
+          scale: { start: 0.16, end: 0 },
+          alpha: { start: 0.5, end: 0 },
+          lifespan: 460,
+          frequency: 140,
+          quantity: 1,
+          tint: [pal.core, pal.accent],
+          blendMode: Phaser.BlendModes.ADD,
+        });
+        emitter.startFollow(enemy.view, 0, -8);
+        this.burnEmbers.set(enemy, emitter);
+      } else if (!burning && existing) {
+        existing.destroy();
+        this.burnEmbers.delete(enemy);
+      }
+    }
+    // 목록에서 이미 빠진 적(사망 등)의 잔불 정리 — 죽은 컨테이너를 따라다니지 않게
+    for (const [enemy, emitter] of this.burnEmbers) {
+      if (!enemy.alive || !this.enemies.includes(enemy)) {
+        emitter.destroy();
+        this.burnEmbers.delete(enemy);
+      }
+    }
+  }
+
+  private dropBurnEmber(enemy: CombatEnemy): void {
+    this.burnEmbers.get(enemy)?.destroy();
+    this.burnEmbers.delete(enemy);
+  }
+
+  private clearBurnEmbers(): void {
+    for (const emitter of this.burnEmbers.values()) emitter.destroy();
+    this.burnEmbers.clear();
+  }
+
+  /** 화상 틱 펄스 — 틱 순간의 약한 불빛. 무음 틱의 "지금 피해가 들어갔다" 신호. */
+  private showBurnTickPulse(enemy: CombatEnemy): void {
+    if (!enemy.alive) return;
+    const pal = ELEMENT_PALETTES.fire;
+    const pulse = this.add.circle(enemy.x, enemy.y - 6, 9, pal.core, 0.4)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: pulse,
+      scale: 1.7,
+      alpha: 0,
+      duration: 260,
+      ease: 'Cubic.easeOut',
+      onComplete: () => pulse.destroy(),
+    });
+  }
+
   private updateEnemies(deltaSeconds: number): void {
     if (!this.playerState.alive) return;
 
-    // burn(지속피해) 0.5초 펄스 — persistent 킨드로 가벼운 연출, 방향 보호막 무시.
+    // burn(지속피해) 0.5초 틱 — 일반 피격 연출은 끈다(#216 항목5: 공격 이펙트가
+    // 없는데 맞는 소리·모션이 나던 문제). 원인 표시는 잔불 이미터 + 약한 틱 펄스가 전담.
     this.enemyAilments.update(deltaSeconds, (enemy, damage) => {
-      this.damageEnemy(enemy, damage, undefined, enemy.x, enemy.y, true, 'persistent', 0, 'status');
+      this.damageEnemy(
+        enemy, damage, undefined, enemy.x, enemy.y, true, 'persistent', 0, 'status', 'status-tick',
+      );
+      this.showBurnTickPulse(enemy);
     });
+    this.syncBurnEmbers();
 
     const stoppedEnemies = new Set<CombatEnemy>();
     for (const enemy of this.enemies) {
@@ -5573,6 +5653,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     hitStopKind: HitStopKind = 'standard',
     knockbackDistance = 0,
     source: DamageSource = 'manual',
+    /**
+     * 피격 연출 수위 (#216 항목5) — 'status-tick'은 화상 틱처럼 "공격이 아닌
+     * 지속 피해"라 hit SFX·squash·hitstop을 모두 생략한다 (피해·사망 처리는 동일).
+     * 원인 표시는 호출측의 지속 VFX(잔불·틱 펄스) 몫이다.
+     */
+    feedback: 'full' | 'status-tick' = 'full',
   ): boolean {
     if (damage <= 0 || !enemy.alive) return false;
     const underlyingEnemy = enemy instanceof EliteEnemy ? enemy.baseEnemy : enemy;
@@ -5589,8 +5675,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       defeated = enemy.takeDamage(damage);
     }
     this.damageLedger[source] += damage;
-    this.audio.playSfx('hit');
-    if (!defeated) {
+    if (feedback !== 'status-tick') this.audio.playSfx('hit');
+    if (!defeated && feedback !== 'status-tick') {
       const direction = new Phaser.Math.Vector2(enemy.x - sourceX, enemy.y - sourceY);
       if (direction.lengthSq() === 0) direction.set(0, -1);
       direction.normalize();
@@ -5641,6 +5727,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.removeEnemyControl(enemy);
     this.enemyHitStop.remove(enemy);
     this.enemyKnockbacks.delete(enemy);
+    this.dropBurnEmber(enemy);
     enemy.destroy();
     this.enemies = this.enemies.filter((candidate) => candidate !== enemy);
     if (wasBoss) {
