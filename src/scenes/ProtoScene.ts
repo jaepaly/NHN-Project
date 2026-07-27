@@ -191,6 +191,12 @@ import { EMPTY_RUN_MEMORY } from '../spell/runMemory';
 import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { showRewardCards } from '../ui/rewardCardOverlay';
 import { MinimapHud } from '../ui/minimapHud';
+import {
+  TERRAIN_BARRIER_CONFIG,
+  barrierEndpoints,
+  pushOutOfBarriers,
+} from '../combat-core/combat/terrainBarrier';
+import type { TerrainBarrier } from '../combat-core/combat/terrainBarrier';
 import { PortalField } from '../render/portalField';
 import { mockMinimapModel } from '../run/mapGraphMock';
 import {
@@ -669,6 +675,12 @@ export class ProtoScene extends Phaser.Scene {
   private devMinimap: MinimapHud | null = null;
   private devPortalField: PortalField | null = null;
   /**
+   * 정적 지형 장벽 (#214 지형 Tier 2). 배치 데이터는 R1 소유이고 여기는 기전만 —
+   * 방 진입 시 채우고 방 전환 시 비운다. 비어 있으면 전 경로가 무비용으로 통과한다.
+   */
+  private terrainBarriers: TerrainBarrier[] = [];
+  private terrainBarrierView: Phaser.GameObjects.Graphics | null = null;
+  /**
    * 진행 중인 미러 캐스트(예고 단계). 타이머는 update에서 **스케일된 델타**로
    * 감소한다 — 영창 슬로모(timeScale 0.1) 중엔 예고도 같이 느려져, "예고를 보고
    * 슬로모를 열어 보호막을 친다"는 카운터플레이가 성립한다.
@@ -844,7 +856,15 @@ export class ProtoScene extends Phaser.Scene {
             this.devPortalField = null;
           },
         );
-        return '미니맵 + 포탈 3개 프리뷰 생성';
+        // 지형 장벽 프리뷰 — 개방형 배치 원칙대로 중앙 기둥 + 가장자리 짧은 벽
+        const cx = this.worldBounds.centerX;
+        const cy = this.worldBounds.centerY;
+        this.setTerrainBarriers([
+          { x: cx, y: cy, halfLength: 150, angleDeg: 0 },
+          { x: cx - 420, y: cy - 260, halfLength: 110, angleDeg: 90 },
+          { x: cx + 420, y: cy + 260, halfLength: 110, angleDeg: 90 },
+        ]);
+        return '미니맵 + 포탈 3개 + 지형 장벽 3개 프리뷰 생성';
       };
       (window as unknown as { __spellMatrix?: (step: () => void) => unknown }).__spellMatrix
         = (step: () => void) => {
@@ -979,6 +999,7 @@ export class ProtoScene extends Phaser.Scene {
       this.updatePlayerAura(d);
       this.updateEnemyControls(d);
       this.updateEnemies(d);
+      this.pushEnemiesOutOfTerrain();
       this.updatePersistentForms(d);
       this.updateEnemyProjectiles(d);
       this.updateHazards(d);
@@ -1565,6 +1586,7 @@ export class ProtoScene extends Phaser.Scene {
     this.clearUnstableWarnings();
     this.clearPendingMirrorCast();
     this.clearBossArcana();
+    this.clearTerrainBarriers();
   }
 
   /** 예고 중인 미러 캐스트 취소 — 방 전환·사망 후 마커가 남거나 유령 발사되는 것 방지 */
@@ -1709,6 +1731,13 @@ export class ProtoScene extends Phaser.Scene {
       this.worldBounds.top + 22,
         this.worldBounds.bottom - 22,
       );
+
+      // 지형 장벽 — 이동 후 파고든 만큼 밀어낸다. 이동을 막는 게 아니라 밀어내는
+      // 방식이라 모서리에 끼지 않고, 벽을 따라 미끄러진다.
+      if (this.terrainBarriers.length > 0) {
+        const pushed = pushOutOfBarriers(this.player.x, this.player.y, 16, this.terrainBarriers);
+        this.player.setPosition(pushed.x, pushed.y);
+      }
 
       const actuallyMoved = this.player.x !== previousX || this.player.y !== previousY;
       if (!actuallyMoved) return;
@@ -2147,6 +2176,57 @@ export class ProtoScene extends Phaser.Scene {
     this.bossShroud = null;
     this.bossShroudRemaining = 0;
     this.bossPullRemaining = 0;
+  }
+
+  // ── 정적 지형 장벽 (#214 지형 Tier 2) ──────────────────────────────
+
+  /**
+   * 방 장벽 배치 — R1 프리셋이 준 데이터를 그대로 세운다.
+   * 빈 배열이면 장벽 없는 방(기존 동작과 동일).
+   */
+  private setTerrainBarriers(barriers: readonly TerrainBarrier[]): void {
+    this.clearTerrainBarriers();
+    if (barriers.length === 0) return;
+    this.terrainBarriers = barriers.map((barrier) => ({ ...barrier }));
+
+    // 전장 장벽(wall 폼)과 같은 3겹 문법 — 플레이어가 "저건 못 지나간다"를 이미 안다.
+    const view = this.add.graphics().setDepth(4);
+    for (const barrier of this.terrainBarriers) {
+      const [a, b] = barrierEndpoints(barrier);
+      view.lineStyle(TERRAIN_BARRIER_CONFIG.thickness + 8, 0x2c3a6e, 0.34);
+      view.lineBetween(a.x, a.y, b.x, b.y);
+      view.lineStyle(TERRAIN_BARRIER_CONFIG.thickness, 0x536dff, 0.5);
+      view.lineBetween(a.x, a.y, b.x, b.y);
+      view.lineStyle(2, 0xaebdff, 0.85);
+      view.lineBetween(a.x, a.y, b.x, b.y);
+    }
+    this.terrainBarrierView = view;
+  }
+
+  private clearTerrainBarriers(): void {
+    this.terrainBarrierView?.destroy();
+    this.terrainBarrierView = null;
+    this.terrainBarriers = [];
+  }
+
+  /**
+   * 보행 적을 장벽 밖으로 밀어낸다 — 추격이 직선이라 벽에 파고들 수 있다.
+   * ⚠️ 밀어내기만 할 뿐 우회는 못 한다. 그래서 배치가 **개방형**이어야 한다
+   * (terrainBarrier.ts 주석의 원칙 1). 미로면 적이 벽에 비빈다.
+   */
+  private pushEnemiesOutOfTerrain(): void {
+    if (this.terrainBarriers.length === 0) return;
+    for (const enemy of this.enemies) {
+      if (!enemy.alive) continue;
+      // 보스 돌진 중엔 통과 — 돌진은 "밀고 지나가는" 행동이다(원칙 2와 같은 결)
+      if (enemy instanceof BossEnemy && enemy.charging) continue;
+      // view를 직접 옮긴다 — 넉백(updateEnemyKnockback)이 쓰는 것과 같은 경로.
+      const pushed = pushOutOfBarriers(
+        enemy.view.x, enemy.view.y, enemy.collisionRadius, this.terrainBarriers,
+      );
+      enemy.view.x = pushed.x;
+      enemy.view.y = pushed.y;
+    }
   }
 
   private playPlayerHit(shakeTier: CameraShakeTier = 'weak'): void {
@@ -3032,6 +3112,22 @@ if (applied) this.playPlayerHit(
         5 + WALL_CONFIG.thickness / 2,
         wall.points,
       )) {
+        this.destroyEnemyProjectile(projectile);
+        continue;
+      }
+
+      // 지형 장벽도 적 투사체를 막는다 — 전장 장벽과 같은 스윕 판정을 재사용해
+      // "벽 뒤에 숨는다"가 두 종류 장벽에서 똑같이 통한다.
+      let blockedByTerrain = false;
+      for (const barrier of this.terrainBarriers) {
+        if (sweepIntersectsPolyline(
+          previous,
+          { x: projectile.body.x, y: projectile.body.y },
+          5 + TERRAIN_BARRIER_CONFIG.thickness / 2,
+          barrierEndpoints(barrier),
+        )) { blockedByTerrain = true; break; }
+      }
+      if (blockedByTerrain) {
         this.destroyEnemyProjectile(projectile);
         continue;
       }
