@@ -420,19 +420,61 @@ function castBeam(ctx: CastContext, spec: SpellSpec): void {
   const holdDurationMs = spec.speed === 'fast' ? 200 : spec.speed === 'slow' ? 400 : 300;
   const fadeDurationMs = spec.speed === 'fast' ? 400 : spec.speed === 'slow' ? 650 : 500;
 
+  // 시작부 테이퍼 (#216 항목6) — 원점~taperLen 구간은 원점에서 수렴하는 삼각형으로
+  // 그려, 플레이어 쪽이 풀폭으로 뚝 끊겨 보이던 것을 잇는다. 판정 라인은 불변.
+  const dir = new Phaser.Math.Vector2(end.x - from.x, end.y - from.y).normalize();
+  const taperLen = Math.min(70 * scale, range * 0.12);
+  const tx = from.x + dir.x * taperLen;
+  const ty = from.y + dir.y * taperLen;
+  const perpX = -dir.y;
+  const perpY = dir.x;
+
   const beam = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
-  beam.lineStyle(width * 2.4, pal.glow, 0.18);
-  beam.lineBetween(from.x, from.y, end.x, end.y);
-  beam.lineStyle(width, pal.core, 0.75);
-  beam.lineBetween(from.x, from.y, end.x, end.y);
-  beam.lineStyle(Math.max(2, width * 0.22), pal.accent, 1);
-  beam.lineBetween(from.x, from.y, end.x, end.y);
+  const drawLayer = (layerWidth: number, color: number, alpha: number): void => {
+    beam.fillStyle(color, alpha);
+    beam.fillTriangle(
+      from.x, from.y,
+      tx + perpX * layerWidth / 2, ty + perpY * layerWidth / 2,
+      tx - perpX * layerWidth / 2, ty - perpY * layerWidth / 2,
+    );
+    beam.lineStyle(layerWidth, color, alpha);
+    beam.lineBetween(tx, ty, end.x, end.y);
+  };
+  drawLayer(width * 2.4, pal.glow, 0.18);
+  drawLayer(width, pal.core, 0.75);
+  drawLayer(Math.max(2, width * 0.22), pal.accent, 1);
 
   if (spec.element_secondary) {
     const sub = ELEMENT_PALETTES[spec.element_secondary];
-    beam.lineStyle(Math.max(1, width * 0.1), sub.accent, 0.9);
-    beam.lineBetween(from.x, from.y, end.x, end.y);
+    drawLayer(Math.max(1, width * 0.1), sub.accent, 0.9);
   }
+
+  // 발사 원점 코어 — 손에서 나간다는 근거. 방출 순간 블룸(작게→제 크기 팝)이
+  // "충전→방출"의 연결을 한 호흡으로 읽게 한다.
+  const muzzleHalo = scene.add.circle(from.x, from.y, width * 1.7, pal.glow, 0.34)
+    .setBlendMode(Phaser.BlendModes.ADD);
+  const muzzleCore = scene.add.circle(from.x, from.y, width * 0.75, pal.core, 0.95)
+    .setBlendMode(Phaser.BlendModes.ADD);
+  scene.tweens.add({
+    targets: [muzzleHalo, muzzleCore],
+    scale: { from: 0.5, to: 1 },
+    duration: 130,
+    ease: 'Back.easeOut',
+  });
+  // 방출 스파크 — 빔 방향 ±부채꼴로 짧게 튄다
+  const beamAngleDeg = Phaser.Math.RadToDeg(Math.atan2(dir.y, dir.x));
+  const muzzleSparks = scene.add.particles(from.x, from.y, 'particle', {
+    speed: { min: 90, max: 190 },
+    angle: { min: beamAngleDeg - 24, max: beamAngleDeg + 24 },
+    scale: { start: 0.4 * scale, end: 0 },
+    lifespan: 300,
+    quantity: Math.round(6 + 4 * scale),
+    tint: [pal.core, pal.accent],
+    blendMode: Phaser.BlendModes.ADD,
+    emitting: false,
+  });
+  muzzleSparks.explode(Math.round(6 + 4 * scale));
+  scene.time.delayedCall(420, () => muzzleSparks.destroy());
 
   ctx.onHit?.({
     kind: 'line',
@@ -447,11 +489,15 @@ function castBeam(ctx: CastContext, spec: SpellSpec): void {
   scene.time.delayedCall(holdDurationMs, () => {
     if (!beam.active) return;
     scene.tweens.add({
-      targets: beam,
+      targets: [beam, muzzleHalo, muzzleCore],
       alpha: 0,
       duration: fadeDurationMs,
       ease: 'Cubic.easeOut',
-      onComplete: () => beam.destroy(),
+      onComplete: () => {
+        beam.destroy();
+        muzzleHalo.destroy();
+        muzzleCore.destroy();
+      },
     });
   });
 }
