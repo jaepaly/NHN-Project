@@ -6,7 +6,7 @@ import {
 } from '../src/combat-core/run/altarRewardConfig';
 import { PlayerCombatState } from '../src/combat-core/player/playerCombatState';
 import { CombatRunController } from '../src/combat-core/run/runController';
-import { RUN_REWARD_CONFIG } from '../src/combat-core/run/rewardConfig';
+import { RUN_REWARD_CONFIG, drawRewardOptions } from '../src/combat-core/run/rewardConfig';
 import type { RewardOption } from '../src/run/runContract';
 
 /** 결정론 PRNG — 시드 고정 재현 테스트용 (mulberry32). */
@@ -28,10 +28,15 @@ function seededRand(seed: number): () => number {
   const kinds = new Set(opts.map((o) => o.kind));
   assert.equal(kinds.size, 3, '종류 중복 없이 3종 (다양한 강화 선택지)');
   for (const o of opts) {
-    assert.equal(o.powerScale, ALTAR_CONFIG.premiumScale, '각 옵션에 프리미엄 배율');
-    assert.ok(o.powerScale! > 1, '상급 = 표준보다 큼');
     assert.ok(o.id.startsWith('altar-'), '제단 id 접두사');
-    assert.ok(o.title.startsWith('상급 '), '상급 제목');
+    if (o.kind === 'spirit-haste') {
+      // 씬 적용이라 배율 미반영 → 표준(정직): powerScale·"상급" 접두사 없음
+      assert.equal(o.powerScale, undefined, 'spirit-haste는 표준(배율 없음)');
+    } else {
+      assert.equal(o.powerScale, ALTAR_CONFIG.premiumScale, '스케일 가능 종류엔 프리미엄 배율');
+      assert.ok(o.powerScale! > 1, '상급 = 표준보다 큼');
+      assert.ok(o.title.startsWith('상급 '), '상급 제목');
+    }
   }
 }
 
@@ -49,10 +54,31 @@ function seededRand(seed: number): () => number {
   assert.ok(altarHpCost(200) > altarHpCost(100), '최대HP 클수록 대가 큼');
 }
 
-// ── 표준 3택은 배율 미지정(=1로 간주) — 제단만 배율 실림 (오염 방지) ──
+// ── 스케일 가능 종류만 배율 실림, spirit-haste는 표준 (오염 방지) ──
 {
   const altar = drawAltarRewardOptions(1, seededRand(1));
-  assert.ok(altar.every((o) => o.powerScale === ALTAR_CONFIG.premiumScale), '제단은 전부 배율 실림');
+  for (const o of altar) {
+    if (o.kind === 'spirit-haste') assert.equal(o.powerScale, undefined, 'spirit-haste 표준');
+    else assert.equal(o.powerScale, ALTAR_CONFIG.premiumScale, '나머지 상급 배율');
+  }
+}
+
+// ── 설명이 배율을 반영한다 (카드 표시 = 실제 적용) — 버그 수정 검증 ──
+// 같은 시드 표준(1) vs 배율(2): 스케일 가능 카드는 설명이 달라야(수치↑), spirit-haste는 동일.
+{
+  const std = drawRewardOptions(5, seededRand(123), 1);
+  const prem = drawRewardOptions(5, seededRand(123), 2);
+  assert.equal(std.length, prem.length, '같은 시드 같은 개수');
+  for (let i = 0; i < std.length; i += 1) {
+    assert.equal(std[i].kind, prem[i].kind, '같은 시드 같은 종류·순서');
+    if (std[i].kind === 'spirit-haste') {
+      assert.equal(std[i].description, prem[i].description, 'spirit-haste 설명은 배율 무관');
+      assert.equal(prem[i].powerScale, undefined, 'spirit-haste 배율 없음');
+    } else {
+      assert.notEqual(std[i].description, prem[i].description, '스케일 카드 설명이 배율 반영(표시=실제)');
+      assert.equal(prem[i].powerScale, 2, '스케일 카드 powerScale');
+    }
+  }
 }
 
 // ── Step 2: powerScale이 실제 수치 효과에 곱해진다 (RunController.applyReward) ──
@@ -87,4 +113,4 @@ function seededRand(seed: number): () => number {
   assert.ok(premium.player.maxHp > standard.player.maxHp, '상급 > 표준 (실제로 더 셈)');
 }
 
-console.log('Altar reward regression: 3택·다양성·프리미엄배율·재현성·HP대가 + 실적용(표준vs상급) 5군 통과');
+console.log('Altar reward regression: 3택·다양성·프리미엄배율·재현성·HP대가·실적용·설명배율 7군 통과');
