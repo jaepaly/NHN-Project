@@ -65,6 +65,7 @@ import type { HitStopKind } from '../combat-core/combat/hitStopConfig';
 import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
 import { requestCameraShake, resetCameraShake } from '../render/cameraShake';
 import { reducedAffinityVfxIntensity } from '../render/affinityVfx';
+import { VFX_BUDGET_CONFIG } from '../render/vfxBudget';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import { devInfo } from '../debug/devLog';
 import { FusionGauge } from '../combat-core/player/fusionGauge';
@@ -3870,6 +3871,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       // 진화는 huge라 spellRenderer가 셰이크 등급을 이미 한 단계 올려놨는데,
       // auto 전체를 막는 바람에 그 격상이 사장돼 있었다.
       allowCameraShake: !auto || vfxTierReduction === 0,
+      // 플레이어 장식 VFX 중첩 예산 참여 (#216 P0-1) — 자동 시전은 추가 감쇠.
+      // 보스 시전은 이 필드를 안 넘겨 면제된다(위험구역은 정보, 항상 최대 밝기).
+      decorVfxScale: auto ? VFX_BUDGET_CONFIG.autoCastScale : 1,
       damageScale: options?.damageScale,
       rangeScale: options?.rangeScale,
       radiusScale: options?.radiusScale,
@@ -5230,6 +5234,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       // 진화는 huge라 spellRenderer가 셰이크 등급을 이미 한 단계 올려놨는데,
       // auto 전체를 막는 바람에 그 격상이 사장돼 있었다.
       allowCameraShake: !auto || vfxTierReduction === 0,
+      // 플레이어 장식 VFX 중첩 예산 참여 (#216 P0-1) — 자동 시전은 추가 감쇠.
+      // 보스 시전은 이 필드를 안 넘겨 면제된다(위험구역은 정보, 항상 최대 밝기).
+      decorVfxScale: auto ? VFX_BUDGET_CONFIG.autoCastScale : 1,
       damageScale: options?.damageScale,
       rangeScale: options?.rangeScale,
       radiusScale: options?.radiusScale,

@@ -25,6 +25,11 @@ import {
   rotatePointsAbout,
 } from '../combat-core/combat/slashConfig';
 import { AFFINITY_VFX_CONFIG } from './affinityVfx';
+import {
+  VFX_BUDGET_CONFIG,
+  decorParticleFrequencyMs,
+  persistentFieldAlphaScale,
+} from './vfxBudget';
 import { requestCameraShake } from './cameraShake';
 import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
 
@@ -75,6 +80,12 @@ export interface CastContext {
    * 판정 영역과 무관한 오버레이만 격상한다(affinityVfx.ts). 위력·적중 불변.
    */
   vfxIntensity?: number;
+  /**
+   * 지속형 장식 VFX 알파 배율 (#216 P0-1 광과민성 예산) — **명시한 시전만**
+   * 중첩 예산에 참여한다(플레이어 수동=1, 자동=autoCastScale). 생략(undefined)은
+   * 예산 면제 — 보스 위험구역처럼 "장식이 아니라 정보"인 필드는 항상 최대 밝기.
+   */
+  decorVfxScale?: number;
   /** 렌더러가 만든 실제 형상의 적중 영역을 전투 씬에 전달 */
   onHit?: (impact: SpellImpact, spec: SpellSpec) => void;
   /** Checks a bolt's latest movement segment against live combat targets. */
@@ -834,6 +845,49 @@ function explodeNova(ctx: CastContext, spec: SpellSpec, x: number, y: number): v
   scene.time.delayedCall(700, () => burst.destroy());
 }
 
+/**
+ * 활성 zone 장식 핸들 — 씬별로 모아 중첩 수에 따라 알파를 재분배한다 (#216 P0-1).
+ * pulse(틱 예고)는 제외 — 순간 연출이고 "언제 아픈가"라는 정보라 예산 밖이다.
+ */
+interface ZoneDecorHandle {
+  field: Phaser.GameObjects.Arc;
+  inner: Phaser.GameObjects.Arc;
+  particles: Phaser.GameObjects.Particles.ParticleEmitter;
+  /** 시전별 기본 배율 (자동 시전 감쇠 등) — 예산 배율에 곱해진다 */
+  decorScale: number;
+}
+
+const activeZoneDecor = new Map<Phaser.Scene, Set<ZoneDecorHandle>>();
+
+function zoneDecorSet(scene: Phaser.Scene): Set<ZoneDecorHandle> {
+  let set = activeZoneDecor.get(scene);
+  if (!set) {
+    set = new Set();
+    activeZoneDecor.set(scene, set);
+    // 씬 재시작 시 파괴된 핸들이 남지 않게 — 존은 Phaser가 함께 파괴한다
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => activeZoneDecor.delete(scene));
+  }
+  return set;
+}
+
+/** 예산 참여 존 전체의 알파·파티클 빈도를 현재 중첩 수 기준으로 재분배한다. */
+function rebalanceZoneDecor(scene: Phaser.Scene): void {
+  const set = zoneDecorSet(scene);
+  for (const handle of set) {
+    if (!handle.field.active) set.delete(handle); // 방 전환 등으로 먼저 파괴된 존 정리
+  }
+  const budget = persistentFieldAlphaScale(set.size);
+  for (const handle of set) {
+    const scale = budget * handle.decorScale;
+    handle.field.setAlpha(scale);
+    handle.inner.setAlpha(scale);
+    handle.particles.frequency = decorParticleFrequencyMs(
+      VFX_BUDGET_CONFIG.particleBaseFrequencyMs,
+      scale,
+    );
+  }
+}
+
 /** zone — 제한 사거리 안의 고정된 지면에 남아 주기적으로 범위 타격 */
 function castZone(ctx: CastContext, spec: SpellSpec): void {
   const { scene, from } = ctx;
@@ -868,11 +922,21 @@ function castZone(ctx: CastContext, spec: SpellSpec): void {
     scale: { start: 0.28 * scale, end: 0 },
     alpha: { start: 0.55, end: 0 },
     lifespan: Math.max(500, tickIntervalMs),
-    frequency: 90,
+    frequency: VFX_BUDGET_CONFIG.particleBaseFrequencyMs,
     quantity: 1,
     tint: [pal.core, pal.glow, accent],
     blendMode: Phaser.BlendModes.ADD,
   });
+
+  // 장식 예산 등록 (#216 P0-1) — decorVfxScale을 명시한 시전(플레이어)만.
+  // 보스 위험구역(undefined)은 면제: 장식이 아니라 정보라 항상 최대 밝기.
+  const decorHandle: ZoneDecorHandle | null = ctx.decorVfxScale !== undefined
+    ? { field, inner, particles, decorScale: ctx.decorVfxScale }
+    : null;
+  if (decorHandle) {
+    zoneDecorSet(scene).add(decorHandle);
+    rebalanceZoneDecor(scene);
+  }
 
   scene.tweens.add({
     targets: pulse,
@@ -903,6 +967,12 @@ function castZone(ctx: CastContext, spec: SpellSpec): void {
   }
 
   scene.time.delayedCall(durationMs, () => {
+    // 소멸 시작 = 예산 반납 — 남은 존들이 즉시 밝기를 돌려받는다.
+    // 페이드 트윈과 rebalance가 알파를 두고 다투지 않게 set에서 먼저 뺀다.
+    if (decorHandle) {
+      zoneDecorSet(scene).delete(decorHandle);
+      rebalanceZoneDecor(scene);
+    }
     particles.stop();
     scene.tweens.add({
       targets: [field, inner, pulse],
