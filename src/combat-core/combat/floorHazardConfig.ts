@@ -11,20 +11,41 @@
  * ⚠️ **placeholder 수치** — 초당 피해·틱 간격·잔류는 총괄·이도원 밸런스 튜닝 대상.
  */
 
+import type { SpellElement, SpellEffect } from '../../spell/types';
+
 export type FloorHazardKind = 'lava' | 'poison';
 
 export const FLOOR_HAZARD_CONFIG = {
   /** 틱 간격(초) — 이 간격마다 밟고 있으면 피해가 들어간다. 공통. */
   tickIntervalSeconds: 0.5,
-  /** 용암 — 해저드 리스킨(주황). 밟으면 확실히 아파 빠지게 만든다. 잔류 없음. */
+  /**
+   * 정화(cleanse) 방당 허용 횟수 — 남발 방지. 밟을 때마다 정화하면 위협이 무의미해진다.
+   * (씬 배선이 방 진입마다 리셋한다) placeholder.
+   */
+  cleansesPerRoom: 1,
+  /** 정화 성공 시 그 지형에 면역인 시간(초) — "아이스워크" 순간. placeholder. */
+  immunitySeconds: 3,
+  /**
+   * 용암 — 해저드 리스킨(주황·fire). 밟으면 확실히 아파 빠지게. 잔류 없음.
+   * 카운터: 물·얼음으로 식히거나(원소) 보호막으로 막는다(effect).
+   */
   lava: {
+    element: 'fire' as SpellElement,
     damagePerSecond: 12,
     lingerSeconds: 0,
+    counterElements: ['water', 'ice'] as readonly SpellElement[],
+    counterEffects: ['shield'] as readonly SpellEffect[],
   },
-  /** 독지대 — 피해는 낮지만 **이탈 후에도 도트가 잔류**한다(초록). */
+  /**
+   * 독지대 — 피해 낮음·**이탈 후 도트 잔류**(초록·dark).
+   * 카운터: 빛으로 정화하거나(원소) 회복/해독으로 씻는다(effect).
+   */
   poison: {
+    element: 'dark' as SpellElement,
     damagePerSecond: 4,
     lingerSeconds: 2,
+    counterElements: ['light'] as readonly SpellElement[],
+    counterEffects: ['heal'] as readonly SpellEffect[],
   },
 } as const;
 
@@ -56,4 +77,23 @@ export function isInFloorHazard(px: number, py: number, zone: FloorHazardZone): 
   const dx = px - zone.x;
   const dy = py - zone.y;
   return dx * dx + dy * dy <= zone.radius * zone.radius;
+}
+
+/**
+ * 플레이어가 시전한 주문이 이 지형을 카운터(정화)하는가 — **원소 상성 OR 보호 effect**로 판정.
+ *
+ * "정확한 단어"가 아니라 판정이 준 element/effect의 **카테고리**로 매칭하므로,
+ * `얼음 신발`·`서리 장화`·`물의 보호막`이 전부 용암을 카운터한다("말이 곧 마법"의 강건함).
+ * 예: 용암(fire) ← water·ice·shield / 독지대(dark) ← light·heal.
+ *
+ * 씬은 이 판정이 true이고 정화 쿨(방당 cleansesPerRoom)이 남았을 때만 상태를 해제한다.
+ */
+export function spellCountersHazard(
+  spellElement: SpellElement,
+  spellEffect: SpellEffect,
+  kind: FloorHazardKind,
+): boolean {
+  const hazard = FLOOR_HAZARD_CONFIG[kind];
+  return hazard.counterElements.includes(spellElement)
+    || hazard.counterEffects.includes(spellEffect);
 }

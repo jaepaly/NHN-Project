@@ -4,6 +4,7 @@ import {
   floorHazardTickDamage,
   floorHazardLingerSeconds,
   isInFloorHazard,
+  spellCountersHazard,
   type FloorHazardZone,
 } from '../src/combat-core/combat/floorHazardConfig';
 
@@ -49,4 +50,26 @@ import {
   assert.ok(!isInFloorHazard(200, 200, zone), '멀리 = 밖');
 }
 
-console.log('Floor hazard regression: 틱피해·설계불변식(용암>독·독잔류)·원형존판정 3군 통과');
+// ── 카운터(정화) 판정: 원소 상성 OR 보호 effect ──────────
+{
+  // 용암(fire) ← water·ice 원소 / shield effect. fire·light·heal은 카운터 아님.
+  assert.ok(spellCountersHazard('water', 'damage', 'lava'), '물 → 용암 카운터');
+  assert.ok(spellCountersHazard('ice', 'damage', 'lava'), '얼음 → 용암 카운터');
+  assert.ok(spellCountersHazard('fire', 'shield', 'lava'), '보호막 effect → 용암 카운터');
+  assert.ok(!spellCountersHazard('fire', 'damage', 'lava'), '불 → 용암 카운터 아님');
+  assert.ok(!spellCountersHazard('light', 'heal', 'lava'), '빛·회복 → 용암 카운터 아님');
+
+  // 독지대(dark) ← light 원소 / heal effect. dark·water·shield는 카운터 아님.
+  assert.ok(spellCountersHazard('light', 'damage', 'poison'), '빛 → 독지대 카운터');
+  assert.ok(spellCountersHazard('fire', 'heal', 'poison'), '회복/해독 effect → 독지대 카운터');
+  assert.ok(!spellCountersHazard('dark', 'damage', 'poison'), '어둠 → 독지대 카운터 아님');
+  assert.ok(!spellCountersHazard('water', 'shield', 'poison'), '물·보호막 → 독지대 카운터 아님');
+}
+
+// ── 정화 남발 방지·면역 config ───────────────────────────
+{
+  assert.ok(FLOOR_HAZARD_CONFIG.cleansesPerRoom >= 1, '정화 방당 최소 1회');
+  assert.ok(FLOOR_HAZARD_CONFIG.immunitySeconds > 0, '정화 후 면역 시간 있음');
+}
+
+console.log('Floor hazard regression: 틱피해·설계불변식·원형존판정·카운터정화·쿨config 5군 통과');
