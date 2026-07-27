@@ -66,6 +66,9 @@ import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
 import { requestCameraShake, resetCameraShake } from '../render/cameraShake';
 import { reducedAffinityVfxIntensity } from '../render/affinityVfx';
 import { VFX_BUDGET_CONFIG } from '../render/vfxBudget';
+import { allGlyphTextures, formGlyphTextureKey } from '../render/formGlyphs';
+import type { BuildChip } from '../run/buildChipModel';
+import { buildChipModel } from '../run/buildChipModel';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import { devInfo } from '../debug/devLog';
 import { FusionGauge } from '../combat-core/player/fusionGauge';
@@ -129,7 +132,7 @@ import type {
 import { drawRewardOptions, RUN_REWARD_CONFIG } from '../combat-core/run/rewardConfig';
 import { AFFINITY_ROWS, rankAffinities } from '../combat-core/run/useAffinity';
 import { ENGRAVE_CONFIG, EngraveManager } from '../combat-core/engrave/engraveManager';
-import { SpiritManager, SPIRIT_CONFIG } from '../combat-core/spirit/spiritManager';
+import { SpiritManager } from '../combat-core/spirit/spiritManager';
 import {
   resolveSelfBuff, SELF_BUFF_CONFIG, formatSelfBuffStatus, selfBuffColor,
 } from '../combat-core/player/selfBuffConfig';
@@ -242,6 +245,17 @@ const HUD = {
   barX: 34,
   barWidth: 270,
   barHeight: 7,
+} as const;
+
+/**
+ * 빌드 칩 기하 — 2×2로 65×65px. 기존 텍스트 2줄(229×27=6183px²)보다 작은
+ * 4225px²면서 글리프는 11px→17px로 커진다 (면적·가독성 동시 개선).
+ */
+const BUILD_CHIP = {
+  size: 30,
+  gap: 5,
+  glyph: 17,
+  tooltipWidth: 210,
 } as const;
 
 /** 친화 경험치 바가 채워지는 이정표 — 각성 임계(MASTERY_REDESIGN §5-b, 친화 0.9). */
@@ -450,8 +464,25 @@ export class ProtoScene extends Phaser.Scene {
   /** 필살기(융합) 게이지 라벨 — 하단 중앙 미터 위 (충전%·준비 알림) */
   private fusionLabelText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
-  /** 빌드 패널 — 각인·정령·주문서 보유 현황 (우하단 상시 표시) */
-  private buildHudText!: Phaser.GameObjects.Text;
+  /** 빌드 칩 — 각인 2 + 정령 2를 우하단 2×2 아이콘 그리드로 (buildChipModel) */
+  private buildChipRoot!: Phaser.GameObjects.Container;
+
+  private buildChipGraphics!: Phaser.GameObjects.Graphics;
+
+  private buildChipIcons: Phaser.GameObjects.Image[] = [];
+
+  private buildChipZones: Phaser.GameObjects.Zone[] = [];
+
+  private buildChips: BuildChip[] = [];
+
+  /** Tab 검사 모드 — 전투를 멈추고 칩에 마우스를 올려 상세를 본다 */
+  private buildInspectOpen = false;
+
+  private buildInspectPlate!: Phaser.GameObjects.Graphics;
+
+  private buildInspectText!: Phaser.GameObjects.Text;
+
+  private hoveredChipIndex = -1;
   /** 활성 자기 강화 표시 (종류·세기·남은 시간) */
   private buffStatusText!: Phaser.GameObjects.Text;
   private sequenceProgressGraphics!: Phaser.GameObjects.Graphics;
@@ -656,6 +687,11 @@ export class ProtoScene extends Phaser.Scene {
     // 처리하려다 "Failed to process file"로 실패했다(webp·jpg·png 공통 원인).
     // 경로를 비운 뒤 배경을 싣는다.
     this.load.setPath('');
+    // 폼 글리프 — 빌드 칩용 텍스처(data URI SVG, 흰색으로 구워 setTint로 원소색을 입힌다).
+    // 도감·보상 카드와 같은 어휘라 한 곳(formGlyphs.ts)에서 온다.
+    for (const { key, dataUri } of allGlyphTextures()) {
+      this.load.svg(key, dataUri, { width: 48, height: 48 });
+    }
     // Phase 5 프로토타입 — AI 생성 스테이지 배경 (도형 데모 탈피).
     // 월드 크기(1920×1280)로 업스케일 + 절차적 질감을 구워넣은 완전 스크롤 맵용 이미지.
     this.load.image(
@@ -700,6 +736,10 @@ export class ProtoScene extends Phaser.Scene {
     // 낡은 래퍼를 그대로 들고 create로 들어가면 clearCombatRoom이 죽은 view를 만져 크래시난다.
     // 참조만 끊는다(파괴는 Phaser 몫).
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.dropStaleRunObjects());
+    // 씬은 재사용된다 — 검사 모드가 열린 채 나갔다면 정지가 남는다. 진입 시 무조건 해제.
+    this.buildInspectOpen = false;
+    this.hoveredChipIndex = -1;
+    this.time.paused = false;
     // 주문 소비 매트릭스 감사 — 콘솔에서 __spellMatrix(step)로 effect×form×target 전수 점검.
     // 프레임 진행은 호출측이 넘긴다(백그라운드 탭에서는 game.loop.step을 감싸야 하므로).
     if (import.meta.env.DEV) {
@@ -787,6 +827,14 @@ export class ProtoScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-ENTER', () => {
       if (!this.incanting && !this.casting) this.tryOpenIncant();
     });
+    // Tab 빌드 검사 — 브라우저 기본 포커스 이동을 반드시 막아야 한다.
+    // 안 막으면 포커스가 영창 입력창이나 브라우저 UI로 튀어 이후 키 입력이 엉킨다.
+    this.input.keyboard!.addCapture('TAB');
+    this.input.keyboard!.on('keydown-TAB', (event: KeyboardEvent) => {
+      event.preventDefault();
+      this.toggleBuildInspect();
+    });
+    this.input.keyboard!.on('keydown-ESC', () => this.closeBuildInspect());
 
     // 시연 런은 유산 선택을 건너뛴다 — 이미 후반 상태라 카드가 겹치고,
     // 심사위원을 시작하자마자 선택 UI로 막는 게 이 모드의 취지에 어긋난다.
@@ -861,6 +909,8 @@ export class ProtoScene extends Phaser.Scene {
   private isCombatActive(): boolean {
     // 유산 선택 중에는 전투를 멈춘다 — 카드가 키를 캡처하는 동안 적에게 맞으면 안 된다
     if (this.legacySelecting) return false;
+    // Tab 빌드 검사 중에도 멈춘다 — 상세를 읽는 동안 맞으면 안 된다 (같은 근거)
+    if (this.buildInspectOpen) return false;
     return this.combatRunController.state.phase === 'combat';
   }
 
@@ -1439,6 +1489,9 @@ export class ProtoScene extends Phaser.Scene {
   private stopCastingForRunPause(): void {
     if (this.incanting) this.closeIncant();
     if (this.casting) this.finishCastingUx();
+    // 검사 모드가 열린 채 방 클리어·사망·런 종료로 넘어가면 time.paused가 남아
+    // 보상 화면의 타이머·연출이 전부 멈춘다 — 여기서 반드시 되돌린다.
+    this.closeBuildInspect();
   }
 
   private createHud(width: number, height: number): void {
@@ -1509,18 +1562,11 @@ export class ProtoScene extends Phaser.Scene {
       wordWrap: { width: 256, useAdvancedWrap: true },
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
 
-    // 빌드 패널 — "지금 내가 뭘 들고 있나"를 상시 노출 (각인·정령·주문서).
+    // 빌드 패널 — "지금 내가 뭘 들고 있나"를 상시 노출.
     // 우하단은 비어 있어 전투 시야를 가리지 않는다. 우상단은 ROOM/WAVE 전용으로 남긴다.
-    this.buildHudText = this.add.text(width - 20, height - 26, '', {
-      fontFamily: 'Consolas, monospace',
-      fontSize: '11px',
-      color: '#8fa4ff',
-      align: 'right',
-      lineSpacing: 3,
-      wordWrap: { width: 430, useAdvancedWrap: true },
-    }).setOrigin(1, 1).setScrollFactor(0).setDepth(100);
+    this.createBuildChips(width, height);
 
-    this.add.text(20, height - 28, 'WASD 이동  ·  ENTER 영창', {
+    this.add.text(20, height - 28, 'WASD 이동  ·  ENTER 영창  ·  TAB 빌드', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: '#59679d',
@@ -4514,7 +4560,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.hpText.setText(`HP    ${hp.toString().padStart(3)} / ${this.playerState.maxHp}`);
     this.manaText.setText(`MANA  ${mana.toString().padStart(3)} / ${this.playerState.maxMana}`);
     this.shieldText.setText(`SHIELD ${shield.toString().padStart(3)} / ${this.playerState.maxHp}`);
-    this.buildHudText.setText(this.buildSummaryLines());
+    this.drawBuildChips();
     // 활성 자기 강화 — 매 프레임 남은 시간 갱신, 없으면 빈 줄
     const buffs = this.playerState.activeBuffs();
     if (buffs.length === 0) {
@@ -4583,27 +4629,190 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     return null;
   }
 
-  private buildSummaryLines(): string[] {
-    const engraves = this.engraveManager.entries;
-    const engraveLabel = engraves.length === 0
-      ? `각인 0/${ENGRAVE_CONFIG.maxSlots}`
-      : `각인 ${engraves.length}/${ENGRAVE_CONFIG.maxSlots} · ${engraves
-        .map((e) => `${e.spell.name}${e.evolved ? '★' : ` Lv${e.level}`}`)
-        .join(' · ')}`;
+  /**
+   * 빌드 칩 생성 — 우하단 2×2. 앵커 (width-20, height-26)는 그대로 유지한다:
+   * 보스 미러캐스트 예고가 화면 바깥 26px 링을 채우므로 이보다 모서리로 밀 수 없다.
+   */
+  private createBuildChips(width: number, height: number): void {
+    const right = width - 20;
+    const bottom = height - 26;
+    const span = BUILD_CHIP.size * 2 + BUILD_CHIP.gap;
+    this.buildChipRoot = this.add.container(right - span, bottom - span)
+      .setScrollFactor(0)
+      .setDepth(100);
+    // 그래픽은 컨테이너 로컬 좌표로 그린다 — 리사이즈 시 컨테이너만 옮기면 된다
+    this.buildChipGraphics = this.add.graphics();
+    this.buildChipRoot.add(this.buildChipGraphics);
 
-    const spirits = this.spiritManager.entries;
-    const spiritLabel = spirits.length === 0
-      ? `정령 0/${SPIRIT_CONFIG.maxSlots}`
-      : `정령 ${this.spiritManager.slotCount()}/${SPIRIT_CONFIG.maxSlots} · ${spirits
-        .map((e) => (e.fusedName
-          ? `『${e.fusedName}』`
-          : `${this.spiritName(e.role, e.element)} Lv${e.level}`))
-        .join(' · ')}`;
+    this.buildChipIcons = [];
+    this.buildChipZones = [];
+    for (let i = 0; i < 4; i += 1) {
+      const { x, y } = this.chipCenter(i);
+      const icon = this.add.image(x, y, formGlyphTextureKey('bolt'))
+        .setDisplaySize(BUILD_CHIP.glyph, BUILD_CHIP.glyph)
+        .setVisible(false);
+      this.buildChipRoot.add(icon);
+      this.buildChipIcons.push(icon);
+      // 호버 판정은 별도 Zone — Graphics는 히트영역이 없고, Zone이면 칩 모양과
+      // 무관하게 안정적으로 잡힌다. 검사 모드에서만 활성화한다.
+      const zone = this.add.zone(x, y, BUILD_CHIP.size, BUILD_CHIP.size)
+        .setScrollFactor(0)
+        .setDepth(100);
+      this.buildChipRoot.add(zone);
+      zone.on('pointerover', () => { this.hoveredChipIndex = i; this.renderBuildInspect(); });
+      zone.on('pointerout', () => {
+        if (this.hoveredChipIndex === i) this.hoveredChipIndex = -1;
+        this.renderBuildInspect();
+      });
+      this.buildChipZones.push(zone);
+    }
 
-    // 정확히 두 줄 — 높이 불변. 패시브 강화·주문서 줄은 방 클리어 화면으로 옮겼다
-    // (rewardContextLines). 전투 중엔 행동을 바꾸지 않으면서 패널만 2~5줄로 늘려,
-    // "어디를 보면 되는지"가 매 순간 달라지고 wordWrap 430으로 시퀀스 바까지 침범했다.
-    return [engraveLabel, spiritLabel];
+    // 검사 모드 오버레이 — 평소엔 완전히 숨는다(전투 시야 점유 0)
+    this.buildInspectPlate = this.add.graphics().setScrollFactor(0).setDepth(103).setVisible(false);
+    this.buildInspectText = this.add.text(0, 0, '', {
+      fontFamily: '"Noto Serif KR", Consolas, monospace',
+      fontSize: '12px',
+      color: '#dfe6ff',
+      align: 'left',
+      lineSpacing: 4,
+      wordWrap: { width: BUILD_CHIP.tooltipWidth - 20, useAdvancedWrap: true },
+    }).setOrigin(0, 1).setScrollFactor(0).setDepth(104).setVisible(false);
+  }
+
+  /** 칩 i의 컨테이너 로컬 중심 (0·1=각인 윗줄, 2·3=정령 아랫줄) */
+  private chipCenter(index: number): { x: number; y: number } {
+    const col = index % 2;
+    const row = Math.floor(index / 2);
+    const step = BUILD_CHIP.size + BUILD_CHIP.gap;
+    return {
+      x: col * step + BUILD_CHIP.size / 2,
+      y: row * step + BUILD_CHIP.size / 2,
+    };
+  }
+
+  /**
+   * 빌드 칩 그리기 — 텍스트 0글자로 여섯 채널을 인코딩한다.
+   * 사각=각인·원=정령 / 채움=원소색 / 글리프=폼 / 금테=진화 / 3핍=레벨 / 호=쿨다운.
+   * 발광(ADD)·점멸을 쓰지 않는다 — HUD는 저진폭 알파만 쓰는 규율을 따른다(#220 맥락).
+   */
+  private drawBuildChips(): void {
+    this.buildChips = buildChipModel(this.engraveManager.entries, this.spiritManager.entries);
+    const g = this.buildChipGraphics.clear();
+    const half = BUILD_CHIP.size / 2;
+
+    this.buildChips.forEach((chip, i) => {
+      const { x, y } = this.chipCenter(i);
+      const icon = this.buildChipIcons[i];
+      const round = chip.kind === 'spirit';
+      const core = chip.element ? ELEMENT_PALETTES[chip.element].core : 0x8fa4ff;
+      const glow = chip.elementSecondary
+        ? ELEMENT_PALETTES[chip.elementSecondary].core
+        : core;
+
+      if (!chip.filled) {
+        // 빈 슬롯 — 자리를 지켜 "채울 수 있다"를 알린다 (기존 0/2 표기의 의도 계승)
+        g.lineStyle(1, 0x8fa4ff, 0.34);
+        if (round) g.strokeCircle(x, y, half - 1);
+        else g.strokeRoundedRect(x - half + 1, y - half + 1, BUILD_CHIP.size - 2, BUILD_CHIP.size - 2, 5);
+        icon.setVisible(false);
+        return;
+      }
+
+      // 채움 — 이중 원소는 위/아래 투톤으로 두 색을 다 보여준다
+      g.fillStyle(core, 0.2);
+      if (round) g.fillCircle(x, y, half);
+      else g.fillRoundedRect(x - half, y - half, BUILD_CHIP.size, BUILD_CHIP.size, 5);
+      if (chip.elementSecondary) {
+        g.fillStyle(glow, 0.2);
+        if (round) {
+          g.slice(x, y, half, 0, Math.PI, false);
+          g.fillPath();
+        } else {
+          g.fillRoundedRect(x - half, y, BUILD_CHIP.size, half, { tl: 0, tr: 0, bl: 5, br: 5 });
+        }
+      }
+
+      // 테두리 — 진화·융합은 금테를 두껍게 (★ 글자를 대체)
+      const borderColor = chip.evolved ? 0xffd166 : core;
+      g.lineStyle(chip.evolved ? 2 : 1.2, borderColor, chip.evolved ? 0.95 : 0.62);
+      if (round) g.strokeCircle(x, y, half - 1);
+      else g.strokeRoundedRect(x - half + 1, y - half + 1, BUILD_CHIP.size - 2, BUILD_CHIP.size - 2, 5);
+
+      // 쿨다운 호 — 남은 만큼 위에서 시계방향으로 남는다 (0=지금 나간다)
+      if (chip.cooldownRatio > 0) {
+        const start = -Math.PI / 2;
+        g.lineStyle(2, 0xdfe6ff, 0.5);
+        g.beginPath();
+        g.arc(x, y, half + 1.5, start, start + Math.PI * 2 * chip.cooldownRatio, false);
+        g.strokePath();
+      }
+
+      // 레벨 3핍 — 채워진 길이로 읽힌다 ("Lv2" 4글자를 대체)
+      const pipW = (BUILD_CHIP.size - 10) / 3;
+      for (let p = 0; p < 3; p += 1) {
+        g.fillStyle(p < chip.level ? core : 0xffffff, p < chip.level ? 0.95 : 0.16);
+        g.fillRect(x - half + 5 + p * pipW, y + half - 4, pipW - 1.5, 2);
+      }
+
+      icon.setTexture(formGlyphTextureKey(chip.glyph ?? 'summon'))
+        .setTint(core)
+        .setVisible(true);
+    });
+  }
+
+  /**
+   * Tab 검사 모드 토글 — 전투를 멈추고 칩에 마우스를 올려 상세를 본다 (총괄 발안).
+   *
+   * 호버 툴팁은 원래 실시간 게임에서 주채널이 될 수 없다(조회하는 동안 적이 움직인다).
+   * 정지가 그 전제를 없앤다. 다만 scene.pause()는 이 씬의 렌더·입력까지 멈춰 호버 자체가
+   * 죽으므로 쓰지 않는다. 대신 (a) isCombatActive() 게이트 — 유산 선택과 같은 확립된
+   * 패턴 — 로 전투 갱신을 끊고, (b) time.paused로 delayedCall(장판 틱·각인 발사)까지
+   * 멈춘다. (b)가 없으면 "정지" 중에 장판이 계속 때린다.
+   */
+  private toggleBuildInspect(): void {
+    if (!this.buildInspectOpen && (this.incanting || this.casting || this.legacySelecting)) return;
+    this.buildInspectOpen = !this.buildInspectOpen;
+    this.time.paused = this.buildInspectOpen;
+    this.hoveredChipIndex = -1;
+    this.buildChipZones.forEach((zone) => {
+      if (this.buildInspectOpen) zone.setInteractive({ useHandCursor: true });
+      else zone.disableInteractive();
+    });
+    this.renderBuildInspect();
+  }
+
+  private closeBuildInspect(): void {
+    if (this.buildInspectOpen) this.toggleBuildInspect();
+  }
+
+  /** 검사 오버레이 렌더 — 판 + 호버한 칩의 상세. 아무것도 안 가리켰으면 안내만. */
+  private renderBuildInspect(): void {
+    const g = this.buildInspectPlate.clear();
+    if (!this.buildInspectOpen) {
+      this.buildInspectPlate.setVisible(false);
+      this.buildInspectText.setVisible(false);
+      return;
+    }
+    const { width, height } = this.scale;
+    const chip = this.buildChips[this.hoveredChipIndex];
+    const lines = chip
+      ? [chip.filled ? `『${chip.name}』` : chip.name, ...chip.detail]
+      : ['빌드 검사 — 시간이 멈췄다', '칩에 커서를 올리면 상세가 나온다', 'TAB · ESC 로 돌아간다'];
+    this.buildInspectText.setText(lines.join('\n'));
+
+    const boxW = BUILD_CHIP.tooltipWidth;
+    const boxH = this.buildInspectText.height + 18;
+    const span = BUILD_CHIP.size * 2 + BUILD_CHIP.gap;
+    // 칩 그리드 **바로 위**에 우측 정렬로 띄운다. 왼쪽으로 펼치면 x가 700 아래로
+    // 내려가 하단 중앙 밴드(시퀀스 바 x266~694 · 필살기 라벨 ~x670)와 겹친다.
+    const x = width - 20 - boxW;
+    const y = height - 26 - span - 10;
+    g.fillStyle(0x080b1c, 0.92);
+    g.fillRoundedRect(x, y - boxH, boxW, boxH, 8);
+    g.lineStyle(1, chip?.element ? ELEMENT_PALETTES[chip.element].core : 0x33447f, 0.7);
+    g.strokeRoundedRect(x, y - boxH, boxW, boxH, 8);
+    this.buildInspectPlate.setVisible(true);
+    this.buildInspectText.setPosition(x + 10, y - 9).setVisible(true);
   }
 
   /**
