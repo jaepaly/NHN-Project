@@ -44,8 +44,57 @@ export interface MinimapModel {
 }
 
 /**
- * R1 그래프 스냅샷 → 미니맵 뷰모델 어댑터 자리.
- * R1의 MapGraphState가 확정되면 여기서 변환한다. 그 전까지 미니맵은
- * 목데이터 MinimapModel로 개발·검증한다 (scripts/minimap-regression.ts 참조).
+ * R1이 소유하는 실제 방 노드 데이터입니다. Phaser/씬 객체를 참조하지 않아
+ * 그래프 생성, 회귀 테스트, 미니맵 소비자가 같은 값을 안전하게 공유할 수 있습니다.
+ */
+export interface MapTerrainPlacement {
+  kind: string;
+  x: number;
+  y: number;
+  radius?: number;
+}
+
+export interface MapNode {
+  id: string;
+  stage: number;
+  kind: MapNodeKind;
+  layer: number;
+  lane: number;
+  waveSetId?: string;
+  terrain: readonly MapTerrainPlacement[];
+  /** 저주 배정기가 소비할 후보별 가중치 자리입니다. */
+  curseWeights: Readonly<Record<string, number>>;
+}
+
+export interface MapNodeSnapshot extends MapNode {
+  status: MapNodeStatus;
+}
+
+export interface MapGraphEdge {
+  from: string;
+  to: string;
+}
+
+/** R3가 미니맵과 포탈 UI를 갱신할 때 소비하는 불변 스냅샷입니다. */
+export interface MapGraphState {
+  currentNodeId: string;
+  nodes: readonly MapNodeSnapshot[];
+  edges: readonly MapGraphEdge[];
+}
+
+/** #214에서 합의한 R1 → R3 공개 표면입니다. */
+export interface MapGraph {
+  current(): MapNode;
+  choices(): MapNode[];
+  enter(nodeId: string): MapNode;
+  snapshot(): MapGraphState;
+  isBossNode(nodeId: string): boolean;
+  lastBeforeBoss(): MapNode;
+}
+
+/**
+ * R1 그래프 스냅샷 → 미니맵 뷰모델 어댑터의 공통 형식입니다.
+ * 실제 어댑터는 mapGraph.ts의 toMinimapModel()에 두고, 목데이터는
+ * R3의 병렬 UI 개발과 회귀 검증을 위해 계속 유지합니다.
  */
 export type ToMinimapModel<GraphState> = (state: GraphState) => MinimapModel;
