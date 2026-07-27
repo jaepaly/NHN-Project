@@ -113,6 +113,13 @@ const CSS = `
 }
 #${WRAP_ID} .reward-hint { margin-top: 20px; font-size: 12.5px; color: #7f8aba; }
 #${WRAP_ID} .reward-hint b { color: #aeb9e8; font-weight: 600; }
+/* 이번 런 누적 — 전투 HUD에서 옮겨온 자리. "지금 뭘 쌓았나 → 뭘 더할까"의 근거 */
+#${WRAP_ID} .reward-context {
+  margin: 20px auto 0; padding-top: 14px; max-width: 560px;
+  border-top: 1px solid #232c52;
+  font-size: 12px; line-height: 1.7; color: #7f8aba;
+}
+#${WRAP_ID} .reward-context b { color: #aeb9e8; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) {
   #${WRAP_ID}, #${WRAP_ID} .reward-card { transition: none; }
 }
@@ -183,6 +190,12 @@ export interface CardFraming {
    * 획득 순간에 글리프를 배워야 빌드 HUD 칩이 의미를 갖는다 (학습 루프).
    */
   formFor?: (option: RewardOption) => SpellForm | null;
+  /**
+   * 이번 런 누적 맥락 (강화 목록·주문서 보유 등) — 전투 HUD 빌드 패널에서 옮겨온 정보.
+   * 전투 중엔 행동을 바꾸지 않는데 패널 높이만 가변으로 만들던 줄들이라, 실제로
+   * 쓰이는 순간(무엇을 더할지 고르는 방 클리어 화면)으로 자리를 옮겼다.
+   */
+  contextLines?: string[];
 }
 
 function escapeText(text: string): string {
@@ -216,6 +229,10 @@ export function showRewardCards(
       <div class="reward-title">${escapeText(framing.title ?? '공명의 대가를 선택하라')}</div>
       <div class="reward-cards"></div>
       <div class="reward-hint"><b>1·2·3</b> 또는 <b>←→ + Enter</b> · 마우스 클릭</div>
+      ${(framing.contextLines ?? []).filter(Boolean).length > 0
+    ? `<div class="reward-context">${(framing.contextLines ?? [])
+      .filter(Boolean).map((line) => escapeText(line)).join('<br>')}</div>`
+    : ''}
     </div>`;
   const cardsEl = wrap.querySelector('.reward-cards')!;
 

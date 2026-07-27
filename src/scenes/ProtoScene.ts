@@ -170,7 +170,6 @@ import type { BossResistanceProfile, RunEscalationProfile } from '../spell/bossM
 import { EMPTY_RUN_MEMORY } from '../spell/runMemory';
 import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { showRewardCards } from '../ui/rewardCardOverlay';
-import { summarizeRunRewards } from '../run/runRewardSummary';
 import { MinimapHud } from '../ui/minimapHud';
 import { PortalField } from '../render/portalField';
 import { mockMinimapModel } from '../run/mapGraphMock';
@@ -4601,15 +4600,19 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           : `${this.spiritName(e.role, e.element)} Lv${e.level}`))
         .join(' · ')}`;
 
-    const lines = [engraveLabel, spiritLabel];
-    // 이번 런 패시브 강화 — 적용되고 사라지던 스탯 보상을 한 줄로 되돌린다 (게임성 ②).
-    // 각인·정령은 위에 전용 줄이 있으므로 여기선 제외된다 (summarizeRunRewards).
-    const rewardLine = summarizeRunRewards(this.combatRunController.state.rewards);
-    if (rewardLine) lines.push(rewardLine);
-    // 주문서는 보유분이 있을 때만 — 첫 런에서 빈 줄로 혼란을 주지 않는다.
-    // 캐시된 수를 쓴다: 이 메서드는 매 프레임 호출되므로 localStorage를 여기서 읽으면 안 된다.
-    if (this.grimoireCount > 0) lines.push(`주문서 ${this.grimoireCount}`);
-    return lines;
+    // 정확히 두 줄 — 높이 불변. 패시브 강화·주문서 줄은 방 클리어 화면으로 옮겼다
+    // (rewardContextLines). 전투 중엔 행동을 바꾸지 않으면서 패널만 2~5줄로 늘려,
+    // "어디를 보면 되는지"가 매 순간 달라지고 wordWrap 430으로 시퀀스 바까지 침범했다.
+    return [engraveLabel, spiritLabel];
+  }
+
+  /**
+   * 방 클리어(보상 선택) 화면에 띄울 씬 쪽 맥락 — main.ts에서 runUiBinding에 주입한다.
+   * 누적 강화는 컨트롤러가 알고 있어 결합 모듈이 직접 만들고, 여기선 컨트롤러가
+   * 모르는 것(주문서 보유)만 낸다.
+   */
+  rewardContextLines(): string[] {
+    return this.grimoireCount > 0 ? [`주문서 ${this.grimoireCount}`] : [];
   }
 
   private drawHudBars(): void {
