@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import type { SpellElement } from '../spell/types';
+import type { GameSettings } from '../run/gameSettings';
+import { DEFAULT_SETTINGS } from '../run/gameSettings';
 
 export const SFX_NAMES = [
   'hit',
@@ -14,6 +16,7 @@ export const SFX_NAMES = [
 export type SfxName = (typeof SFX_NAMES)[number];
 export type BgmName = 'combat' | 'boss';
 
+/** 마스터 — 설정의 효과음·배경음악 크기가 이 위에 곱해진다 */
 const MASTER_VOLUME = 0.5;
 const MUTE_STORAGE_KEY = 'incant.audio.muted';
 const AUDIO_PATH = `${import.meta.env.BASE_URL}assets/audio/`;
@@ -46,6 +49,8 @@ export class GameAudio {
   private currentBgm: BgmName | null = null;
   private bgmGeneration = 0;
   private lastHitAt = -Infinity;
+  /** 설정의 볼륨 — 일시정지 메뉴에서 조절하면 applySettings로 들어온다 */
+  private settings: GameSettings = { ...DEFAULT_SETTINGS };
 
   static preload(scene: Phaser.Scene): void {
     scene.load.setPath(AUDIO_PATH);
@@ -69,8 +74,18 @@ export class GameAudio {
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroy, this);
   }
 
+  /** 설정 반영 — 재생 중인 BGM 볼륨도 즉시 바꿔 조절이 귀로 확인된다. */
+  applySettings(settings: GameSettings): void {
+    this.settings = { ...settings };
+    const bgm = MASTER_VOLUME * this.settings.bgmVolume;
+    (this.intro as Phaser.Sound.WebAudioSound | null)?.setVolume?.(bgm);
+    (this.loop as Phaser.Sound.WebAudioSound | null)?.setVolume?.(bgm);
+  }
+
   playCast(element: SpellElement): void {
-    this.scene.sound.play(CAST_KEYS[element]);
+    this.scene.sound.play(CAST_KEYS[element], {
+      volume: MASTER_VOLUME * this.settings.sfxVolume,
+    });
   }
 
   playSfx(name: SfxName): void {
@@ -80,7 +95,7 @@ export class GameAudio {
       this.lastHitAt = now;
     }
     this.scene.sound.play(SFX_KEYS[name], {
-      volume: name === 'hit' ? 0.75 : 1,
+      volume: MASTER_VOLUME * this.settings.sfxVolume * (name === 'hit' ? 0.75 : 1),
     });
   }
 
@@ -90,8 +105,9 @@ export class GameAudio {
     this.stopBgm();
     this.currentBgm = name;
     const generation = ++this.bgmGeneration;
-    this.intro = this.scene.sound.add(`audio-bgm-${name}-intro`);
-    this.loop = this.scene.sound.add(`audio-bgm-${name}-loop`, { loop: true });
+    const bgmVolume = MASTER_VOLUME * this.settings.bgmVolume;
+    this.intro = this.scene.sound.add(`audio-bgm-${name}-intro`, { volume: bgmVolume });
+    this.loop = this.scene.sound.add(`audio-bgm-${name}-loop`, { loop: true, volume: bgmVolume });
     this.intro.once(Phaser.Sound.Events.COMPLETE, () => {
       if (this.currentBgm === name && this.bgmGeneration === generation) {
         this.loop?.play();
@@ -109,7 +125,13 @@ export class GameAudio {
     this.currentBgm = null;
   }
 
-  private readonly toggleMute = (): void => {
+  /** 현재 음소거 상태 — 일시정지 메뉴가 라벨(켬/끔)에 쓴다. */
+  get muted(): boolean {
+    return this.scene.sound.mute;
+  }
+
+  /** M 키와 같은 토글 — 일시정지 메뉴에서도 호출한다(두 경로가 같은 상태를 공유). */
+  readonly toggleMute = (): void => {
     // 다음 값을 먼저 계산해 저장 — mute 대입 직후 게터가 이전 값을 돌려주는
     // Phaser 내부 타이밍 때문에 게터 재읽기로 저장하면 반전값이 기록된다.
     const next = !this.scene.sound.mute;
