@@ -73,6 +73,11 @@ export class PlayerCombatState {
     });
   }
 
+  /** 특정 버프/디버프 즉시 해제 — 지형 정화가 약화·둔화를 씻을 때. 없으면 무시. */
+  clearBuff(kind: SelfBuffKind): void {
+    this.buffs.delete(kind);
+  }
+
   /** HUD·연출용 활성 버프 스냅샷 */
   activeBuffs(): { kind: SelfBuffKind; remaining: number; multiplier: number }[] {
     return [...this.buffs.entries()].map(([kind, b]) => ({

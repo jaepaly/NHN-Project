@@ -199,9 +199,12 @@ import {
 import type { TerrainBarrier } from '../combat-core/combat/terrainBarrier';
 import {
   FLOOR_HAZARD_CONFIG,
+  canCleanseFloorHazard,
   floorHazardTickDamage,
   isInFloorHazard,
+  spellCountersHazard,
 } from '../combat-core/combat/floorHazardConfig';
+import type { FloorHazardKind } from '../combat-core/combat/floorHazardConfig';
 import type { FloorHazardZone } from '../combat-core/combat/floorHazardConfig';
 import { PortalField } from '../render/portalField';
 import { mockMinimapModel } from '../run/mapGraphMock';
@@ -696,6 +699,10 @@ export class ProtoScene extends Phaser.Scene {
   private floorHazardTimer: Phaser.Time.TimerEvent | null = null;
   /** 독지대 이탈 후 잔류 도트 남은 시간(초) — 존 안에서 리필, 밖에서 소진. */
   private poisonLingerRemaining = 0;
+  /** 정화 후 지형 면역 남은 시간(초). ward와 별개 — 지형 틱만 무시한다(걸어 나갈 틈). */
+  private floorHazardImmunityRemaining = 0;
+  /** 이 방에서 쓴 정화 횟수 — cleansesPerRoom로 남발 방지. 방 리셋마다 0. */
+  private floorCleansesUsed = 0;
   /**
    * 진행 중인 미러 캐스트(예고 단계). 타이머는 update에서 **스케일된 델타**로
    * 감소한다 — 영창 슬로모(timeScale 0.1) 중엔 예고도 같이 느려져, "예고를 보고
@@ -2265,6 +2272,8 @@ export class ProtoScene extends Phaser.Scene {
     this.floorHazardTimer?.remove();
     this.floorHazardTimer = null;
     this.poisonLingerRemaining = 0;
+    this.floorHazardImmunityRemaining = 0;
+    this.floorCleansesUsed = 0;
     this.floorHazardView?.destroy();
     this.floorHazardView = null;
     this.floorHazards = [];
@@ -2277,6 +2286,14 @@ export class ProtoScene extends Phaser.Scene {
    */
   private tickFloorHazards(): void {
     if (!this.playerState.alive || !this.isCombatActive()) return;
+    // 정화 면역 중엔 어떤 지형도 안 아프다 — 씻어낸 뒤 걸어 나갈 시간을 준다.
+    if (this.floorHazardImmunityRemaining > 0) {
+      this.floorHazardImmunityRemaining = Math.max(
+        0,
+        this.floorHazardImmunityRemaining - FLOOR_HAZARD_CONFIG.tickIntervalSeconds,
+      );
+      return;
+    }
     let inPoison = false;
     for (const zone of this.floorHazards) {
       if (!isInFloorHazard(this.player.x, this.player.y, zone)) continue;
@@ -2301,6 +2318,42 @@ export class ProtoScene extends Phaser.Scene {
         this.poisonLingerRemaining - FLOOR_HAZARD_CONFIG.tickIntervalSeconds,
       );
     }
+  }
+
+  /**
+   * 카운터 정화 — 방금 시전한 주문이 지금 밟은/잔류 중인 지형을 상성으로 씻는가.
+   * (암전 정화 미러: 원소·effect **카테고리** 매칭. 얼음신발·물보호막이 다 용암을 씻는다.)
+   *
+   * 총괄 제약 반영: ①방당 cleansesPerRoom회만(남발 방지) ②차감 없음 — 상성이 맞으면
+   * 통째로 해제 + immunitySeconds 면역, 틀리면 **아무 일도 없다**(무효). ③면역은 별도 필드.
+   */
+  private tryFloorHazardCleanse(spec: SpellSpec): void {
+    if (!canCleanseFloorHazard(this.floorCleansesUsed)) return;
+    // 지금 위협받는 지형 종류 — 밟고 있거나(용암/독) 독 잔류 중일 때만 씻을 게 있다.
+    const active = new Set<FloorHazardKind>();
+    for (const zone of this.floorHazards) {
+      if (isInFloorHazard(this.player.x, this.player.y, zone)) active.add(zone.kind);
+    }
+    if (this.poisonLingerRemaining > 0) active.add('poison');
+    if (active.size === 0) return;
+    // 시전 원소(주·부) 또는 effect가 카운터하는 지형만 씻는다.
+    const elements: SpellElement[] = [spec.element_primary];
+    if (spec.element_secondary) elements.push(spec.element_secondary);
+    let cleansed = false;
+    for (const kind of active) {
+      if (!elements.some((el) => spellCountersHazard(el, spec.effect, kind))) continue;
+      cleansed = true;
+      if (kind === 'poison') {
+        this.playerState.clearBuff('sap');
+        this.playerState.clearBuff('mire');
+        this.poisonLingerRemaining = 0;
+      }
+      // 용암은 잔류·디버프가 없어 해제할 상태가 없다 — 아래 면역만으로 충분(다시 밟아도 막힘).
+    }
+    if (!cleansed) return; // 틀린 원소 = 무효, 정화 횟수도 안 깎는다.
+    this.floorCleansesUsed += 1;
+    this.floorHazardImmunityRemaining = FLOOR_HAZARD_CONFIG.immunitySeconds;
+    this.announceSystemMessage('지형 정화 · 잠시 지형 면역', '#63e6be', 2000);
   }
 
   /**
@@ -3864,6 +3917,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       ) {
         this.blackoutCurseField.illuminate();
       }
+      // 지형 카운터 정화 — 상성 맞는 주문이면 밟은 지형 디버프/잔류를 씻고 잠깐 면역.
+      this.tryFloorHazardCleanse(effectiveSpec);
       this.audio.playCast(effectiveSpec.element_primary);
       this.applySpellPalette(effectiveSpec);
       this.announceSpell(effectiveSpec);

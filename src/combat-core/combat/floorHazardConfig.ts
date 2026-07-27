@@ -54,6 +54,14 @@ export const FLOOR_HAZARD_CONFIG = {
   },
 } as const;
 
+/**
+ * 이번 방에서 정화를 더 쓸 수 있나 — 방당 cleansesPerRoom회로 남발을 막는다.
+ * 씬(ProtoScene)과 회귀가 같은 판정을 공유해 "쓴 만큼 막힌다"를 한 곳에서 보증한다.
+ */
+export function canCleanseFloorHazard(usedThisRoom: number): boolean {
+  return usedThisRoom < FLOOR_HAZARD_CONFIG.cleansesPerRoom;
+}
+
 /** 한 틱에 들어가는 피해 = 초당 피해 × 틱 간격. (용암 > 독지대) */
 export function floorHazardTickDamage(kind: FloorHazardKind): number {
   return Math.round(
