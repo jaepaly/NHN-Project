@@ -109,6 +109,12 @@ function validateDefinition(definition: MapGraphDefinition): void {
   const nodesById = new Map<string, MapNode>();
   for (const node of definition.nodes) {
     if (!node.id || nodesById.has(node.id)) throw new Error(`Duplicate or empty MapGraph node id: ${node.id}`);
+    if (node.kind === 'trap' && !node.trapProfile) {
+      throw new Error(`Trap MapGraph node requires a trap profile: ${node.id}`);
+    }
+    if (node.kind !== 'trap' && node.trapProfile) {
+      throw new Error(`Only trap MapGraph nodes may have a trap profile: ${node.id}`);
+    }
     nodesById.set(node.id, node);
   }
   if (!nodesById.has(definition.startNodeId)) throw new Error('MapGraph start node is missing');
@@ -201,5 +207,9 @@ function cloneNode(node: MapNode): MapNode {
     ...node,
     terrain: node.terrain.map((placement) => ({ ...placement })),
     curseWeights: { ...node.curseWeights },
+    trapProfile: node.trapProfile && {
+      ...node.trapProfile,
+      safeCorridor: node.trapProfile.safeCorridor && { ...node.trapProfile.safeCorridor },
+    },
   };
 }

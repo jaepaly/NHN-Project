@@ -1,4 +1,5 @@
 import type { MapGraphDefinition } from './mapGraph';
+import { TRAP_ROOM_PROFILES } from './trapRoomProfile';
 
 const emptyRoom = {
   terrain: [],
@@ -22,7 +23,16 @@ export const MAP_GRAPH_PRESET_01: MapGraphDefinition = {
     { id: 's1-elite', stage: 1, kind: 'elite', layer: 2, lane: 0, waveSetId: 'elite', ...emptyRoom },
     { id: 's1-boss', stage: 1, kind: 'stage-boss', layer: 3, lane: 0, ...emptyRoom },
     { id: 's2-combat', stage: 2, kind: 'combat', layer: 4, lane: 0, waveSetId: 'room-c', ...emptyRoom },
-    { id: 's2-trap', stage: 2, kind: 'trap', layer: 5, lane: 0, waveSetId: 'room-c-hazard', ...emptyRoom },
+    {
+      id: 's2-trap',
+      stage: 2,
+      kind: 'trap',
+      layer: 5,
+      lane: 0,
+      waveSetId: 'trap-hazard',
+      trapProfile: TRAP_ROOM_PROFILES.hazard,
+      ...emptyRoom,
+    },
     { id: 's2-altar', stage: 2, kind: 'altar', layer: 5, lane: 1, ...emptyRoom },
     { id: 's2-elite', stage: 2, kind: 'elite', layer: 6, lane: 0, waveSetId: 'elite', ...emptyRoom },
     { id: 's2-memory-boss', stage: 2, kind: 'memory-boss', layer: 7, lane: 0, ...emptyRoom },

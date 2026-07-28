@@ -2,12 +2,13 @@ import type { EncounterDefinition } from '../../run/runContract';
 import type { CurseBehaviorMemory } from '../../spell/runMemory';
 import { wordLimitBehaviorWeight } from './wordLimitCurse';
 
-export type RoomCurseKind = 'silence' | 'blackout' | 'word-limit';
+export type RoomCurseKind = 'silence' | 'blackout' | 'word-limit' | 'heatwave';
 export type RoomCurseCategory = 'movement' | 'element' | 'casting';
 
 export const ROOM_CURSE_CATEGORY_BY_KIND = {
   silence: 'movement',
   blackout: 'element',
+  heatwave: 'element',
   'word-limit': 'casting',
 } as const satisfies Record<RoomCurseKind, RoomCurseCategory>;
 
@@ -114,6 +115,7 @@ export function roomCurseWeights(
     return {
       silence: ROOM_CURSE_BEHAVIOR_CONFIG.neutralWeight,
       blackout: ROOM_CURSE_BEHAVIOR_CONFIG.neutralWeight,
+      heatwave: ROOM_CURSE_BEHAVIOR_CONFIG.neutralWeight,
       'word-limit': ROOM_CURSE_BEHAVIOR_CONFIG.neutralWeight,
     };
   }
@@ -124,6 +126,9 @@ export function roomCurseWeights(
     blackout: behavior.manualCastCount < ROOM_CURSE_BEHAVIOR_CONFIG.minimumManualCasts
       ? ROOM_CURSE_BEHAVIOR_CONFIG.neutralWeight
       : 1 - clamp01(behavior.lightFireCastCount / behavior.manualCastCount),
+    // 냉각 원소 사용 이력은 저주 선택 통합 단계에서 추가한다. 현재는 DEV 프로필 검증용
+    // 고정 중립값이며, 기존 일반방 랜덤 배정에는 폭염을 넣지 않는다.
+    heatwave: ROOM_CURSE_BEHAVIOR_CONFIG.neutralWeight,
     'word-limit': wordLimitBehaviorWeight(
       behavior.wordLimitTopQuartileCost,
       behavior.manualCastCount,

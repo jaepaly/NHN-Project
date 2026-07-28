@@ -214,6 +214,14 @@ export class PlayerCombatState {
     return { hpDamage, shieldDamage };
   }
 
+  /** 환경 저주 피해: 보호막·ward를 무시하지만 시퀀스 무적 중에는 차단된다. */
+  takeEnvironmentalDamage(amount: number): number {
+    if (!this.alive || this.invulnerabilityRemaining > 0) return 0;
+    const hpDamage = Math.min(this.hp, safePositiveAmount(amount));
+    this.hp -= hpDamage;
+    return hpDamage;
+  }
+
   heal(amount: number): number {
     if (!this.alive) return 0;
     const previous = this.hp;
