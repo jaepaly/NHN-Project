@@ -695,8 +695,8 @@ export class ProtoScene extends Phaser.Scene {
    */
   private floorHazards: FloorHazardZone[] = [];
   private floorHazardView: Phaser.GameObjects.Graphics | null = null;
-  /** 지형 틱 타이머 — 밟고 있으면 틱 간격마다 피해. 지형이 있을 때만 돈다. */
-  private floorHazardTimer: Phaser.Time.TimerEvent | null = null;
+  /** 스케일된 게임 시간 기준 지형 틱 쿨다운. */
+  private floorHazardTickCooldown = 0;
   /** 독지대 이탈 후 잔류 도트 남은 시간(초) — 존 안에서 리필, 밖에서 소진. */
   private poisonLingerRemaining = 0;
   /** 정화 후 지형 면역 남은 시간(초). ward와 별개 — 지형 틱만 무시한다(걸어 나갈 틈). */
@@ -1031,6 +1031,7 @@ export class ProtoScene extends Phaser.Scene {
       this.updatePersistentForms(d);
       this.updateEnemyProjectiles(d);
       this.updateHazards(d);
+      this.updateFloorHazards(d);
       this.updateBasicAttack();
       this.updateEngravedSpells(d);
       this.updateMirrorCast(d);
@@ -2246,9 +2247,9 @@ export class ProtoScene extends Phaser.Scene {
     if (zones.length === 0) return;
     this.floorHazards = zones.map((zone) => ({ ...zone }));
 
-    // 바닥 데칼 — 장벽(depth 4)·개체보다 아래(depth 1)에 깔아 "밟는 것"으로 읽힌다.
+    // 바닥 데칼 — 위험 예고(-1)와 개체(0)보다 아래에 깔아 "밟는 것"으로 읽힌다.
     // 용암=주황, 독지대=초록. 3겹(외곽 글로우·본체·테두리)으로 위험지대를 뚜렷이.
-    const view = this.add.graphics().setDepth(1);
+    const view = this.add.graphics().setDepth(-1.5);
     for (const zone of this.floorHazards) {
       const [glow, body, edge] = zone.kind === 'lava'
         ? [0x5a1e00, 0xff6a1a, 0xffb066]
@@ -2258,25 +2259,26 @@ export class ProtoScene extends Phaser.Scene {
       view.lineStyle(2, edge, 0.7).strokeCircle(zone.x, zone.y, zone.radius);
     }
     this.floorHazardView = view;
-
-    // 틱 타이머 — 틱 간격마다 밟고 있으면 피해. 가만히 있어도 아프다(밀어내는 장벽과 다름).
-    // 방 전환·일시정지 시 time.paused가 이 타이머도 멈춘다(기존 장판 틱과 동일 문법).
-    this.floorHazardTimer = this.time.addEvent({
-      delay: FLOOR_HAZARD_CONFIG.tickIntervalSeconds * 1000,
-      loop: true,
-      callback: () => this.tickFloorHazards(),
-    });
+    this.floorHazardTickCooldown = FLOOR_HAZARD_CONFIG.tickIntervalSeconds;
   }
 
   private clearFloorHazards(): void {
-    this.floorHazardTimer?.remove();
-    this.floorHazardTimer = null;
+    this.floorHazardTickCooldown = 0;
     this.poisonLingerRemaining = 0;
     this.floorHazardImmunityRemaining = 0;
     this.floorCleansesUsed = 0;
     this.floorHazardView?.destroy();
     this.floorHazardView = null;
     this.floorHazards = [];
+  }
+
+  /** 기존 장판과 같은 스케일된 게임 시간으로 지형 틱을 진행한다. */
+  private updateFloorHazards(deltaSeconds: number): void {
+    if (this.floorHazards.length === 0) return;
+    this.floorHazardTickCooldown = Math.max(0, this.floorHazardTickCooldown - deltaSeconds);
+    if (this.floorHazardTickCooldown > 0) return;
+    this.tickFloorHazards();
+    this.floorHazardTickCooldown = FLOOR_HAZARD_CONFIG.tickIntervalSeconds;
   }
 
   /**

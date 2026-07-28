@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   FLOOR_HAZARD_CONFIG,
   canCleanseFloorHazard,
@@ -11,17 +12,15 @@ import {
 
 // ── 틱 피해 = 초당 피해 × 틱 간격 ─────────────────────────
 {
-  const dt = FLOOR_HAZARD_CONFIG.tickIntervalSeconds;
-  assert.equal(
-    floorHazardTickDamage('lava'),
-    Math.round(FLOOR_HAZARD_CONFIG.lava.damagePerSecond * dt),
-    '용암 틱 피해 = 초당×간격',
-  );
-  assert.equal(
-    floorHazardTickDamage('poison'),
-    Math.round(FLOOR_HAZARD_CONFIG.poison.damagePerSecond * dt),
-    '독지대 틱 피해 = 초당×간격',
-  );
+  for (const kind of ['lava', 'poison'] as const) {
+    const tickDamage = floorHazardTickDamage(kind);
+    assert.equal(
+      tickDamage / FLOOR_HAZARD_CONFIG.tickIntervalSeconds,
+      FLOOR_HAZARD_CONFIG[kind].damagePerSecond,
+      `${kind}: 틱 변환 뒤에도 실효 DPS 보존`,
+    );
+    assert.ok(tickDamage >= 1, `${kind}: 틱 피해가 0이 되어 무해한 장판이 되면 안 됨`);
+  }
 }
 
 // ── 설계 불변식: 용암이 독지대보다 아프고, 독지대는 잔류한다 ──
@@ -81,6 +80,29 @@ import {
     '초과 사용도 계속 차단(음수 여유 없음)',
   );
   assert.ok(FLOOR_HAZARD_CONFIG.immunitySeconds > 0, '정화 후 면역 시간 있음');
+}
+
+// ── 씬 배선 (과거 배선 유실 방지) ─────────────────────────
+{
+  const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+  for (const [needle, why] of [
+    ['this.updateFloorHazards(d)', '스케일된 게임 시간 루프에서 바닥지형을 갱신해야 함'],
+    ['isInFloorHazard(this.player.x, this.player.y, zone)', '플레이어 위치와 지형 존을 판정해야 함'],
+    ['this.clearFloorHazards()', '방 전환 시 바닥지형을 비워야 함'],
+    ['this.floorHazardTickCooldown = Math.max(', '틱 쿨다운을 게임 시간으로 감산해야 함'],
+  ] as const) {
+    assert.ok(scene.includes(needle), `${why} (누락: ${needle})`);
+  }
+
+  const tickBody = scene.slice(
+    scene.indexOf('private tickFloorHazards'),
+    scene.indexOf('private tryFloorHazardCleanse'),
+  );
+  assert.ok(tickBody.length > 200, '전제: tickFloorHazards 본문을 찾아야 함');
+  assert.ok(
+    tickBody.includes('this.isCombatActive()'),
+    '비전투·방 전환 중에는 바닥지형 피해를 적용하면 안 됨',
+  );
 }
 
 console.log('Floor hazard regression: 틱피해·설계불변식·원형존판정·카운터정화·정화차단 5군 통과');

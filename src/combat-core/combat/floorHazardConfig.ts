@@ -64,7 +64,8 @@ export function canCleanseFloorHazard(usedThisRoom: number): boolean {
 
 /** 한 틱에 들어가는 피해 = 초당 피해 × 틱 간격. (용암 > 독지대) */
 export function floorHazardTickDamage(kind: FloorHazardKind): number {
-  return Math.round(
+  return Math.max(
+    1,
     FLOOR_HAZARD_CONFIG[kind].damagePerSecond * FLOOR_HAZARD_CONFIG.tickIntervalSeconds,
   );
 }
