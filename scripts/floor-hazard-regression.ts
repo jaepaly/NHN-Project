@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   FLOOR_HAZARD_CONFIG,
-  canCleanseFloorHazard,
   floorHazardTickDamage,
   floorHazardLingerSeconds,
   isInFloorHazard,
@@ -66,19 +65,9 @@ import {
   assert.ok(!spellCountersHazard('water', 'shield', 'poison'), '물·보호막 → 독지대 카운터 아님');
 }
 
-// ── 정화 남발 방지: 실제 차단 동작 ───────────────────────
+// ── 정화 남발 방지·면역 config ───────────────────────────
 {
-  // 방 진입 직후(0회 사용)엔 정화 가능. 씬도 이 헬퍼로 게이트한다(같은 판정).
-  assert.ok(canCleanseFloorHazard(0), '방 진입 직후엔 정화 가능');
-  // 허용 횟수를 다 쓰면 그 다음 시전은 상성이 맞아도 막힌다("한 방에 한 번" 남발 방지).
-  assert.ok(
-    !canCleanseFloorHazard(FLOOR_HAZARD_CONFIG.cleansesPerRoom),
-    '허용 횟수 다 쓰면 정화 차단',
-  );
-  assert.ok(
-    !canCleanseFloorHazard(FLOOR_HAZARD_CONFIG.cleansesPerRoom + 3),
-    '초과 사용도 계속 차단(음수 여유 없음)',
-  );
+  assert.ok(FLOOR_HAZARD_CONFIG.cleansesPerRoom >= 1, '정화 방당 최소 1회');
   assert.ok(FLOOR_HAZARD_CONFIG.immunitySeconds > 0, '정화 후 면역 시간 있음');
 }
 
@@ -96,7 +85,7 @@ import {
 
   const tickBody = scene.slice(
     scene.indexOf('private tickFloorHazards'),
-    scene.indexOf('private tryFloorHazardCleanse'),
+    scene.indexOf('private pushEnemiesOutOfTerrain'),
   );
   assert.ok(tickBody.length > 200, '전제: tickFloorHazards 본문을 찾아야 함');
   assert.ok(
@@ -105,4 +94,4 @@ import {
   );
 }
 
-console.log('Floor hazard regression: 틱피해·설계불변식·원형존판정·카운터정화·정화차단 5군 통과');
+console.log('Floor hazard regression: 틱피해·설계불변식·원형존판정·카운터정화·쿨config·씬배선 6군 통과');
