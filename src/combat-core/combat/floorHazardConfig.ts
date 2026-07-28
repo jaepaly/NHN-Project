@@ -46,11 +46,6 @@ export const FLOOR_HAZARD_CONFIG = {
     lingerSeconds: 2,
     counterElements: ['light'] as readonly SpellElement[],
     counterEffects: ['heal'] as readonly SpellEffect[],
-    // 밟는 동안 거는 디버프 (placeholder) — 약화(주는피해 배율)·둔화(이동속도 배율).
-    // 용암엔 없다(화상은 DOT). 틱마다 리프레시되어 이탈 후 debuffSeconds 뒤 사라진다.
-    sapMultiplier: 0.75,
-    mireMultiplier: 0.6,
-    debuffSeconds: 1.5,
   },
 } as const;
 

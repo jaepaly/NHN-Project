@@ -38,14 +38,10 @@ export class PlayerCombatState {
     return this.buffs.get(kind)?.multiplier ?? neutral;
   }
 
-  /** 이동속도 배율 (haste 버프 × mire 둔화 디버프). 1=평소 */
-  get moveSpeedMultiplier(): number {
-    return this.buffMultiplier('haste') * this.buffMultiplier('mire');
-  }
-  /** 주는 피해 배율 (empower 버프 × sap 약화 디버프). 1=평소 */
-  get damageOutMultiplier(): number {
-    return this.buffMultiplier('empower') * this.buffMultiplier('sap');
-  }
+  /** 이동속도 배율 (haste 버프). 1=평소 */
+  get moveSpeedMultiplier(): number { return this.buffMultiplier('haste'); }
+  /** 주는 피해 배율 (empower 버프). 1=평소 */
+  get damageOutMultiplier(): number { return this.buffMultiplier('empower'); }
   /** 받는 피해 배율 (ward 버프). 1=평소, 0=무적 */
   get damageInMultiplier(): number {
     return this.invulnerabilityRemaining > 0 ? 0 : this.buffMultiplier('ward');
@@ -61,10 +57,8 @@ export class PlayerCombatState {
 
   /** 자기 강화 적용 — 같은 종류는 더 강한 효과와 더 긴 시간으로 갱신한다. */
   applyTimedBuff(kind: SelfBuffKind, multiplier: number, seconds: number): void {
-    // ward·sap·mire는 ≤1 배율 → 낮을수록 강함(MIN). haste·empower는 높을수록(MAX).
-    const isReduction = kind === 'ward' || kind === 'sap' || kind === 'mire';
-    const stronger = isReduction
-      ? Math.min(this.buffMultiplier(kind), multiplier)
+    const stronger = kind === 'ward'
+      ? Math.min(this.buffMultiplier(kind), multiplier) // ward는 낮을수록 강함
       : Math.max(this.buffMultiplier(kind), multiplier);
     const existing = this.buffs.get(kind);
     this.buffs.set(kind, {
