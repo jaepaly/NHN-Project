@@ -148,6 +148,14 @@ import {
   silenceManaDrainPerSecond,
 } from '../combat-core/run/roomCurse';
 import {
+  advanceHeatwaveTimers,
+  HEATWAVE_CURSE_CONFIG,
+  heatwaveCoolingHeal,
+  heatwaveDamagePerSecond,
+  isHeatwaveDamaging,
+  isHeatwaveCoolingElement,
+} from '../combat-core/run/heatwaveCurse';
+import {
   WORD_LIMIT_CURSE_CONFIG,
   wordLimitCost,
 } from '../combat-core/run/wordLimitCurse';
@@ -222,6 +230,10 @@ import {
 } from '../combat-core/combat/floorHazardState';
 import { PortalField } from '../render/portalField';
 import { mockMinimapModel } from '../run/mapGraphMock';
+import { RunMapGraph, toMinimapModel } from '../run/mapGraph';
+import { MAP_GRAPH_PRESET_01 } from '../run/mapGraphPreset';
+import { layoutRoomArrival, layoutRoomExits } from '../run/roomPortalLayout';
+import type { RoomArrivalPlacement, RoomBounds } from '../run/roomPortalContract';
 import {
   DEMO_SAMPLE_INCANTATIONS,
   DEMO_START_ROOM,
@@ -271,7 +283,14 @@ import { sequenceEngraveCandidate } from '../spell/sequenceEngraveCandidate';
 import { runSpellMatrixAudit, summarizeMatrix } from '../dev/spellMatrixAudit';
 import { SilenceCurseField } from '../render/silenceCurseField';
 import { BlackoutCurseField } from '../render/blackoutCurseField';
+import { HeatwaveCurseField } from '../render/heatwaveCurseField';
 import { showRoomCurseBanner } from '../render/roomCurseBanner';
+import {
+  debugTrapProfileFromEnv,
+  trapHazardCirclePlacements,
+  trapProfileFromLegacyCurse,
+} from '../run/trapRoomProfile';
+import type { TrapRoomProfile, TrapSafeCorridor } from '../run/mapGraphContract';
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;
@@ -461,6 +480,7 @@ export class ProtoScene extends Phaser.Scene {
   private playerRingOuter!: Phaser.GameObjects.Graphics;
   private playerRingInner!: Phaser.GameObjects.Graphics;
   private playerHalo!: Phaser.GameObjects.Arc;
+  private heatDamageAura!: Phaser.GameObjects.Arc;
   /** 스프라이트 자체에 건 셰이더 발광 — 세기를 트윈해 이미지가 숨 쉬게 한다. */
   private playerGlowFx: Phaser.FX.Glow | null = null;
   private playerGlowPulse: Phaser.Tweens.Tween | null = null;
@@ -613,12 +633,20 @@ export class ProtoScene extends Phaser.Scene {
   /** 격상 Tier 3부터 스테이지별 일부 방에 배정되는 결정적 저주 계획. */
   private roomCursePlan: RoomCursePlan = {
     selectedKinds: {},
-    curseWeights: { silence: 0.5, blackout: 0.5, 'word-limit': 0.5 },
+    curseWeights: { silence: 0.5, blackout: 0.5, heatwave: 0.5, 'word-limit': 0.5 },
     assignments: [],
   };
   private activeRoomCurse: RoomCurseAssignment | null = null;
+  /** MapGraph 연결 전 함정방 규칙을 검증하기 위한 DEV 전용 첫 방 강제 프로필입니다. */
+  private readonly debugTrapProfile = debugTrapProfileFromEnv();
+  private activeTrapProfile: TrapRoomProfile | null = null;
   private silenceCurseField: SilenceCurseField | null = null;
   private blackoutCurseField: BlackoutCurseField | null = null;
+  private heatwaveCurseField: HeatwaveCurseField | null = null;
+  private heatwaveGraceRemaining = 0;
+  private heatwaveImmunityRemaining = 0;
+  private heatwaveDamageNotice = 0;
+  private heatwaveDamageNoticeElapsed = 0;
   private activeCurseBanner: Phaser.GameObjects.Container | null = null;
   /** 약화 안내를 이미 띄운 원소 — 방마다 비워 같은 경고가 시전마다 반복되지 않게 한다 */
   private readonly escalationNoticed = new Set<SpellForm>();
@@ -717,6 +745,19 @@ export class ProtoScene extends Phaser.Scene {
   /** #214 선행 개발 프리뷰 전용 (DEV 콘솔 훅이 생성) — 본 게임 경로 미배선 */
   private devMinimap: MinimapHud | null = null;
   private devPortalField: PortalField | null = null;
+  /**
+   * 런 맵 그래프 (#214 본배선). 지금은 고정 프리셋(MAP_GRAPH_PRESET_01)을 쓰고,
+   * #240 파티션 생성기가 승인되면 **이 공급부만** 교체한다 — 계약은 그대로다.
+   *
+   * ⚠️ RunController와 **병행 트랙**이다. 방 개수·보상은 여전히 RunController가 세고,
+   * 그래프는 "어느 갈래로 갔는가"를 센다. 둘을 합치는 것은 R1 몫이라(#240) 여기서는
+   * 그래프가 정한 **함정 프로필만** 방에 얹는다. 두 축이 어긋나도 런은 진행된다.
+   */
+  private mapGraph: RunMapGraph = new RunMapGraph(MAP_GRAPH_PRESET_01);
+  private runMinimap: MinimapHud | null = null;
+  private portalField: PortalField | null = null;
+  /** 다음 방에서 적용할 도착 배치 — 포탈로 넘어왔을 때만 설정된다 (첫 방은 null) */
+  private pendingArrival: RoomArrivalPlacement | null = null;
   /**
    * 정적 지형 장벽 (#214 지형 Tier 2). 배치 데이터는 R1 소유이고 여기는 기전만 —
    * 방 진입 시 채우고 방 전환 시 비운다. 비어 있으면 전 경로가 무비용으로 통과한다.
@@ -1085,9 +1126,17 @@ export class ProtoScene extends Phaser.Scene {
       this.updateManaCrystals(d);
       this.updateManaPotion(d);
       this.updateWaveFlow(d);
+    } else if (this.portalField) {
+      // 포탈 선택 중에는 **이동만** 허용한다 — 전투는 멈춘 채로 갈림길을 걸어간다.
+      // 이게 없으면 방을 정리한 순간 조작이 잠겨 포탈에 닿을 수 없다(런이 갇힌다).
+      this.updatePlayerMovement(delta / 1000);
     }
     // 성장 표식은 전투 정지 중(보상 선택·전환)에도 플레이어를 따라간다
     this.growthMarks.follow(this.player.x, this.player.y);
+    // 포탈은 **전투가 끝난 뒤**에 서므로 isCombatActive 게이트 밖에서 돌려야 한다 —
+    // 안에 두면 방을 정리한 순간 포탈이 멈춰 접촉 판정이 영영 안 걸린다.
+    this.portalField?.update(this.player.x, this.player.y);
+    this.runMinimap?.pulse();
     this.updateStatusText();
     this.updateSequenceProgress();
   }
@@ -1108,6 +1157,9 @@ export class ProtoScene extends Phaser.Scene {
     this.runFlowBound = true;
     this.combatRunController.on('room-cleared', (options, state) => {
       this.audio.playSfx('room-clear');
+      // 포탈/보상 선택 구간은 안전 상태여야 한다. 다음 방 시작까지 함정 판정과
+      // 저주 연출을 남겨 두면 출구 접근을 방해하거나 전투 종료 뒤에도 피해처럼 보인다.
+      this.clearRoomGimmicks();
       this.deferTransientCombatCleanup();
       this.stopCastingForRunPause();
       this.announceSystemMessage(`방 ${state.roomIndex} 클리어`, '#72f1b8');
@@ -1197,7 +1249,7 @@ export class ProtoScene extends Phaser.Scene {
             this.continueToNextLoop();
           } else {
             void showRunSummaryOverlay(this.buildRunSummary('victory'))
-              .then(() => this.scene.start('title'));
+              .then(() => { this.destroyRunMapUi(); this.scene.start('title'); });
           }
         });
       });
@@ -1362,6 +1414,9 @@ export class ProtoScene extends Phaser.Scene {
     // 매 루프 재각성하는 무한 파밍이 된다 (친화가 이미 임계 위이므로).
     this.lastResistNoticeAt = 0;
     this.runMovementDistance = 0;
+    // 새 루프 = 새 맵. 그래프는 cleared/current가 인스턴스에 쌓이므로 재사용하면
+    // 지난 루프의 방들이 계속 '클리어됨'으로 남는다 (#241 리뷰 지적).
+    this.resetMapGraph();
     this.combatRunController.continueRun();
     const loop = this.combatRunController.state.loopIndex;
     this.announceSystemMessage(
@@ -1394,6 +1449,7 @@ export class ProtoScene extends Phaser.Scene {
     this.clearSpiritViews();
     this.playerState.reset();
     this.runMovementDistance = 0;
+    this.resetMapGraph();
     this.combatRunController.reset(Date.now(), false);
   }
 
@@ -1418,6 +1474,7 @@ export class ProtoScene extends Phaser.Scene {
     this.engraveRewardRand = createRunRandom(Date.now());
     this.playerState.reset();
     this.runMovementDistance = 0;
+    this.resetMapGraph();
     this.prepareRunEscalation();
     this.combatRunController.reset();
     // 새 런에도 유산 선택 — 직전 런에서 기록된 주문이 곧바로 후보가 된다
@@ -1457,7 +1514,15 @@ export class ProtoScene extends Phaser.Scene {
     this.clearCombatRoom();
     this.applyRoomBackdrop(roomIndex);
     this.basicAttackCooldownRemaining = 0;
-    this.player.setPosition(this.worldBounds.centerX, this.worldBounds.centerY);
+    // 포탈로 넘어왔으면 왼쪽 중앙 도착(#245), 첫 방이면 종전대로 방 중앙.
+    // 도착 지점이 하나로 고정돼 있어야 함정·지형·적 스폰이 그 한 점만 비우면 된다(#246).
+    const arrival = this.pendingArrival;
+    this.pendingArrival = null;
+    if (arrival) {
+      this.player.setPosition(arrival.playerSpawn.x, arrival.playerSpawn.y);
+    } else {
+      this.player.setPosition(this.worldBounds.centerX, this.worldBounds.centerY);
+    }
     this.cameras.main.centerOn(this.player.x, this.player.y);
     this.activateRoomCurse(roomIndex);
     if (this.isBossEncounter()) {
@@ -1469,6 +1534,10 @@ export class ProtoScene extends Phaser.Scene {
     this.waveManager = new WaveManager(waveSet);
     this.audio.playBgm('combat');
     this.spawnWave(this.waveManager.start());
+    if (roomIndex === 1 && this.activeTrapProfile?.kind === 'hazard') {
+      this.spawnHazards(this.activeTrapProfile.safeCorridor);
+      this.announceSystemMessage('DEV: trap hazard', '#db73ff');
+    }
     this.announceSystemMessage(`방 ${roomIndex}`, '#8fa4ff');
     // 첫 방 진입 시, 아직 한 번도 영창해본 적 없는 플레이어에게 조작을 안내한다.
     if (roomIndex === 1) this.maybeShowOnboardingHint();
@@ -1575,17 +1644,45 @@ export class ProtoScene extends Phaser.Scene {
     this.clearEnemyControls();
     for (const enemy of this.enemies) enemy.destroy({ animate: false });
     this.enemies = [];
-    for (const decoration of this.hazardDecorations) decoration.destroy();
-    this.hazardDecorations = [];
+    this.clearRoomGimmicks();
     this.clearManaCrystals();
     this.clearManaPotion();
-    this.clearRoomCurse();
     this.clearTransientCombatObjects();
   }
 
+  /** 전투 종료 즉시 포탈 접근을 방해할 수 있는 모든 룸 기믹을 제거한다. */
+  private clearRoomGimmicks(): void {
+    this.clearHazardZones();
+    for (const decoration of this.hazardDecorations) decoration.destroy();
+    this.hazardDecorations = [];
+    this.clearRoomCurse();
+  }
+
   private activateRoomCurse(roomIndex: number): void {
+    if (roomIndex === 1 && this.debugTrapProfile) {
+      if (this.debugTrapProfile.kind === 'hazard') {
+        this.activeRoomCurse = null;
+        this.activeTrapProfile = this.debugTrapProfile;
+        return;
+      }
+      const kind = this.debugTrapProfile.kind;
+      this.activateRoomCurseAssignment({
+        roomIndex,
+        stage: this.combatRunController.state.stage,
+        kind,
+      }, this.debugTrapProfile);
+      return;
+    }
     const assignment = curseForRoom(this.roomCursePlan, roomIndex);
+    this.activateRoomCurseAssignment(assignment);
+  }
+
+  private activateRoomCurseAssignment(
+    assignment: RoomCurseAssignment | null,
+    profile = assignment ? trapProfileFromLegacyCurse(assignment.kind) : null,
+  ): void {
     this.activeRoomCurse = assignment;
+    this.activeTrapProfile = profile;
     if (!assignment) return;
 
     if (assignment.kind === 'silence') {
@@ -1594,6 +1691,7 @@ export class ProtoScene extends Phaser.Scene {
         this.worldBounds.centerX,
         this.worldBounds.centerY,
         this.worldBounds,
+        profile?.safeCorridor,
       );
     } else if (assignment.kind === 'blackout') {
       this.blackoutCurseField = new BlackoutCurseField(
@@ -1602,6 +1700,12 @@ export class ProtoScene extends Phaser.Scene {
         this.player.x,
         this.player.y,
       );
+    } else if (assignment.kind === 'heatwave') {
+      this.heatwaveCurseField = new HeatwaveCurseField(this);
+      this.heatwaveGraceRemaining = HEATWAVE_CURSE_CONFIG.entryGraceSeconds;
+      this.heatwaveImmunityRemaining = 0;
+      this.heatwaveDamageNotice = 0;
+      this.heatwaveDamageNoticeElapsed = 0;
     }
     this.scheduleRoomCurseBanner(assignment);
   }
@@ -1636,6 +1740,13 @@ export class ProtoScene extends Phaser.Scene {
           rule: `언령 예산 ${WORD_LIMIT_CURSE_CONFIG.budget} · 짧은 말로 마법을 완성하십시오`,
           color: 0xc084fc,
         });
+      } else if (assignment.kind === 'heatwave') {
+        this.activeCurseBanner = showRoomCurseBanner(this, {
+          title: '저주: 폭염',
+          subtitle: '타오르는 열기가 생명력을 앗아갑니다',
+          rule: '물·얼음·바람 영창으로 몸을 식히세요',
+          color: 0xffa04d,
+        });
       }
     });
   }
@@ -1644,6 +1755,36 @@ export class ProtoScene extends Phaser.Scene {
     const field = this.silenceCurseField;
     field?.update(realDeltaSeconds, this.player.x, this.player.y);
     this.blackoutCurseField?.update(combatDeltaSeconds, this.player.x, this.player.y);
+    const heatwave = this.heatwaveCurseField;
+    if (heatwave && this.activeRoomCurse?.kind === 'heatwave') {
+      const timerStep = advanceHeatwaveTimers({
+        graceRemaining: this.heatwaveGraceRemaining,
+        immunityRemaining: this.heatwaveImmunityRemaining,
+      }, combatDeltaSeconds);
+      this.heatwaveGraceRemaining = timerStep.graceRemaining;
+      this.heatwaveImmunityRemaining = timerStep.immunityRemaining;
+      heatwave.update(
+        combatDeltaSeconds,
+        this.player.x,
+        this.player.y,
+        this.heatwaveImmunityRemaining,
+      );
+      if (timerStep.damagingSeconds > 0) {
+        const hpDamage = this.playerState.takeEnvironmentalDamage(
+          heatwaveDamagePerSecond(this.playerState.maxHp) * timerStep.damagingSeconds,
+        );
+        this.heatwaveDamageNotice += hpDamage;
+        this.heatwaveDamageNoticeElapsed += combatDeltaSeconds;
+        if (this.heatwaveDamageNoticeElapsed >= HEATWAVE_CURSE_CONFIG.damageNoticeIntervalSeconds) {
+          if (this.heatwaveDamageNotice > 0) this.playHeatwaveDamageReact();
+          this.heatwaveDamageNotice = 0;
+          this.heatwaveDamageNoticeElapsed = 0;
+        }
+      } else {
+        this.heatwaveDamageNotice = 0;
+        this.heatwaveDamageNoticeElapsed = 0;
+      }
+    }
     if (
       field
       && this.activeRoomCurse?.kind === 'silence'
@@ -1656,6 +1797,59 @@ export class ProtoScene extends Phaser.Scene {
     }
   }
 
+  /** 누적된 폭염 피해를 플레이어 본체의 짧은 열손상 반응으로 전달한다. */
+  private playHeatwaveDamageReact(): void {
+    if (!this.player?.active) return;
+
+    // 환경 피해는 버프처럼 밖으로 퍼뜨리지 않고, 본체가 짧게 눌리고 달아오르는 반응으로만 보인다.
+    this.tweens.killTweensOf(this.heatDamageAura);
+    this.heatDamageAura.setScale(0.78).setAlpha(0);
+    this.tweens.add({
+      targets: this.heatDamageAura,
+      scale: { from: 0.78, to: 1.02 },
+      alpha: { from: 0, to: 0.58 },
+      duration: 95,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        if (!this.heatDamageAura?.active) return;
+        this.tweens.add({
+          targets: this.heatDamageAura,
+          alpha: { from: 0.58, to: 0 },
+          duration: 330,
+          ease: 'Sine.easeOut',
+        });
+      },
+    });
+    this.tweens.add({
+      targets: this.player,
+      scaleX: { from: 1.025, to: 1 },
+      scaleY: { from: 0.955, to: 1 },
+      duration: 220,
+      ease: 'Sine.easeOut',
+    });
+  }
+
+  private tryApplyHeatwaveCooling(elements: readonly (SpellElement | null | undefined)[]): boolean {
+    if (
+      this.activeRoomCurse?.kind !== 'heatwave'
+      || !this.heatwaveCurseField
+    ) return false;
+    const coolingElement = elements.find(isHeatwaveCoolingElement);
+    if (!coolingElement) return false;
+
+    const healed = this.playerState.heal(heatwaveCoolingHeal(this.playerState.maxHp));
+    this.heatwaveImmunityRemaining = HEATWAVE_CURSE_CONFIG.coolingImmunitySeconds;
+    this.heatwaveCurseField.showCooling(this.player.x, this.player.y, coolingElement);
+    const healLabel = healed > 0 ? `HP +${Math.round(healed)} · ` : '';
+    this.announceSystemMessage(
+      `냉각 ${healLabel}${HEATWAVE_CURSE_CONFIG.coolingImmunitySeconds}초`,
+      '#8be8ff',
+      1400,
+    );
+    return true;
+  }
+
+  /** 환경 피해는 중앙 알림 대신 플레이어 위의 작은 열기 피해 수치로 보여 준다. */
   private clearRoomCurse(): void {
     if (this.activeCurseBanner?.active) this.activeCurseBanner.destroy(true);
     this.activeCurseBanner = null;
@@ -1663,8 +1857,15 @@ export class ProtoScene extends Phaser.Scene {
     this.silenceCurseField = null;
     this.blackoutCurseField?.destroy();
     this.blackoutCurseField = null;
+    this.heatwaveCurseField?.destroy();
+    this.heatwaveCurseField = null;
+    this.heatwaveGraceRemaining = 0;
+    this.heatwaveImmunityRemaining = 0;
+    this.heatwaveDamageNotice = 0;
+    this.heatwaveDamageNoticeElapsed = 0;
     this.clearWordLimitIncantStyle();
     this.activeRoomCurse = null;
+    this.activeTrapProfile = null;
   }
 
   private clearTransientCombatObjects(): void {
@@ -1956,10 +2157,13 @@ export class ProtoScene extends Phaser.Scene {
     }
     this.playerHalo = this.add.circle(0, 0, 22, 0x4c66ff, 0.25)
       .setBlendMode(Phaser.BlendModes.ADD);
+    this.heatDamageAura = this.add.circle(0, 0, 21, 0xe65a35, 0.2)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0);
     this.player = this.add.container(
       x,
       y,
-      [this.playerRingOuter, this.playerRingInner, this.playerHalo, ...bodyLayers],
+      [this.playerRingOuter, this.playerRingInner, this.playerHalo, ...bodyLayers, this.heatDamageAura],
     );
     this.tweens.add({
       targets: this.playerHalo, scale: { from: 1, to: 1.25 },
@@ -2300,6 +2504,110 @@ export class ProtoScene extends Phaser.Scene {
     this.terrainBarriers = [];
   }
 
+  // ── 맵 그래프 · 포탈 · 미니맵 (#214 본배선) ──────────────────────────
+
+  /** 런 시작·이어가기마다 그래프를 새로 만든다 — cleared/current가 인스턴스에 쌓이므로. */
+  private resetMapGraph(): void {
+    // **먼저 걷어낸다** — Phaser는 씬 인스턴스를 재사용하므로(타이틀→새 런) 필드는
+    // 남아 있는데 가리키는 GameObject는 이미 파괴돼 있다. 그대로 update하면 죽는다.
+    this.destroyRunMapUi();
+    this.mapGraph = new RunMapGraph(MAP_GRAPH_PRESET_01);
+    this.pendingArrival = null;
+    this.refreshMinimap();
+  }
+
+  private refreshMinimap(): void {
+    if (!this.runMinimap) {
+      // 상단 우측 — ROOM 칩(DOM) 아래. 전투 중에도 떠 있어야 "어디까지 왔나"가 읽힌다.
+      this.runMinimap = new MinimapHud(this, this.scale.width - 306, 150);
+    }
+    this.runMinimap.update(toMinimapModel(this.mapGraph.snapshot()));
+  }
+
+  private destroyRunMapUi(): void {
+    this.runMinimap?.destroy();
+    this.runMinimap = null;
+    this.portalField?.destroy();
+    this.portalField = null;
+  }
+
+  /**
+   * 보상 선택 후 다음 방을 고른다 (runUiBinding.beforeAdvance). **이게 resolve될 때까지
+   * 방 전환이 멈춘다** — RunController는 chooseReward에서 전환 타이머를 걸기 때문이다.
+   *
+   * 갈래가 하나뿐이면 포탈을 세우지 않고 조용히 넘어간다 — 선택지가 없는데 선택을
+   * 시키면 걸어가는 시간만 늘어난다. 둘 이상일 때만 세운다.
+   */
+  choosePortalDestination(): Promise<void> {
+    const choices = this.mapGraph.choices();
+    if (choices.length === 0) return Promise.resolve();
+    if (choices.length === 1) {
+      this.enterMapNode(choices[0].id);
+      return Promise.resolve();
+    }
+    // 출구 슬롯 y는 R1 계약이 정한다 — 목적지 lane 순서대로 위에서 아래로 (#245).
+    // 배치가 실패하면(방 경계 미확정 등) 첫 갈래로 조용히 넘어간다 — 그래프가 여기서
+    // 멈추면 RunController만 방을 세어 두 축이 영구히 어긋난다.
+    let exits;
+    try {
+      exits = layoutRoomExits(
+        this.roomBoundsForPortals(),
+        choices.map((node) => ({ nodeId: node.id, lane: node.lane })),
+      );
+    } catch (error) {
+      devInfo('[Map] portal layout failed — 첫 갈래로 진행', error);
+      this.enterMapNode(choices[0].id);
+      return Promise.resolve();
+    }
+    const kindById = new Map(choices.map((node) => [node.id, node.kind]));
+    return new Promise<void>((resolve) => {
+      this.portalField?.destroy();
+      this.portalField = new PortalField(
+        this,
+        exits[0].x,
+        this.worldBounds.centerY,
+        exits.map((exit) => ({
+          nodeId: exit.targetNodeId,
+          kind: kindById.get(exit.targetNodeId) ?? 'combat',
+          // 계약값을 그대로 넘긴다 — 자체 가로 배치를 쓰면 포탈이 방 밖으로 밀려난다
+          x: exit.x,
+          y: exit.y,
+        })),
+        (choice) => {
+          this.enterMapNode(choice.nodeId);
+          this.portalField?.destroy();
+          this.portalField = null;
+          resolve();
+        },
+      );
+      this.announceSystemMessage('갈림길 — 포탈로 들어가 다음 방을 고르세요', '#8fa4ff', 3000);
+    });
+  }
+
+  /** 포탈 배치 기준 방 경계 — 월드 경계를 그대로 쓴다 (R1 계약의 RoomBounds). */
+  private roomBoundsForPortals(): RoomBounds {
+    return {
+      x: this.worldBounds.x,
+      y: this.worldBounds.y,
+      width: this.worldBounds.width,
+      height: this.worldBounds.height,
+    };
+  }
+
+  private enterMapNode(nodeId: string): void {
+    if (!this.mapGraph.canEnter(nodeId)) return;
+    const from = this.mapGraph.current().id;
+    const node = this.mapGraph.enter(nodeId);
+    this.refreshMinimap();
+    // 도착은 **항상 왼쪽 중앙**이다 (#245·#246) — 방마다 진입 계약이 하나여야
+    // 함정·지형·적 스폰이 여러 진입 좌표를 고려하지 않아도 된다.
+    this.pendingArrival = layoutRoomArrival(
+      this.roomBoundsForPortals(),
+      { fromNodeId: from, toNodeId: node.id },
+    );
+    devInfo('[Map] entered', { from, to: node.id, kind: node.kind });
+  }
+
   // ── 바닥형 지형 (#214 지형 Tier 1 R2) ──────────────────────────────
 
   /** 방 바닥지형 배치 — R1 프리셋 데이터를 그대로 깐다. 빈 배열이면 지형 없는 방. */
@@ -2460,39 +2768,102 @@ export class ProtoScene extends Phaser.Scene {
       if (warning.active) warning.destroy();
     }
     this.bossHazardWarnings = [];
+    this.clearHazardZones();
+    this.clearEnemyProjectiles();
+  }
+
+  private clearHazardZones(): void {
     for (const hazard of this.hazardZones) {
       if (hazard.view.active) hazard.view.destroy();
     }
     this.hazardZones = [];
-    this.clearEnemyProjectiles();
   }
 
-  private spawnHazards(): void {
-    const radius = 72;
-    const offsets = [
-      [-180, -110],
-      [170, 90],
-      [20, 145],
-    ] as const;
-    for (const [offsetX, offsetY] of offsets) {
+  private spawnHazards(safeCorridor?: TrapSafeCorridor): void {
+    const placements = trapHazardCirclePlacements(
+      this.worldBounds.centerX,
+      this.worldBounds.centerY,
+      safeCorridor,
+      PLAYER_HIT_RADIUS,
+    );
+    for (const placement of placements) {
       const view = this.add.circle(
-        Phaser.Math.Clamp(this.worldBounds.centerX + offsetX, this.worldBounds.left + radius, this.worldBounds.right - radius),
-        Phaser.Math.Clamp(this.worldBounds.centerY + offsetY, this.worldBounds.top + radius, this.worldBounds.bottom - radius),
-        radius,
-        0xb52f57,
-        0.42,
+        Phaser.Math.Clamp(placement.x, this.worldBounds.left + placement.radius, this.worldBounds.right - placement.radius),
+        Phaser.Math.Clamp(placement.y, this.worldBounds.top + placement.radius, this.worldBounds.bottom - placement.radius),
+        placement.radius,
+        0x8f183e,
+        0.14,
       ).setStrokeStyle(4, 0xff5370, 0.92);
       this.hazardZones.push({
         view,
-        contains: (x, y) => Phaser.Math.Distance.Between(x, y, view.x, view.y) <= radius,
+        contains: (x, y) => Phaser.Math.Distance.Between(x, y, view.x, view.y) <= placement.radius,
         damageCooldown: 0,
       });
     }
 
-    this.spawnBoundaryHazards(900, 650);
+    this.spawnBoundaryHazards(900, 650, safeCorridor);
   }
 
-  private spawnBoundaryHazards(safeWidth: number, safeHeight: number): void {
+  private spawnBoundaryHazards(
+    safeWidth: number,
+    safeHeight: number,
+    safeCorridor?: TrapSafeCorridor,
+  ): void {
+    if (safeCorridor) {
+      const halfWidth = safeCorridor.halfWidth;
+      const centerX = this.worldBounds.centerX;
+      const centerY = this.worldBounds.centerY;
+      const safeLeft = centerX - safeWidth / 2;
+      const safeRight = centerX + safeWidth / 2;
+      const safeTop = centerY - safeHeight / 2;
+      const safeBottom = centerY + safeHeight / 2;
+      const boundaryRects = [
+        // 중앙 안전사각형은 기존 위험지대 방과 동일하게 유지한다. 십자 통로는
+        // 이 사각형 바깥에서 입구와 중앙을 연결하는 예외 경로만 추가한다.
+        new Phaser.Geom.Rectangle(this.worldBounds.left, this.worldBounds.top, centerX - halfWidth - this.worldBounds.left, safeTop - this.worldBounds.top),
+        new Phaser.Geom.Rectangle(centerX + halfWidth, this.worldBounds.top, this.worldBounds.right - (centerX + halfWidth), safeTop - this.worldBounds.top),
+        new Phaser.Geom.Rectangle(this.worldBounds.left, safeTop, safeLeft - this.worldBounds.left, centerY - halfWidth - safeTop),
+        new Phaser.Geom.Rectangle(safeRight, safeTop, this.worldBounds.right - safeRight, centerY - halfWidth - safeTop),
+        new Phaser.Geom.Rectangle(this.worldBounds.left, centerY + halfWidth, safeLeft - this.worldBounds.left, safeBottom - (centerY + halfWidth)),
+        new Phaser.Geom.Rectangle(safeRight, centerY + halfWidth, this.worldBounds.right - safeRight, safeBottom - (centerY + halfWidth)),
+        new Phaser.Geom.Rectangle(this.worldBounds.left, safeBottom, centerX - halfWidth - this.worldBounds.left, this.worldBounds.bottom - safeBottom),
+        new Phaser.Geom.Rectangle(centerX + halfWidth, safeBottom, this.worldBounds.right - (centerX + halfWidth), this.worldBounds.bottom - safeBottom),
+      ];
+      for (const bounds of boundaryRects) {
+        const view = this.add.rectangle(bounds.centerX, bounds.centerY, bounds.width, bounds.height, 0x8f183e, 0.14);
+        this.hazardZones.push({
+          view,
+          contains: (x, y) => bounds.contains(x, y),
+          damageCooldown: 0,
+        });
+      }
+      // 중앙 사각형과 십자 통로는 같은 안전영역이다. 두 영역의 연결부에는
+      // 경계선을 그리지 않고, 합쳐진 안전영역의 외곽선만 표시한다.
+      const boundaryLine = this.add.graphics().lineStyle(3, 0xff5370, 0.72);
+      const outlineSegments = [
+        [centerX - halfWidth, this.worldBounds.top, centerX - halfWidth, safeTop],
+        [centerX + halfWidth, this.worldBounds.top, centerX + halfWidth, safeTop],
+        [safeLeft, safeTop, centerX - halfWidth, safeTop],
+        [centerX + halfWidth, safeTop, safeRight, safeTop],
+        [safeLeft, safeTop, safeLeft, centerY - halfWidth],
+        [safeRight, safeTop, safeRight, centerY - halfWidth],
+        [this.worldBounds.left, centerY - halfWidth, safeLeft, centerY - halfWidth],
+        [this.worldBounds.left, centerY + halfWidth, safeLeft, centerY + halfWidth],
+        [safeRight, centerY - halfWidth, this.worldBounds.right, centerY - halfWidth],
+        [safeRight, centerY + halfWidth, this.worldBounds.right, centerY + halfWidth],
+        [safeLeft, centerY + halfWidth, safeLeft, safeBottom],
+        [safeRight, centerY + halfWidth, safeRight, safeBottom],
+        [safeLeft, safeBottom, centerX - halfWidth, safeBottom],
+        [centerX + halfWidth, safeBottom, safeRight, safeBottom],
+        [centerX - halfWidth, safeBottom, centerX - halfWidth, this.worldBounds.bottom],
+        [centerX + halfWidth, safeBottom, centerX + halfWidth, this.worldBounds.bottom],
+      ];
+      for (const [x1, y1, x2, y2] of outlineSegments) {
+        boundaryLine.lineBetween(x1, y1, x2, y2);
+      }
+      this.hazardDecorations.push(boundaryLine);
+      return;
+    }
     const safeLeft = this.worldBounds.centerX - safeWidth / 2;
     const safeRight = this.worldBounds.centerX + safeWidth / 2;
     const safeTop = this.worldBounds.centerY - safeHeight / 2;
@@ -4076,6 +4447,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       ) {
         this.blackoutCurseField.illuminate();
       }
+      this.tryApplyHeatwaveCooling([
+        effectiveSpec.element_primary,
+        effectiveSpec.element_secondary,
+      ]);
       this.audio.playCast(effectiveSpec.element_primary);
       this.applySpellPalette(effectiveSpec);
       this.announceSpell(effectiveSpec);
@@ -4163,6 +4538,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.beginSequenceProgress(plan, timeline);
     this.playerState.applyInvulnerability(timeline.totalMs / 1000);
     let blackoutIlluminated = false;
+    let heatwaveCooled = false;
 
     for (const [sequenceIndex, sequence] of plan.sequences.entries()) {
       if (!this.playerState.alive || !this.isCombatActive()) break;
@@ -4176,6 +4552,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ) {
           this.blackoutCurseField.illuminate();
           blackoutIlluminated = true;
+        }
+        if (
+          !heatwaveCooled
+          && behaviorUsesAnyElement(behavior, ['water', 'ice', 'wind'])
+        ) {
+          heatwaveCooled = this.tryApplyHeatwaveCooling(behaviorElements(behavior));
         }
         if (behavior.type === 'move') {
           this.executeSequenceMove(
@@ -5055,7 +5437,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
             ? '#ffb86b'
             : '#72f1b8';
     this.statusText.setText(`● ${actionState}`).setColor(statusColor);
-    this.hpText.setText(`HP    ${hp.toString().padStart(3)} / ${this.playerState.maxHp}`);
+    const heatwaveDamaging = this.activeRoomCurse?.kind === 'heatwave'
+      && isHeatwaveDamaging({
+        graceRemaining: this.heatwaveGraceRemaining,
+        immunityRemaining: this.heatwaveImmunityRemaining,
+      });
+    this.hpText
+      .setText(`HP    ${hp.toString().padStart(3)} / ${this.playerState.maxHp}`)
+      .setColor(heatwaveDamaging ? '#ffad62' : '#ff91ad');
     this.manaText.setText(`MANA  ${mana.toString().padStart(3)} / ${this.playerState.maxMana}`);
     this.shieldText.setText(`SHIELD ${shield.toString().padStart(3)} / ${this.playerState.maxHp}`);
     this.drawBuildChips();
@@ -5347,7 +5736,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.stopCastingForRunPause();
     this.deferTransientCombatCleanup();
     void showRunSummaryOverlay(this.buildRunSummary('defeat'))
-      .then(() => this.scene.start('title'));
+      .then(() => { this.destroyRunMapUi(); this.scene.start('title'); });
   }
 
   /** 칩 i의 컨테이너 로컬 중심 (0·1=각인 윗줄, 2·3=정령 아랫줄) */
@@ -5522,6 +5911,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       0,
       1,
     );
+    const heatwaveDamaging = this.activeRoomCurse?.kind === 'heatwave'
+      && isHeatwaveDamaging({
+        graceRemaining: this.heatwaveGraceRemaining,
+        immunityRemaining: this.heatwaveImmunityRemaining,
+      });
+    const heatPulse = 0.36 + Math.sin(this.time.now / 420) * 0.12;
     const g = this.hudGraphics.clear();
 
     g.fillStyle(0x080b1c, 0.9);
@@ -5533,8 +5928,21 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     g.fillRoundedRect(HUD.barX, 73, HUD.barWidth, HUD.barHeight, 4);
     g.fillRoundedRect(HUD.barX, 107, HUD.barWidth, HUD.barHeight, 4);
     g.fillRoundedRect(HUD.barX, 141, HUD.barWidth, HUD.barHeight, 4);
-    g.fillStyle(0xff5c82, 1);
+    g.fillStyle(heatwaveDamaging ? 0xff734c : 0xff5c82, 1);
     g.fillRoundedRect(HUD.barX, 73, HUD.barWidth * hpRatio, HUD.barHeight, 4);
+    if (heatwaveDamaging && hpRatio > 0) {
+      const filledWidth = HUD.barWidth * hpRatio;
+      g.lineStyle(2, 0xffb15a, 0.52 + heatPulse * 0.38);
+      g.strokeRoundedRect(HUD.barX - 2, 71, HUD.barWidth + 4, HUD.barHeight + 4, 5);
+      // 막대 끝의 짧은 상승 입자: 전체 HUD가 아니라 열에 반응하는 HP라는 점만 알려 준다.
+      for (let index = 0; index < 3; index += 1) {
+        const progress = (this.time.now / 750 + index * 0.37) % 1;
+        const x = HUD.barX + Math.max(8, filledWidth - 7 - index * 7);
+        const y = 71 - progress * 11;
+        g.fillStyle(0xffc06d, (1 - progress) * 0.7);
+        g.fillCircle(x, y, 1.8 - progress * 0.55);
+      }
+    }
     g.fillStyle(0x5b8cff, 1);
     g.fillRoundedRect(HUD.barX, 107, HUD.barWidth * manaRatio, HUD.barHeight, 4);
     g.fillStyle(0x48c9ff, 1);

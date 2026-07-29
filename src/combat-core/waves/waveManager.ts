@@ -36,6 +36,11 @@ export const WAVE_SETS: Readonly<Record<string, readonly WaveDefinition[]>> = {
     { chaserCount: 3, shooterCount: 2, splitterCount: 0, hazard: true },
     { chaserCount: 2, shooterCount: 2, splitterCount: 2, hazard: true },
   ],
+  /** MapNode.kind='trap'이 hazard 필드를 별도로 생성할 때 사용할 적 구성입니다. */
+  'trap-hazard': [
+    { chaserCount: 3, shooterCount: 2, splitterCount: 0 },
+    { chaserCount: 2, shooterCount: 2, splitterCount: 2 },
+  ],
   elite: [
     { chaserCount: 2, shooterCount: 2, splitterCount: 1 },
   ],
