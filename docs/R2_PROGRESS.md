@@ -12,7 +12,7 @@
 - [x] 개인 스킬 `track-nhn-work` 생성·구조 검증 — 의미 있는 NHN 작업의 시작 체크리스트, 종료 AI 로그, GitHub 동기화를 완료 조건으로 고정.
 - [x] GitHub PR·댓글·커밋 근거로 누락된 7/26~7/29 R2 작업 식별.
 - [x] [AI_USAGE_LOG.md](AI_USAGE_LOG.md)에 캐시 프리워밍·기술문서·쿼터 인시던트·맵 R2 작업·바닥지형·로그 복구 기록 보강.
-- [ ] 문서 전용 PR 생성 후 총괄 리뷰 요청.
+- [x] 문서 전용 [#261](https://github.com/jaepaly/NHN-Project/pull/261) 생성·총괄 리뷰 요청.
 
 **② #214 완료**
 - [x] 제단방 — **HP 지불 → 상급 3택**과 `powerScale` 실적용 [#234](https://github.com/jaepaly/NHN-Project/pull/234) 머지.
