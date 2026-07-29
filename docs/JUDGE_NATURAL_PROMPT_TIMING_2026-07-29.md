@@ -42,8 +42,47 @@
 - sequence 평균: **1,581ms**
 - single 평균: **1,103ms**
 
+## 보조 표본 — fixture 문구에 `!`를 붙인 실플레이
+
+사용자가 공개 fixture 계열 문구 뒤에 `!`를 붙여 실제 입력한 로그도 별도 집계했다. 문자열이 exact fixture와 달라져 기록상 실행된 sequence는 모두 `fixture:false`였지만, 의미가 원본과 사실상 같으므로 일반화 품질 표본이 아니라 **동일 계열 문구의 지연 분포 보조 표본**으로만 사용한다.
+
+### `!` 변형 19건
+
+| 구간 | N | Gemini | timeout | 중앙값 | 평균 | p90 | 최대 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 전체 live 호출 | 19 | 15 | 4 | 1,402ms | 1,622ms | 3,201ms | 3,206ms |
+| 의도상 sequence 문구 | 15 | 12 | 3 | 1,454ms | 1,663ms | 3,201ms | 3,206ms |
+| 실제 sequence 판정 성공 | 7 | 7 | 0 | 1,456ms | 1,472ms | 1,586ms | 1,586ms |
+| single 대조군 | 4 | 3 | 1 | 1,148ms | 1,469ms | 2,505ms | 2,505ms |
+
+의도상 sequence 15건의 결과는 실제 sequence 7건, Gemini single 판정 5건, timeout fallback 3건이었다. 즉 지연이 짧다고 sequence 품질까지 좋은 것은 아니다. Gemini가 single로 판정한 5건은 평균 1,144ms로 빨랐지만 기대한 sequence는 아니었다.
+
+timeout 3건은 다음과 같다.
+
+| 입력 | 경과 | 적용된 상한 |
+|---|---:|---:|
+| 천둥새의 비행! | 3,206ms | sequence 3,200ms |
+| 유성우를 거슬러! | 2,507ms | single 2,500ms |
+| 얼어붙은 추격전! | 3,201ms | sequence 3,200ms |
+
+`유성우를 거슬러!`는 의도상 sequence 문구지만 로컬 `looksSequential`이 sequence형으로 인식하지 못해 2,500ms 상한이 적용된 것으로 해석된다.
+
+### 신규 자연어와 합친 sequence 계열
+
+앞 절의 신규 자연어 sequence 경계군 5건과 `!` 변형 의도상 sequence 15건을 합치면 다음과 같다.
+
+| 구간 | N | 중앙값 | 평균 | p90 | 최대 |
+|---|---:|---:|---:|---:|---:|
+| 의도상 sequence 전체 | 20 | 1,467ms | 1,642ms | 2,507ms | 3,206ms |
+| Gemini 정상 응답 | 17 | 1,454ms | 1,408ms | 1,604ms | 1,833ms |
+| 실제 sequence 판정 성공 | 12 | 1,506ms | 1,517ms | 1,604ms | 1,833ms |
+
+종합하면 정상적으로 돌아온 sequence 판정은 대체로 **1.5초**, p90은 **1.6초** 정도다. 사용자 체감용 대표값은 1.5초로 볼 수 있지만, 의도상 sequence 전체에는 3/20 timeout과 5/20 single 판정이 있어 성공 응답의 평균만으로 fallback·분류 문제를 덮어서는 안 된다.
+
 ## 판단
 
 이번 신규 자연어 표본에서는 현재 상한(single 2,500ms / sequence 3,200ms)에 걸린 요청이 없었다. 가장 느린 sequence도 1,833ms로 상한보다 1,367ms 빨랐고, single 최대도 1,134ms로 상한보다 1,366ms 빨랐다.
 
-따라서 이 표본만으로 timeout을 즉시 늘릴 근거는 없다. 오히려 v2.15가 fixture 외 자연어에서도 sequence 5/5, single 2/2를 구분했고 fallback 없이 실제 실행까지 이어진다는 긍정적 기준선이다. 다만 7회는 tail latency를 결론내기에는 작으므로, 기존에 보고된 timeout 세션과 합쳐 장시간 플레이에서 p95·p99 및 시간대별 편차를 추가 관찰해야 한다.
+따라서 신규 자연어 7건만 보면 timeout을 즉시 늘릴 근거는 없다. 오히려 v2.15가 fixture 외 자연어에서도 sequence 5/5, single 2/2를 구분했고 fallback 없이 실제 실행까지 이어진다는 긍정적 기준선이다.
+
+반면 `!` 보조 표본을 합친 의도상 sequence 20건에서는 timeout 3건이 확인된다. 성공한 sequence 판정은 최대 1,833ms로 충분히 빨랐으므로, 전체 상한을 일괄 확대하기 전에 `looksSequential`이 sequence 문구에 2,500ms 상한을 잘못 적용하는 경계와 시간대별 tail latency를 분리해 보는 편이 낫다.

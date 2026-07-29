@@ -15,7 +15,7 @@
 - [x] 판정 출처·지연·single/sequence·fallback 사유·실행 여부 집계.
 - [x] 측정 결과와 timeout 조정 판단을 진단 문서·AI 사용 로그·#158에 동기화.
 
-> **결과**: Gemini 7/7, fallback 0/7. sequence 경계군 5/5와 single 대조군 2/2가 기대대로 분류됐고 sequence 5건은 모두 `fixture:false` 상태로 실제 실행됐다. 지연은 중앙값 1,533ms, p90/최대 1,833ms로 현재 timeout(single 2,500ms / sequence 3,200ms)보다 충분히 짧았다. 이번 소표본만으로 timeout을 늘릴 근거는 없으며, 기존 timeout 세션과 합친 장시간 p95·p99 관찰을 후속으로 둔다. 상세: [JUDGE_NATURAL_PROMPT_TIMING_2026-07-29.md](JUDGE_NATURAL_PROMPT_TIMING_2026-07-29.md)
+> **결과**: 신규 자연어는 Gemini 7/7, fallback 0/7. sequence 경계군 5/5와 single 대조군 2/2가 기대대로 분류됐고 sequence 5건은 모두 `fixture:false` 상태로 실제 실행됐다. 여기에 fixture 문구의 `!` 변형을 보조 표본으로 합치면 실제 sequence 판정 성공 12건의 중앙값 1,506ms·평균 1,517ms·p90 1,604ms·최대 1,833ms다. 다만 의도상 sequence 20건 전체에는 timeout 3건·Gemini single 판정 5건이 포함됐다. 전체 timeout 확대보다 `looksSequential`의 상한 선택 경계와 시간대별 tail을 먼저 분리 관찰한다. 상세: [JUDGE_NATURAL_PROMPT_TIMING_2026-07-29.md](JUDGE_NATURAL_PROMPT_TIMING_2026-07-29.md)
 
 ---
 
