@@ -91,6 +91,7 @@ import { loopDamageScale } from '../combat-core/run/loopDifficulty';
 import { flooredResistMultiplier } from '../combat-core/combat/debuffFloor';
 import { showBossChoice } from '../ui/bossChoiceOverlay';
 import { showSystemBanner } from '../render/systemBanner';
+import { playAwakeningSigil } from '../render/awakeningSigil';
 import type { SystemBannerCopy } from '../render/systemBanner';
 import { codexEntryFromSpec, codexEntryFromSequence, recordCodexEntry } from '../spell/spellCodex';
 import {
@@ -3716,8 +3717,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         priorCasts.map((e) => ({ element: e.elementPrimary, form: e.form })),
       );
       // 융합 방출은 페널티·친화·감쇠 체인을 덮는 고정 최대치 — "최대 방출"의 약속
-      // 작열 각성 — 그 원소 수동 영창이 언제나 본성을 새긴다 (수동 경로라 auto=false)
-      const searing = awakeningFor(this.awakenings, spec, false) === 'searing';
+      // 각성 — 수동 경로이므로 auto=false. 인장은 시전마다 발치에 잠깐 새겨진다
+      // (밝기가 아니라 형태로 구분 — 친화 VFX는 이미 강도 상한이다).
+      const awakened = awakeningFor(this.awakenings, spec, false);
+      if (awakened) {
+        playAwakeningSigil(this, this.player.x, this.player.y, spec.element_primary, awakened);
+      }
+      const searing = awakened === 'searing';
       const effectiveSpec: SpellSpec = fusedSpec ?? {
         ...spec,
         status: searing ? searingStatus(spec) : spec.status,
@@ -5084,7 +5090,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
    * 발광(ADD)·점멸을 쓰지 않는다 — HUD는 저진폭 알파만 쓰는 규율을 따른다(#220 맥락).
    */
   private drawBuildChips(): void {
-    this.buildChips = buildChipModel(this.engraveManager.entries, this.spiritManager.entries);
+    this.buildChips = buildChipModel(
+      this.engraveManager.entries, this.spiritManager.entries, this.awakenings,
+    );
     const g = this.buildChipGraphics.clear();
     const half = BUILD_CHIP.size / 2;
 
@@ -5140,6 +5148,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       for (let p = 0; p < 3; p += 1) {
         g.fillStyle(p < chip.level ? core : 0xffffff, p < chip.level ? 0.95 : 0.16);
         g.fillRect(x - half + 5 + p * pipW, y + half - 4, pipW - 1.5, 2);
+      }
+
+      // 각성 표식 — 진화(금테)와 **다른 축**이라 자리도 색도 다르게 둔다.
+      // 좌상단 자주 점: 그 원소 전체가 각성했다는 표시(칩 하나의 격상이 아니다).
+      if (chip.awakening) {
+        g.fillStyle(0xd0a8ff, 0.95);
+        g.fillCircle(x - half + 4.5, y - half + 4.5, 3);
+        g.lineStyle(1, 0x0b1030, 0.9);
+        g.strokeCircle(x - half + 4.5, y - half + 4.5, 3);
       }
 
       icon.setTexture(formGlyphTextureKey(chip.glyph ?? 'summon'))
