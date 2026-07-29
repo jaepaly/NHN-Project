@@ -80,6 +80,7 @@ import {
 import { allGlyphTextures, formGlyphTextureKey } from '../render/formGlyphs';
 import type { BuildChip } from '../run/buildChipModel';
 import { buildChipModel } from '../run/buildChipModel';
+import { bandAffordances, reachableBand } from '../run/incantBands';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { UI_COLOR } from '../ui/uiTokens';
 import type { GameSettings } from '../run/gameSettings';
@@ -616,6 +617,16 @@ export class ProtoScene extends Phaser.Scene {
   private incantCount!: HTMLElement;
   private incantHint!: HTMLElement;
   private incantChargeLabel!: HTMLElement;
+  /** 대역 칩 컨테이너 (속삭임·영창·외침) — incantBands 모델로 채운다 */
+  private incantBands!: HTMLElement;
+  private incantGuideEl!: HTMLElement;
+  /**
+   * 영창 창 안에 띄울 첫 영창 안내 (총괄 지적: 영창하면 화면이 흐려져 배너가 안 읽힌다).
+   * 배너는 캔버스에 그려지는데 영창 창은 그 위를 덮는 DOM이라 어둠·블러가 통째로 걸린다.
+   * 안내 내용이 하필 "ENTER를 눌러 이렇게 쳐라"라서, 시킨 대로 누르면 예시가 흐려졌다.
+   * 그래서 같은 내용을 **입력창 안에서** 다시 준다. 첫 성공 영창까지만 산다.
+   */
+  private incantGuide: { title: string; lines: string[] } | null = null;
   private incanting = false;
   private casting = false;
   /**
@@ -997,6 +1008,12 @@ export class ProtoScene extends Phaser.Scene {
     // 온보딩 힌트는 1번 방에서만 뜬다(startRoom). 시연은 5번 방에서 시작하므로
     // 여기서 따로 알려줘야 한다 — **강해진 상태로 떨어뜨려도 뭘 칠지 모르면
     // 아무 일도 안 일어난다.** 이 게임의 훅은 성장이 아니라 자유 영창이다.
+    // 같은 내용을 영창 창 안에도 세운다 — 배너는 캔버스라 영창 창의 어둠·블러에 묻힌다.
+    // "ENTER를 눌러 이렇게 쳐라"는 안내가 정작 누르면 안 읽히는 걸 막는다(총괄 지적).
+    this.incantGuide = {
+      title: '이렇게 쳐보세요',
+      lines: DEMO_SAMPLE_INCANTATIONS.map((sample) => `· ${sample}`),
+    };
     this.time.delayedCall(1600, () => {
       if (!this.scene?.isActive?.()) return;
       this.announceBanner({
@@ -3362,6 +3379,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.incantCount = document.getElementById('incant-count')!;
     this.incantHint = document.getElementById('incant-hint')!;
     this.incantChargeLabel = document.getElementById('incant-charge-label')!;
+    this.incantBands = document.getElementById('incant-bands')!;
+    this.incantGuideEl = document.getElementById('incant-guide')!;
 
     // 재진입 대비 — 같은 참조를 제거 후 등록해 누적을 차단한다 (#216 P0 겹시전).
     // 첫 호출에선 remove가 no-op이라 안전하고, 몇 번 들어와도 리스너는 정확히 1쌍이다.
@@ -3409,6 +3428,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private maybeShowOnboardingHint(): void {
     if (this.onboardingHintShown || this.hasOnboarded()) return;
     this.onboardingHintShown = true;
+    this.incantGuide = {
+      title: '한 문장이면 됩니다',
+      lines: ['떠오르는 대로 적으면, 그게 곧 마법이 된다'],
+    };
     // "방 1" 안내가 지나간 뒤 떠서, 조작 안내가 또렷하게 남도록 한다.
     this.time.delayedCall(900, () => {
       if (this.hasOnboarded() || this.incanting || this.casting) return;
@@ -3478,12 +3501,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 온보딩: 열 때마다 예시 문장을 순환해 "이렇게 쓰면 된다"를 보여준다
     this.incantBar.placeholder = onboardingPlaceholderAt(this.incantOpenCount);
     this.incantOpenCount += 1;
-    // 영창은 마나 예산 결정의 순간 — 보유량과 요금표를 창 안에서 바로 보이게 한다.
-    // 요금표는 비용 공식(max(5, power×0.6))의 체감 구간 — 말의 크기를 고르는 기준.
-    this.incantState.textContent = `시간 흐름 10% · 마나 ${Math.floor(this.playerState.mana)}`;
+    // 위계: 마나(예산) → 입력 → 대역(선택지) → 조작 안내. 종전에는 요금표와 조작 안내가
+    // 12px 회색 한 줄에 뭉쳐 있어 둘 다 안 읽혔다 — 이제 요금표는 대역 칩이 맡는다.
     this.incantHint.textContent = this.activeRoomCurse?.kind === 'word-limit'
       ? '한글 6자 · 영문 10자 상당 — Enter 발동 · Esc 취소'
-      : '속삭임 ~10 · 영창 ~25 · 외침 40+ — Enter 발동 · Esc 취소';
+      : 'Enter 발동 · Esc 취소';
+    this.incantChargeLabel.textContent = '시간 흐름 10%';
+    this.renderIncantGuide();
     this.updateIncantCharge();
     this.focusIncantBar();
   }
@@ -3506,6 +3530,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       'word-limit',
       'word-limit-over',
       'word-limit-blocked',
+      'mana-dry',
     );
     this.incantWrap.setAttribute('aria-hidden', 'true');
     this.incantBar.disabled = false;
@@ -3513,6 +3538,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private updateIncantCharge(): void {
+    // 마나는 두 경로 공통 — 금언 방에서도 예산은 마나다 (금언은 그 위에 얹힌 제약)
+    this.incantState.textContent = `마나 ${Math.floor(this.playerState.mana)}`;
+    this.incantWrap.classList.toggle(
+      'mana-dry', reachableBand(Math.floor(this.playerState.mana)) === null,
+    );
     if (this.activeRoomCurse?.kind === 'word-limit') {
       const cost = wordLimitCost(this.incantBar.value);
       const overBudget = cost > WORD_LIMIT_CURSE_CONFIG.budget;
@@ -3537,16 +3567,73 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     this.incantWrap.classList.remove('word-limit-over', 'word-limit-blocked');
     const length = Array.from(this.incantBar.value).length;
-    const percent = Math.min(100, Math.round((length / 24) * 100));
-    this.incantWrap.style.setProperty('--charge', `${percent}%`);
     this.incantCount.textContent = `${length}/60`;
-    this.incantChargeLabel.textContent = length === 0
-      ? '공명 대기'
-      : percent < 45
-        ? '문장 공명 중'
-        : percent < 100
-          ? '공명 상승'
-          : '최대 공명';
+    // 길이 기반 "공명" 게이지는 걷어냈다 — 위력은 심판이 문장의 구체성으로 매기는데
+    // 글자수로 차오르는 게이지가 가장 밝게 빛나며 "길게 쓰면 세진다"를 가르치고 있었다.
+    // 자리는 대역 칩(감당 가능 여부 = 거짓말하지 않는 정보)이 대신 쓴다.
+    this.refreshIncantBands();
+  }
+
+  /**
+   * 첫 영창 안내를 영창 창 안에 세운다.
+   *
+   * 배너가 아직 화면에 있으면 **지운다** — 남겨두면 어둠·블러 뒤에 흐릿하게 겹쳐 보여
+   * 같은 글이 두 겹으로 읽힌다. 지우는 게 아니라 **자리를 옮기는** 것이다.
+   */
+  private renderIncantGuide(): void {
+    const guide = this.incantGuide;
+    if (!guide) {
+      this.incantGuideEl.hidden = true;
+      return;
+    }
+    if (this.activeBanner?.active) {
+      this.activeBanner.destroy();
+      this.activeBanner = null;
+    }
+    const title = document.createElement('div');
+    title.className = 'incant-guide-title';
+    title.textContent = guide.title;
+    this.incantGuideEl.replaceChildren(title, ...guide.lines.map((text) => {
+      const line = document.createElement('div');
+      line.className = 'incant-guide-line';
+      line.textContent = text;
+      return line;
+    }));
+    this.incantGuideEl.hidden = false;
+  }
+
+  /** 첫 성공 영창 — 안내는 역할을 다했다. 배너·패널 양쪽에서 사라진다. */
+  private clearIncantGuide(): void {
+    this.incantGuide = null;
+    if (this.incantGuideEl) this.incantGuideEl.hidden = true;
+  }
+
+  /**
+   * 대역 칩 갱신 — 지금 마나로 어디까지 닿는지.
+   *
+   * 매번 다시 그리지 않고 첫 호출에만 만든 뒤 클래스만 토글한다 (영창 창은 자주 열린다).
+   */
+  private refreshIncantBands(): void {
+    const mana = Math.floor(this.playerState.mana);
+    const entries = bandAffordances(mana);
+    const reach = reachableBand(mana);
+
+    if (this.incantBands.childElementCount !== entries.length) {
+      this.incantBands.replaceChildren(...entries.map((entry) => {
+        const chip = document.createElement('div');
+        chip.className = 'incant-band';
+        chip.innerHTML = `<span class="incant-band-name">${entry.band.label}</span>`
+          + `<span class="incant-band-cost">${entry.cost}</span>`
+          + `<span class="incant-band-hint">${entry.band.hint}</span>`;
+        return chip;
+      }));
+    }
+    entries.forEach((entry, index) => {
+      const chip = this.incantBands.children[index] as HTMLElement;
+      chip.classList.toggle('locked', !entry.affordable);
+      chip.classList.toggle('reach', reach?.key === entry.band.key);
+    });
+
   }
 
   private blockWordLimitCast(): void {
@@ -3596,6 +3683,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       'word-limit',
       'word-limit-over',
       'word-limit-blocked',
+      'mana-dry',
     );
     this.incantWrap.setAttribute('aria-hidden', 'true');
     this.incantBar.disabled = false;
@@ -3650,6 +3738,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       );
     }
     this.markOnboarded();
+    this.clearIncantGuide();
     this.beginSequenceExecutionUx(plan);
     if (sequenceHistoryEntry.power < sequenceHistoryEntry.basePower) {
       const penaltyPct = Math.round(
@@ -3735,6 +3824,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
       // 첫 성공 영창 — 이후 온보딩 안내는 다시 뜨지 않는다.
       this.markOnboarded();
+      this.clearIncantGuide();
 
       const historyEntry = this.spellHistory.record({
         rawText: text,
