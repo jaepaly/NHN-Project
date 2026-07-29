@@ -72,6 +72,7 @@ import {
   AWAKENING_LABELS,
   applyAwakening,
   awakenableElement,
+  awakeningDescription,
   awakeningFor,
   awakeningOptions,
   searingStatus,
@@ -89,6 +90,8 @@ import { FusionGauge } from '../combat-core/player/fusionGauge';
 import { loopDamageScale } from '../combat-core/run/loopDifficulty';
 import { flooredResistMultiplier } from '../combat-core/combat/debuffFloor';
 import { showBossChoice } from '../ui/bossChoiceOverlay';
+import { showSystemBanner } from '../render/systemBanner';
+import type { SystemBannerCopy } from '../render/systemBanner';
 import { codexEntryFromSpec, codexEntryFromSequence, recordCodexEntry } from '../spell/spellCodex';
 import {
   KNOCKBACK_CONFIG,
@@ -493,6 +496,14 @@ export class ProtoScene extends Phaser.Scene {
   private enemies: CombatEnemy[] = [];
   /** 화면 중앙에 떠 있는 시스템 메시지들 — 세로 스택으로 겹침 방지 */
   private activeAnnouncements: Phaser.GameObjects.Text[] = [];
+
+  /**
+   * 주요 공지 큐 — 판 있는 배너는 **한 번에 하나만** 띄운다. 겹쳐 띄우면 판끼리
+   * 포개져 오히려 못 읽는다. 진화·각성처럼 연달아 터지는 순간이 실제로 있다.
+   */
+  private bannerQueue: SystemBannerCopy[] = [];
+
+  private activeBanner: Phaser.GameObjects.Container | null = null;
   private enemyProjectiles: EnemyProjectile[] = [];
   private hazardZones: HazardZone[] = [];
   private hazardDecorations: Phaser.GameObjects.GameObject[] = [];
@@ -970,11 +981,12 @@ export class ProtoScene extends Phaser.Scene {
     // 아무 일도 안 일어난다.** 이 게임의 훅은 성장이 아니라 자유 영창이다.
     this.time.delayedCall(1600, () => {
       if (!this.scene?.isActive?.()) return;
-      this.announceSystemMessage(
-        `ENTER — 문장을 쳐서 마법을 만든다\n${DEMO_SAMPLE_INCANTATIONS.map((s) => `· ${s}`).join('\n')}`,
-        '#c7f9e0',
-        6000,
-      );
+      this.announceBanner({
+        title: 'ENTER — 문장을 쳐서 마법을 만든다',
+        lines: DEMO_SAMPLE_INCANTATIONS.map((sample) => `· ${sample}`),
+        color: 0xc7f9e0,
+        holdMs: 6000,
+      });
     });
   }
 
@@ -1049,11 +1061,12 @@ export class ProtoScene extends Phaser.Scene {
       if (chosen.kind === 'awaken' && chosen.awaken) {
         const { element, awakening } = chosen.awaken;
         this.awakenings = applyAwakening(this.awakenings, element, awakening);
-        this.announceSystemMessage(
-          `${ELEMENT_LABELS[element]} 각성 — ${AWAKENING_LABELS[awakening]}`,
-          '#d0a8ff',
-          3000,
-        );
+        this.announceBanner({
+          title: `${ELEMENT_LABELS[element]} 각성 — ${AWAKENING_LABELS[awakening]}`,
+          lines: [awakeningDescription(awakening, element)],
+          color: 0xd0a8ff,
+          holdMs: 3000,
+        });
         devInfo('[Run] awakened', chosen.awaken, state);
         return;
       }
@@ -1458,7 +1471,7 @@ export class ProtoScene extends Phaser.Scene {
     this.audio.playSfx('boss-appear');
     requestCameraShake(this, 'medium');
 
-    this.announceSystemMessage('보스의 방', '#ff6b86');
+    this.announceBanner({ title: '보스의 방', color: 0xff6b86, holdMs: 2000 });
     // 오프닝 대사 — R2 /boss-line (프록시 생성 우선, 템플릿 폴백 내장)
     if (usesMemory) void getBossLine(runMemory).then((line) => {
       if (!isCurrentBossRoom()) return;
@@ -3350,11 +3363,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // "방 1" 안내가 지나간 뒤 떠서, 조작 안내가 또렷하게 남도록 한다.
     this.time.delayedCall(900, () => {
       if (this.hasOnboarded() || this.incanting || this.casting) return;
-      this.announceSystemMessage(
-        '⌨  ENTER 를 눌러 영창\n떠오르는 한 문장을 그대로 적으면, 그게 곧 마법이 된다',
-        '#9ecbff',
-        5200,
-      );
+      this.announceBanner({
+        title: '⌨  ENTER 를 눌러 영창',
+        lines: ['떠오르는 한 문장을 그대로 적으면, 그게 곧 마법이 된다'],
+        color: 0x9ecbff,
+        holdMs: 5200,
+      });
     });
   }
 
@@ -4651,7 +4665,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const evolved = this.engraveManager.evolve(data.engraveKey, name);
       if (evolved) {
         this.playEvolutionBurst(data.elements[0] ?? evolved.spell.element_primary);
-        this.announceSystemMessage(`각인 진화 — 『${name}』`, '#ffd166', 2800);
+        this.announceBanner({ title: `각인 진화 — 『${name}』`, color: 0xffd166, holdMs: 2800 });
       }
       return;
     }
@@ -4664,7 +4678,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       if (fused) {
         this.syncSpiritViews();
         this.playEvolutionBurst(data.elements[0]);
-        this.announceSystemMessage(`정령 융합 — 『${name}』`, '#ffd166', 2800);
+        this.announceBanner({ title: `정령 융합 — 『${name}』`, color: 0xffd166, holdMs: 2800 });
       }
     }
   }
@@ -5375,7 +5389,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       color,
       stroke: '#05060f',
       strokeThickness: 4,
-      align: 'center',
+      // 왼쪽 정렬 — 블록은 origin 0.5로 화면 중앙에 놓이되 **글자는 한 축에서 시작**한다.
+      // 중앙 정렬이면 여러 줄·목록에서 줄마다 시작점이 달라져 정돈돼 보이지 않는다
+      // (총괄 지적). 한 줄 문구는 상자가 글자를 감싸므로 중앙 배치와 차이가 없다.
+      align: 'left',
       wordWrap: { width: width - 80, useAdvancedWrap: true },
     }).setOrigin(0.5).setScrollFactor(0).setDepth(100).setAlpha(0);
 
@@ -5405,6 +5422,31 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   /** 살아 있는 시스템 메시지를 화면 중앙 기준 세로 스택으로 재배치 (겹침 방지) */
+  /**
+   * 주요 공지 — 판 있는 배너로 띄운다. 진화·각성·보스 등장처럼 **판을 바꾸는 사건**만
+   * 이 채널을 쓴다. 방 클리어·웨이브 같은 보조 공지는 announceSystemMessage 그대로.
+   * 한 번에 하나만 띄우고 나머지는 큐에서 기다린다.
+   */
+  private announceBanner(copy: SystemBannerCopy): void {
+    if (!this.scene?.isActive?.()) return;
+    this.bannerQueue.push(copy);
+    this.drainBannerQueue();
+  }
+
+  private drainBannerQueue(): void {
+    if (this.activeBanner?.active) return;
+    const next = this.bannerQueue.shift();
+    if (!next) return;
+    const banner = showSystemBanner(this, next);
+    this.activeBanner = banner;
+    // 배너가 스스로 사라지면 다음 것을 꺼낸다 (등장 260 + 유지 + 퇴장 520)
+    const total = 260 + (next.holdMs ?? 2200) + 520;
+    this.time.delayedCall(total + 40, () => {
+      if (this.activeBanner === banner) this.activeBanner = null;
+      this.drainBannerQueue();
+    });
+  }
+
   private repositionAnnouncements(): void {
     const { height } = this.scale;
     const baseY = height * 0.42;
