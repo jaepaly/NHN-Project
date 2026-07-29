@@ -44,3 +44,15 @@ export function drawAltarRewardOptions(
 export function altarHpCost(maxHp: number): number {
   return Math.max(1, Math.round(maxHp * ALTAR_CONFIG.hpCostRatio));
 }
+
+/**
+ * 실제로 청구할 대가 — **절대 죽이지 않는다** (R3 배선, 2026-07-29).
+ *
+ * 대가는 최대 HP 기준이라 체력이 낮을 때 제단에 들어서면 그 자리에서 죽는다.
+ * 방에 들어선 것만으로 사망하면 그건 선택이 아니라 함정이고, 포탈 라벨을 보고
+ * 고르게 하는 설계와 정면으로 충돌한다. 최소 1은 남긴다.
+ */
+export function altarHpCostFor(maxHp: number, currentHp: number): number {
+  const hp = Number.isFinite(currentHp) ? Math.max(0, currentHp) : 0;
+  return Math.min(altarHpCost(maxHp), Math.max(0, hp - 1));
+}

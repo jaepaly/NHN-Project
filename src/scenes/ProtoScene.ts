@@ -81,6 +81,8 @@ import { allGlyphTextures, formGlyphTextureKey } from '../render/formGlyphs';
 import type { BuildChip } from '../run/buildChipModel';
 import { buildChipModel } from '../run/buildChipModel';
 import { bandAffordances, reachableBand } from '../run/incantBands';
+import { drawTreasureReward } from '../combat-core/run/treasureRewardConfig';
+import { altarHpCostFor, drawAltarRewardOptions } from '../combat-core/run/altarRewardConfig';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { UI_COLOR } from '../ui/uiTokens';
 import type { GameSettings } from '../run/gameSettings';
@@ -503,6 +505,20 @@ export class ProtoScene extends Phaser.Scene {
     playerState: this.playerState,
     initialRoomIndex: DEBUG_START_ROOM,
     rewardDraw: (roomIndex) => {
+      // 무전투 방(보물·제단)은 전용 보상표를 쓴다 — 포탈에 붙은 라벨이 지켜져야 한다.
+      // 종전엔 그래프 노드 종류가 표시만 되고 보상·내용에 반영되지 않아, "보물"로
+      // 들어가도 일반 전투방 보상이 나왔다(총괄 제보).
+      const roomless = this.rewardlessNodeKind();
+      if (roomless === 'treasure') {
+        return drawTreasureReward(
+          roomIndex,
+          this.combatRunController.state.maxRooms,
+          this.engraveRewardRand,
+        );
+      }
+      if (roomless === 'altar') {
+        return drawAltarRewardOptions(roomIndex, this.engraveRewardRand);
+      }
       const engraved = this.engraveManager.injectReward(
         drawRewardOptions(roomIndex, this.engraveRewardRand),
         roomIndex,
@@ -1528,6 +1544,13 @@ export class ProtoScene extends Phaser.Scene {
     this.activateRoomCurse(roomIndex);
     if (this.isBossEncounter()) {
       this.startBossRoom(encounter.encounterKind === 'memory-boss');
+      return;
+    }
+    // 보물·제단은 **전투가 없는 방**이다 (총괄 제보: "보상 포탈로 들어갔는데 보상은
+    // 안 주고 몹만 나왔다"). 웨이브를 뿌리지 않고 바로 클리어 처리해 보상표를 띄운다.
+    const roomless = this.rewardlessNodeKind();
+    if (roomless) {
+      this.startRewardlessRoom(roomless, roomIndex);
       return;
     }
     const waveSet = encounter.waveSetId ? WAVE_SETS[encounter.waveSetId] : undefined;
@@ -2595,6 +2618,58 @@ export class ProtoScene extends Phaser.Scene {
       width: this.worldBounds.width,
       height: this.worldBounds.height,
     };
+  }
+
+  /**
+   * 지금 방이 **전투 없는 방**인가 (보물·제단). 아니면 null.
+   *
+   * 포탈에 붙은 라벨이 지켜지게 하는 단일 판정점이다. RunController는 여전히
+   * 선형 목록(RUN_ENCOUNTERS)으로 방을 세므로, **보스 방은 보스가 이긴다** —
+   * 두 축이 어긋났을 때 최종 보스를 건너뛰면 런이 끝나지 않는다.
+   */
+  private rewardlessNodeKind(): 'treasure' | 'altar' | null {
+    if (this.isBossEncounter()) return null;
+    const kind = this.mapGraph.current().kind;
+    return kind === 'treasure' || kind === 'altar' ? kind : null;
+  }
+
+  /**
+   * 무전투 방 — 웨이브 없이 즉시 클리어해 전용 보상표를 띄운다.
+   *
+   * 제단은 먼저 **대가(HP)를 치른다**(altarHpCost). 대가가 보상보다 먼저여야
+   * "지불하고 얻는다"가 성립하고, 카드를 보고 무를 수도 없다.
+   */
+  private startRewardlessRoom(kind: 'treasure' | 'altar', roomIndex: number): void {
+    // WaveManager는 빈 정의에 예외를 던진다. 적 0인 웨이브 하나를 두되 start()를 부르지
+    // 않는다 — waveIndex가 -1이라 update()도 아무것도 스폰하지 않는다.
+    this.waveManager = new WaveManager([{ chaserCount: 0, shooterCount: 0, splitterCount: 0 }]);
+    this.audio.playBgm('combat');
+    if (kind === 'altar') {
+      // 대가가 **죽이지는 않는다**(altarHpCostFor) — 방에 들어선 것만으로 사망하면
+      // 선택이 아니라 함정이고, 라벨 보고 고르게 하는 설계와 충돌한다.
+      const cost = altarHpCostFor(this.playerState.maxHp, this.playerState.hp);
+      this.playerState.takeEnvironmentalDamage(cost);
+      this.announceBanner({
+        title: '제단 — 대가를 치렀다',
+        lines: [`생명 −${cost} · 상급 강화를 고른다`],
+        color: 0xd0a8ff,
+        holdMs: 2600,
+      });
+    } else {
+      this.announceBanner({
+        title: '보물방',
+        lines: ['싸우지 않고 얻는다'],
+        color: 0xffd166,
+        holdMs: 2200,
+      });
+    }
+    this.announceSystemMessage(`방 ${roomIndex}`, '#8fa4ff');
+    // 배너를 읽을 틈을 준 뒤 보상 — 즉시 띄우면 카드가 배너를 덮는다
+    this.roomClearPending = true;
+    this.time.delayedCall(900, () => {
+      if (!this.scene?.isActive?.()) return;
+      this.combatRunController.notifyRoomCleared();
+    });
   }
 
   private enterMapNode(nodeId: string): void {
@@ -5485,6 +5560,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ? `BOSS ${Math.ceil(boss.hp)}/${boss.maxHp}  ·  ENEMIES ${this.enemies.length}`
         : 'BOSS';
       this.waveText.setText(bossResistanceLines(status, readout).join('\n'));
+    } else if (this.rewardlessNodeKind()) {
+      // 무전투 방 — 웨이브가 없으니 "NEXT WAVE 0.0s"가 뜨면 안 된다
+      this.waveText.setText(this.rewardlessNodeKind() === 'altar' ? '제단' : '보물방');
     } else if (this.waveManager.phase === 'waiting') {
       this.waveText.setText(
         `NEXT WAVE ${this.waveManager.delayRemaining.toFixed(1)}s`,
