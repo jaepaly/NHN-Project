@@ -1,4 +1,5 @@
 import type { RunStateSnapshot } from '../run/runContract';
+import { UI_FONT, UI_LAYER } from './uiTokens';
 
 /**
  * 런 진행 HUD (ROOM n/m) — R3 소유 UI (PHASE_2 R3 P0)
@@ -16,9 +17,9 @@ let observedCanvas: HTMLCanvasElement | null = null;
 
 const CSS = `
 #${WRAP_ID} {
-  position: fixed; top: 12px; right: 14px; z-index: 15;
+  position: fixed; top: 12px; right: 14px; z-index: ${UI_LAYER.runHud};
   display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
-  font-family: 'Consolas', 'Segoe UI', monospace;
+  font-family: ${UI_FONT.mono};
   pointer-events: none;
   transform-origin: top right;
 }
