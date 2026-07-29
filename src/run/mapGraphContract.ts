@@ -56,6 +56,23 @@ export interface MapTerrainPlacement {
   radius?: number;
 }
 
+/** 기존 위험지대·저주방을 MapNode.kind='trap'으로 통합하는 프로필 종류입니다. */
+export type TrapProfileKind = 'hazard' | 'silence' | 'blackout' | 'word-limit' | 'heatwave';
+
+/**
+ * 중앙 시작을 전제했던 공간형 기믹의 입구 안전 통로입니다.
+ * 안전 효과를 추가하지 않고, 해당 함정 필드의 생성/판정 영역에서만 제외합니다.
+ */
+export interface TrapSafeCorridor {
+  shape: 'cross';
+  halfWidth: number;
+}
+
+export interface TrapRoomProfile {
+  kind: TrapProfileKind;
+  safeCorridor?: TrapSafeCorridor;
+}
+
 export interface MapNode {
   id: string;
   stage: number;
@@ -66,6 +83,8 @@ export interface MapNode {
   terrain: readonly MapTerrainPlacement[];
   /** 저주 배정기가 소비할 후보별 가중치 자리입니다. */
   curseWeights: Readonly<Partial<Record<RoomCurseKind, number>>>;
+  /** kind='trap'일 때 실행할 기존 기믹 통합 프로필입니다. */
+  trapProfile?: TrapRoomProfile;
 }
 
 export interface MapNodeSnapshot extends MapNode {
