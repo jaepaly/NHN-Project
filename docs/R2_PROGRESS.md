@@ -4,7 +4,7 @@
 > 규칙: **푸시할 때마다 이 파일에 "현재 어디까지 했는지"를 갱신해서 함께 커밋한다.**
 > (팀 공용 1줄 기록은 [AI_USAGE_LOG.md](AI_USAGE_LOG.md), 이 파일은 R2 상세 로그)
 
-## ☑ 지금 작업 흐름 — #158 fixture 유사 자연어 실플레이 지연 진단 (2026-07-29)
+## ☐ 지금 작업 흐름 — #158 fixture 유사 자연어 실플레이 지연 진단 (2026-07-29)
 
 > **목표**: 공개 fixture 문자열과 `#seq` 명령을 쓰지 않은 신규 자연어 영창으로 라이브 Gemini 경로를 호출하고, DEV 플레이 로그의 `src`·`elapsedMs`·`mode`·`fallbackReason`·`sequence_exec`를 기준으로 실제 지연과 fallback 비율을 정리한다. 프롬프트·판정 시간·Worker는 이번 측정에서 변경하지 않는다.
 
@@ -15,6 +15,9 @@
 - [x] 판정 출처·지연·single/sequence·fallback 사유·실행 여부 집계.
 - [x] 측정 결과와 timeout 조정 판단을 진단 문서·AI 사용 로그·#158에 동기화.
 - [x] timeout 3문장을 배포 Worker에 5초 상한으로 직접 재호출해 완료 시간 측정.
+- [ ] client↔Worker 공통 request ID와 Worker/Gemini 단계별 지연 관측 설계.
+- [ ] 실제 적용 timeout budget·`looksSequential` 결과를 DEV 로그에 추가.
+- [~] 4초 hard cutoff 실험은 단계별 지연 관측 뒤 별도 브랜치에서 비교.
 
 > **결과**: 신규 자연어는 Gemini 7/7, fallback 0/7. sequence 경계군 5/5와 single 대조군 2/2가 기대대로 분류됐고 sequence 5건은 모두 `fixture:false` 상태로 실제 실행됐다. 여기에 fixture 문구의 `!` 변형을 보조 표본으로 합치면 실제 sequence 판정 성공 12건의 중앙값 1,506ms·평균 1,517ms·p90 1,604ms·최대 1,833ms다. 의도상 sequence 20건 중 timeout 3문장을 5초 상한으로 직접 재호출하자 3/3이 1,378~1,941ms에 2단계 sequence로 완료됐다. 문구 고정 지연보다 간헐적 tail 가능성이 높으므로 전체 timeout 확대보다 `looksSequential`의 상한 선택 경계와 시간대별 tail을 먼저 분리 관찰한다. 상세: [JUDGE_NATURAL_PROMPT_TIMING_2026-07-29.md](JUDGE_NATURAL_PROMPT_TIMING_2026-07-29.md)
 
