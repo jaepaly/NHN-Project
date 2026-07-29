@@ -51,7 +51,11 @@ const closeTo = (actual: number, expected: number): void => {
 }
 
 {
-  const [selected] = layoutRoomExits(WORLD, [{ nodeId: 'next', lane: 0 }], {
+  const [selected] = layoutRoomExits(WORLD, [
+    { nodeId: 'next', lane: 0 },
+    { nodeId: 'middle', lane: 1 },
+    { nodeId: 'lower', lane: 2 },
+  ], {
     ...DEFAULT_ROOM_PORTAL_LAYOUT,
     slotGapRatio: 0.2,
   });
@@ -63,7 +67,9 @@ const closeTo = (actual: number, expected: number): void => {
   assert.equal(arrival.portal.x, 80);
   assert.equal(arrival.playerSpawn.x, 176);
   assert.equal(arrival.portal.y, arrival.playerSpawn.y);
-  assert.equal(arrival.normalizedY, selected.normalizedY);
+  assert.equal(selected.normalizedY, 0.3, 'selected exit may be above center');
+  assert.equal(arrival.normalizedY, 0.5, 'arrival must reset to the shared center entry');
+  assert.equal(arrival.portal.y, 640);
 }
 
 {
@@ -89,4 +95,4 @@ const closeTo = (actual: number, expected: number): void => {
   );
 }
 
-console.log('Room portal layout regression: slots, lane order, arrival continuity, and guards passed');
+console.log('Room portal layout regression: exit slots, lane order, centered arrival, and guards passed');

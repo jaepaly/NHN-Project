@@ -73,13 +73,13 @@ export function toArrivalContext(
   return {
     fromNodeId,
     toNodeId: exit.targetNodeId,
-    normalizedY: exit.normalizedY,
   };
 }
 
 /**
  * Places the arrival portal on the left and the player just inside it.
- * Y is preserved from the selected exit so branch position remains legible.
+ * Arrival always uses the vertical center so every room shares one safe entry
+ * contract regardless of how many choices the previous room displayed.
  */
 export function layoutRoomArrival(
   room: RoomBounds,
@@ -91,15 +91,8 @@ export function layoutRoomArrival(
   if (!context.fromNodeId || !context.toNodeId) {
     throw new Error('Arrival context requires source and target node ids');
   }
-  if (!Number.isFinite(context.normalizedY)) {
-    throw new Error('Arrival context requires a finite normalized Y');
-  }
 
-  const normalizedY = clamp(
-    context.normalizedY,
-    config.verticalMarginRatio,
-    1 - config.verticalMarginRatio,
-  );
+  const normalizedY = 0.5;
   const portalX = room.x + config.edgeInset;
   const y = room.y + room.height * normalizedY;
 

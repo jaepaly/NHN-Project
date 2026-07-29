@@ -31,7 +31,6 @@ export interface RoomExitPlacement {
 export interface RoomArrivalContext {
   fromNodeId: string;
   toNodeId: string;
-  normalizedY: number;
 }
 
 export interface RoomArrivalPlacement {
