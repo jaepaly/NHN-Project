@@ -20,6 +20,26 @@ export const JUDGE_SCHEMA_VERSION = 2;
 export const JUDGE_PROMPT_VERSION = 'meaning-v2.15-abstract-seq';
 const CACHE_PREFIX = `incant:judge:v${JUDGE_SCHEMA_VERSION}:${JUDGE_PROMPT_VERSION}:`;
 const TIMEOUT_MS = 2500;
+
+export type JudgeFallbackReason =
+  | 'timeout'
+  | `http_${number}`
+  | 'invalid_response'
+  | 'remote_fizzle'
+  | 'network_error';
+
+class JudgeHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`proxy responded ${status}`);
+  }
+}
+
+function fallbackReasonFromError(error: unknown): JudgeFallbackReason {
+  if (error instanceof JudgeHttpError) return `http_${error.status}`;
+  if ((error as { name?: unknown })?.name === 'AbortError') return 'timeout';
+  if (error instanceof SyntaxError) return 'invalid_response';
+  return 'network_error';
+}
 /**
  * 복합 영창 전용 상한 (#180, 총괄 승인). 복합은 spell_plan을 실어 응답이 커서 tail이
  * 2.5초 경계에 붙는다(실측 1.86~2.55s). 단순 영창(p90 1.35s)은 여유가 있으므로 2.5초를
@@ -39,6 +59,8 @@ export class GeminiJudge implements SpellJudge {
   readonly name = 'GeminiJudge(gemini-via-proxy)';
   /** [디버그] 직전 판정 출처 — HUD 표기용 (⑤ 폴백 빈도 관찰) */
   lastSource: 'gemini' | 'cache' | 'fallback' | 'local' = 'gemini';
+  /** [디버그] 직전 fallback의 직접 원인 — 플레이 로그 관측용. */
+  lastFallbackReason: JudgeFallbackReason | undefined;
   private readonly fallback: SpellJudge;
 
   constructor(
@@ -49,6 +71,7 @@ export class GeminiJudge implements SpellJudge {
   }
 
   async judge(text: string): Promise<SpellJudgement> {
+    this.lastFallbackReason = undefined;
     const key = text.trim();
     const prechecked = precheckText(key);
     if (prechecked) {
@@ -73,8 +96,11 @@ export class GeminiJudge implements SpellJudge {
         this.lastSource = 'gemini';
         return judgement;
       }
-    } catch {
-      // 네트워크 오류·타임아웃·비정상 응답 — 아래 폴백으로 처리
+      this.lastFallbackReason = judgement?.disposition === 'fizzle'
+        ? 'remote_fizzle'
+        : 'invalid_response';
+    } catch (error) {
+      this.lastFallbackReason = fallbackReasonFromError(error);
     }
 
     // 4) 폴백 — 로컬 사전검사를 통과한 입력은 원격 fizzle도 모델 오류로 간주한다.
@@ -94,7 +120,7 @@ export class GeminiJudge implements SpellJudge {
         body: JSON.stringify({ text }),
         signal: ctrl.signal,
       });
-      if (!res.ok) throw new Error(`proxy responded ${res.status}`);
+      if (!res.ok) throw new JudgeHttpError(res.status);
       return await res.json();
     } finally {
       clearTimeout(timer);
