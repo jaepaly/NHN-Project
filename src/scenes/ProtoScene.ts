@@ -1617,7 +1617,7 @@ export class ProtoScene extends Phaser.Scene {
       this.player.y - 340,
       usesMemory ? 'memory' : 'stage',
       // 보스는 절반 배율 — 내성 누적(#77)과 이중 강화가 되지 않게
-      enemyHpScale(this.combatRunController.state.loopIndex, this.currentPlayerPower(), true),
+      enemyHpScale(this.combatRunController.state.loopIndex, true),
     );
     this.bossPatternController = new BossPatternController(usesMemory ? 'memory' : 'stage');
     const isCurrentBossRoom = (): boolean => {
@@ -3025,13 +3025,14 @@ if (applied) this.playPlayerHit();
   }
 
   /**
-   * 지금 빌드의 파워 배율 (1 = 런 시작). 적 체력 스케일링의 입력이다.
+   * 지금 빌드의 파워 배율 (1 = 런 시작).
    *
-   * 스폰 시점에 매번 계산한다 — 방 중간에 각성·진화가 붙어도 **이미 나온 적은 그대로**이고
-   * 다음 방부터 반영된다. 진행 중인 전투가 갑자기 어려워지면 플레이어는 자기가 뭘 잘못했는지
-   * 모른다 (스냅샷 시점을 스폰으로 고정하는 이유).
+   * ⚠️ **적 스탯 계산에는 쓰지 않는다** (#267) — 성장에 연동하면 분기 맵의 위험–보상이
+   * 상쇄된다. 남겨둔 이유는 **측정**이다: #258의 프리셋 목표시간 검증에서
+   * "이 판은 파워 2.4였고 41초 걸렸다"를 기록해야 티어 고정 보정값의 근거가 생긴다.
+   * 순수 함수라 같은 빌드 = 같은 값이 보장돼 로그 간 비교가 된다.
    */
-  private currentPlayerPower(): number {
+  currentPlayerPower(): number {
     return playerPowerIndex({
       affinity: this.combatRunController.state.elementalAffinity,
       engraves: this.engraveManager.entries,
@@ -3047,11 +3048,9 @@ if (applied) this.playPlayerHit();
     applyEncounterModifier = false,
     explicitModifier?: EliteModifier,
   ): void {
-    // 적 체력은 **플레이어가 실제로 성장한 만큼** 오른다 (총괄 지적: 절대 수치가 아니라
-    // 상대적으로). 흡수율 0.55 < 1이라 키울수록 항상 순이득이다 — loopDifficulty 참고.
-    const hpScale = enemyHpScale(
-      this.combatRunController.state.loopIndex, this.currentPlayerPower(),
-    );
+    // 적 체력은 **이어가기 루프 단계만** 본다 (#267) — 플레이어 실제 성장에 연동하면
+    // 분기 맵의 위험–보상이 상쇄되고 프리셋별 목표시간을 측정할 수 없다.
+    const hpScale = enemyHpScale(this.combatRunController.state.loopIndex);
     let enemy: CombatEnemy;
     switch (kind) {
       case 'shield-sentinel':
