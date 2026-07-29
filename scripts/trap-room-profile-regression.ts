@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { RunMapGraph } from '../src/run/mapGraph';
+import { RunMapGraph, type MapGraphDefinition } from '../src/run/mapGraph';
 import { MAP_GRAPH_PRESET_01 } from '../src/run/mapGraphPreset';
 import {
   canPlaceTrapHazardCircle,
@@ -78,7 +78,27 @@ const silenceProfile = trapProfileFromLegacyCurse('silence');
 silenceProfile.safeCorridor!.halfWidth = 1;
 assert.equal(TRAP_ROOM_PROFILES.silence.safeCorridor?.halfWidth, 64, 'legacy mapping is defensive');
 
-const graph = new RunMapGraph(MAP_GRAPH_PRESET_01);
+// 현재 6방 고정 프리셋은 roomIndex에 묶인 함정 배선이 일반화될 때까지 trap을
+// 제외한다. 계약 검증은 제단 갈래를 함정 갈래로 바꾼 독립 fixture로 유지한다.
+const trapDefinition: MapGraphDefinition = {
+  ...MAP_GRAPH_PRESET_01,
+  nodes: MAP_GRAPH_PRESET_01.nodes.map((node) => (
+    node.id === 's2-altar'
+      ? {
+        ...node,
+        id: 's2-trap',
+        kind: 'trap',
+        waveSetId: 'trap-hazard',
+        trapProfile: TRAP_ROOM_PROFILES.hazard,
+      }
+      : node
+  )),
+  edges: MAP_GRAPH_PRESET_01.edges.map((edge) => ({
+    from: edge.from === 's2-altar' ? 's2-trap' : edge.from,
+    to: edge.to === 's2-altar' ? 's2-trap' : edge.to,
+  })),
+};
+const graph = new RunMapGraph(trapDefinition);
 const trap = graph.snapshot().nodes.find((node) => node.id === 's2-trap');
 assert.equal(trap?.kind, 'trap');
 assert.equal(trap?.trapProfile?.kind, 'hazard');
@@ -87,8 +107,8 @@ assert.equal(WAVE_SETS['trap-hazard'].some((wave) => wave.hazard === true), fals
   'trap node owns the hazard field; its enemy wave must not spawn legacy hazards');
 
 const missingProfile = {
-  ...MAP_GRAPH_PRESET_01,
-  nodes: MAP_GRAPH_PRESET_01.nodes.map((node) => (
+  ...trapDefinition,
+  nodes: trapDefinition.nodes.map((node) => (
     node.id === 's2-trap' ? { ...node, trapProfile: undefined } : node
   )),
 };
