@@ -25,6 +25,13 @@ export const TRAP_ROOM_PROFILES: Readonly<Record<TrapProfileKind, TrapRoomProfil
 /** 위험지대 함정방의 원형 장판 반경. 배치·통로 검증도 같은 값으로 계산한다. */
 export const TRAP_HAZARD_CIRCLE_RADIUS = 120;
 
+/** 십자 통로 사이의 사분면에만 장판을 두어 네 방향 진입로를 모두 보존한다. */
+export const TRAP_HAZARD_CIRCLE_OFFSETS = [
+  [-260, -220],
+  [260, -220],
+  [260, 220],
+] as const;
+
 /** 기존 RoomCurseKind를 trap 노드 프로필로 보존 이관할 때 쓰는 명시적 매핑입니다. */
 export function trapProfileFromLegacyCurse(kind: 'silence' | 'blackout' | 'word-limit' | 'heatwave'): TrapRoomProfile {
   return cloneTrapProfile(TRAP_ROOM_PROFILES[kind]);
@@ -73,12 +80,47 @@ export function canPlaceTrapHazardCircle(
   centerX: number,
   centerY: number,
   corridor: TrapSafeCorridor | undefined,
+  navigationClearance = 0,
 ): boolean {
   if (!corridor) return true;
   const safeRadius = Number.isFinite(radius) ? Math.max(0, radius) : 0;
-  const protectedHalfWidth = Math.max(0, corridor.halfWidth) + safeRadius;
+  const safeClearance = Number.isFinite(navigationClearance)
+    ? Math.max(0, navigationClearance)
+    : 0;
+  const protectedHalfWidth = Math.max(0, corridor.halfWidth)
+    + safeRadius
+    + safeClearance;
   return Math.abs(x - centerX) > protectedHalfWidth
     && Math.abs(y - centerY) > protectedHalfWidth;
+}
+
+export interface TrapHazardCirclePlacement {
+  x: number;
+  y: number;
+  radius: number;
+}
+
+export function trapHazardCirclePlacements(
+  centerX: number,
+  centerY: number,
+  corridor: TrapSafeCorridor | undefined,
+  navigationClearance: number,
+): TrapHazardCirclePlacement[] {
+  return TRAP_HAZARD_CIRCLE_OFFSETS
+    .map(([offsetX, offsetY]) => ({
+      x: centerX + offsetX,
+      y: centerY + offsetY,
+      radius: TRAP_HAZARD_CIRCLE_RADIUS,
+    }))
+    .filter((placement) => canPlaceTrapHazardCircle(
+      placement.x,
+      placement.y,
+      placement.radius,
+      centerX,
+      centerY,
+      corridor,
+      navigationClearance,
+    ));
 }
 
 export function cloneTrapProfile(profile: TrapRoomProfile): TrapRoomProfile {

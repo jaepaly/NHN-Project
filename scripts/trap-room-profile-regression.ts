@@ -5,6 +5,7 @@ import { MAP_GRAPH_PRESET_01 } from '../src/run/mapGraphPreset';
 import {
   canPlaceTrapHazardCircle,
   isInsideTrapSafeCorridor,
+  trapHazardCirclePlacements,
   trapProfileFromLegacyCurse,
   TRAP_HAZARD_CIRCLE_RADIUS,
   TRAP_ROOM_PROFILES,
@@ -28,6 +29,50 @@ assert.equal(isInsideTrapSafeCorridor(centerX + 250, centerY + 250, centerX, cen
 assert.equal(TRAP_HAZARD_CIRCLE_RADIUS, 120);
 assert.equal(canPlaceTrapHazardCircle(centerX + 270, centerY + 270, TRAP_HAZARD_CIRCLE_RADIUS, centerX, centerY, corridor), true);
 assert.equal(canPlaceTrapHazardCircle(centerX + 120, centerY + 270, TRAP_HAZARD_CIRCLE_RADIUS, centerX, centerY, corridor), false);
+
+const playerRadius = 16;
+const placements = trapHazardCirclePlacements(
+  centerX,
+  centerY,
+  corridor,
+  playerRadius,
+);
+assert.equal(placements.length, 3, 'all preset hazard circles must pass corridor clearance');
+for (const placement of placements) {
+  assert.equal(
+    canPlaceTrapHazardCircle(
+      placement.x,
+      placement.y,
+      placement.radius,
+      centerX,
+      centerY,
+      corridor,
+      playerRadius,
+    ),
+    true,
+    'spawned circle must preserve the cross corridor including player radius',
+  );
+}
+
+// 네 방향 축을 따라 방 가장자리에서 중앙까지 이동할 때 어느 원형 장판과도 겹치지 않는다.
+const axisPaths = [
+  Array.from({ length: centerX + 1 }, (_, x) => [x, centerY] as const),
+  Array.from({ length: centerX + 1 }, (_, dx) => [centerX + dx, centerY] as const),
+  Array.from({ length: centerY + 1 }, (_, y) => [centerX, y] as const),
+  Array.from({ length: centerY + 1 }, (_, dy) => [centerX, centerY + dy] as const),
+];
+for (const path of axisPaths) {
+  for (const [x, y] of path) {
+    assert.equal(
+      placements.some((placement) => (
+        Math.hypot(x - placement.x, y - placement.y)
+          <= placement.radius + playerRadius
+      )),
+      false,
+      `cross corridor disconnected by a hazard circle at (${x}, ${y})`,
+    );
+  }
+}
 
 const silenceProfile = trapProfileFromLegacyCurse('silence');
 silenceProfile.safeCorridor!.halfWidth = 1;
@@ -74,4 +119,4 @@ for (const cleanup of [
   );
 }
 
-console.log('Trap room profile regression: legacy mapping, cross corridor, node contract, room-clear cleanup passed');
+console.log('Trap room profile regression: mapping, connected cross corridor, node contract, room-clear cleanup passed');

@@ -260,7 +260,7 @@ import { HeatwaveCurseField } from '../render/heatwaveCurseField';
 import { showRoomCurseBanner } from '../render/roomCurseBanner';
 import {
   debugTrapProfileFromEnv,
-  TRAP_HAZARD_CIRCLE_RADIUS,
+  trapHazardCirclePlacements,
   trapProfileFromLegacyCurse,
 } from '../run/trapRoomProfile';
 import type { TrapRoomProfile, TrapSafeCorridor } from '../run/mapGraphContract';
@@ -2444,25 +2444,23 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private spawnHazards(safeCorridor?: TrapSafeCorridor): void {
-    const radius = TRAP_HAZARD_CIRCLE_RADIUS;
-    // 중앙 안전영역 내부에는 기존 위험지대 방과 동일하게 원형 위험지대를 둔다.
-    // 십자 통로는 외곽 위험지대를 가로지를 때만 적용되며, 이 원형 장판을 지우지 않는다.
-    const offsets = [
-      [-230, -140],
-      [225, 80],
-      [0, 190],
-    ] as const;
-    for (const [offsetX, offsetY] of offsets) {
+    const placements = trapHazardCirclePlacements(
+      this.worldBounds.centerX,
+      this.worldBounds.centerY,
+      safeCorridor,
+      PLAYER_HIT_RADIUS,
+    );
+    for (const placement of placements) {
       const view = this.add.circle(
-        Phaser.Math.Clamp(this.worldBounds.centerX + offsetX, this.worldBounds.left + radius, this.worldBounds.right - radius),
-        Phaser.Math.Clamp(this.worldBounds.centerY + offsetY, this.worldBounds.top + radius, this.worldBounds.bottom - radius),
-        radius,
+        Phaser.Math.Clamp(placement.x, this.worldBounds.left + placement.radius, this.worldBounds.right - placement.radius),
+        Phaser.Math.Clamp(placement.y, this.worldBounds.top + placement.radius, this.worldBounds.bottom - placement.radius),
+        placement.radius,
         0x8f183e,
         0.14,
       ).setStrokeStyle(4, 0xff5370, 0.92);
       this.hazardZones.push({
         view,
-        contains: (x, y) => Phaser.Math.Distance.Between(x, y, view.x, view.y) <= radius,
+        contains: (x, y) => Phaser.Math.Distance.Between(x, y, view.x, view.y) <= placement.radius,
         damageCooldown: 0,
       });
     }
