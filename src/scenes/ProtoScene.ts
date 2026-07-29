@@ -2978,7 +2978,7 @@ if (applied) this.playPlayerHit(
       this.tweens.killTweensOf(outerRing);
       outerRing.setAlpha(1).setFillStyle(0x8f183e, 0.32)
         .setStrokeStyle(5, 0xff6b86, 1);
-      const particles = this.add.particles(0, 0, 'particle', {
+      const particles = this.add.particles(0, 0, particleKey(this, PARTICLE_TEXTURES.glow), {
         emitZone: new Phaser.GameObjects.Particles.Zones.RandomZone(
           {
             getRandomPoint: (point: Phaser.Types.Math.Vector2Like) => {
@@ -4727,7 +4727,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       onComplete: () => {
         ring.destroy();
         // 조여든 힘이 터져 나온다 — 각인이 완성된 순간
-        const burst = this.add.particles(x, y - 20, 'particle', {
+        const burst = this.add.particles(x, y - 20, particleKey(this, PARTICLE_TEXTURES.glow), {
           speed: { min: 90, max: 300 },
           scale: { start: 0.85, end: 0 },
           lifespan: 620,
@@ -5892,7 +5892,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         onComplete: () => ring.destroy(),
       });
     });
-    const burst = this.add.particles(x, y, 'particle', {
+    const burst = this.add.particles(x, y, particleKey(this, PARTICLE_TEXTURES.glow), {
       speed: { min: 240, max: 520 },
       scale: { start: 1.1, end: 0 },
       lifespan: 640,
