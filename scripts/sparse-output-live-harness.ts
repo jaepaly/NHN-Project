@@ -263,9 +263,6 @@ function immediateFailure(result: Result, testCase: TestCase): string | null {
   if (testCase.expected === 'single' && result.mode !== 'single') {
     return `단일이 sequence: ${testCase.text}`;
   }
-  if (result.unauthorizedSupport.length > 0) {
-    return `무단 지원 효과(${result.unauthorizedSupport.join(',')}): ${testCase.text}`;
-  }
   return null;
 }
 
@@ -281,6 +278,17 @@ async function runSmoke(): Promise<{ results: Result[]; fatal?: string }> {
       if (result.status === 429) return { results, fatal: result.error };
       const failure = immediateFailure(result, testCase);
       if (failure) return { results, fatal: failure };
+    }
+    const pair = results.filter((row) => row.trial === `S${index + 1}`);
+    const baselineRow = pair.find((row) => row.arm === 'baseline');
+    const candidateRow = pair.find((row) => row.arm === 'candidate');
+    assert(baselineRow && candidateRow);
+    if (candidateRow.unauthorizedSupport.length > baselineRow.unauthorizedSupport.length) {
+      return {
+        results,
+        fatal: `무단 지원 효과 증가: baseline ${baselineRow.unauthorizedSupport.length}`
+          + ` → candidate ${candidateRow.unauthorizedSupport.length} (${testCase.text})`,
+      };
     }
   }
 

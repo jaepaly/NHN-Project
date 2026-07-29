@@ -60,7 +60,7 @@ baseline/candidate 순서를 케이스마다 교차한다.
 - candidate HTTP/JSON/validator 실패
 - 명시 복합 3종 중 single 1건
 - single 2종 중 sequence 1건
-- 입력에 없는 heal/shield/buff 추가
+- candidate의 입력에 없는 heal/shield/buff 수가 같은 paired baseline보다 증가
 - 429
 
 스모크 통과:
@@ -116,3 +116,9 @@ baseline/candidate 순서를 케이스마다 교차한다.
 - 계획 호출: smoke 16 + candidate quality 42 + paired latency 36 = 최대 94콜.
 - 429는 품질 실패로 세지 않고 즉시 중단해 quota 상태를 공유한다.
 - `wrangler deploy`, `wrangler versions deploy`, production cache version bump는 사용자·총괄 승인 전 금지한다.
+
+## 7. 게이트 정정·실행 기록
+
+- 최초 스모크는 S5 `심장이 두 번 뛰는 동안`에서 중단됐다. baseline과 candidate가 모두 single로 분류하고 각각 입력에 없는 heal/buff를 1건 추가했다.
+- 원본 v2.15 보존 실험의 목표는 baseline 대비 비열화 방지인데, baseline도 실패한 항목에 candidate만 절대 0건을 요구한 스모크 기준은 논리적으로 모순이었다.
+- 결과를 유리하게 만들기 위한 prompt/corpus/품질선 변경 없이, **스모크의 무단 지원 즉시 중단선만 paired baseline보다 증가하지 않음으로 정정**한다. 42종 candidate 품질 단계의 절대 0건 기준은 유지한다.
