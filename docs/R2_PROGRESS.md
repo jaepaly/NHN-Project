@@ -27,7 +27,9 @@
   - `사방의 포화`는 `looksSequential()`이 false라 클라이언트 상한 2.5초이고, 5.139초 응답은 게임 경로라면 fallback된다. 더구나 `cacheSeed.generated.ts`가 이 문장을 **단일 spell로 프리워밍**해 신규 브라우저에서도 단일로 고정한다.
   - 19종 timeout 코드 감사 결과 **14종은 2.5초, 5종만 3.2초**다. v2.15가 추상 이름을 기본 sequence로 확장했지만 클라이언트 복합 감지는 과거 motion signal 일부만 보므로 tail fallback 위험이 남는다.
   - 결론: “19종 전부 실패”·전면 쿼터 장애는 재현되지 않았지만, **프롬프트 규칙 ↔ timeout 분류 ↔ 캐시 시드 정합 결함**은 재현됐다.
-- [ ] 브라우저 게임 경로에서 같은 대표 문장을 1회씩 실행해 Node 결과와 `lastSource`, 실제 시퀀스 실행 여부를 교차 확인한다.
+- [~] **fixture 우회 없는 실플레이 교차 확인** — 로컬 게임 서버에서 `debugSpellPlan()` 카탈로그 이름과 `#seq <key>`를 쓰지 않고, 신규 단일·명시 복합·추상 영창을 실제 영창창에 입력한다. `VITE_JUDGE_MOCK≠1`, `VITE_SEQUENCE_JUDGE≠0`, 캐시 상태를 확인하고 `lastSource`·네트워크 status/지연·실제 sequence 실행을 함께 기록한다. 팀원 로컬의 “전부 단일”이 환경변수·fallback·cache·배포 중 어디서 갈리는지 비교한다.
+  - [x] 기존 `logs/play.jsonl` 구조 감사: DEV의 `LoggingJudge`가 `session_start` 판정기 이름과 cast/fizzle/blocked의 입력·대표 spell·`src`, 별도 `dmg` breakdown을 `/__log`로 append한다. fixture는 판정 전에 우회하므로 이 cast 로그에 들어오지 않는다.
+  - [ ] 현재 누락된 `elapsedMs`, plan 존재 여부, sequence/behavior 수, 실제 `runSequenceCast` 진입 이벤트와 절대시각을 보강해야 캡처 없이 실플레이 판정·fallback·실행층을 전부 검증할 수 있다. 현 로그만으로는 “대표 spell이 기록됨”과 “화면에서 단일 실행됨”을 구분할 수 없다.
 
 **④ 결과별 수정 분기**
 - [ ] `429`면 Gemini 프로젝트 쿼터/RPM과 Worker IP 제한을 분리하고, 제한 수치·키·프로젝트 정합과 심사 기간 유료 전환 결정을 다룬다.
