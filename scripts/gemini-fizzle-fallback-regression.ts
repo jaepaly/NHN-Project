@@ -37,12 +37,21 @@ Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable
 const mock = new MockJudge();
 let remotePayload: SpellJudgement = await mock.judge('화염구');
 let fetchCount = 0;
+let lastRequestBody: { text?: unknown; requestId?: unknown } | undefined;
 const originalFetch = globalThis.fetch;
-globalThis.fetch = async () => {
+globalThis.fetch = async (_input, init) => {
   fetchCount += 1;
+  lastRequestBody = JSON.parse(String(init?.body ?? '{}')) as {
+    text?: unknown;
+    requestId?: unknown;
+  };
   return new Response(JSON.stringify(remotePayload), {
     status: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Server-Timing': 'worker;dur=1200, gemini;dur=1180',
+      'X-Incant-Request-Id': String(lastRequestBody.requestId),
+    },
   });
 };
 
@@ -60,11 +69,26 @@ try {
   assert.equal((await castJudge.judge('화염구')).disposition, 'cast');
   assert.equal(castJudge.lastSource, 'gemini');
   assert.equal(castJudge.lastFallbackReason, undefined);
+  assert.equal(lastRequestBody?.text, '화염구');
+  assert.equal(lastRequestBody?.requestId, castJudge.lastRequestId);
+  assert.match(castJudge.lastRequestId ?? '', /^[0-9a-f-]{36}$/);
+  assert.equal(castJudge.lastTimeoutBudgetMs, 2500);
+  assert.equal(castJudge.lastSequentialHint, false);
+  assert.equal(castJudge.lastServerTiming, 'worker;dur=1200, gemini;dur=1180');
   assert.equal(fetchCount, 1);
   assert.equal((await castJudge.judge('화염구')).disposition, 'cast');
   assert.equal(castJudge.lastSource, 'cache');
   assert.equal(castJudge.lastFallbackReason, undefined);
   assert.equal(fetchCount, 1);
+
+  storage.clear();
+  const sequenceHintJudge = new GeminiJudge('https://proxy.invalid');
+  assert.equal(
+    (await sequenceHintJudge.judge('물러섰다가 화염 폭풍을 부른다')).disposition,
+    'cast',
+  );
+  assert.equal(sequenceHintJudge.lastTimeoutBudgetMs, 3200);
+  assert.equal(sequenceHintJudge.lastSequentialHint, true);
 
   // 3) 모델이 의미 있는 짧은 주문을 fizzle해도 Mock이 발동으로 복구하고 캐시하지 않는다.
   storage.clear();

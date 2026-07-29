@@ -13,4 +13,12 @@ export interface SpellJudge {
   readonly lastSource?: string;
   /** [디버그] fallback일 때 원격 판정이 실패한 이유. 관측 전용, 게임 로직에서 소비하지 않는다. */
   readonly lastFallbackReason?: string;
+  /** [진단] 직전 원격 요청의 client↔Worker 공통 ID. 로컬·캐시 판정이면 없음. */
+  readonly lastRequestId?: string;
+  /** [진단] 직전 원격 요청에 실제 적용된 hard timeout 상한. */
+  readonly lastTimeoutBudgetMs?: number;
+  /** [진단] 클라이언트가 입력을 sequence형으로 사전 인식했는지 여부. */
+  readonly lastSequentialHint?: boolean;
+  /** [진단] Worker가 응답 헤더로 돌려준 구간별 처리 시간. */
+  readonly lastServerTiming?: string;
 }

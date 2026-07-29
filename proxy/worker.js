@@ -8,10 +8,11 @@
  */
 import { normalizeJudgeOutput } from './judge-output.js';
 
+const GEMINI_MODEL = 'gemini-3.5-flash-lite';
 const GEMINI_URL =
   // 모델 핀 고정(2026-07-22): `-latest` 자동 갱신으로 요청 규격이 바뀌는 문제 방지.
   // Gemini 3.5부터 temperature/thinkingBudget가 폐기되어 아래 요청에서도 제거했다.
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent';
+  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 // 공급자 프로젝트 할당량과 별개인 앱 자체 간이 보호막.
 // IP별·Worker 인스턴스별 인메모리 제한이므로 프로젝트 전체 쿼터를 보장하지는 않는다.
@@ -136,8 +137,74 @@ function corsHeaders(origin) {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Expose-Headers': 'Server-Timing, X-Incant-Request-Id',
     'Content-Type': 'application/json; charset=utf-8',
   };
+}
+
+function elapsedMs(startedAt) {
+  return Math.round((performance.now() - startedAt) * 10) / 10;
+}
+
+function validRequestId(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{8,80}$/.test(value);
+}
+
+function scheduleJudgeTimingLog(ctx, fields, level = 'log') {
+  const record = {
+    event: 'judge_timing',
+    model: GEMINI_MODEL,
+    ...fields,
+  };
+  ctx.waitUntil(Promise.resolve().then(() => {
+    console[level](JSON.stringify(record));
+  }));
+}
+
+function timedJudgeResponse({
+  payload,
+  status,
+  cors,
+  ctx,
+  requestId,
+  workerStartedAt,
+  workerPreMs,
+  geminiMs,
+  inputChars,
+  outcome,
+  upstreamStatus,
+}) {
+  const body = JSON.stringify(payload);
+  const workerTotalMs = elapsedMs(workerStartedAt);
+  const workerPostMs = Math.max(
+    0,
+    Math.round((workerTotalMs - workerPreMs - (geminiMs ?? 0)) * 10) / 10,
+  );
+  const serverTiming = [
+    `worker;dur=${workerTotalMs}`,
+    geminiMs === undefined ? null : `gemini;dur=${geminiMs}`,
+  ].filter(Boolean).join(', ');
+  scheduleJudgeTimingLog(ctx, {
+    requestId,
+    phase: 'completed',
+    outcome,
+    status,
+    upstreamStatus,
+    inputChars,
+    responseBytes: new TextEncoder().encode(body).byteLength,
+    workerPreMs,
+    geminiMs,
+    workerPostMs,
+    workerTotalMs,
+  }, status >= 500 ? 'error' : 'log');
+  return new Response(body, {
+    status,
+    headers: {
+      ...cors,
+      'X-Incant-Request-Id': requestId,
+      'Server-Timing': serverTiming,
+    },
+  });
 }
 
 function rateLimited(ip) {
@@ -249,7 +316,7 @@ async function evolveName(request, env, cors) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     // 허용 오리진: 배포(ALLOWED_ORIGIN) + 로컬 개발(vite dev).
     // 요청 Origin이 허용 목록에 있으면 그대로 반사, 아니면 배포 오리진으로 응답.
     const allowed = [env.ALLOWED_ORIGIN, 'http://localhost:5173', 'http://127.0.0.1:5173'];
@@ -283,46 +350,129 @@ export default {
     if (path.endsWith('/evolve-name')) {
       return evolveName(request, env, cors);
     }
+    const workerStartedAt = performance.now();
+    let requestId = crypto.randomUUID();
     let text;
     try {
       const body = await request.json();
       text = String(body.text ?? '').slice(0, 60);
+      if (validRequestId(body.requestId)) requestId = body.requestId;
     } catch {
-      return new Response(JSON.stringify({ error: 'bad json' }), { status: 400, headers: cors });
+      return timedJudgeResponse({
+        payload: { error: 'bad json' },
+        status: 400,
+        cors,
+        ctx,
+        requestId,
+        workerStartedAt,
+        workerPreMs: elapsedMs(workerStartedAt),
+        inputChars: 0,
+        outcome: 'bad_json',
+      });
     }
     if (!text.trim()) {
-      return new Response(JSON.stringify({ error: 'empty text' }), { status: 400, headers: cors });
+      return timedJudgeResponse({
+        payload: { error: 'empty text' },
+        status: 400,
+        cors,
+        ctx,
+        requestId,
+        workerStartedAt,
+        workerPreMs: elapsedMs(workerStartedAt),
+        inputChars: text.length,
+        outcome: 'empty_text',
+      });
     }
 
     // [진단용] 시크릿 바인딩 확인 — 값은 노출하지 않고 존재·길이만
     if (!env.GEMINI_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: 'no_api_key_bound', keyLen: (env.GEMINI_API_KEY || '').length }),
-        { status: 500, headers: cors },
-      );
+      return timedJudgeResponse({
+        payload: { error: 'no_api_key_bound', keyLen: 0 },
+        status: 500,
+        cors,
+        ctx,
+        requestId,
+        workerStartedAt,
+        workerPreMs: elapsedMs(workerStartedAt),
+        inputChars: text.length,
+        outcome: 'no_api_key',
+      });
     }
 
-    const geminiRes = await fetch(`${GEMINI_URL}?key=${env.GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `${JUDGE_PROMPT}\n"${text}"` }] }],
-        generationConfig: {
-          maxOutputTokens: 2048,
-          responseMimeType: 'application/json',
-        },
-      }),
+    scheduleJudgeTimingLog(ctx, {
+      requestId,
+      phase: 'received',
+      inputChars: text.length,
+      workerPreMs: elapsedMs(workerStartedAt),
     });
+
+    const geminiStartedAt = performance.now();
+    const workerPreMs = Math.round((geminiStartedAt - workerStartedAt) * 10) / 10;
+    let geminiRes;
+    try {
+      geminiRes = await fetch(`${GEMINI_URL}?key=${env.GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `${JUDGE_PROMPT}\n"${text}"` }] }],
+          generationConfig: {
+            maxOutputTokens: 2048,
+            responseMimeType: 'application/json',
+          },
+        }),
+      });
+    } catch (error) {
+      const geminiMs = elapsedMs(geminiStartedAt);
+      scheduleJudgeTimingLog(ctx, {
+        requestId,
+        phase: 'completed',
+        outcome: 'upstream_exception',
+        inputChars: text.length,
+        workerPreMs,
+        geminiMs,
+        workerTotalMs: elapsedMs(workerStartedAt),
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+      }, 'error');
+      throw error;
+    }
 
     if (!geminiRes.ok) {
       const detail = await geminiRes.text().catch(() => '');
-      return new Response(
-        JSON.stringify({ error: 'upstream', status: geminiRes.status, detail: detail.slice(0, 500) }),
-        { status: 502, headers: cors },
-      );
+      const geminiMs = elapsedMs(geminiStartedAt);
+      return timedJudgeResponse({
+        payload: { error: 'upstream', status: geminiRes.status, detail: detail.slice(0, 500) },
+        status: 502,
+        cors,
+        ctx,
+        requestId,
+        workerStartedAt,
+        workerPreMs,
+        geminiMs,
+        inputChars: text.length,
+        outcome: 'upstream_error',
+        upstreamStatus: geminiRes.status,
+      });
     }
 
-    const data = await geminiRes.json();
+    let data;
+    try {
+      data = await geminiRes.json();
+    } catch (error) {
+      const geminiMs = elapsedMs(geminiStartedAt);
+      scheduleJudgeTimingLog(ctx, {
+        requestId,
+        phase: 'completed',
+        outcome: 'upstream_invalid_json',
+        upstreamStatus: geminiRes.status,
+        inputChars: text.length,
+        workerPreMs,
+        geminiMs,
+        workerTotalMs: elapsedMs(workerStartedAt),
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+      }, 'error');
+      throw error;
+    }
+    const geminiMs = elapsedMs(geminiStartedAt);
     const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
     // 모델이 코드펜스(```json)나 "Here is the JSON..." 같은 서두를 덧붙일 수 있으므로
     // 첫 '{' ~ 마지막 '}' 구간만 추출해 파싱한다. (검증은 클라이언트 validateSpec에서 한 번 더)
@@ -333,9 +483,33 @@ export default {
     try {
       parsed = JSON.parse(json);
     } catch {
-      return new Response(JSON.stringify({ error: 'invalid llm output', raw: String(raw).slice(0, 500) }), { status: 502, headers: cors });
+      return timedJudgeResponse({
+        payload: { error: 'invalid llm output', raw: String(raw).slice(0, 500) },
+        status: 502,
+        cors,
+        ctx,
+        requestId,
+        workerStartedAt,
+        workerPreMs,
+        geminiMs,
+        inputChars: text.length,
+        outcome: 'invalid_llm_output',
+        upstreamStatus: geminiRes.status,
+      });
     }
     const normalized = normalizeJudgeOutput(parsed);
-    return new Response(JSON.stringify(normalized.value), { status: 200, headers: cors });
+    return timedJudgeResponse({
+      payload: normalized.value,
+      status: 200,
+      cors,
+      ctx,
+      requestId,
+      workerStartedAt,
+      workerPreMs,
+      geminiMs,
+      inputChars: text.length,
+      outcome: 'ok',
+      upstreamStatus: geminiRes.status,
+    });
   },
 };

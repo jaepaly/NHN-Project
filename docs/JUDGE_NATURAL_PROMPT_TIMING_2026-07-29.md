@@ -115,3 +115,16 @@ timeout 3건은 다음과 같다.
 4. 실플레이 표본을 누적해 timeout 요청을 단계별로 분류한다.
 
 원인이 확인되기 전 자동 재시도는 무료 티어 요청량을 이중 소비할 수 있어 보류한다. 즉시 완화가 필요하면 정상 요청 시간을 늘리지 않는 **약 1.5초 soft-wait 연출 + 4초 hard cutoff**를 실험안으로 둘 수 있지만, 이는 관측 패치 뒤 별도 브랜치에서 fallback 감소량과 체감 지연을 함께 비교해야 한다.
+
+### 구간별 timing 관측 구현
+
+`codex/judge-natural-prompt-timing` 브랜치에 다음 관측을 구현했다. 판정 프롬프트·timeout 값·응답 정규화 정책은 변경하지 않았다.
+
+- 클라이언트가 원격 호출마다 `crypto.randomUUID()`로 request ID를 만들고 `{ text, requestId }`를 보낸다.
+- DEV 플레이 로그에 `requestId`, `timeoutBudgetMs`, `sequentialHint`, `serverTiming`을 추가한다.
+- Worker는 입력 원문 대신 `inputChars`만 남기고 request 수신·완료 이벤트를 나눠 기록한다. 완료 이벤트에는 `workerPreMs`, `geminiMs`, `workerPostMs`, `workerTotalMs`가 들어간다.
+- Worker 로그 출력은 `ctx.waitUntil()`로 응답 뒤에 처리한다.
+- 성공·정상 오류 응답은 `Server-Timing`과 `X-Incant-Request-Id` 헤더를 돌려준다.
+- `wrangler.toml`에서 Workers Logs를 100% 샘플링으로 활성화한다. 현재 15 RPM 보호막 기준 로그량은 무료 플랜 범위에서 매우 작다.
+
+검증은 timing 관측 회귀 4군, fallback 회귀 6군, 플레이 로그 회귀 5군, 프로덕션 빌드, Wrangler 4.115.0 배포 dry-run을 통과했다. dry-run 번들은 32.72KiB(gzip 9.67KiB)다. **프로덕션 Worker 배포는 아직 하지 않았다.**

@@ -61,6 +61,14 @@ export class GeminiJudge implements SpellJudge {
   lastSource: 'gemini' | 'cache' | 'fallback' | 'local' = 'gemini';
   /** [디버그] 직전 fallback의 직접 원인 — 플레이 로그 관측용. */
   lastFallbackReason: JudgeFallbackReason | undefined;
+  /** [진단] 직전 원격 호출과 Worker 로그를 잇는 공통 ID. */
+  lastRequestId: string | undefined;
+  /** [진단] 직전 원격 호출에 적용된 hard timeout. */
+  lastTimeoutBudgetMs: number | undefined;
+  /** [진단] looksSequential의 직전 판정. */
+  lastSequentialHint: boolean | undefined;
+  /** [진단] Worker 응답의 Server-Timing 원문. */
+  lastServerTiming: string | undefined;
   private readonly fallback: SpellJudge;
 
   constructor(
@@ -72,6 +80,10 @@ export class GeminiJudge implements SpellJudge {
 
   async judge(text: string): Promise<SpellJudgement> {
     this.lastFallbackReason = undefined;
+    this.lastRequestId = undefined;
+    this.lastTimeoutBudgetMs = undefined;
+    this.lastSequentialHint = undefined;
+    this.lastServerTiming = undefined;
     const key = text.trim();
     const prechecked = precheckText(key);
     if (prechecked) {
@@ -111,15 +123,24 @@ export class GeminiJudge implements SpellJudge {
 
   /** 프록시에 POST하고 상한(단순 2.5초 / 복합 3.2초) 초과 시 abort. */
   private async fetchWithTimeout(text: string): Promise<unknown> {
+    const sequentialHint = looksSequential(text);
+    const timeoutBudgetMs = sequentialHint ? SEQUENCE_TIMEOUT_MS : TIMEOUT_MS;
+    const requestId = globalThis.crypto.randomUUID();
+    this.lastRequestId = requestId;
+    this.lastTimeoutBudgetMs = timeoutBudgetMs;
+    this.lastSequentialHint = sequentialHint;
+
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), judgeTimeoutMs(text));
+    const timer = setTimeout(() => ctrl.abort(), timeoutBudgetMs);
     try {
       const res = await fetch(this.proxyUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, requestId }),
         signal: ctrl.signal,
       });
+      this.lastServerTiming = res.headers.get('Server-Timing') ?? undefined;
+      this.lastRequestId = res.headers.get('X-Incant-Request-Id') ?? requestId;
       if (!res.ok) throw new JudgeHttpError(res.status);
       return await res.json();
     } finally {

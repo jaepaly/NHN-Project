@@ -32,6 +32,16 @@ export function judgementLogFields(judgement: SpellJudgement): Record<string, un
   };
 }
 
+/** 클라이언트 판정 로그와 Worker timing 로그를 연결하는 관측 필드. */
+export function judgeTraceLogFields(judge: SpellJudge): Record<string, unknown> {
+  return {
+    requestId: judge.lastRequestId,
+    timeoutBudgetMs: judge.lastTimeoutBudgetMs,
+    sequentialHint: judge.lastSequentialHint,
+    serverTiming: judge.lastServerTiming,
+  };
+}
+
 /**
  * 개발 전용 판정 로거 — inner 판정기를 감싸 각 판정을 dev 서버(`/__log`)로 보낸다.
  * vite 플러그인이 `logs/play.jsonl`에 한 줄씩 append → 플레이 피드백용으로 읽는다.
@@ -77,6 +87,7 @@ export class LoggingJudge implements SpellJudge {
       src,
       elapsedMs: Date.now() - startedAt,
       fallbackReason: this.inner.lastFallbackReason,
+      ...judgeTraceLogFields(this.inner),
       ...judgementLogFields(j),
     });
     return j;

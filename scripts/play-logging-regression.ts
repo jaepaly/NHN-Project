@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { judgementLogFields } from '../src/spell/loggingJudge';
+import { judgementLogFields, judgeTraceLogFields } from '../src/spell/loggingJudge';
+import type { SpellJudge } from '../src/spell/judge';
 import { buildPlayLogRecord } from '../src/spell/playLog';
 import type { SpellJudgement, SpellSpec } from '../src/spell/types';
 
@@ -78,6 +79,23 @@ assert.deepEqual(judgementLogFields({
   message: '불발',
 }), { disp: 'fizzle' });
 
+const tracedJudge: SpellJudge = {
+  name: 'trace-test',
+  async judge() {
+    return single;
+  },
+  lastRequestId: 'judge-request-test',
+  lastTimeoutBudgetMs: 3200,
+  lastSequentialHint: true,
+  lastServerTiming: 'worker;dur=1500, gemini;dur=1480',
+};
+assert.deepEqual(judgeTraceLogFields(tracedJudge), {
+  requestId: 'judge-request-test',
+  timeoutBudgetMs: 3200,
+  sequentialHint: true,
+  serverTiming: 'worker;dur=1500, gemini;dur=1480',
+});
+
 const envelope = buildPlayLogRecord(
   { type: 'sequence_exec', input: '달빛의 장례 행렬' },
   { sessionId: 'session-test', atMs: Date.UTC(2026, 6, 29, 8, 0, 0) },
@@ -89,4 +107,4 @@ assert.deepEqual(envelope, {
   sessionId: 'session-test',
 });
 
-console.log('Play logging regression: 단일·시퀀스 요약·거절·세션 envelope 4군 통과');
+console.log('Play logging regression: 단일·시퀀스 요약·거절·timing trace·세션 envelope 5군 통과');

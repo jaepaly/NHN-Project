@@ -16,6 +16,7 @@
     "test:floorhazard": "esbuild scripts/floor-hazard-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-floor-hazard-regression.mjs && node node_modules/.cache/incant-floor-hazard-regression.mjs",
     "test:spell": "esbuild scripts/spell-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-regression.mjs && node node_modules/.cache/incant-spell-regression.mjs",
     "test:judge-fallback": "esbuild scripts/gemini-fizzle-fallback-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-gemini-fizzle-fallback-regression.mjs && node node_modules/.cache/incant-gemini-fizzle-fallback-regression.mjs",
+    "test:judge-timing": "esbuild scripts/judge-timing-observability-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-judge-timing-observability-regression.mjs && node node_modules/.cache/incant-judge-timing-observability-regression.mjs",
     "test:playlog": "esbuild scripts/play-logging-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-play-logging-regression.mjs && node node_modules/.cache/incant-play-logging-regression.mjs",
     "test:history": "esbuild scripts/spell-history-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-history-regression.mjs && node node_modules/.cache/incant-spell-history-regression.mjs",
     "test:run": "esbuild scripts/run-controller-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-run-controller-regression.mjs && node node_modules/.cache/incant-run-controller-regression.mjs",
@@ -88,6 +89,7 @@
   },
   "devDependencies": {
     "typescript": "^5.9.2",
-    "vite": "^7.1.0"
+    "vite": "^7.1.0",
+    "wrangler": "^4.115.0"
   }
 }
