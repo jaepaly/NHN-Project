@@ -1,5 +1,7 @@
 import type { RewardOption } from '../run/runContract';
 import type { SpellElement } from '../spell/types';
+import { AWAKENING_LABELS } from '../combat-core/run/awakening';
+import { ALTAR_OFFER_CONFIG } from '../combat-core/run/altarOffer';
 import { RUN_REWARD_CONFIG } from '../combat-core/run/rewardConfig';
 import { ELEMENT_LABELS, ELEMENT_PALETTES } from './palette';
 
@@ -28,6 +30,12 @@ const KIND_COLORS: Partial<Record<RewardOption['kind'], number>> = {
   engrave: 0xffd166,
   spirit: 0x8fa4ff,
   evolve: 0xffd166,
+  // 각성은 진화(금)와 구분되는 자주 — "성질이 바뀌었다"를 색으로 알린다
+  awaken: 0xd0a8ff,
+  // 제단 전용 (#214) — 대가를 치른 보상이라 각성과 같은 자주 계열로 묶는다
+  'altar-leave': 0x7f8aba,
+  'all-affinity': 0x8fe3c8,
+  echo: 0xd0a8ff,
 };
 
 /** 보상 → 증가분을 숫자로 드러내는 부상 텍스트. 수치는 RUN_REWARD_CONFIG 단일 출처. */
@@ -66,6 +74,22 @@ export function gainLabelFor(option: RewardOption): GainLabel {
         text: option.evolve?.target === 'spirit-fuse' ? '정령 융합' : '각인 진화',
         color,
       };
+    case 'awaken':
+      return { text: `각성 · ${AWAKENING_LABELS[option.awaken!.awakening]}`, color };
+    // ── 제단 거래 (#214) ────────────────────────────────────────────────
+    case 'all-affinity': {
+      const percent = Math.round(ALTAR_OFFER_CONFIG.allAffinityBonus * 100);
+      return { text: `모든 원소 위력 +${percent}%`, color };
+    }
+    case 'echo':
+      return {
+        text: `영창 에코 · 위력 ${Math.round(ALTAR_OFFER_CONFIG.echo.powerScale * 100)}%`,
+        color,
+      };
+    case 'altar-leave':
+    default:
+      // 거절·잠긴 카드는 얻은 게 없으니 부상 텍스트도 없다
+      return { text: '', color };
   }
 }
 

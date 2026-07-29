@@ -130,8 +130,12 @@ export class GameAudio {
     return this.scene.sound.mute;
   }
 
-  /** M 키와 같은 토글 — 일시정지 메뉴에서도 호출한다(두 경로가 같은 상태를 공유). */
-  readonly toggleMute = (): void => {
+  /**
+   * M 키와 같은 토글 — 설정 오버레이도 이걸 부른다(두 경로가 같은 상태를 공유).
+   * **새 값을 반환한다**: 대입 직후 게터가 이전 값을 돌려주는 Phaser 타이밍 때문에
+   * 호출측이 곧바로 muted를 다시 읽으면 반전된 라벨이 나온다.
+   */
+  readonly toggleMute = (): boolean => {
     // 다음 값을 먼저 계산해 저장 — mute 대입 직후 게터가 이전 값을 돌려주는
     // Phaser 내부 타이밍 때문에 게터 재읽기로 저장하면 반전값이 기록된다.
     const next = !this.scene.sound.mute;
@@ -141,6 +145,7 @@ export class GameAudio {
     } catch {
       // Storage can be unavailable in privacy modes; muting still works in-session.
     }
+    return next;
   };
 
   private readStoredMute(): boolean {

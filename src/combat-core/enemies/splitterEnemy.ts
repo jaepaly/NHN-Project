@@ -21,10 +21,10 @@ export class SplitterEnemy implements CombatEnemy {
   private readonly healthFill: Phaser.GameObjects.Rectangle;
   private readonly speed: number;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, small = false) {
+  constructor(scene: Phaser.Scene, x: number, y: number, small = false, hpScale = 1) {
     this.small = small;
     const config = small ? SPLITTER_CONFIG.small : SPLITTER_CONFIG.large;
-    this.maxHp = config.maxHp;
+    this.maxHp = Math.max(1, Math.round(config.maxHp * hpScale));
     this.hp = this.maxHp;
     this.speed = config.speed;
     this.contactDamage = config.contactDamage;

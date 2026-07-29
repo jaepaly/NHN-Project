@@ -5,6 +5,9 @@ import {
   saveSettings,
   settingDisplay,
 } from '../run/gameSettings';
+import {
+  UI_COLOR, UI_FONT, UI_LAYER, UI_RADIUS, overlayBaseCss,
+} from './uiTokens';
 
 /**
  * 설정 오버레이 — 타이틀(로비)에서 연다. R3 자립형 DOM (도감 오버레이와 같은 패턴).
@@ -33,62 +36,59 @@ const ROWS: SettingRow[] = [
 ];
 
 const CSS = `
-#${WRAP_ID} {
-  position: fixed; inset: 0; z-index: 46;
-  display: grid; place-items: center;
-  background: rgba(3, 5, 16, 0.9);
-  opacity: 0; visibility: hidden; transition: opacity 200ms ease;
-  font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
-}
-#${WRAP_ID}.active { opacity: 1; visibility: visible; }
+${overlayBaseCss(WRAP_ID)}
+#${WRAP_ID} { z-index: ${UI_LAYER.settings}; }
 #${WRAP_ID} .settings-panel {
   width: min(460px, calc(100vw - 40px));
   padding: 26px 30px 22px;
-  border-radius: 16px;
-  border: 1px solid #2a3566;
-  background: linear-gradient(180deg, #0b1030 0%, #070a1e 100%);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
 }
 #${WRAP_ID} .settings-title {
-  font-size: 19px; font-weight: 800; letter-spacing: 0.28em; color: #eef1ff;
+  font-family: ${UI_FONT.serif};
+  font-size: 19px; font-weight: 800; letter-spacing: 0.24em; color: ${UI_COLOR.textBright};
 }
-#${WRAP_ID} .settings-sub { margin-top: 4px; font-size: 12px; color: #7f8aba; }
+#${WRAP_ID} .settings-sub { margin-top: 4px; font-size: 12px; color: ${UI_COLOR.textMuted}; }
 #${WRAP_ID} .settings-row { margin-top: 22px; }
-#${WRAP_ID} .settings-head {
-  display: flex; justify-content: space-between; align-items: baseline;
-}
-#${WRAP_ID} .settings-label { font-size: 14px; font-weight: 700; color: #dfe6ff; }
+#${WRAP_ID} .settings-head { display: flex; justify-content: space-between; align-items: baseline; }
+#${WRAP_ID} .settings-label { font-size: 14px; font-weight: 700; color: ${UI_COLOR.text}; }
 #${WRAP_ID} .settings-value {
-  font-family: Consolas, monospace; font-size: 13px; font-weight: 700; color: #8fa4ff;
+  font-family: ${UI_FONT.mono}; font-size: 13px; font-weight: 700; color: ${UI_COLOR.accent};
 }
-#${WRAP_ID} .settings-hint { margin-top: 2px; font-size: 11.5px; color: #6f7aa8; }
+#${WRAP_ID} .settings-hint { margin-top: 2px; font-size: 11.5px; color: ${UI_COLOR.textMuted}; }
 #${WRAP_ID} input[type="range"] {
   -webkit-appearance: none; appearance: none;
-  width: 100%; margin-top: 10px; height: 6px; border-radius: 3px;
+  width: 100%; margin-top: 10px; height: 6px; border-radius: ${UI_RADIUS.pill};
   background: #1d2445; outline: none; cursor: pointer;
 }
 #${WRAP_ID} input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
-  width: 16px; height: 16px; border-radius: 50%;
-  background: #dfe6ff; border: 2px solid #0b1030; cursor: grab;
+  width: 16px; height: 16px; border-radius: ${UI_RADIUS.circle};
+  background: ${UI_COLOR.text}; border: 2px solid ${UI_COLOR.ink}; cursor: grab;
 }
 #${WRAP_ID} input[type="range"]::-moz-range-thumb {
-  width: 16px; height: 16px; border-radius: 50%;
-  background: #dfe6ff; border: 2px solid #0b1030; cursor: grab;
+  width: 16px; height: 16px; border-radius: ${UI_RADIUS.circle};
+  background: ${UI_COLOR.text}; border: 2px solid ${UI_COLOR.ink}; cursor: grab;
 }
 #${WRAP_ID} input[type="range"]:focus-visible { box-shadow: 0 0 0 3px rgba(76, 102, 255, 0.5); }
+#${WRAP_ID} .settings-toggle {
+  margin-top: 22px; width: 100%; display: flex; justify-content: space-between;
+  align-items: center; padding: 11px 14px;
+  border: 1px solid ${UI_COLOR.border}; border-radius: ${UI_RADIUS.sm};
+  background: transparent; color: ${UI_COLOR.text};
+  font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+#${WRAP_ID} .settings-toggle:hover { border-color: ${UI_COLOR.borderStrong}; }
+#${WRAP_ID} .settings-toggle b { font-family: ${UI_FONT.mono}; color: ${UI_COLOR.accent}; }
 #${WRAP_ID} .settings-foot {
   margin-top: 24px; display: flex; justify-content: space-between; align-items: center;
-  font-size: 12px; color: #7f8aba;
+  font-size: 12px; color: ${UI_COLOR.textMuted};
 }
 #${WRAP_ID} .settings-reset {
-  padding: 6px 12px; border-radius: 7px; cursor: pointer;
-  border: 1px solid #33447f; background: transparent; color: #aeb9e8;
-  font-size: 12px; font-family: inherit;
+  padding: 6px 12px; border-radius: ${UI_RADIUS.sm}; cursor: pointer;
+  border: 1px solid ${UI_COLOR.border}; background: transparent; color: ${UI_COLOR.textSoft};
+  font: inherit; font-size: 12px;
 }
-#${WRAP_ID} .settings-reset:hover { border-color: #4c66ff; color: #dfe6ff; }
-#${WRAP_ID} .settings-foot b { color: #dfe6ff; }
-@media (prefers-reduced-motion: reduce) { #${WRAP_ID} { transition: none; } }
+#${WRAP_ID} .settings-reset:hover { border-color: ${UI_COLOR.borderStrong}; color: ${UI_COLOR.text}; }
+#${WRAP_ID} .settings-foot b { color: ${UI_COLOR.text}; }
 `;
 
 function ensureDom(): { wrap: HTMLDivElement; panel: HTMLDivElement } {
@@ -105,7 +105,7 @@ function ensureDom(): { wrap: HTMLDivElement; panel: HTMLDivElement } {
     wrap.setAttribute('aria-hidden', 'true');
     document.body.appendChild(wrap);
   }
-  wrap.innerHTML = '<div class="settings-panel" role="dialog" aria-label="설정"></div>';
+  wrap.innerHTML = '<div class="settings-panel ui-panel" role="dialog" aria-label="설정"></div>';
   return { wrap, panel: wrap.firstElementChild as HTMLDivElement };
 }
 
@@ -121,6 +121,11 @@ export interface SettingsOverlayOptions {
   onChange?: (settings: GameSettings) => void;
   /** 이 화면에서 소리가 안 나는 경우(타이틀) 안내를 바꾼다 */
   audioNote?: string;
+  /**
+   * 음소거 토글 — 오디오를 가진 화면(전투)만 넘긴다. 없으면 행 자체를 안 그린다.
+   * 타이틀엔 GameAudio가 없어 토글할 대상이 없다.
+   */
+  mute?: { get: () => boolean; toggle: () => boolean };
 }
 
 /** 설정을 연다. 닫힐 때 최종 설정으로 resolve — Esc·바깥 클릭·닫기로 닫는다. */
@@ -152,12 +157,17 @@ export function showSettingsOverlay(
           aria-label="${row.label}">
       </div>`;
   }).join('')}
+    ${options.mute ? '<button type="button" class="settings-toggle">음소거 <b></b></button>' : ''}
     <div class="settings-foot">
       <button type="button" class="settings-reset">기본값으로</button>
       <span><b>ESC</b> 또는 바깥을 클릭해 닫기</span>
     </div>`;
 
+  const muteButton = panel.querySelector<HTMLButtonElement>('.settings-toggle');
   const sync = (): void => {
+    if (muteButton && options.mute) {
+      muteButton.querySelector('b')!.textContent = options.mute.get() ? '[켬]' : '[끔]';
+    }
     for (const row of ROWS) {
       const el = panel.querySelector<HTMLElement>(`[data-key="${row.key}"]`)!;
       const input = el.querySelector<HTMLInputElement>('input')!;
@@ -175,6 +185,11 @@ export function showSettingsOverlay(
       sync();
     });
   }
+  muteButton?.addEventListener('click', () => {
+    // 반환값을 쓴다 — 토글 직후 get()은 Phaser 타이밍상 이전 값을 돌려준다
+    const next = options.mute?.toggle();
+    muteButton.querySelector('b')!.textContent = next ? '[켬]' : '[끔]';
+  });
   panel.querySelector('.settings-reset')!.addEventListener('click', () => {
     // 저장분을 지우고 기본값을 다시 읽는다 — 기본값의 단일 출처는 gameSettings다
     try {
@@ -206,5 +221,7 @@ export function showSettingsOverlay(
     void wrap.offsetWidth;
     wrap.classList.add('active');
     wrap.setAttribute('aria-hidden', 'false');
+    // 키보드만으로도 바로 조절되게 — 마우스를 안 쓰는 사람도 ←→로 들어온다
+    panel.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true });
   });
 }

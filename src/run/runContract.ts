@@ -22,7 +22,15 @@ export type RewardKind =
   | 'spirit-haste'
   | 'engrave'
   | 'spirit'
-  | 'evolve';
+  | 'evolve'
+  | 'awaken'
+  // ── 제단 전용 (#214) — 일반 3택 풀에는 절대 섞이지 않는다 ──────────────
+  /** 대가 없이 나간다 — 제단을 거절하는 선택지 */
+  | 'altar-leave'
+  /** 모든 원소 친화 상승 — 일반 풀은 랜덤 1원소만 준다 */
+  | 'all-affinity'
+  /** 영창 에코 — 수동 단일 주문이 한 번 더 울린다 */
+  | 'echo';
 
 /** 각인·정령 공통 성장 레벨 — 범위 밖 값이 보상으로 소비되는 경로를 타입에서 차단 (R1 리뷰) */
 export type GrowthLevel = 1 | 2 | 3;
@@ -56,6 +64,15 @@ export interface EvolveRewardData {
   elements: readonly SpellElement[];
 }
 
+/**
+ * 원소 각성 — 친화가 임계(1.2)에 닿은 원소에 성질을 새긴다. 원소당 1회.
+ * 세 갈래 모두 **수동 영창 전용**이라 오토 비중 상한(#67)과 무관하다.
+ */
+export interface AwakenRewardData {
+  element: SpellElement;
+  awakening: 'searing' | 'chaining' | 'brand';
+}
+
 export interface RewardOption {
   /** 고유 id — chooseReward()에 그대로 전달 */
   id: string;
@@ -72,6 +89,27 @@ export interface RewardOption {
   spirit?: SpiritRewardData;
   /** kind='evolve' 전용 — 진화·융합 대상 */
   evolve?: EvolveRewardData;
+  /** kind='awaken' 전용 — 각성할 원소와 갈래 (AWAKENING_PROPOSAL) */
+  awaken?: AwakenRewardData;
+  /**
+   * 강화 배율 — 표준 보상은 미지정(=1). 제단방(#214) 같은 "상급" 보상이 1보다 큰 값을
+   * 실어 `applyReward`가 수치형 효과(HP·마나·친화·수호 등)에 곱한다. 미지정이면 1로 본다.
+   * (적용부 = RunController.applyReward, R3 소유 — 배선은 별도 조율.)
+   */
+  powerScale?: number;
+  /**
+   * 제단 거래 전용 (#214) — 이 카드를 고르면 치를 **최대 체력** 대가.
+   * 거절 카드('altar-leave')와 잠긴 등급은 cost 0이다. 씬이 이 값으로 지불을 집행한다.
+   */
+  altar?: AltarRewardData;
+}
+
+/** 제단 거래 데이터 — 대가와 잠금 여부 (altarOffer) */
+export interface AltarRewardData {
+  /** 치를 최대 체력. 0이면 대가 없음(거절·잠김) */
+  cost: number;
+  /** 감당 못 해 잠긴 등급 — 카드는 보이되 고르면 아무 일도 안 일어난다 */
+  locked: boolean;
 }
 
 export type RunPhase = 'combat' | 'reward-select' | 'room-transition' | 'run-over';

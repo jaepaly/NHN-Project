@@ -66,54 +66,6 @@ export function normalizeSettings(raw: Partial<GameSettings> | null | undefined)
 
 export type SettingKey = keyof GameSettings;
 
-/** 한 칸 조절 (순수) — 범위를 넘지 않고, 원본을 만지지 않는다. */
-export function adjustSetting(
-  settings: GameSettings,
-  key: SettingKey,
-  direction: number,
-): GameSettings {
-  const c = SETTINGS_CONFIG;
-  const [min, max] = key === 'brightness'
-    ? [c.brightnessMin, c.brightnessMax]
-    : [c.volumeMin, c.volumeMax];
-  const delta = Math.sign(direction) * c.step;
-  return {
-    ...settings,
-    [key]: round1(clamp(settings[key] + delta, min, max, settings[key])),
-  };
-}
-
-function settingRange(key: SettingKey): [number, number] {
-  const c = SETTINGS_CONFIG;
-  return key === 'brightness'
-    ? [c.brightnessMin, c.brightnessMax]
-    : [c.volumeMin, c.volumeMax];
-}
-
-/** 0~1 비율 — 게이지 렌더용 (밝기는 최소값이 0이 아니므로 범위로 정규화한다). */
-export function settingRatio(settings: GameSettings, key: SettingKey): number {
-  const [min, max] = settingRange(key);
-  return clamp((settings[key] - min) / (max - min), 0, 1, 0);
-}
-
-/**
- * 게이지 위 비율(0~1) → 설정값 (순수). 드래그 조작용 — 포인터 x를 바 안의 비율로
- * 바꿔 넘기면 된다. step 격자에 스냅해 표시값·저장값이 ←→ 조작과 정확히 일치한다
- * (드래그로만 0.37 같은 격자 밖 값이 생기면 이후 ←→가 어긋난다).
- */
-export function setSettingFromRatio(
-  settings: GameSettings,
-  key: SettingKey,
-  ratio: number,
-): GameSettings {
-  const [min, max] = settingRange(key);
-  const safe = clamp(Number.isFinite(ratio) ? ratio : 0, 0, 1, 0);
-  const raw = min + safe * (max - min);
-  // step 격자 스냅 — round1과 같은 결과를 내되 step이 바뀌어도 따라간다
-  const snapped = Math.round(raw / SETTINGS_CONFIG.step) * SETTINGS_CONFIG.step;
-  return { ...settings, [key]: round1(clamp(snapped, min, max, settings[key])) };
-}
-
 /** 화면에 쓰는 표시값 — 밝기는 배율(×1.0), 볼륨은 백분율. */
 export function settingDisplay(settings: GameSettings, key: SettingKey): string {
   if (key === 'brightness') return `×${settings.brightness.toFixed(1)}`;

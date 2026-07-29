@@ -1,4 +1,5 @@
-/**
+
+import { UI_FONT, UI_LAYER } from './uiTokens';/**
  * 방 전환 연출 — R3 소유 UI (PHASE_2 R3 P0)
  * R1 결합: controller.on('room-transition', (state, durationMs) =>
  *            playRoomTransition(`ROOM ${state.roomIndex + 1}`, durationMs));
@@ -10,11 +11,11 @@ const WRAP_ID = 'r3-transition-wrap';
 
 const CSS = `
 #${WRAP_ID} {
-  position: fixed; inset: 0; z-index: 30;
+  position: fixed; inset: 0; z-index: ${UI_LAYER.roomTransition};
   display: grid; place-items: center;
   background: #04050f;
   opacity: 0; visibility: hidden; pointer-events: none;
-  font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+  font-family: ${UI_FONT.sans};
 }
 #${WRAP_ID}.active { visibility: visible; }
 #${WRAP_ID} .transition-label {

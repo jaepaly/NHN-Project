@@ -12,12 +12,12 @@ const CHASER_SPRITE_KEY = 'enemy-chaser';
 export class ChaserEnemy implements CombatEnemy {
   readonly kind = 'chaser' as const;
   readonly view: Phaser.GameObjects.Container;
-  readonly maxHp: number = CHASER_CONFIG.maxHp;
+  readonly maxHp: number;
   readonly contactDamage: number = CHASER_CONFIG.contactDamage;
   readonly contactDistance: number = CHASER_CONFIG.contactDistance;
   readonly collisionRadius: number = CHASER_CONFIG.collisionRadius;
 
-  hp: number = this.maxHp;
+  hp: number;
   alive = true;
   contactDamageCooldownRemaining = 0;
   private dying = false;
@@ -29,7 +29,9 @@ export class ChaserEnemy implements CombatEnemy {
   private readonly bodyAngleOffset: number;
   private readonly healthFill: Phaser.GameObjects.Rectangle;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
+  constructor(scene: Phaser.Scene, x: number, y: number, hpScale = 1) {
+    this.maxHp = Math.max(1, Math.round(CHASER_CONFIG.maxHp * hpScale));
+    this.hp = this.maxHp;
     const glow = scene.add.circle(0, 0, 19, 0xff4d6d, 0.16)
       .setBlendMode(Phaser.BlendModes.ADD);
     // AI 스프라이트가 있으면 사용한다. 무채색이라 타입 색을 틴트로 입혀 색 구분 체계를

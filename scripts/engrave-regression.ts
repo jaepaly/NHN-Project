@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   ENGRAVE_CONFIG,
   EngraveManager,
+  evolvedStatus,
   intervalForLevel,
   scaledPowerForLevel,
   shotCountForLevel,
@@ -122,6 +123,7 @@ for (const level of [1, 2, 3] as const) {
     '발당 위력이 줄면 안 된다 — 3발로 나눠 갖는 게 아니라 한 발 더 얹는 것');
   assert.equal(afterCasts[0].spell.size, 'huge', '진화는 huge');
   assert.equal(afterCasts[0].spell.name, '겁화의 창', 'LLM 격상명');
+  assert.ok(afterCasts[0].spell.status.includes('burn'), '화염 진화 = 본성(화상)이 드러난다');
 
   // 발마다 지연이 누적돼야 한다. 예전 `shot === 0 ? 0 : delay`면 2·3발째가 겹쳤다.
   const delays = afterCasts.map((c) => c.delaySeconds);
@@ -186,3 +188,44 @@ assert.equal(manager.update(60).length, 0);
 assert.equal(manager.injectReward(baseRewards, 1, () => 0).some((o) => o.kind === 'engrave'), false);
 
 console.log('Engrave regression: 후보·슬롯·3Lv·타이머·DPS 게이트·진화3발·진화DPS·reset 7군 통과');
+
+// ── 진화 상태이상 — 본성 부여와 부속성 폴백 (#216 항목8) ─────────────
+{
+  const base = (over: Partial<SpellSpec> = {}): SpellSpec => ({
+    ...spell('x'), element_primary: 'fire', element_secondary: null, status: [], ...over,
+  });
+
+  // 원본에 없으면 주속성 본성을 더한다
+  assert.deepEqual(evolvedStatus(base()), ['burn'], '화염 → 화상');
+  assert.deepEqual(
+    evolvedStatus(base({ element_primary: 'ice' })), ['freeze'], '빙결 → 빙결',
+  );
+  // 기존 상태이상은 보존한 채 덧붙인다
+  assert.deepEqual(
+    evolvedStatus(base({ status: ['slow'] })), ['slow', 'burn'], '기존 것 위에 얹는다',
+  );
+
+  // 이미 본성이 있으면 → 부속성의 본성이 드러난다
+  assert.deepEqual(
+    evolvedStatus(base({ status: ['burn'], element_secondary: 'ice' })),
+    ['burn', 'freeze'],
+    '주속성 본성이 이미 있으면 부속성 본성으로 폴백',
+  );
+  // 부속성 본성까지 이미 있으면 그대로 (중복 금지)
+  assert.deepEqual(
+    evolvedStatus(base({ status: ['burn', 'freeze'], element_secondary: 'ice' })),
+    ['burn', 'freeze'],
+    '둘 다 있으면 변화 없음 — 중복을 만들지 않는다',
+  );
+  // 단일 원소 + 이미 본성 → 그대로. 주보상(3발·huge·격상명)은 별도로 주어진다
+  assert.deepEqual(
+    evolvedStatus(base({ status: ['burn'] })), ['burn'],
+    '단일 원소는 폴백 대상이 없다 — 정상 동작',
+  );
+
+  // 순수성: 원본 배열을 만지지 않는다
+  const src = base({ status: ['slow'] });
+  const snapshot = [...src.status];
+  evolvedStatus(src);
+  assert.deepEqual(src.status, snapshot, '입력 불변');
+}

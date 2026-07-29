@@ -1,4 +1,5 @@
 import type { RewardOption } from '../run/runContract';
+import { UI_FONT, UI_LAYER } from './uiTokens';
 import type { SpellForm } from '../spell/types';
 import { ELEMENT_LABELS, ELEMENT_PALETTES, paletteColorToCss } from '../render/palette';
 import { glyphSvg } from '../render/formGlyphs';
@@ -23,13 +24,13 @@ const WRAP_ID = 'r3-reward-wrap';
 
 const CSS = `
 #${WRAP_ID} {
-  position: fixed; inset: 0; z-index: 20;
+  position: fixed; inset: 0; z-index: ${UI_LAYER.reward};
   display: grid; place-items: center;
   background: radial-gradient(circle at 50% 42%, rgba(76, 102, 255, 0.10), transparent 42%),
               rgba(3, 5, 16, 0.72);
   backdrop-filter: blur(2px) saturate(0.9);
   opacity: 0; visibility: hidden; transition: opacity 180ms ease;
-  font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+  font-family: ${UI_FONT.sans};
 }
 #${WRAP_ID}.active { opacity: 1; visibility: visible; }
 #${WRAP_ID} .reward-panel { text-align: center; max-width: min(700px, calc(100vw - 32px)); }
@@ -136,6 +137,11 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   engrave: 'ENGRAVE',
   spirit: 'SPIRIT',
   evolve: 'EVOLVE',
+  awaken: 'AWAKEN',
+  // 제단 전용 (#214)
+  'altar-leave': 'DEPART',
+  'all-affinity': 'ATTUNE',
+  echo: 'ECHO',
 };
 
 function ensureDom(): HTMLElement {

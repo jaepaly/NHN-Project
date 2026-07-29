@@ -1,6 +1,7 @@
 import type { EngravedSpellSnapshot } from '../combat-core/engrave/engraveManager';
 import type { SpiritSnapshot } from '../combat-core/spirit/spiritManager';
 import type { SpellElement, SpellForm } from '../spell/types';
+import type { AwakeningKind, AwakeningState } from '../combat-core/run/awakening';
 
 /**
  * 빌드 칩 뷰모델 (순수) — 우하단 빌드 패널을 텍스트 2줄에서 2×2 아이콘 그리드로
@@ -48,6 +49,11 @@ export interface BuildChip {
   level: number;
   /** 진화 각인·융합 정령 — 금테 */
   evolved: boolean;
+  /**
+   * 이 칩 원소의 각성 (없으면 null). 진화(금테)와 **다른 축**이라 표식도 달라야 한다 —
+   * 진화는 그 각인 한 개의 격상이고, 각성은 그 **원소 전체**에 걸린다.
+   */
+  awakening: AwakeningKind | null;
   /** 다음 자동 시전까지 남은 비율 0~1 (1=방금 쐈다, 0=지금 나간다). 빈 칸은 0 */
   cooldownRatio: number;
   /** 툴팁 상세 줄 — 이름 아래에 붙는다 */
@@ -95,6 +101,7 @@ function emptyChip(kind: BuildChipKind, slot: number): BuildChip {
     glyph: null,
     level: 0,
     evolved: false,
+    awakening: null,
     cooldownRatio: 0,
     detail: [kind === 'engrave'
       ? '수동으로 외운 주문을 보상에서 각인할 수 있다'
@@ -102,7 +109,9 @@ function emptyChip(kind: BuildChipKind, slot: number): BuildChip {
   };
 }
 
-function engraveChip(entry: EngravedSpellSnapshot, slot: number): BuildChip {
+function engraveChip(
+  entry: EngravedSpellSnapshot, slot: number, awakenings: AwakeningState,
+): BuildChip {
   const spell = entry.spell;
   const detail = [
     `위력 ${spell.power} · ${entry.shotCount}발`,
@@ -120,13 +129,17 @@ function engraveChip(entry: EngravedSpellSnapshot, slot: number): BuildChip {
     glyph: spell.form,
     level: entry.level,
     evolved: entry.evolved,
+    awakening: awakenings[spell.element_primary] ?? null,
     cooldownRatio: cooldownRatio(entry.remainingSeconds, entry.intervalSeconds),
     detail,
   };
 }
 
-function spiritChip(entry: SpiritSnapshot, slot: number): BuildChip {
+function spiritChip(
+  entry: SpiritSnapshot, slot: number, awakenings: AwakeningState,
+): BuildChip {
   const roleLabel = ROLE_LABELS[entry.role];
+  const element = entry.element ?? spiritFallbackElement(entry.role);
   const detail = [`${roleLabel} 정령 · ${entry.intervalSeconds.toFixed(1)}초마다 발동`];
   if (entry.fused) detail.push('융합 — 두 정령이 하나로');
   return {
@@ -134,12 +147,13 @@ function spiritChip(entry: SpiritSnapshot, slot: number): BuildChip {
     slot,
     filled: true,
     name: entry.fusedName ?? `${roleLabel} 정령`,
-    element: entry.element ?? spiritFallbackElement(entry.role),
+    element,
     elementSecondary: entry.elementSecondary ?? null,
     form: null,
     glyph: SPIRIT_GLYPH[entry.role],
     level: entry.level,
     evolved: entry.fused,
+    awakening: element ? awakenings[element] ?? null : null,
     cooldownRatio: cooldownRatio(entry.remainingSeconds, entry.intervalSeconds),
     detail,
   };
@@ -152,15 +166,16 @@ function spiritChip(entry: SpiritSnapshot, slot: number): BuildChip {
 export function buildChipModel(
   engraves: readonly EngravedSpellSnapshot[],
   spirits: readonly SpiritSnapshot[],
+  awakenings: AwakeningState = {},
 ): BuildChip[] {
   const chips: BuildChip[] = [];
   for (let slot = 0; slot < BUILD_CHIP_CONFIG.engraveSlots; slot += 1) {
     const entry = engraves[slot];
-    chips.push(entry ? engraveChip(entry, slot) : emptyChip('engrave', slot));
+    chips.push(entry ? engraveChip(entry, slot, awakenings) : emptyChip('engrave', slot));
   }
   for (let slot = 0; slot < BUILD_CHIP_CONFIG.spiritSlots; slot += 1) {
     const entry = spirits[slot];
-    chips.push(entry ? spiritChip(entry, slot) : emptyChip('spirit', slot));
+    chips.push(entry ? spiritChip(entry, slot, awakenings) : emptyChip('spirit', slot));
   }
   return chips;
 }

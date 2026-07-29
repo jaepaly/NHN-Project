@@ -1,4 +1,5 @@
 import type { CodexEntry, CodexSortMode } from '../spell/spellCodex';
+import { UI_FONT, UI_LAYER } from './uiTokens';
 import { sortCodex } from '../spell/spellCodex';
 import { ELEMENT_LABELS, ELEMENT_PALETTES, FORM_LABELS, paletteColorToCss } from '../render/palette';
 import { glyphSvg } from '../render/formGlyphs';
@@ -15,11 +16,11 @@ const WRAP_ID = 'r3-codex-wrap';
 
 const CSS = `
 #${WRAP_ID} {
-  position: fixed; inset: 0; z-index: 44;
+  position: fixed; inset: 0; z-index: ${UI_LAYER.codex};
   display: grid; place-items: center;
   background: rgba(3, 5, 16, 0.9);
   opacity: 0; visibility: hidden; transition: opacity 200ms ease;
-  font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+  font-family: ${UI_FONT.sans};
 }
 #${WRAP_ID}.active { opacity: 1; visibility: visible; }
 #${WRAP_ID} .codex-panel {
