@@ -152,3 +152,13 @@
 - 429 또는 provider 오류가 연속되면 끙끙대며 반복하지 않고 즉시 중지·공유한다.
 - `wrangler versions upload`만 허용한다. Version Preview는 배포가 아니며 production 트래픽 0%.
 - `wrangler deploy`, `wrangler versions deploy`, production 캐시 버전 bump는 사용자와 총괄 승인 전 금지한다.
+
+## 8. 실행 기록
+
+결과를 본 뒤 위 corpus·합격선은 바꾸지 않고, 실패 원인과 후보 변경만 아래에 누적한다.
+
+- `compact-text` Version `9dbd68ab-e0a0-4a2f-a4fa-8cb47dd6513e`
+  - 대표 1콜은 유효 2-sequence였으나 3번째 명시 복합 스모크에서 Gemini가 닫는 괄호를 끝내지 않아 Worker `invalid llm output` 502. 재시도 없이 이 팔은 NO-GO.
+- `sparse-plan` Version `37cda1a0-f68f-484d-91c7-9f83afb3f587`
+  - 같은 명시 복합 입력은 유효 JSON이었지만 `적에게 파고들어 칼날로 벤다`를 single spell+dash behavior로 융합해 분류. 동결 중단선에 따라 이 버전도 NO-GO.
+  - held-out은 건드리지 않고 일반 규칙 `이동 동사+공격 동사 → 접속어와 무관하게 반드시 plan`과 원리 예시 1개만 보강한 r2 후보로 재검증한다.

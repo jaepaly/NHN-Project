@@ -1,0 +1,232 @@
+{
+  "phase": "smoke",
+  "startedAt": "2026-07-29T09:59:52.475Z",
+  "finishedAt": "2026-07-29T10:00:28.378Z",
+  "gapMs": 4300,
+  "callCount": 9,
+  "urls": {
+    "baseline": "https://incant-judge-proxy.diawodbsdot.workers.dev",
+    "compactText": "https://compact-text-incant-judge-proxy.diawodbsdot.workers.dev",
+    "sparsePlan": "https://sparse-plan-incant-judge-proxy.diawodbsdot.workers.dev",
+    "candidate": "https://sparse-plan-incant-judge-proxy.diawodbsdot.workers.dev"
+  },
+  "fatal": "compact-text 적에게 파고들어 칼날로 벤다: HTTP 502",
+  "summary": {
+    "baseline": {
+      "calls": 3,
+      "valid": 3,
+      "sequenceCorrect": "3/3",
+      "singleCorrect": "0/0",
+      "unauthorizedSupport": 0,
+      "overThreeSequences": 0,
+      "p50Ms": 1715,
+      "p90Ms": 1885,
+      "medianBytes": 559,
+      "over2500Ms": 0,
+      "over3200Ms": 0
+    },
+    "compact-text": {
+      "calls": 3,
+      "valid": 2,
+      "sequenceCorrect": "2/3",
+      "singleCorrect": "0/0",
+      "unauthorizedSupport": 0,
+      "overThreeSequences": 0,
+      "p50Ms": 1773,
+      "p90Ms": 2231,
+      "medianBytes": 643,
+      "over2500Ms": 0,
+      "over3200Ms": 0
+    },
+    "sparse-plan": {
+      "calls": 3,
+      "valid": 3,
+      "sequenceCorrect": "3/3",
+      "singleCorrect": "0/0",
+      "unauthorizedSupport": 0,
+      "overThreeSequences": 1,
+      "p50Ms": 1661,
+      "p90Ms": 2132,
+      "medianBytes": 414,
+      "over2500Ms": 0,
+      "over3200Ms": 0
+    }
+  },
+  "results": [
+    {
+      "arm": "baseline",
+      "text": "왼쪽으로 피한 뒤 번개를 세 번 내리친다",
+      "expected": "sequence",
+      "group": "smoke",
+      "status": 200,
+      "elapsedMs": 1715,
+      "responseBytes": 559,
+      "valid": true,
+      "disposition": "cast",
+      "mode": "sequence",
+      "sequences": 2,
+      "behaviors": 2,
+      "effects": [
+        "damage"
+      ],
+      "unauthorizedSupport": [],
+      "raw": "{\"schema_version\":2,\"disposition\":\"cast\",\"spell_plan\":{\"name\":\"번개 회피 강타\",\"power\":90,\"durationMs\":2000,\"sequences\":[{\"durationWeight\":1,\"behaviors\":[{\"type\":\"move\",\"destination\":\"custom-vector\",\"angle\":-90,\"distance\":150,\"element\":\"lightning\"}]},{\"durationWeight\":2,\"behaviors\":[{\"type\":\"form\",\"powerWeight\":1,\"tuning\":{\"damage\":3},\"spec\":{\"name\":\"번개 내리치기\",\"effect\":\"damage\",\"target\":\"enemy\",\"element_primary\":\"lightning\",\"element_secondary\":null,\"form\":\"bolt\",\"size\":\"medium\",\"speed\":\"fast\",\"status\":[\"shock\"],\"power\":0,\"cost\":0}}]}]}}"
+    },
+    {
+      "arm": "compact-text",
+      "text": "왼쪽으로 피한 뒤 번개를 세 번 내리친다",
+      "expected": "sequence",
+      "group": "smoke",
+      "status": 200,
+      "elapsedMs": 1773,
+      "responseBytes": 566,
+      "valid": true,
+      "disposition": "cast",
+      "mode": "sequence",
+      "sequences": 2,
+      "behaviors": 2,
+      "effects": [
+        "damage"
+      ],
+      "unauthorizedSupport": [],
+      "raw": "{\"schema_version\":2,\"disposition\":\"cast\",\"spell_plan\":{\"name\":\"뢰격 회피\",\"power\":75,\"durationMs\":2000,\"sequences\":[{\"durationWeight\":1,\"behaviors\":[{\"type\":\"move\",\"destination\":\"custom-vector\",\"element\":\"lightning\",\"angle\":-90,\"distance\":150}]},{\"durationWeight\":3,\"behaviors\":[{\"type\":\"form\",\"powerWeight\":3,\"spec\":{\"name\":\"삼연격 번개\",\"effect\":\"damage\",\"target\":\"enemy\",\"element_primary\":\"lightning\",\"element_secondary\":null,\"form\":\"bolt\",\"size\":\"medium\",\"speed\":\"fast\",\"status\":[\"shock\"],\"power\":0,\"cost\":0,\"flavor\":\"세 번 내리치는 번개\"}}]}]}}"
+    },
+    {
+      "arm": "sparse-plan",
+      "text": "왼쪽으로 피한 뒤 번개를 세 번 내리친다",
+      "expected": "sequence",
+      "group": "smoke",
+      "status": 200,
+      "elapsedMs": 2132,
+      "responseBytes": 738,
+      "valid": true,
+      "disposition": "cast",
+      "mode": "sequence",
+      "sequences": 4,
+      "behaviors": 4,
+      "effects": [
+        "damage",
+        "damage",
+        "damage"
+      ],
+      "unauthorizedSupport": [],
+      "raw": "{\"schema_version\":2,\"disposition\":\"cast\",\"spell_plan\":{\"name\":\"뇌전의 회피격\",\"power\":90,\"durationMs\":3000,\"sequences\":[{\"durationWeight\":1,\"behaviors\":[{\"type\":\"move\",\"destination\":\"custom-vector\",\"angle\":-90,\"distance\":150,\"element\":\"lightning\"}]},{\"durationWeight\":1,\"behaviors\":[{\"type\":\"form\",\"spec\":{\"name\":\"번개 1격\",\"effect\":\"damage\",\"target\":\"enemy\",\"element_primary\":\"lightning\",\"form\":\"bolt\"}}]},{\"durationWeight\":1,\"behaviors\":[{\"type\":\"form\",\"spec\":{\"name\":\"번개 2격\",\"effect\":\"damage\",\"target\":\"enemy\",\"element_primary\":\"lightning\",\"form\":\"bolt\"}}]},{\"durationWeight\":1,\"behaviors\":[{\"type\":\"form\",\"spec\":{\"name\":\"번개 3격\",\"effect\":\"damage\",\"target\":\"enemy\",\"element_primary\":\"lightning\",\"form\":\"bolt\"}}]}]}}"
+    },
+    {
+      "arm": "compact-text",
+      "text": "얼음 장벽을 세우면서 번개를 쏜다",
+      "expected": "sequence",
+      "group": "smoke",
+      "status": 200,
+      "elapsedMs": 2231,
+      "responseBytes": 799,
+      "valid": true,
+      "disposition": "cast",
+      "mode": "sequence",
+      "sequences": 2,
+      "behaviors": 2,
+      "effects": [
+        "shield",
+        "damage"
+      ],
+      "unauthorizedSupport": [],
+      "raw": "{\"schema_version\":2,\"disposition\":\"cast\",\"spell_plan\":{\"name\":\"얼음과 번개의 공방\",\"power\":75,\"durationMs\":1500,\"sequences\":[{\"durationWeight\":1,\"behaviors\":[{\"type\":\"form\",\"powerWeight\":1,\"tuning\":{\"damage\":1,\"radius\":1},\"spec\":{\"name\":\"얼음 장벽\",\"effect\":\"shield\",\"target\":\"self\",\"element_primary\":\"ice\",\"element_secondary\":null,\"form\":\"wall\",\"size\":\"medium\",\"speed\":\"normal\",\"status\":[],\"power\":0,\"cost\":0,\"flavor\":\"얼음 장벽을 세운다\"}}]},{\"durationWeight\":1,\"behaviors\":[{\"type\":\"form\",\"powerWeight\":1,\"tuning\":{\"damage\":2,\"radius\":1},\"spec\":{\"name\":\"번개 발사\",\"effect\":\"damage\",\"target\":\"enemy\",\"element_primary\":\"lightning\",\"element_secondary\":null,\"form\":\"bolt\",\"size\":\"medium\",\"speed\":\"fast\",\"status\":[\"shock\"],\"power\":0,\"cost\":0,\"flavor\":\"번개를 쏜다\"}}]}]}}"
+    },
+    {
+      "arm": "sparse-plan",
+      "text": "얼음 장벽을 세우면서 번개를 쏜다",
+      "expected": "sequence",
+      "group": "smoke",
+      "status": 200,
+      "elapsedMs": 1661,
+      "responseBytes": 414,
+      "valid": true,
+      "disposition": "cast",
+      "mode": "sequence",
+      "sequences": 2,
+      "behaviors": 2,
+      "effects": [
+        "shield",
+        "damage"
+      ],
+      "unauthorizedSupport": [],
+      "raw": "{\"schema_version\":2,\"disposition\":\"cast\",\"spell_plan\":{\"name\":\"얼음과 번개의 공방\",\"power\":75,\"durationMs\":2000,\"sequences\":[{\"behaviors\":[{\"type\":\"form\",\"spec\":{\"name\":\"얼음 장벽\",\"effect\":\"shield\",\"target\":\"self\",\"element_primary\":\"ice\",\"form\":\"wall\"}}]},{\"behaviors\":[{\"type\":\"form\",\"spec\":{\"name\":\"번개 발사\",\"effect\":\"damage\",\"target\":\"enemy\",\"element_primary\":\"lightning\",\"form\":\"bolt\"}}]}]}}"
+    },
+    {
+      "arm": "baseline",
+      "text": "얼음 장벽을 세우면서 번개를 쏜다",
+      "expected": "sequence",
+      "group": "smoke",
+      "status": 200,
+      "elapsedMs": 1885,
+      "responseBytes": 708,
+      "valid": true,
+      "disposition": "cast",
+      "mode": "sequence",
+      "sequences": 2,
+      "behaviors": 2,
+      "effects": [
+        "shield",
+        "damage"
+      ],
+      "unauthorizedSupport": [],
+      "raw": "{\"schema_version\":2,\"disposition\":\"cast\",\"spell_plan\":{\"name\":\"빙벽과 번개\",\"power\":75,\"durationMs\":2000,\"sequences\":[{\"durationWeight\":1,\"behaviors\":[{\"type\":\"form\",\"powerWeight\":1,\"tuning\":{\"radius\":2},\"spec\":{\"name\":\"얼음 장벽\",\"effect\":\"shield\",\"target\":\"self\",\"element_primary\":\"ice\",\"element_secondary\":null,\"form\":\"wall\",\"size\":\"large\",\"speed\":\"normal\",\"status\":[\"freeze\"],\"power\":0,\"cost\":0}}]},{\"durationWeight\":1,\"behaviors\":[{\"type\":\"form\",\"powerWeight\":1,\"tuning\":{\"damage\":2},\"spec\":{\"name\":\"번개 화살\",\"effect\":\"damage\",\"target\":\"enemy\",\"element_primary\":\"lightning\",\"element_secondary\":null,\"form\":\"bolt\",\"size\":\"medium\",\"speed\":\"fast\",\"status\":[\"shock\"],\"power\":0,\"cost\":0}}]}]}}"
+    },
+    {
+      "arm": "sparse-plan",
+      "text": "적에게 파고들어 칼날로 벤다",
+      "expected": "sequence",
+      "group": "smoke",
+      "status": 200,
+      "elapsedMs": 1567,
+      "responseBytes": 345,
+      "valid": true,
+      "disposition": "cast",
+      "mode": "sequence",
+      "sequences": 2,
+      "behaviors": 2,
+      "effects": [
+        "damage"
+      ],
+      "unauthorizedSupport": [],
+      "raw": "{\"schema_version\":2,\"disposition\":\"cast\",\"spell_plan\":{\"name\":\"참격 돌진\",\"power\":75,\"durationMs\":1500,\"sequences\":[{\"behaviors\":[{\"type\":\"move\",\"destination\":\"target-direction\",\"element\":\"light\"}]},{\"behaviors\":[{\"type\":\"form\",\"spec\":{\"name\":\"칼날 베기\",\"effect\":\"damage\",\"target\":\"enemy\",\"element_primary\":\"light\",\"form\":\"slash\"}}]}]}}"
+    },
+    {
+      "arm": "baseline",
+      "text": "적에게 파고들어 칼날로 벤다",
+      "expected": "sequence",
+      "group": "smoke",
+      "status": 200,
+      "elapsedMs": 1537,
+      "responseBytes": 520,
+      "valid": true,
+      "disposition": "cast",
+      "mode": "sequence",
+      "sequences": 2,
+      "behaviors": 2,
+      "effects": [
+        "damage"
+      ],
+      "unauthorizedSupport": [],
+      "raw": "{\"schema_version\":2,\"disposition\":\"cast\",\"spell_plan\":{\"name\":\"참격의 돌진\",\"power\":75,\"durationMs\":1500,\"sequences\":[{\"durationWeight\":1,\"behaviors\":[{\"type\":\"move\",\"destination\":\"target-direction\",\"element\":\"wind\"}]},{\"durationWeight\":1,\"behaviors\":[{\"type\":\"form\",\"powerWeight\":1,\"tuning\":{\"damage\":2,\"radius\":1},\"spec\":{\"name\":\"칼날 베기\",\"effect\":\"damage\",\"target\":\"enemy\",\"element_primary\":\"wind\",\"element_secondary\":null,\"form\":\"slash\",\"size\":\"medium\",\"speed\":\"fast\",\"status\":[],\"power\":0,\"cost\":0}}]}]}}"
+    },
+    {
+      "arm": "compact-text",
+      "text": "적에게 파고들어 칼날로 벤다",
+      "expected": "sequence",
+      "group": "smoke",
+      "status": 502,
+      "elapsedMs": 1444,
+      "responseBytes": 643,
+      "valid": false,
+      "disposition": null,
+      "mode": "other",
+      "sequences": 0,
+      "behaviors": 0,
+      "effects": [],
+      "unauthorizedSupport": [],
+      "error": "HTTP 502",
+      "raw": "{\"error\":\"invalid llm output\",\"raw\":\"{\\\"schema_version\\\":2,\\\"disposition\\\":\\\"cast\\\",\\\"spell_plan\\\":{\\\"name\\\":\\\"칼날 침투\\\",\\\"power\\\":75,\\\"durationMs\\\":1500,\\\"sequences\\\":[{\\\"durationWeight\\\":1,\\\"behaviors\\\":[{\\\"type\\\":\\\"move\\\",\\\"destination\\\":\\\"target-direction\\\",\\\"element\\\":\\\"light\\\"}]},{\\\"durationWeight\\\":2,\\\"behaviors\\\":[{\\\"type\\\":\\\"form\\\",\\\"powerWeight\\\":1,\\\"tuning\\\":{\\\"damage\\\":2,\\\"radius\\\":1},\\\"spec\\\":{\\\"name\\\":\\\"참격 돌파\\\",\\\"effect\\\":\\\"damage\\\",\\\"target\\\":\\\"enemy\\\",\\\"element_primary\\\":\\\"light\\\",\\\"element_secondary\\\":null,\\\"form\\\":\\\"slash\\\",\\\"size\\\":\\\"medium\\\",\\\"speed\\\":\\\"fast\\\",\\\"status\\\":[],\\\"power\\\":0,\\\"cost\\\":0}}}]\"}"
+    }
+  ]
+}

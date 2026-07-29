@@ -29,6 +29,7 @@ const requiredContracts = [
   'burn|freeze|shock|slow|knockback|weaken',
   'cast-point|target-direction|away-from-target|random-direction|arena-center|custom-vector',
   '명시된 동작·변화·반복 횟수 > 정적 명사 예외',
+  '이동 동사+공격 동사가 함께 있으면 접속어와 무관하게 반드시 plan',
   '두 모드는 상호배타적',
   '입력에 없는 heal/shield/buff를 추가하지 않는다',
   'sequence 3·각 behavior 1~2',
