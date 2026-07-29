@@ -32,7 +32,8 @@ export function affinityElementForRoom(roomIndex: number): SpellElement {
   return ELEMENTS[(safeRoomIndex - 1) % ELEMENTS.length];
 }
 
-type StaticRewardKind = Exclude<RewardKind, 'engrave' | 'spirit' | 'evolve'>;
+// 각성(awaken)도 제외 — 친화 임계 도달 시에만 조건부 주입되지, 랜덤 풀에서 뽑히지 않는다
+type StaticRewardKind = Exclude<RewardKind, 'engrave' | 'spirit' | 'evolve' | 'awaken'>;
 
 /**
  * 보상 카드 하나를 만든다.

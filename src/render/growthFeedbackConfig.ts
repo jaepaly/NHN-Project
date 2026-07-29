@@ -1,5 +1,6 @@
 import type { RewardOption } from '../run/runContract';
 import type { SpellElement } from '../spell/types';
+import { AWAKENING_LABELS } from '../combat-core/run/awakening';
 import { RUN_REWARD_CONFIG } from '../combat-core/run/rewardConfig';
 import { ELEMENT_LABELS, ELEMENT_PALETTES } from './palette';
 
@@ -28,6 +29,8 @@ const KIND_COLORS: Partial<Record<RewardOption['kind'], number>> = {
   engrave: 0xffd166,
   spirit: 0x8fa4ff,
   evolve: 0xffd166,
+  // 각성은 진화(금)와 구분되는 자주 — "성질이 바뀌었다"를 색으로 알린다
+  awaken: 0xd0a8ff,
 };
 
 /** 보상 → 증가분을 숫자로 드러내는 부상 텍스트. 수치는 RUN_REWARD_CONFIG 단일 출처. */
@@ -66,6 +69,8 @@ export function gainLabelFor(option: RewardOption): GainLabel {
         text: option.evolve?.target === 'spirit-fuse' ? '정령 융합' : '각인 진화',
         color,
       };
+    case 'awaken':
+      return { text: `각성 · ${AWAKENING_LABELS[option.awaken!.awakening]}`, color };
   }
 }
 
