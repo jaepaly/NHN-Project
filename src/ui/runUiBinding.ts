@@ -23,6 +23,18 @@ export interface RunUiHooks {
   formFor?: (option: RewardOption) => SpellForm | null;
   /** 보상 화면에 함께 띄울 씬 쪽 맥락 (주문서 보유 등 — 컨트롤러가 모르는 것) */
   contextLines?: () => string[];
+  /**
+   * 보상 선택 후 **다음 방으로 넘어가기 전에** 끼어드는 단계 — 포탈로 다음 방을 고른다 (#214).
+   *
+   * 왜 여기인가: `chooseReward()`가 호출되는 **그 순간** RunController가 전환 타이머를
+   * 걸어버린다(`scheduleTransition`). 그러니 그 호출을 미루는 것이 컨트롤러를 건드리지
+   * 않고 방 전환을 멈출 수 있는 유일한 지점이다. 분기 선택은 R3 UI 책임이고
+   * RunController는 방 개수·보상만 세므로, 계약을 넘지 않는다.
+   *
+   * 거부(reject)하거나 던지면 선택을 건너뛰고 그대로 진행한다 — 포탈 UI가 깨져도
+   * 런이 멈추면 안 된다.
+   */
+  beforeAdvance?: () => Promise<void>;
 }
 
 export function bindRunUi(controller: RunController, hooks: RunUiHooks = {}): void {
@@ -41,7 +53,13 @@ export function bindRunUi(controller: RunController, hooks: RunUiHooks = {}): vo
       ownedLabelFor: (option) => ownedLabelFor(option, ownedAtOffer),
       formFor: hooks.formFor,
       contextLines,
-    }).then((chosen) => {
+    }).then(async (chosen) => {
+      // 포탈 선택이 끝날 때까지 chooseReward를 미룬다 (전환 타이머가 거기서 걸린다)
+      try {
+        await hooks.beforeAdvance?.();
+      } catch {
+        /* 포탈 UI가 실패해도 런은 계속된다 — 여기서 멈추면 방에 갇힌다 */
+      }
       controller.chooseReward(chosen.id);
     });
   });
