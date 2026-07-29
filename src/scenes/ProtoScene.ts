@@ -222,6 +222,10 @@ import {
 import type { FloorHazardZone } from '../combat-core/combat/floorHazardConfig';
 import { PortalField } from '../render/portalField';
 import { mockMinimapModel } from '../run/mapGraphMock';
+import { RunMapGraph, toMinimapModel } from '../run/mapGraph';
+import { MAP_GRAPH_PRESET_01 } from '../run/mapGraphPreset';
+import { layoutRoomArrival, layoutRoomExits } from '../run/roomPortalLayout';
+import type { RoomArrivalPlacement, RoomBounds } from '../run/roomPortalContract';
 import {
   DEMO_SAMPLE_INCANTATIONS,
   DEMO_START_ROOM,
@@ -734,6 +738,19 @@ export class ProtoScene extends Phaser.Scene {
   private devMinimap: MinimapHud | null = null;
   private devPortalField: PortalField | null = null;
   /**
+   * 런 맵 그래프 (#214 본배선). 지금은 고정 프리셋(MAP_GRAPH_PRESET_01)을 쓰고,
+   * #240 파티션 생성기가 승인되면 **이 공급부만** 교체한다 — 계약은 그대로다.
+   *
+   * ⚠️ RunController와 **병행 트랙**이다. 방 개수·보상은 여전히 RunController가 세고,
+   * 그래프는 "어느 갈래로 갔는가"를 센다. 둘을 합치는 것은 R1 몫이라(#240) 여기서는
+   * 그래프가 정한 **함정 프로필만** 방에 얹는다. 두 축이 어긋나도 런은 진행된다.
+   */
+  private mapGraph: RunMapGraph = new RunMapGraph(MAP_GRAPH_PRESET_01);
+  private runMinimap: MinimapHud | null = null;
+  private portalField: PortalField | null = null;
+  /** 다음 방에서 적용할 도착 배치 — 포탈로 넘어왔을 때만 설정된다 (첫 방은 null) */
+  private pendingArrival: RoomArrivalPlacement | null = null;
+  /**
    * 정적 지형 장벽 (#214 지형 Tier 2). 배치 데이터는 R1 소유이고 여기는 기전만 —
    * 방 진입 시 채우고 방 전환 시 비운다. 비어 있으면 전 경로가 무비용으로 통과한다.
    */
@@ -1098,9 +1115,17 @@ export class ProtoScene extends Phaser.Scene {
       this.updateManaCrystals(d);
       this.updateManaPotion(d);
       this.updateWaveFlow(d);
+    } else if (this.portalField) {
+      // 포탈 선택 중에는 **이동만** 허용한다 — 전투는 멈춘 채로 갈림길을 걸어간다.
+      // 이게 없으면 방을 정리한 순간 조작이 잠겨 포탈에 닿을 수 없다(런이 갇힌다).
+      this.updatePlayerMovement(delta / 1000);
     }
     // 성장 표식은 전투 정지 중(보상 선택·전환)에도 플레이어를 따라간다
     this.growthMarks.follow(this.player.x, this.player.y);
+    // 포탈은 **전투가 끝난 뒤**에 서므로 isCombatActive 게이트 밖에서 돌려야 한다 —
+    // 안에 두면 방을 정리한 순간 포탈이 멈춰 접촉 판정이 영영 안 걸린다.
+    this.portalField?.update(this.player.x, this.player.y);
+    this.runMinimap?.pulse();
     this.updateStatusText();
     this.updateSequenceProgress();
   }
@@ -1213,7 +1238,7 @@ export class ProtoScene extends Phaser.Scene {
             this.continueToNextLoop();
           } else {
             void showRunSummaryOverlay(this.buildRunSummary('victory'))
-              .then(() => this.scene.start('title'));
+              .then(() => { this.destroyRunMapUi(); this.scene.start('title'); });
           }
         });
       });
@@ -1378,6 +1403,9 @@ export class ProtoScene extends Phaser.Scene {
     // 매 루프 재각성하는 무한 파밍이 된다 (친화가 이미 임계 위이므로).
     this.lastResistNoticeAt = 0;
     this.runMovementDistance = 0;
+    // 새 루프 = 새 맵. 그래프는 cleared/current가 인스턴스에 쌓이므로 재사용하면
+    // 지난 루프의 방들이 계속 '클리어됨'으로 남는다 (#241 리뷰 지적).
+    this.resetMapGraph();
     this.combatRunController.continueRun();
     const loop = this.combatRunController.state.loopIndex;
     this.announceSystemMessage(
@@ -1410,6 +1438,7 @@ export class ProtoScene extends Phaser.Scene {
     this.clearSpiritViews();
     this.playerState.reset();
     this.runMovementDistance = 0;
+    this.resetMapGraph();
     this.combatRunController.reset(Date.now(), false);
   }
 
@@ -1434,6 +1463,7 @@ export class ProtoScene extends Phaser.Scene {
     this.engraveRewardRand = createRunRandom(Date.now());
     this.playerState.reset();
     this.runMovementDistance = 0;
+    this.resetMapGraph();
     this.prepareRunEscalation();
     this.combatRunController.reset();
     // 새 런에도 유산 선택 — 직전 런에서 기록된 주문이 곧바로 후보가 된다
@@ -1473,7 +1503,15 @@ export class ProtoScene extends Phaser.Scene {
     this.clearCombatRoom();
     this.applyRoomBackdrop(roomIndex);
     this.basicAttackCooldownRemaining = 0;
-    this.player.setPosition(this.worldBounds.centerX, this.worldBounds.centerY);
+    // 포탈로 넘어왔으면 왼쪽 중앙 도착(#245), 첫 방이면 종전대로 방 중앙.
+    // 도착 지점이 하나로 고정돼 있어야 함정·지형·적 스폰이 그 한 점만 비우면 된다(#246).
+    const arrival = this.pendingArrival;
+    this.pendingArrival = null;
+    if (arrival) {
+      this.player.setPosition(arrival.playerSpawn.x, arrival.playerSpawn.y);
+    } else {
+      this.player.setPosition(this.worldBounds.centerX, this.worldBounds.centerY);
+    }
     this.cameras.main.centerOn(this.player.x, this.player.y);
     this.activateRoomCurse(roomIndex);
     if (this.isBossEncounter()) {
@@ -2453,6 +2491,110 @@ export class ProtoScene extends Phaser.Scene {
     this.terrainBarrierView?.destroy();
     this.terrainBarrierView = null;
     this.terrainBarriers = [];
+  }
+
+  // ── 맵 그래프 · 포탈 · 미니맵 (#214 본배선) ──────────────────────────
+
+  /** 런 시작·이어가기마다 그래프를 새로 만든다 — cleared/current가 인스턴스에 쌓이므로. */
+  private resetMapGraph(): void {
+    // **먼저 걷어낸다** — Phaser는 씬 인스턴스를 재사용하므로(타이틀→새 런) 필드는
+    // 남아 있는데 가리키는 GameObject는 이미 파괴돼 있다. 그대로 update하면 죽는다.
+    this.destroyRunMapUi();
+    this.mapGraph = new RunMapGraph(MAP_GRAPH_PRESET_01);
+    this.pendingArrival = null;
+    this.refreshMinimap();
+  }
+
+  private refreshMinimap(): void {
+    if (!this.runMinimap) {
+      // 상단 우측 — ROOM 칩(DOM) 아래. 전투 중에도 떠 있어야 "어디까지 왔나"가 읽힌다.
+      this.runMinimap = new MinimapHud(this, this.scale.width - 306, 150);
+    }
+    this.runMinimap.update(toMinimapModel(this.mapGraph.snapshot()));
+  }
+
+  private destroyRunMapUi(): void {
+    this.runMinimap?.destroy();
+    this.runMinimap = null;
+    this.portalField?.destroy();
+    this.portalField = null;
+  }
+
+  /**
+   * 보상 선택 후 다음 방을 고른다 (runUiBinding.beforeAdvance). **이게 resolve될 때까지
+   * 방 전환이 멈춘다** — RunController는 chooseReward에서 전환 타이머를 걸기 때문이다.
+   *
+   * 갈래가 하나뿐이면 포탈을 세우지 않고 조용히 넘어간다 — 선택지가 없는데 선택을
+   * 시키면 걸어가는 시간만 늘어난다. 둘 이상일 때만 세운다.
+   */
+  choosePortalDestination(): Promise<void> {
+    const choices = this.mapGraph.choices();
+    if (choices.length === 0) return Promise.resolve();
+    if (choices.length === 1) {
+      this.enterMapNode(choices[0].id);
+      return Promise.resolve();
+    }
+    // 출구 슬롯 y는 R1 계약이 정한다 — 목적지 lane 순서대로 위에서 아래로 (#245).
+    // 배치가 실패하면(방 경계 미확정 등) 첫 갈래로 조용히 넘어간다 — 그래프가 여기서
+    // 멈추면 RunController만 방을 세어 두 축이 영구히 어긋난다.
+    let exits;
+    try {
+      exits = layoutRoomExits(
+        this.roomBoundsForPortals(),
+        choices.map((node) => ({ nodeId: node.id, lane: node.lane })),
+      );
+    } catch (error) {
+      devInfo('[Map] portal layout failed — 첫 갈래로 진행', error);
+      this.enterMapNode(choices[0].id);
+      return Promise.resolve();
+    }
+    const kindById = new Map(choices.map((node) => [node.id, node.kind]));
+    return new Promise<void>((resolve) => {
+      this.portalField?.destroy();
+      this.portalField = new PortalField(
+        this,
+        exits[0].x,
+        this.worldBounds.centerY,
+        exits.map((exit) => ({
+          nodeId: exit.targetNodeId,
+          kind: kindById.get(exit.targetNodeId) ?? 'combat',
+          // 계약값을 그대로 넘긴다 — 자체 가로 배치를 쓰면 포탈이 방 밖으로 밀려난다
+          x: exit.x,
+          y: exit.y,
+        })),
+        (choice) => {
+          this.enterMapNode(choice.nodeId);
+          this.portalField?.destroy();
+          this.portalField = null;
+          resolve();
+        },
+      );
+      this.announceSystemMessage('갈림길 — 포탈로 들어가 다음 방을 고르세요', '#8fa4ff', 3000);
+    });
+  }
+
+  /** 포탈 배치 기준 방 경계 — 월드 경계를 그대로 쓴다 (R1 계약의 RoomBounds). */
+  private roomBoundsForPortals(): RoomBounds {
+    return {
+      x: this.worldBounds.x,
+      y: this.worldBounds.y,
+      width: this.worldBounds.width,
+      height: this.worldBounds.height,
+    };
+  }
+
+  private enterMapNode(nodeId: string): void {
+    if (!this.mapGraph.canEnter(nodeId)) return;
+    const from = this.mapGraph.current().id;
+    const node = this.mapGraph.enter(nodeId);
+    this.refreshMinimap();
+    // 도착은 **항상 왼쪽 중앙**이다 (#245·#246) — 방마다 진입 계약이 하나여야
+    // 함정·지형·적 스폰이 여러 진입 좌표를 고려하지 않아도 된다.
+    this.pendingArrival = layoutRoomArrival(
+      this.roomBoundsForPortals(),
+      { fromNodeId: from, toNodeId: node.id },
+    );
+    devInfo('[Map] entered', { from, to: node.id, kind: node.kind });
   }
 
   // ── 바닥형 지형 (#214 지형 Tier 1 R2) ──────────────────────────────
@@ -5529,7 +5671,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.stopCastingForRunPause();
     this.deferTransientCombatCleanup();
     void showRunSummaryOverlay(this.buildRunSummary('defeat'))
-      .then(() => this.scene.start('title'));
+      .then(() => { this.destroyRunMapUi(); this.scene.start('title'); });
   }
 
   /** 칩 i의 컨테이너 로컬 중심 (0·1=각인 윗줄, 2·3=정령 아랫줄) */
