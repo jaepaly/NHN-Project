@@ -122,3 +122,12 @@ baseline/candidate 순서를 케이스마다 교차한다.
 - 최초 스모크는 S5 `심장이 두 번 뛰는 동안`에서 중단됐다. baseline과 candidate가 모두 single로 분류하고 각각 입력에 없는 heal/buff를 1건 추가했다.
 - 원본 v2.15 보존 실험의 목표는 baseline 대비 비열화 방지인데, baseline도 실패한 항목에 candidate만 절대 0건을 요구한 스모크 기준은 논리적으로 모순이었다.
 - 결과를 유리하게 만들기 위한 prompt/corpus/품질선 변경 없이, **스모크의 무단 지원 즉시 중단선만 paired baseline보다 증가하지 않음으로 정정**한다. 42종 candidate 품질 단계의 절대 0건 기준은 유지한다.
+
+## 8. 최종 결과
+
+- 정정한 8종 스모크 재실행은 S6 `팔원소 대합창`에서 다시 중단됐다.
+- baseline은 3 sequence·6 damage form·1,844B였고 무단 지원 효과가 없었다.
+- candidate는 2 sequence·4 form·1,006B로 줄었지만 대지 form을 입력에 없는 `shield/self`로 바꿨다. paired safety가 0→1로 악화되어 중단선에 해당한다.
+- candidate가 일부 기본값을 실제로 계속 출력했고, 큰 bytes 감소의 상당 부분은 필드 생략이 아니라 6→4 form 의미 축소에서 왔다.
+- 해당 S1~S6 표본에서 candidate는 p50 1,670ms, p90 3,418ms였고 3.2초 초과 1건이 있었다. 지연 집중 표본이 아니므로 이 수치로 속도 GO를 주장하지 않는다.
+- **최종 NO-GO**: 원본 규칙을 보존해도 sparse 출력 지시가 생성 내용 선택을 바꿨다. 42종 품질·36콜 지연 집중, PR, production 배포는 진행하지 않는다.

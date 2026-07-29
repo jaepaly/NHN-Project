@@ -4,7 +4,7 @@
 > 규칙: **푸시할 때마다 이 파일에 "현재 어디까지 했는지"를 갱신해서 함께 커밋한다.**
 > (팀 공용 1줄 기록은 [AI_USAGE_LOG.md](AI_USAGE_LOG.md), 이 파일은 R2 상세 로그)
 
-## ☐ 지금 작업 흐름 — #158 원본 v2.15 + sparse output 격리 스파이크 (2026-07-29)
+## ☒ 지금 작업 흐름 — #158 원본 v2.15 + sparse output 격리 스파이크 NO-GO (2026-07-29)
 
 > compact-text NO-GO 후속. `origin/main`의 v2.15 규칙·예시·named/nested 구조는 보존하고, `spell_plan` 내부에서 validator가 복원하거나 로컬이 재계산하는 기본값만 생략한다. production Worker·클라이언트 timeout·캐시 버전은 승인 전 변경하지 않는다.
 
@@ -17,8 +17,9 @@
 - [x] 원본 규칙·예시를 유지한 채 plan 기본값 생략 지시·예시만 변경. 역변환 LF 해시가 baseline `1279f406…`와 일치.
 - [x] full/sparse validate→resolve 동등성(로컬 sample 484→360B, -25.6%), 기존 judge/plan/sequence 회귀·빌드 통과.
 - [x] `wrangler versions upload`로 Version `e54fada5-60cd-4829-9417-0d7d8d181ce5` Preview 생성. `deploy`/production 트래픽 변경 없음.
-- [ ] baseline/candidate 8종 스모크 → candidate 30+12 품질 → 통과 시 paired latency 6종×N=3.
-- [ ] 결과에 따라 PR 또는 NO-GO 기록, #158 공유, AI 사용 로그.
+- [x] baseline/candidate 스모크 S6에서 중단: `팔원소 대합창` candidate만 입력에 없는 shield 추가(0→1), 6개 공격 form→4개 form으로 의미 축소. 30+12 품질·paired latency는 실행하지 않음.
+- [x] **NO-GO**: response bytes는 줄었지만 의미 비열화. PR/production 배포 없음. 결과 JSON·AI 사용 로그 기록.
+- [ ] #158 결과 공유.
 
 ---
 
