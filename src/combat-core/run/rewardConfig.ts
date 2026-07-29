@@ -33,7 +33,13 @@ export function affinityElementForRoom(roomIndex: number): SpellElement {
 }
 
 // 각성(awaken)도 제외 — 친화 임계 도달 시에만 조건부 주입되지, 랜덤 풀에서 뽑히지 않는다
-type StaticRewardKind = Exclude<RewardKind, 'engrave' | 'spirit' | 'evolve' | 'awaken'>;
+// ⚠️ 새 RewardKind를 추가하면 **여기서 명시적으로 빼야** 랜덤 3택 풀에 안 섞인다.
+// Exclude가 자동 흡수하는 구조라, 빼먹으면 제단 전용 카드가 일반 방에서 튀어나온다
+// (과거 'awaken'에서 실제로 겪은 사고).
+type StaticRewardKind = Exclude<
+  RewardKind,
+  'engrave' | 'spirit' | 'evolve' | 'awaken' | 'altar-leave' | 'all-affinity' | 'echo'
+>;
 
 /**
  * 보상 카드 하나를 만든다.

@@ -4,6 +4,7 @@ import { playHitReact, playImpactSquash } from '../combat-core/enemies/enemyJuic
 import type { SpellJudge } from '../spell/judge';
 import { createJudge } from '../spell/createJudge';
 import type { SpellElement, SpellForm, SpellSpec } from '../spell/types';
+import { ELEMENTS } from '../spell/types';
 import { SpellHistory } from '../spell/spellHistory';
 import type { JudgeSource } from '../spell/spellHistory';
 import {
@@ -69,6 +70,7 @@ import { VFX_BUDGET_CONFIG } from '../render/vfxBudget';
 import type { AwakeningState } from '../combat-core/run/awakening';
 import {
   AWAKENING_CONFIG,
+  AWAKENING_KINDS,
   AWAKENING_LABELS,
   applyAwakening,
   awakenableElement,
@@ -82,7 +84,7 @@ import type { BuildChip } from '../run/buildChipModel';
 import { buildChipModel } from '../run/buildChipModel';
 import { bandAffordances, reachableBand } from '../run/incantBands';
 import { drawTreasureReward } from '../combat-core/run/treasureRewardConfig';
-import { altarHpCostFor, drawAltarRewardOptions } from '../combat-core/run/altarRewardConfig';
+import { ALTAR_OFFER_CONFIG, drawAltarOffer } from '../combat-core/run/altarOffer';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { UI_COLOR } from '../ui/uiTokens';
 import type { GameSettings } from '../run/gameSettings';
@@ -500,6 +502,8 @@ export class ProtoScene extends Phaser.Scene {
   private engraveRewardRand = createRunRandom(Date.now());
   /** 원소별 각성 — 원소당 1회. 런 리셋에서 비운다 (AWAKENING_PROPOSAL) */
   private awakenings: AwakeningState = {};
+  /** 제단 최상위 거래 — 수동 단일 영창이 한 번 더 울린다 (#214). 런 리셋에서 끈다 */
+  private echoUnlocked = false;
   // 명시적 타입: rewardDraw 클로저가 컨트롤러 상태(친화)를 읽어 자기참조 추론이 막히는 것 회피
   private readonly combatRunController: CombatRunController = new CombatRunController({
     playerState: this.playerState,
@@ -517,7 +521,8 @@ export class ProtoScene extends Phaser.Scene {
         );
       }
       if (roomless === 'altar') {
-        return drawAltarRewardOptions(roomIndex, this.engraveRewardRand);
+        // 대가와 보상이 한 장에 붙은 거래 카드 + 거절 카드 (#214 재설계)
+        return drawAltarOffer(this.playerState.maxHp, this.altarAwakenElement());
       }
       const engraved = this.engraveManager.injectReward(
         drawRewardOptions(roomIndex, this.engraveRewardRand),
@@ -1193,6 +1198,45 @@ export class ProtoScene extends Phaser.Scene {
         this.player.x,
         this.player.y,
       );
+      // ── 제단 거래 (#214) — 대가를 먼저 치르고 보상을 건다 ──────────────
+      if (chosen.altar) {
+        this.applyAltarDeal(chosen);
+        if (chosen.kind === 'all-affinity') {
+          const raised: Partial<Record<SpellElement, number>> = {};
+          for (const element of ELEMENTS) {
+            raised[element] = (state.elementalAffinity[element] ?? 0)
+              + ALTAR_OFFER_CONFIG.allAffinityBonus;
+          }
+          this.combatRunController.seedAffinity(raised);
+          this.announceSystemMessage('모든 원소가 함께 깊어졌다', '#8fe3c8', 2600);
+          return;
+        }
+        if (chosen.kind === 'echo') {
+          this.echoUnlocked = true;
+          this.announceBanner({
+            title: '영창 에코 — 말이 두 번 울린다',
+            lines: ['수동 단일 영창이 한 번 더 · 시퀀스는 울리지 않는다'],
+            color: 0xd0a8ff,
+            holdMs: 3000,
+          });
+          return;
+        }
+        if (chosen.kind === 'awaken' && chosen.element) {
+          // 제단 각성은 갈래를 고르지 않는다 — 대가를 이미 치렀으므로 바로 부여한다
+          const kind = AWAKENING_KINDS[
+            Math.floor(this.engraveRewardRand() * AWAKENING_KINDS.length) % AWAKENING_KINDS.length
+          ];
+          this.awakenings = applyAwakening(this.awakenings, chosen.element, kind);
+          this.announceBanner({
+            title: `${ELEMENT_LABELS[chosen.element]} 각성 — ${AWAKENING_LABELS[kind]}`,
+            lines: [awakeningDescription(kind, chosen.element)],
+            color: 0xd0a8ff,
+            holdMs: 3000,
+          });
+          return;
+        }
+        return; // 거절·잠김
+      }
       if (chosen.kind === 'awaken' && chosen.awaken) {
         const { element, awakening } = chosen.awaken;
         this.awakenings = applyAwakening(this.awakenings, element, awakening);
@@ -1459,6 +1503,7 @@ export class ProtoScene extends Phaser.Scene {
     this.clearDamageNumbers();
     this.shockCooldowns.clear();
     this.awakenings = {};
+    this.echoUnlocked = false;
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
     this.engraveManager.reset();
@@ -1481,6 +1526,7 @@ export class ProtoScene extends Phaser.Scene {
     this.clearDamageNumbers();
     this.shockCooldowns.clear();
     this.awakenings = {};
+    this.echoUnlocked = false;
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
     this.engraveManager.reset();
@@ -2645,13 +2691,11 @@ export class ProtoScene extends Phaser.Scene {
     this.waveManager = new WaveManager([{ chaserCount: 0, shooterCount: 0, splitterCount: 0 }]);
     this.audio.playBgm('combat');
     if (kind === 'altar') {
-      // 대가가 **죽이지는 않는다**(altarHpCostFor) — 방에 들어선 것만으로 사망하면
-      // 선택이 아니라 함정이고, 라벨 보고 고르게 하는 설계와 충돌한다.
-      const cost = altarHpCostFor(this.playerState.maxHp, this.playerState.hp);
-      this.playerState.takeEnvironmentalDamage(cost);
+      // ⚠️ 여기서 걷지 않는다 — 대가는 **카드를 고를 때** 치른다(reward-applied).
+      // 방에 들어선 것만으로 징수하면 거절권이 사라져 선택이 아니라 함정이 된다.
       this.announceBanner({
-        title: '제단 — 대가를 치렀다',
-        lines: [`생명 −${cost} · 상급 강화를 고른다`],
+        title: '제단',
+        lines: ['생명을 내어주고 힘을 산다 · 그냥 나갈 수도 있다'],
         color: 0xd0a8ff,
         holdMs: 2600,
       });
@@ -2721,6 +2765,41 @@ export class ProtoScene extends Phaser.Scene {
     this.floorHazards = [];
     // 잔류·면역·정화 횟수는 **방마다 초기화** — 정화 1회는 방당 예산이다
     this.floorHazardPlayer = createFloorHazardPlayerState();
+  }
+
+  /**
+   * 제단 각성이 걸릴 원소 — **친화가 가장 높은 것 중 아직 각성 안 한 것**.
+   * 아무 원소나 주면 안 쓰는 원소에 걸려 대가만 날린다. 후보가 없으면 null이고
+   * 그 등급은 잠긴다(drawAltarOffer).
+   */
+  private altarAwakenElement(): SpellElement | null {
+    const affinity = this.combatRunController.state.elementalAffinity;
+    let best: { element: SpellElement; value: number } | null = null;
+    for (const [key, raw] of Object.entries(affinity)) {
+      const element = key as SpellElement;
+      const value = Number.isFinite(raw) ? (raw as number) : 0;
+      if (value <= 0 || this.awakenings[element]) continue;
+      if (!best || value > best.value) best = { element, value };
+    }
+    return best?.element ?? null;
+  }
+
+  /**
+   * 제단 거래 집행 — 대가를 치르고 보상을 건다 (reward-applied에서 호출).
+   * 잠긴 카드·거절 카드는 cost 0이라 아무 일도 일어나지 않는다.
+   */
+  private applyAltarDeal(chosen: RewardOption): void {
+    const cost = chosen.altar?.cost ?? 0;
+    if (cost <= 0) return;
+    const before = this.playerState.maxHp;
+    const paid = this.playerState.reduceMaxHp(cost, ALTAR_OFFER_CONFIG.minMaxHp);
+    this.announceBanner({
+      title: '대가를 치렀다',
+      lines: [`최대 생명 ${before} → ${this.playerState.maxHp}`],
+      color: 0xd0a8ff,
+      holdMs: 2400,
+    });
+    devInfo('[Altar] paid', { cost, paid, kind: chosen.kind });
   }
 
   /** 이 방에 깔린 지형 종류 — 정화 대상 판정에 쓴다(없는 지형은 정화하지 않는다). */
@@ -4532,11 +4611,43 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.applySpellPalette(effectiveSpec);
       this.announceSpell(effectiveSpec);
       this.applySpellEffect(effectiveSpec);
+      this.scheduleSpellEcho(effectiveSpec);
       this.playerState.startCastLock(); // 신속 영창 감소분 반영된 입력락
       this.playCastFlare();
     } finally {
       this.finishCastingUx();
     }
+  }
+
+  /**
+   * 영창 에코 (제단 최상위 거래 #214) — 수동 단일 영창이 한 번 더 울린다.
+   *
+   * **시퀀스는 여기 안 온다.** 시퀀스는 executeSequenceForm 경로라 이 함수를 거치지
+   * 않는다 — 다단 시퀀스가 통째로 반복되면 길고 정신없다(총괄 결정).
+   *
+   * 마나를 쓰지 않으므로 융합 게이지도 추가 충전되지 않는다(게이지는 소모 마나 기준).
+   * 사용 친화도 오르지 않는다 — 한 번의 영창이지 두 번이 아니다.
+   *
+   * 확률은 **위쪽에만** 둔다: 1회는 확정이고 낮은 확률로 한 번 더 울린다.
+   * 보상 추첨 난수(engraveRewardRand)를 쓰지 않는다 — 그걸 소비하면 같은 시드에서
+   * 보상 3택이 달라져 재현성이 깨진다.
+   */
+  private scheduleSpellEcho(spec: SpellSpec): void {
+    if (!this.echoUnlocked) return;
+    const { delayMs, powerScale, extraChance } = ALTAR_OFFER_CONFIG.echo;
+    const count = 1 + (Math.random() < extraChance ? 1 : 0);
+    for (let i = 1; i <= count; i += 1) {
+      this.time.delayedCall(delayMs * i, () => {
+        if (!this.scene?.isActive?.() || !this.playerState.alive) return;
+        if (!this.isCombatActive()) return;
+        this.applySpellEffect({
+          ...spec,
+          power: Math.max(1, Math.round(spec.power * powerScale)),
+        });
+        this.audio.playCast(spec.element_primary);
+      });
+    }
+    if (count > 1) this.announceSystemMessage('메아리가 세 겹으로 울렸다', '#d0a8ff', 1800);
   }
 
   private beginSequenceExecutionUx(plan: ResolvedSpellPlan): void {

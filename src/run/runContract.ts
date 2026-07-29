@@ -23,7 +23,14 @@ export type RewardKind =
   | 'engrave'
   | 'spirit'
   | 'evolve'
-  | 'awaken';
+  | 'awaken'
+  // ── 제단 전용 (#214) — 일반 3택 풀에는 절대 섞이지 않는다 ──────────────
+  /** 대가 없이 나간다 — 제단을 거절하는 선택지 */
+  | 'altar-leave'
+  /** 모든 원소 친화 상승 — 일반 풀은 랜덤 1원소만 준다 */
+  | 'all-affinity'
+  /** 영창 에코 — 수동 단일 주문이 한 번 더 울린다 */
+  | 'echo';
 
 /** 각인·정령 공통 성장 레벨 — 범위 밖 값이 보상으로 소비되는 경로를 타입에서 차단 (R1 리뷰) */
 export type GrowthLevel = 1 | 2 | 3;
@@ -90,6 +97,19 @@ export interface RewardOption {
    * (적용부 = RunController.applyReward, R3 소유 — 배선은 별도 조율.)
    */
   powerScale?: number;
+  /**
+   * 제단 거래 전용 (#214) — 이 카드를 고르면 치를 **최대 체력** 대가.
+   * 거절 카드('altar-leave')와 잠긴 등급은 cost 0이다. 씬이 이 값으로 지불을 집행한다.
+   */
+  altar?: AltarRewardData;
+}
+
+/** 제단 거래 데이터 — 대가와 잠금 여부 (altarOffer) */
+export interface AltarRewardData {
+  /** 치를 최대 체력. 0이면 대가 없음(거절·잠김) */
+  cost: number;
+  /** 감당 못 해 잠긴 등급 — 카드는 보이되 고르면 아무 일도 안 일어난다 */
+  locked: boolean;
 }
 
 export type RunPhase = 'combat' | 'reward-select' | 'room-transition' | 'run-over';

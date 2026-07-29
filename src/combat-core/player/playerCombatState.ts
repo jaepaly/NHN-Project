@@ -198,6 +198,22 @@ export class PlayerCombatState {
     return increase;
   }
 
+  /**
+   * 최대 체력을 **영구히** 깎는다 (제단 거래 #214). 현재 체력은 새 최대치로 클램프된다.
+   *
+   * 하한을 인자로 받는 이유: 0으로 내려가면 HP 바가 0/0이 되어 비율 계산이 깨진다.
+   * 하한 판단은 거래 규칙(altarOffer)의 몫이라 여기서 값을 정하지 않는다.
+   */
+  reduceMaxHp(amount: number, floor: number): number {
+    const decrease = safePositiveAmount(amount);
+    const safeFloor = Number.isFinite(floor) ? Math.max(1, floor) : 1;
+    const next = Math.max(safeFloor, this.maxHpValue - decrease);
+    const applied = this.maxHpValue - next;
+    this.maxHpValue = next;
+    if (this.hp > next) this.hp = next;
+    return applied;
+  }
+
   increaseMaxMana(amount: number): number {
     const increase = safePositiveAmount(amount);
     this.maxManaValue += increase;

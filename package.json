@@ -79,7 +79,8 @@
     "test:slash": "esbuild scripts/slash-form-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-slash-form-regression.mjs && node node_modules/.cache/incant-slash-form-regression.mjs",
     "test:incant-bands": "esbuild scripts/incant-bands-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-incant-bands-regression.mjs && node node_modules/.cache/incant-incant-bands-regression.mjs",
     "test:floorhazardstate": "esbuild scripts/floor-hazard-state-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-floor-hazard-state-regression.mjs && node node_modules/.cache/incant-floor-hazard-state-regression.mjs",
-    "test:bossresist": "esbuild scripts/boss-resistance-readout-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-boss-resistance-readout-regression.mjs && node node_modules/.cache/incant-boss-resistance-readout-regression.mjs"
+    "test:bossresist": "esbuild scripts/boss-resistance-readout-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-boss-resistance-readout-regression.mjs && node node_modules/.cache/incant-boss-resistance-readout-regression.mjs",
+    "test:altaroffer": "esbuild scripts/altar-offer-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-altar-offer-regression.mjs && node node_modules/.cache/incant-altar-offer-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

@@ -138,6 +138,10 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   spirit: 'SPIRIT',
   evolve: 'EVOLVE',
   awaken: 'AWAKEN',
+  // 제단 전용 (#214)
+  'altar-leave': 'DEPART',
+  'all-affinity': 'ATTUNE',
+  echo: 'ECHO',
 };
 
 function ensureDom(): HTMLElement {
