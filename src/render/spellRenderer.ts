@@ -38,7 +38,11 @@ import {
 } from './vfxBudget';
 import { requestCameraShake } from './cameraShake';
 import {
-  PARTICLE_TEXTURES, ensureParticleTextures, particleKey,
+  PARTICLE_TEXTURES,
+  elementParticleKey,
+  ensureParticleTextures,
+  particleKey,
+  playShockRing,
 } from './particleTextures';
 import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
 
@@ -238,7 +242,7 @@ function castBolt(ctx: CastContext, spec: SpellSpec): void {
     .setBlendMode(Phaser.BlendModes.ADD);
 
   // 꼬리: 파티클 트레일 (주 원소)
-  const trail = scene.add.particles(0, 0, particleKey(scene, PARTICLE_TEXTURES.glow), {
+  const trail = scene.add.particles(0, 0, elementParticleKey(scene, spec.element_primary), {
     speed: { min: 10, max: 60 },
     scale: { start: 0.5 * scale, end: 0 },
     lifespan: 350,
@@ -467,7 +471,7 @@ function castBeam(ctx: CastContext, spec: SpellSpec): void {
   });
   // 방출 스파크 — 빔 방향 ±부채꼴로 짧게 튄다
   const beamAngleDeg = Phaser.Math.RadToDeg(Math.atan2(dir.y, dir.x));
-  const muzzleSparks = scene.add.particles(from.x, from.y, 'particle', {
+  const muzzleSparks = scene.add.particles(from.x, from.y, particleKey(scene, PARTICLE_TEXTURES.spark), {
     speed: { min: 90, max: 190 },
     angle: { min: beamAngleDeg - 24, max: beamAngleDeg + 24 },
     scale: { start: 0.4 * scale, end: 0 },
@@ -528,7 +532,7 @@ function castWave(ctx: CastContext, spec: SpellSpec): void {
     .setStrokeStyle(Math.max(2, 3 * scale), accent, 0.9)
     .setRotation(angle + Math.PI / 2)
     .setBlendMode(Phaser.BlendModes.ADD);
-  const trail = scene.add.particles(0, 0, 'particle', {
+  const trail = scene.add.particles(0, 0, elementParticleKey(scene, spec.element_primary), {
     speed: { min: 20, max: 90 },
     scale: { start: 0.5 * scale, end: 0 },
     lifespan: 420,
@@ -738,7 +742,7 @@ export function castSlash(ctx: CastContext, spec: SpellSpec): void {
 
     // ⑥ 절단면 스파크 — 벤 선을 따라 양쪽으로 튄다. 원형 폭발과 구분되는 결.
     const emitters = [cutDeg + 90, cutDeg - 90].map((direction) => {
-      const sparks = scene.add.particles(anchor.x, anchor.y, 'particle', {
+      const sparks = scene.add.particles(anchor.x, anchor.y, particleKey(scene, PARTICLE_TEXTURES.spark), {
         speed: { min: cutRadius * 1.4, max: cutRadius * 3 },
         angle: { min: direction - 18, max: direction + 18 },
         scale: { start: 0.5 * scale * weight, end: 0 },
@@ -795,7 +799,7 @@ function castNova(ctx: CastContext, spec: SpellSpec): void {
     .setBlendMode(Phaser.BlendModes.ADD);
   const halo = scene.add.circle(from.x, from.y, 18 * scale, pal.glow, 0.38)
     .setBlendMode(Phaser.BlendModes.ADD);
-  const trail = scene.add.particles(0, 0, 'particle', {
+  const trail = scene.add.particles(0, 0, elementParticleKey(scene, spec.element_primary), {
     speed: { min: 20, max: 85 },
     scale: { start: 0.55 * scale, end: 0 },
     lifespan: 360,
@@ -807,7 +811,7 @@ function castNova(ctx: CastContext, spec: SpellSpec): void {
   let subTrail: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   if (spec.element_secondary) {
     const sub = ELEMENT_PALETTES[spec.element_secondary];
-    subTrail = scene.add.particles(0, 0, 'particle', {
+    subTrail = scene.add.particles(0, 0, elementParticleKey(scene, spec.element_secondary!), {
       speed: { min: 30, max: 100 },
       scale: { start: 0.32 * scale, end: 0 },
       lifespan: 300,
@@ -850,6 +854,9 @@ function explodeNova(ctx: CastContext, spec: SpellSpec, x: number, y: number): v
     requestCameraShake(scene, 'strong', 1.45);
   }
 
+  // 부드러운 충격파가 먼저 퍼지고 그 위에 또렷한 스트로크 링이 따라간다 —
+  // 링 텍스처는 안팎으로 감쇠해서 '두께 있는 파면'으로 읽힌다.
+  playShockRing(scene, x, y, pal.core, radius * 0.55, 460);
   // 확장하는 링
   const ring = scene.add.circle(x, y, 10, pal.glow, 0)
     .setStrokeStyle(4 * scale, pal.core, 0.9)
@@ -865,7 +872,7 @@ function explodeNova(ctx: CastContext, spec: SpellSpec, x: number, y: number): v
   });
 
   // 방사 파티클
-  const burst = scene.add.particles(x, y, 'particle', {
+  const burst = scene.add.particles(x, y, elementParticleKey(scene, spec.element_primary), {
     speed: { min: radius * 1.2, max: radius * 2.2 },
     scale: { start: 0.7 * scale, end: 0 },
     lifespan: 500,
@@ -878,7 +885,7 @@ function explodeNova(ctx: CastContext, spec: SpellSpec, x: number, y: number): v
 
   if (spec.element_secondary) {
     const sub = ELEMENT_PALETTES[spec.element_secondary];
-    const subBurst = scene.add.particles(x, y, 'particle', {
+    const subBurst = scene.add.particles(x, y, elementParticleKey(scene, spec.element_secondary!), {
       speed: { min: radius, max: radius * 1.8 },
       scale: { start: 0.4 * scale, end: 0 },
       lifespan: 400,
@@ -1141,7 +1148,7 @@ function areaImpactBurst(
   const accent = spec.element_secondary
     ? ELEMENT_PALETTES[spec.element_secondary].accent
     : pal.accent;
-  const burst = scene.add.particles(x, y, 'particle', {
+  const burst = scene.add.particles(x, y, elementParticleKey(scene, spec.element_primary), {
     speed: { min: 45, max: 150 * scale },
     scale: { start: 0.42 * scale, end: 0 },
     lifespan: 330,
@@ -1158,7 +1165,9 @@ function areaImpactBurst(
 function impactBurst(scene: Phaser.Scene, x: number, y: number, spec: SpellSpec): void {
   const pal = ELEMENT_PALETTES[spec.element_primary];
   const scale = SIZE_SCALE[spec.size];
-  const burst = scene.add.particles(x, y, particleKey(scene, PARTICLE_TEXTURES.spark), {
+  // 충격파 링이 먼저 퍼지고 그 위로 파편이 튄다 — 순서가 있어야 '터졌다'로 읽힌다
+  playShockRing(scene, x, y, pal.core, 26 * scale);
+  const burst = scene.add.particles(x, y, elementParticleKey(scene, spec.element_primary), {
     speed: { min: 60, max: 220 * scale },
     scale: { start: 0.6 * scale, end: 0 },
     lifespan: 400,

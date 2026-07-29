@@ -145,3 +145,45 @@ export function ensureParticleTextures(scene: Phaser.Scene): void {
 export function particleKey(scene: Phaser.Scene, key: string): string {
   return scene.textures.exists(key) ? key : 'particle';
 }
+
+/**
+ * 원소에 맞는 파티클 — 같은 폭발이라도 얼음은 파편이 튀고 번개는 섬광이 갈라진다.
+ * 원소별 텍스처를 따로 굽지 않고 **네 종류를 나눠 쓰는** 방식이라 메모리가 안 는다.
+ */
+export function elementParticleKey(scene: Phaser.Scene, element: string): string {
+  if (element === 'ice' || element === 'earth') {
+    return particleKey(scene, PARTICLE_TEXTURES.shard);
+  }
+  if (element === 'lightning') return particleKey(scene, PARTICLE_TEXTURES.spark);
+  return particleKey(scene, PARTICLE_TEXTURES.glow);
+}
+
+/**
+ * 충격파 링 — 확산의 앞머리. 링 텍스처는 안팎으로 감쇠하므로 Arc 스트로크의
+ * 균일한 테두리와 달리 "퍼지는 파면"으로 읽힌다.
+ */
+export function playShockRing(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  color: number,
+  radius: number,
+  durationMs = 380,
+): void {
+  const key = particleKey(scene, PARTICLE_TEXTURES.ring);
+  if (key !== PARTICLE_TEXTURES.ring) return; // 링 텍스처가 없으면 조용히 생략
+  const ring = scene.add.image(x, y, key)
+    .setTint(color)
+    .setBlendMode(Phaser.BlendModes.ADD)
+    .setAlpha(0.75)
+    .setDisplaySize(radius * 0.7, radius * 0.7);
+  scene.tweens.add({
+    targets: ring,
+    displayWidth: radius * 2.2,
+    displayHeight: radius * 2.2,
+    alpha: 0,
+    duration: durationMs,
+    ease: 'Cubic.easeOut',
+    onComplete: () => ring.destroy(),
+  });
+}
