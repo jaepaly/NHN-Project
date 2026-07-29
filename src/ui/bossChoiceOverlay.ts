@@ -1,4 +1,5 @@
-/**
+
+import { UI_FONT, UI_LAYER } from './uiTokens';/**
  * 보스 후 선택 오버레이 — "이대로 마칠까 vs 이어갈까" (게임성: 절정 + 성장하는 맛).
  * R3 자립형 DOM 오버레이 (runSummary/codex 패턴). 씬은 현재 루프·다음 난이도만 넘기고,
  * 선택('end' | 'continue')을 Promise로 돌려받는다.
@@ -9,11 +10,11 @@ const WRAP_ID = 'r3-bosschoice-wrap';
 
 const CSS = `
 #${WRAP_ID} {
-  position: fixed; inset: 0; z-index: 46;
+  position: fixed; inset: 0; z-index: ${UI_LAYER.bossChoice};
   display: grid; place-items: center;
   background: rgba(3, 5, 16, 0.9);
   opacity: 0; visibility: hidden; transition: opacity 220ms ease;
-  font-family: 'Segoe UI', 'Malgun Gothic', sans-serif; text-align: center;
+  font-family: ${UI_FONT.sans}; text-align: center;
 }
 #${WRAP_ID}.active { opacity: 1; visibility: visible; }
 #${WRAP_ID} .bc-kicker {

@@ -69,23 +69,10 @@ import { VFX_BUDGET_CONFIG } from '../render/vfxBudget';
 import { allGlyphTextures, formGlyphTextureKey } from '../render/formGlyphs';
 import type { BuildChip } from '../run/buildChipModel';
 import { buildChipModel } from '../run/buildChipModel';
-import {
-  PAUSE_BAR,
-  PAUSE_LAYOUT,
-  pauseBarRect,
-  pauseSliderHitArea,
-  pauseSliderRatio,
-} from '../ui/pauseLayout';
-import type { GameSettings, SettingKey } from '../run/gameSettings';
-import {
-  DEFAULT_SETTINGS,
-  adjustSetting,
-  loadSettings,
-  saveSettings,
-  setSettingFromRatio,
-  settingDisplay,
-  settingRatio,
-} from '../run/gameSettings';
+import { showSettingsOverlay } from '../ui/settingsOverlay';
+import { UI_COLOR } from '../ui/uiTokens';
+import type { GameSettings } from '../run/gameSettings';
+import { DEFAULT_SETTINGS, loadSettings } from '../run/gameSettings';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import { devInfo } from '../debug/devLog';
 import { FusionGauge } from '../combat-core/player/fusionGauge';
@@ -271,24 +258,22 @@ const HUD = {
 } as const;
 
 interface PauseRow {
-  id: 'resume' | 'settings' | 'back' | 'mute' | 'quit' | 'setting';
+  id: 'resume' | 'settings' | 'quit';
   label: string;
-  /** 설정 행이면 조절 대상 키 (←→로 움직인다) */
-  setting?: SettingKey;
 }
+
+/**
+ * 일시정지 메뉴는 한 장이다. "설정"은 **타이틀과 같은 DOM 오버레이**를 연다 —
+ * 같은 기능이 화면마다 다르게 생기면 안 된다(총괄 지적). 깊이 배치로 빌드 칩을
+ * 밝게 남기는 논리는 이 메인 화면에만 필요하지, 설정 하위 화면엔 필요 없다.
+ */
+/** 일시정지 메뉴 세로 배치 — 여기서만 쓰인다 */
+const PAUSE_LAYOUT = { titleY: 186, firstY: 252, rowGap: 42 } as const;
 
 const PAUSE_MAIN: readonly PauseRow[] = [
   { id: 'resume', label: '게임 재개' },
   { id: 'settings', label: '설정' },
   { id: 'quit', label: '타이틀로 나가기' },
-];
-
-const PAUSE_SETTINGS: readonly PauseRow[] = [
-  { id: 'setting', label: '효과음', setting: 'sfxVolume' },
-  { id: 'setting', label: '배경음악', setting: 'bgmVolume' },
-  { id: 'setting', label: '화면 밝기', setting: 'brightness' },
-  { id: 'mute', label: '음소거' },
-  { id: 'back', label: '뒤로' },
 ];
 
 
@@ -537,15 +522,9 @@ export class ProtoScene extends Phaser.Scene {
   /** 나가기 오확인 방지 — 한 번 더 눌러야 확정된다 (런이 사라지는 되돌릴 수 없는 선택) */
   private quitArmed = false;
 
-  /** 메뉴 화면 — 'main' 또는 'settings' */
-  private pausePane: 'main' | 'settings' = 'main';
 
-  private pauseGauges!: Phaser.GameObjects.Graphics;
 
-  private pauseSliderZones: Phaser.GameObjects.Zone[] = [];
 
-  /** 지금 끌고 있는 설정 (없으면 null) — 바 밖으로 나가도 끌림이 이어진다 */
-  private draggingSetting: SettingKey | null = null;
 
   private settings: GameSettings = { ...DEFAULT_SETTINGS };
 
@@ -819,10 +798,8 @@ export class ProtoScene extends Phaser.Scene {
     // 씬은 재사용된다 — 검사 모드가 열린 채 나갔다면 정지가 남는다. 진입 시 무조건 해제.
     this.buildInspectOpen = false;
     this.hoveredChipIndex = -1;
-    this.pausePane = 'main';
     this.pauseMenuIndex = 0;
     this.quitArmed = false;
-    this.draggingSetting = null;
     this.time.paused = false;
     // 저장된 설정 — 씬 재진입마다 다시 읽어 적용한다(오디오·밝기는 씬 소유 객체다)
     try {
@@ -936,12 +913,6 @@ export class ProtoScene extends Phaser.Scene {
     });
     this.input.keyboard!.on('keydown-DOWN', () => {
       if (this.buildInspectOpen) this.movePauseMenu(+1);
-    });
-    this.input.keyboard!.on('keydown-LEFT', () => {
-      if (this.buildInspectOpen) this.adjustPauseSetting(-1);
-    });
-    this.input.keyboard!.on('keydown-RIGHT', () => {
-      if (this.buildInspectOpen) this.adjustPauseSetting(+1);
     });
     // Tab 빌드 검사 — 브라우저 기본 포커스 이동을 반드시 막아야 한다.
     // 안 막으면 포커스가 영창 입력창이나 브라우저 UI로 튀어 이후 키 입력이 엉킨다.
@@ -4896,13 +4867,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       letterSpacing: 6,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(106).setVisible(false);
 
-    // 게이지는 설정 화면에서만 쓰지만 항목과 같은 레이어에 둔다
-    this.pauseGauges = this.add.graphics().setScrollFactor(0).setDepth(106).setVisible(false);
-    this.createPauseSliders();
 
-    // 두 화면 중 항목이 많은 쪽만큼 미리 만들어 두고 라벨만 갈아끼운다
-    const rows = Math.max(PAUSE_MAIN.length, PAUSE_SETTINGS.length);
-    this.pauseMenuItems = Array.from({ length: rows }, (_, i) => this.add.text(
+    this.pauseMenuItems = PAUSE_MAIN.map((_, i) => this.add.text(
       width / 2,
       PAUSE_LAYOUT.firstY + i * PAUSE_LAYOUT.rowGap,
       '',
@@ -4915,74 +4881,16 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     ).setOrigin(0.5).setScrollFactor(0).setDepth(107).setVisible(false)
       .setInteractive({ useHandCursor: true })
       .on('pointerover', () => {
-        if (!this.buildInspectOpen || i >= this.pauseRows().length) return;
+        if (!this.buildInspectOpen) return;
         if (this.pauseMenuIndex !== i) this.quitArmed = false;
         this.pauseMenuIndex = i;
         this.renderPauseMenu();
       })
       .on('pointerdown', () => {
-        if (!this.buildInspectOpen || i >= this.pauseRows().length) return;
+        if (!this.buildInspectOpen) return;
         this.pauseMenuIndex = i;
         this.activatePauseMenuItem();
       }));
-  }
-
-  private pauseRows(): readonly PauseRow[] {
-    return this.pausePane === 'settings' ? PAUSE_SETTINGS : PAUSE_MAIN;
-  }
-
-  /** 게이지 바 기하 — 렌더와 드래그 히트 테스트가 **같은 값**을 쓴다 (pauseLayout에서 검증). */
-  private pauseBarRect(rowIndex: number): { x: number; y: number; w: number } {
-    return pauseBarRect(this.scale.width, rowIndex);
-  }
-
-  /**
-   * 설정 게이지 드래그 — 포인터 x를 바 안의 비율로 바꿔 값에 반영한다.
-   *
-   * Phaser의 draggable 대신 존의 pointerdown + 씬 전역 pointermove를 쓴다: draggable은
-   * 오브젝트를 따라 움직이는 의미라 값 조작에 안 맞고, 바 밖으로 손이 나가도 끌림이
-   * 이어져야 슬라이더답기 때문이다(존 밖 이벤트는 존이 못 받는다).
-   */
-  private createPauseSliders(): void {
-    const settingRows = PAUSE_SETTINGS
-      .map((row, i) => ({ row, i }))
-      .filter((r) => r.row.setting);
-
-    this.pauseSliderZones = settingRows.map(({ row, i }) => {
-      const hit = pauseSliderHitArea(this.scale.width, i);
-      // 비활성으로 만든다 — 활성인 채 두면 전투 중에도 화면 중앙에서 손 모양 커서가
-      // 뜬다(핸들러는 가드로 막히지만 커서는 바뀐다). 설정 화면에서만 renderPauseMenu가 켠다.
-      const zone = this.add.zone(hit.centerX, hit.centerY, hit.width, hit.height)
-        .setScrollFactor(0).setDepth(107);
-      zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-        if (!this.buildInspectOpen || this.pausePane !== 'settings') return;
-        this.draggingSetting = row.setting ?? null;
-        this.pauseMenuIndex = i;
-        this.quitArmed = false;
-        this.applySliderFromPointer(pointer.x);
-      });
-      return zone;
-    });
-
-    // 끌기 중에는 바 밖으로 나가도 따라온다 — 슬라이더의 기본 기대
-    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (!this.draggingSetting || !pointer.isDown) return;
-      this.applySliderFromPointer(pointer.x);
-    });
-    this.input.on('pointerup', () => { this.draggingSetting = null; });
-    this.input.on('gameout', () => { this.draggingSetting = null; });
-  }
-
-  private applySliderFromPointer(pointerX: number): void {
-    const key = this.draggingSetting;
-    if (!key) return;
-    const bar = this.pauseBarRect(this.pauseMenuIndex);
-    const next = setSettingFromRatio(this.settings, key, pauseSliderRatio(bar, pointerX));
-    if (next[key] === this.settings[key]) return; // 같은 격자면 저장·재생 생략
-    this.settings = next;
-    this.persistSettings();
-    if (key === 'sfxVolume') this.audio.playSfx('incant-enter');
-    this.renderPauseMenu();
   }
 
   /**
@@ -5005,125 +4913,74 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.brightnessVeil.setVisible(true);
   }
 
-  private persistSettings(): void {
-    this.audio.applySettings(this.settings);
+  /**
+   * 설정 — **타이틀과 같은 DOM 오버레이**를 연다. 같은 기능이 화면마다 다르게 생기면
+   * 안 된다(총괄 지적: "정돈이 안 됐다"). 깊이 배치로 빌드 칩을 밝게 남기는 논리는
+   * 메인 일시정지 화면에만 필요하고, 설정에 들어가면 칩을 볼 일이 없다.
+   */
+  private async openSettingsOverlay(): Promise<void> {
+    const next = await showSettingsOverlay({
+      onChange: (settings) => {
+        this.settings = settings;
+        this.audio.applySettings(settings);
+        this.applyBrightness();
+      },
+      mute: { get: () => this.audio.muted, toggle: () => this.audio.toggleMute() },
+    });
+    this.settings = next;
+    this.audio.applySettings(next);
     this.applyBrightness();
-    try {
-      saveSettings(localStorage, this.settings);
-    } catch {
-      // 저장 실패는 무시 — 이번 세션 동안은 적용된 채로 둔다
-    }
+    this.renderPauseMenu();
   }
 
-  /** 메뉴 라벨·선택 표시·설정 게이지 갱신. */
+  /** 일시정지 메뉴 갱신 — 한 장짜리(재개·설정·나가기). */
   private renderPauseMenu(): void {
     const visible = this.buildInspectOpen;
     this.pauseDim.setVisible(visible);
     this.pauseMenuPlate.setVisible(visible);
     this.pauseMenuTitle.setVisible(visible);
-    this.pauseGauges.setVisible(visible);
     this.pauseMenuItems.forEach((t) => t.setVisible(false));
-    this.pauseGauges.clear();
-    // 슬라이더는 설정 화면에서만 잡힌다 — 전투 중이나 메인 메뉴에서 빈 영역이
-    // 포인터를 먹으면 안 된다
-    const slidersLive = visible && this.pausePane === 'settings';
-    this.pauseSliderZones.forEach((z) => {
-      if (slidersLive) z.setInteractive({ useHandCursor: true });
-      else z.disableInteractive();
-    });
-    if (!visible) { this.draggingSetting = null; return; }
+    if (!visible) return;
 
-    const { width, height } = this.scale;
-    const rows = this.pauseRows();
-    this.pauseMenuTitle.setText(this.pausePane === 'settings' ? '설정' : '일시정지');
-
-    rows.forEach((row, i) => {
-      const text = this.pauseMenuItems[i];
+    const { width } = this.scale;
+    this.pauseMenuTitle.setText('일시정지');
+    PAUSE_MAIN.forEach((row, i) => {
       const selected = i === this.pauseMenuIndex;
-      let label = row.label;
-      if (row.id === 'mute') label = `음소거   ${this.audio.muted ? '[켬]' : '[끔]'}`;
-      if (row.id === 'quit' && this.quitArmed) label = '정말 나갈까? 한 번 더';
-      if (row.setting) {
-        // 설정 행은 라벨을 왼쪽에 붙이고 오른쪽에 게이지를 그린다
-        label = `${row.label}   ${settingDisplay(this.settings, row.setting)}`;
-      }
-      text.setText(`${selected ? '▸ ' : '   '}${label}`)
-        .setColor(row.id === 'quit' && this.quitArmed ? '#ff8fa3'
-          : selected ? '#eef1ff' : '#7f8aba')
+      const label = row.id === 'quit' && this.quitArmed ? '정말 나갈까? 한 번 더' : row.label;
+      this.pauseMenuItems[i]
+        .setText(`${selected ? '▸ ' : '   '}${label}`)
+        .setColor(row.id === 'quit' && this.quitArmed ? UI_COLOR.danger
+          : selected ? UI_COLOR.textBright : UI_COLOR.textMuted)
         .setVisible(true);
-
-      if (row.setting) {
-        const ratio = settingRatio(this.settings, row.setting);
-        const bar = this.pauseBarRect(i);
-        const active = selected || this.draggingSetting === row.setting;
-        const h = PAUSE_BAR.height;
-        this.pauseGauges.fillStyle(0x1d2445, 1);
-        this.pauseGauges.fillRoundedRect(bar.x, bar.y, bar.w, h, h / 2);
-        this.pauseGauges.fillStyle(active ? 0x8fa4ff : 0x4a5891, 1);
-        this.pauseGauges.fillRoundedRect(bar.x, bar.y, Math.max(h, bar.w * ratio), h, h / 2);
-        // 손잡이 — "끌 수 있다"를 형태로 알린다 (드래그 조작의 발견성)
-        this.pauseGauges.fillStyle(active ? 0xeef1ff : 0x8fa4ff, 1);
-        this.pauseGauges.fillCircle(bar.x + bar.w * ratio, bar.y + h / 2, PAUSE_BAR.knob);
-        this.pauseGauges.lineStyle(1.5, 0x0b1030, 0.9);
-        this.pauseGauges.strokeCircle(bar.x + bar.w * ratio, bar.y + h / 2, PAUSE_BAR.knob);
-      }
     });
 
     const plateW = 340;
     const top = PAUSE_LAYOUT.titleY - 34;
-    const lastY = PAUSE_LAYOUT.firstY + (rows.length - 1) * PAUSE_LAYOUT.rowGap;
-    const bottom = lastY + (rows.some((r) => r.setting) ? 34 : 24);
+    const bottom = PAUSE_LAYOUT.firstY + (PAUSE_MAIN.length - 1) * PAUSE_LAYOUT.rowGap + 24;
     const g = this.pauseMenuPlate.clear();
-    g.fillStyle(0x080b1c, 0.92);
+    g.fillStyle(0x080b1c, 0.94);
     g.fillRoundedRect((width - plateW) / 2, top, plateW, bottom - top, 14);
-    g.lineStyle(1, 0x33447f, 0.75);
+    g.lineStyle(1, 0x2f3d76, 0.9);
     g.strokeRoundedRect((width - plateW) / 2, top, plateW, bottom - top, 14);
     this.pauseMenuTitle.setPosition(width / 2, PAUSE_LAYOUT.titleY);
-    // height는 아직 안 쓰지만 레이아웃 상수가 화면 비율을 타면 여기서 쓴다
-    void height;
   }
 
   private movePauseMenu(delta: number): void {
-    const len = this.pauseRows().length;
+    const len = PAUSE_MAIN.length;
     this.pauseMenuIndex = (this.pauseMenuIndex + delta + len) % len;
     this.quitArmed = false; // 다른 항목으로 옮기면 나가기 확인은 풀린다
     this.renderPauseMenu();
   }
 
-  /** ←→ — 설정 행에서만 의미가 있다 (볼륨·밝기 조절) */
-  private adjustPauseSetting(direction: number): void {
-    const row = this.pauseRows()[this.pauseMenuIndex];
-    if (!row?.setting) return;
-    this.settings = adjustSetting(this.settings, row.setting, direction);
-    this.persistSettings();
-    // 효과음은 조절 즉시 들려줘야 크기가 체감된다
-    if (row.setting === 'sfxVolume') this.audio.playSfx('incant-enter');
-    this.renderPauseMenu();
-  }
-
-  private openPausePane(pane: 'main' | 'settings'): void {
-    this.pausePane = pane;
-    this.pauseMenuIndex = 0;
-    this.quitArmed = false;
-    this.renderPauseMenu();
-  }
-
   private activatePauseMenuItem(): void {
-    const row = this.pauseRows()[this.pauseMenuIndex];
+    const row = PAUSE_MAIN[this.pauseMenuIndex];
     if (!row) return;
     switch (row.id) {
       case 'resume':
         this.closeBuildInspect();
         return;
       case 'settings':
-        this.openPausePane('settings');
-        return;
-      case 'back':
-        this.openPausePane('main');
-        return;
-      case 'mute':
-        this.audio.toggleMute();
-        this.renderPauseMenu();
+        void this.openSettingsOverlay();
         return;
       case 'quit':
         // 런이 사라지는 되돌릴 수 없는 선택이라 두 번 눌러야 확정된다
@@ -5135,8 +4992,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         this.abandonRun();
         return;
       default:
-        // 설정 행은 Enter로 한 칸 올린다 (←→를 못 찾은 사람도 조절할 수 있게)
-        if (row.setting) this.adjustPauseSetting(+1);
     }
   }
 
@@ -5257,8 +5112,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.hoveredChipIndex = -1;
     // 열 때마다 메인 화면부터 — 지난번 설정 화면이 남아 있으면 "재개"를 못 찾는다
     if (this.buildInspectOpen) {
-      this.pausePane = 'main';
-      this.pauseMenuIndex = 0;
+        this.pauseMenuIndex = 0;
     }
     this.quitArmed = false;
     this.renderPauseMenu();
