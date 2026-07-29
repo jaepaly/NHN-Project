@@ -4,6 +4,26 @@
 > 규칙: **푸시할 때마다 이 파일에 "현재 어디까지 했는지"를 갱신해서 함께 커밋한다.**
 > (팀 공용 1줄 기록은 [AI_USAGE_LOG.md](AI_USAGE_LOG.md), 이 파일은 R2 상세 로그)
 
+## ☐ 지금 작업 흐름 — #158 v2.15 compact 프롬프트 격리 스파이크 (2026-07-29)
+
+> **사용자 요청**: 판정 timeout을 늘려 몰입 저하를 가리는 대신, v2.15 프롬프트와 중첩 출력의 중복을 줄여 Gemini 응답 자체를 유의미하게 단축한다. 단 시퀀스 판별 성능을 크게 떨어뜨리지 않으며, 막히면 즉시 공유한다. **프로덕션 Worker·클라이언트 timeout·캐시 버전은 승인 전 변경하지 않는다.**
+
+**브랜치·의존성**
+- [x] 최신 `origin/main`에서 독립 브랜치 `codex/judge-prompt-compact-spike` 생성(PR #268과 분리).
+- [x] Cloudflare Worker 최신 best-practice·Wrangler 4.115.0·기존 config 확인.
+- [x] 사전 corpus·측정 지표·GO/NO-GO 중단선 고정([PROMPT_COMPACT_SPIKE_2026-07-29.md](PROMPT_COMPACT_SPIKE_2026-07-29.md)).
+
+**R2 작업**
+- [ ] 1차 `compact-text`: named JSON·validator·엔진 불변, 규칙 7·예시·스키마 뒤 중복만 축약.
+- [ ] 정적 계약 테스트·전체 회귀·빌드 후 text 후보 중간 판정.
+- [ ] 2차 `sparse-plan`: 동일 named/nested 구조에서 validator 기본값·로컬 재계산 필드만 생략.
+- [ ] sparse plan 검증→resolve 계약 회귀 후 중간 판정.
+- [ ] `wrangler versions upload`로 배포와 분리된 Version Preview 생성. `wrangler deploy` 금지.
+- [ ] baseline/compact-text/sparse-plan 8종 스모크 → 통과 후보만 30종+held-out+N=3 지연 측정.
+- [ ] #158 결과 공유·AI 사용 로그·PR. 품질 또는 지연 게이트 실패 시 production 미변경 NO-GO.
+
+---
+
 ## ☐ 지금 작업 흐름 — #214 분기형 맵: R2 몫 (2026-07-27)
 
 > **총괄 분배**([#214](https://github.com/jaepaly/NHN-Project/issues/214) 07-26 14:39 코멘트 = **개정판**. 본문의 "R2 몫 없음"이 아니라 이게 최신): R2 = **보물방·제단방 + 바닥형 지형(용암·독지대)**. 단 **#158 ①실플레이·②할당량이 선행**, 그 뒤 착수. 맵 구조는 **R1 소유**(`MapGraph` 계약 — current/choices/enter/snapshot), 씬 통합은 **R3**. R2는 **독립성 높은 모듈(방 타입·지형)**만.
