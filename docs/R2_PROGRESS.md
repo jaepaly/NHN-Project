@@ -16,7 +16,7 @@
 **R2 작업**
 - [x] 원본 규칙·예시를 유지한 채 plan 기본값 생략 지시·예시만 변경. 역변환 LF 해시가 baseline `1279f406…`와 일치.
 - [x] full/sparse validate→resolve 동등성(로컬 sample 484→360B, -25.6%), 기존 judge/plan/sequence 회귀·빌드 통과.
-- [ ] `wrangler versions upload`로 Version Preview 생성. `deploy`/production 트래픽 변경 금지.
+- [x] `wrangler versions upload`로 Version `e54fada5-60cd-4829-9417-0d7d8d181ce5` Preview 생성. `deploy`/production 트래픽 변경 없음.
 - [ ] baseline/candidate 8종 스모크 → candidate 30+12 품질 → 통과 시 paired latency 6종×N=3.
 - [ ] 결과에 따라 PR 또는 NO-GO 기록, #158 공유, AI 사용 로그.
 
