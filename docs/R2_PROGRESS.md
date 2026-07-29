@@ -37,6 +37,8 @@
 > **권장 3축**: ① 정상 응답의 단일 오판은 mode 결정 규칙의 충돌을 최소 수정해 direct Gemini sequence율을 올리고, ② timeout 4문장은 장기상한 진단 후 soft/hard deadline을 분리해 필요한 만큼만 기다리며, ③ timeout 시 `looksSequential` 후보는 의미 앵커를 보존한 짧은 2단계 Mock plan으로 내려 사용자에게 항상 단일로 보이는 품질 절벽을 완화한다. 재시도·전면 프롬프트 증축·IR 재설계는 제외하고 single 우선 회귀를 함께 지킨다.
 >
 > **사용자 우선순위 정정**: 당장 중요한 지표는 single/sequence가 아니라 **Gemini 비fallback률**이다. 이번 유효 세션은 정상 Gemini 15/19=78.9%, fallback 4/19=21.1%였고 네 건 모두 timeout이었다. sequence형 Mock은 화면 품질을 가릴 뿐 Gemini fallback 자체를 줄이지 않으므로 1순위 해법에서 제외한다. 프롬프트 80% 목표는 별도 품질 트랙으로 유지하되, 먼저 timeout 문장을 긴 진단 상한으로 측정하고 현재 2.5/3.2초를 soft deadline(지연 안내), 측정 기반 단일 hard deadline을 실제 abort로 두는 방안을 검토한다. 성공 응답은 즉시 반환되므로 hard deadline 상향은 정상 1.3초 응답을 늦추지 않는다. 무제한 대기·자동 재시도는 하지 않는다.
+>
+> **프롬프트 compact 스파이크 방향**: 대기 상향만으로 몰입 저하를 떠넘기지 않고, production과 분리한 preview A/B에서 판정 계약 자체의 중복·충돌·출력량을 먼저 줄일 가치가 있다. 현재 7,016자 중 규칙 7이 2,977자(42.4%), 출력 스키마가 1,877자(26.8%)로 합계 69.2%다. 후보는 ① 규칙 7을 `sequence 신호 → single 예외 → 신호 우선순위 → 출력 제약`의 짧은 결정표로 재작성, ② 예시 12개를 서로 다른 경계만 대표하는 소수 held-in으로 축소하고 평가는 별도 held-out으로, ③ 스키마 뒤 반복 요약 제거, ④ plan 내부 full spec 반복 설명을 안전하게 축약하는 것이다. 목표는 v2.12 수준 약 5천 자이며, baseline/compact를 같은 시점에 교차 호출해 입력·출력 bytes와 p50/p90/max, schema 유효율, sequence 16/19 이상, single 우선 회귀를 함께 통과할 때만 timeout 상향보다 먼저 채택한다. 과거 compact 배열·semantic IR NO-GO와 달리 스키마·엔진 경계는 바꾸지 않는다.
 
 ---
 
