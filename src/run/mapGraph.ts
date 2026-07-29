@@ -1,6 +1,7 @@
 import type {
   MapGraph,
   MapGraphEdge,
+  MapGraphProgress,
   MapGraphState,
   MapNode,
   MapNodeStatus,
@@ -45,7 +46,13 @@ export class RunMapGraph implements MapGraph {
     return (this.nextIdsByNode.get(this.currentNodeId) ?? []).map((id) => this.node(id));
   }
 
+  canEnter(nodeId: string): boolean {
+    return nodeId === this.currentNodeId
+      || (this.nextIdsByNode.get(this.currentNodeId) ?? []).includes(nodeId);
+  }
+
   enter(nodeId: string): MapNode {
+    if (nodeId === this.currentNodeId) return this.current();
     const nextIds = this.nextIdsByNode.get(this.currentNodeId) ?? [];
     if (!nextIds.includes(nodeId)) {
       throw new Error(`MapGraph cannot enter unreachable node: ${nodeId}`);
@@ -53,6 +60,19 @@ export class RunMapGraph implements MapGraph {
     this.clearedNodeIds.add(this.currentNodeId);
     this.currentNodeId = nodeId;
     return this.current();
+  }
+
+  progress(): MapGraphProgress {
+    const current = this.nodesById.get(this.currentNodeId)!;
+    let clearedInStage = 0;
+    for (const nodeId of this.clearedNodeIds) {
+      if (this.nodesById.get(nodeId)?.stage === current.stage) clearedInStage += 1;
+    }
+    return {
+      stage: current.stage,
+      roomNumber: clearedInStage + 1,
+      totalVisitedRooms: this.clearedNodeIds.size + 1,
+    };
   }
 
   snapshot(): MapGraphState {
@@ -69,6 +89,10 @@ export class RunMapGraph implements MapGraph {
   isBossNode(nodeId: string): boolean {
     const kind = this.nodesById.get(nodeId)?.kind;
     return kind === 'stage-boss' || kind === 'memory-boss';
+  }
+
+  isFinalBossNode(nodeId: string): boolean {
+    return this.nodesById.get(nodeId)?.kind === 'memory-boss';
   }
 
   lastBeforeBoss(): MapNode {
@@ -109,6 +133,16 @@ function validateDefinition(definition: MapGraphDefinition): void {
   const nodesById = new Map<string, MapNode>();
   for (const node of definition.nodes) {
     if (!node.id || nodesById.has(node.id)) throw new Error(`Duplicate or empty MapGraph node id: ${node.id}`);
+    const requiresWaveSet = node.kind === 'start'
+      || node.kind === 'combat'
+      || node.kind === 'elite'
+      || node.kind === 'trap';
+    if (requiresWaveSet && (typeof node.waveSetId !== 'string' || node.waveSetId.length === 0)) {
+      throw new Error(`MapGraph encounter node requires waveSetId: ${node.id}`);
+    }
+    if (!requiresWaveSet && node.waveSetId !== null) {
+      throw new Error(`MapGraph non-encounter node must not define waveSetId: ${node.id}`);
+    }
     nodesById.set(node.id, node);
   }
   if (!nodesById.has(definition.startNodeId)) throw new Error('MapGraph start node is missing');

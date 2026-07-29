@@ -18,14 +18,14 @@ export const MAP_GRAPH_PRESET_01: MapGraphDefinition = {
   nodes: [
     { id: 's1-start', stage: 1, kind: 'start', layer: 0, lane: 0, waveSetId: 'room-a', ...emptyRoom },
     { id: 's1-combat', stage: 1, kind: 'combat', layer: 1, lane: 0, waveSetId: 'room-b', ...emptyRoom },
-    { id: 's1-treasure', stage: 1, kind: 'treasure', layer: 1, lane: 1, ...emptyRoom },
+    { id: 's1-treasure', stage: 1, kind: 'treasure', layer: 1, lane: 1, waveSetId: null, ...emptyRoom },
     { id: 's1-elite', stage: 1, kind: 'elite', layer: 2, lane: 0, waveSetId: 'elite', ...emptyRoom },
-    { id: 's1-boss', stage: 1, kind: 'stage-boss', layer: 3, lane: 0, ...emptyRoom },
+    { id: 's1-boss', stage: 1, kind: 'stage-boss', layer: 3, lane: 0, waveSetId: null, ...emptyRoom },
     { id: 's2-combat', stage: 2, kind: 'combat', layer: 4, lane: 0, waveSetId: 'room-c', ...emptyRoom },
     { id: 's2-trap', stage: 2, kind: 'trap', layer: 5, lane: 0, waveSetId: 'room-c-hazard', ...emptyRoom },
-    { id: 's2-altar', stage: 2, kind: 'altar', layer: 5, lane: 1, ...emptyRoom },
+    { id: 's2-altar', stage: 2, kind: 'altar', layer: 5, lane: 1, waveSetId: null, ...emptyRoom },
     { id: 's2-elite', stage: 2, kind: 'elite', layer: 6, lane: 0, waveSetId: 'elite', ...emptyRoom },
-    { id: 's2-memory-boss', stage: 2, kind: 'memory-boss', layer: 7, lane: 0, ...emptyRoom },
+    { id: 's2-memory-boss', stage: 2, kind: 'memory-boss', layer: 7, lane: 0, waveSetId: null, ...emptyRoom },
   ],
   edges: [
     { from: 's1-start', to: 's1-combat' },

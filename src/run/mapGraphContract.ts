@@ -1,3 +1,5 @@
+import type { RoomCurseKind } from '../combat-core/run/roomCurse';
+
 /**
  * 맵 그래프 계약 (#214 — R1↔R3 인터페이스).
  *
@@ -60,10 +62,10 @@ export interface MapNode {
   kind: MapNodeKind;
   layer: number;
   lane: number;
-  waveSetId?: string;
+  waveSetId: string | null;
   terrain: readonly MapTerrainPlacement[];
   /** 저주 배정기가 소비할 후보별 가중치 자리입니다. */
-  curseWeights: Readonly<Record<string, number>>;
+  curseWeights: Readonly<Partial<Record<RoomCurseKind, number>>>;
 }
 
 export interface MapNodeSnapshot extends MapNode {
@@ -82,13 +84,27 @@ export interface MapGraphState {
   edges: readonly MapGraphEdge[];
 }
 
+export interface MapGraphProgress {
+  stage: number;
+  /** Current stage's one-based visit order. There is no fixed denominator. */
+  roomNumber: number;
+  totalVisitedRooms: number;
+}
+
 /** #214에서 합의한 R1 → R3 공개 표면입니다. */
 export interface MapGraph {
   current(): MapNode;
   choices(): MapNode[];
+  canEnter(nodeId: string): boolean;
   enter(nodeId: string): MapNode;
+  progress(): MapGraphProgress;
   snapshot(): MapGraphState;
   isBossNode(nodeId: string): boolean;
+  /**
+   * MapGraph identifies the final boss room. RunController remains authoritative
+   * for completion and ends the run only after that encounter is cleared.
+   */
+  isFinalBossNode(nodeId: string): boolean;
   lastBeforeBoss(): MapNode;
 }
 
