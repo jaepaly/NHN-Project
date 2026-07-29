@@ -87,7 +87,7 @@ import { DEFAULT_SETTINGS, loadSettings } from '../run/gameSettings';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import { devInfo } from '../debug/devLog';
 import { FusionGauge } from '../combat-core/player/fusionGauge';
-import { loopDamageScale } from '../combat-core/run/loopDifficulty';
+import { loopDamageScale, loopHpScale } from '../combat-core/run/loopDifficulty';
 import { flooredResistMultiplier } from '../combat-core/combat/debuffFloor';
 import { showBossChoice } from '../ui/bossChoiceOverlay';
 import { showSystemBanner } from '../render/systemBanner';
@@ -1474,6 +1474,8 @@ export class ProtoScene extends Phaser.Scene {
       this.player.x,
       this.player.y - 340,
       usesMemory ? 'memory' : 'stage',
+      // 보스는 절반 배율 — 내성 누적(#77)과 이중 강화가 되지 않게
+      loopHpScale(this.combatRunController.state.loopIndex, true),
     );
     this.bossPatternController = new BossPatternController(usesMemory ? 'memory' : 'stage');
     const isCurrentBossRoom = (): boolean => {
@@ -2427,23 +2429,27 @@ if (applied) this.playPlayerHit();
     applyEncounterModifier = false,
     explicitModifier?: EliteModifier,
   ): void {
+    // 이어가기 루프마다 체력이 오른다 (총괄 지적: 딜만 성장해 한 방에 쓸린다).
+    // 플레이어 성장(+15~21%/루프)보다 살짝 완만한 +15%라 이길수록 앞서 나가되
+    // 전투가 무의미해지지 않는다.
+    const hpScale = loopHpScale(this.combatRunController.state.loopIndex);
     let enemy: CombatEnemy;
     switch (kind) {
       case 'shield-sentinel':
-        enemy = new ShieldSentinelEnemy(this, x, y);
+        enemy = new ShieldSentinelEnemy(this, x, y, hpScale);
         break;
       case 'shooter':
-        enemy = new ShooterEnemy(this, x, y);
+        enemy = new ShooterEnemy(this, x, y, hpScale);
         break;
       case 'splitter':
-        enemy = new SplitterEnemy(this, x, y);
+        enemy = new SplitterEnemy(this, x, y, false, hpScale);
         break;
       case 'small-splitter':
-        enemy = new SplitterEnemy(this, x, y, true);
+        enemy = new SplitterEnemy(this, x, y, true, hpScale);
         break;
       case 'chaser':
       default:
-        enemy = new ChaserEnemy(this, x, y);
+        enemy = new ChaserEnemy(this, x, y, hpScale);
         break;
     }
     const modifier = explicitModifier ?? (
