@@ -4,35 +4,51 @@
 > 규칙: **푸시할 때마다 이 파일에 "현재 어디까지 했는지"를 갱신해서 함께 커밋한다.**
 > (팀 공용 1줄 기록은 [AI_USAGE_LOG.md](AI_USAGE_LOG.md), 이 파일은 R2 상세 로그)
 
-## ☐ 지금 작업 흐름 — #214 분기형 맵: R2 몫 (2026-07-27)
+## ☐ 지금 작업 흐름 — P0 라이브 시퀀스·fallback 회귀 진단 (2026-07-29)
 
-> **총괄 분배**([#214](https://github.com/jaepaly/NHN-Project/issues/214) 07-26 14:39 코멘트 = **개정판**. 본문의 "R2 몫 없음"이 아니라 이게 최신): R2 = **보물방·제단방 + 바닥형 지형(용암·독지대)**. 단 **#158 ①실플레이·②할당량이 선행**, 그 뒤 착수. 맵 구조는 **R1 소유**(`MapGraph` 계약 — current/choices/enter/snapshot), 씬 통합은 **R3**. R2는 **독립성 높은 모듈(방 타입·지형)**만.
+> **신규 제보**: [#203](https://github.com/jaepaly/NHN-Project/issues/203)의 R1 기능 기준 중 “시퀀스 권장 19종”이 현재 전부 기대대로 동작하지 않고, 팀원 환경에서는 `fallback`도 보인다는 보고가 들어왔다. 아직 원본 HTTP 상태·응답·판정 출처가 없어 원인을 쿼터·Worker·모델·클라이언트 중 하나로 확정하지 않는다. **프롬프트를 먼저 고치지 않고 증거 확보 → 안전 재현 → 원인별 수정** 순서를 지킨다.
 
-**① 선행 — 총괄이 "이거 먼저"로 지정**
-- [ ] **#158 ① 실플레이 검증** — 형이 게임 한 판(시퀀스 실행·#210 오버랩·size/speed 체감). *(판정 분류는 R1 30종 검증 완료·#158 게시)*
-- [~] **#158 ② 할당량 집행** — **보류**(형 결정). 총괄은 선행으로 봤으나 유료 전환 보류 중. 인시던트 규명·재발방지는 [#229](https://github.com/jaepaly/NHN-Project/pull/229)로 완료 — 유료 결정만 남음.
+**① 확정된 기준과 오진 방지**
+- [x] 2026-07-26 동일 R1 30종을 v2.15 라이브 Worker에서 브라우저 fetch로 판정: **30/30 cast, 시퀀스 21, 단일 9, fizzle 0**. 시퀀스 ≥15·단일 ≥8 게이트 통과. 현재 제보가 재현되면 기존부터 실패한 것이 아니라 **신규 회귀**다.
+- [x] 당시 예외는 “심장이 두 번 뛰는 동안” 1종의 단일 판정뿐이었다. “시퀀스 권장 19종 전부 실패”와는 양상이 다르다.
+- [x] 과거 동일 증상 [#231](https://github.com/jaepaly/NHN-Project/issues/231)은 Windows 인라인 `curl -d`가 한글을 깨뜨린 오진이었다. 재현은 반드시 브라우저/Node fetch 또는 파일 body를 쓰고 `npm run judge:test`를 우선한다.
+- [x] 과거 실제 장애 [#229](https://github.com/jaepaly/NHN-Project/pull/229)는 Worker 응답 `502` + upstream Gemini `429`, 클라이언트 `lastSource:"fallback"`이었다. HTTP 200 fizzle·클라이언트 타임아웃과 구분한다.
+- [x] 2026-07-29 Google AI Studio 캡처의 Gemini 3.5 Flash Lite 현재치는 RPM 약 8/15, RPD 0/500(UTC-8 일일 초기화 후)다. **현재 일일 소진은 보이지 않지만**, 과거 순간 RPM·Worker IP 제한·타임아웃·다른 프로젝트/키 문제까지 배제하는 증거는 아니다.
 
-**② 본작업 A — 보물방·제단방** (독립성 높은 모듈, R1 계약 없이도 보상 로직 선준비 가능)
-- [x] 제단방 — **HP 지불 → 상급 다택**(powerScale 배율) — [#234](https://github.com/jaepaly/NHN-Project/pull/234) 머지. 카드표시 버그(프리미엄 카드가 표준값 표시) 동반 수정.
-- [x] 보물방 — **무전투·무리스크 다택**, 층 배율(저층 2택×1.3 / 고층 2택×1.6) — [#235](https://github.com/jaepaly/NHN-Project/pull/235) 머지. 제단방보다 짜게(무리스크).
-- [ ] R1 `MapGraph` 노드 타입에 편입 배선 (계약 PR 나온 뒤 · R3 조율)
+**② P0 증거 확보 — 코드 수정·대량 호출 전에**
+- [ ] 제보자에게 실패한 정확한 문장, KST 시각, 실행 페이지/커밋, 기기·네트워크, 화면의 판정 출처(`[gemini]`/`[cache]`/`[fallback]`/`[local]`)를 받는다.
+- [ ] 브라우저 DevTools의 판정 요청에서 HTTP status, 응답 원문(`detail` 포함), 총 지연을 보존한다. “안 된다”를 fizzle·fallback·단일 오분류·시퀀스 런타임 미실행으로 나눈다.
+- [ ] 라이브 Pages의 클라이언트 `JUDGE_PROMPT_VERSION`, 호출 Worker URL과 배포 Worker의 프롬프트 버전·모델 핀이 main과 같은지 확인한다.
 
-**③ 본작업 B — 바닥형 지형** ([#237](https://github.com/jaepaly/NHN-Project/pull/237) — config+씬배선 Step 1·2, **변경 요청 반영 중**)
-- [x] 용암 — 해저드 리스킨(주황·fire, 초당 12·잔류 없음)
-- [x] 독지대 config — 피해 낮게(초당 4·dark) + 이탈 후 2초 도트 잔류 규칙
-- [x] 씬 배선 Step 1·2: ①렌더 ②틱피해. 리뷰 요청대로 스케일된 게임 시간 쿨다운·depth -1.5·씬 배선 회귀로 수정.
-- [ ] Step 3~5: ③플레이어 디버프 ④잔류도트 ⑤카운터 정화. 구현본은 `codex/floor-hazard-step3-5`에 보존하고 #237 머지 후 별도 PR로 진행.
-- [ ] 배치 좌표는 **R1 프리셋 데이터에서** (데이터 구동, R2는 기전만·dev 프리뷰에 샘플 존만) · 함정(방)은 R1 몫
+**③ P0 안전 재현**
+- [x] 한글 안전 Node fetch 경로로 3문장 라이브 스모크: `거대한 화염구를 적에게 던진다` → HTTP 200·단일 cast·1.378초, `번개로 적을 묶은 뒤 얼음창으로 꿰뚫는다` → HTTP 200·2단계 sequence·1.854초, `불사조의 낙화` → HTTP 200·2단계 sequence·1.626초. 429/502/fizzle 없음. **라이브 Worker·모델·v2.15 추상 시퀀스 규칙의 최소 경로는 정상**이며, 전면 프롬프트 장애·현재 전 요청 쿼터 fallback 가설은 기각.
+- [x] #203 시퀀스 권장 19종을 N=1·10초 간격으로 측정: **HTTP 200 cast 19/19, sequence 17, single 2, fizzle 0**으로 기능 게이트(≥15) 통과. 지연 p50 1.504초·p90 2.290초·max 2.568초, 입력별 실제 상한 초과 0건. 단일은 `사방의 포화`와 기존 충돌 케이스 `심장이 두 번 뛰는 동안`.
+  - 흔들린 2종만 2회 추가해 총 N=3 확인: `사방의 포화`는 sequence 1/3·single 2/3이며 sequence 1회가 **5.139초**; `심장이 두 번 뛰는 동안`은 sequence 0/3·single 3/3.
+  - `사방의 포화`는 `looksSequential()`이 false라 클라이언트 상한 2.5초이고, 5.139초 응답은 게임 경로라면 fallback된다. 더구나 `cacheSeed.generated.ts`가 이 문장을 **단일 spell로 프리워밍**해 신규 브라우저에서도 단일로 고정한다.
+  - 19종 timeout 코드 감사 결과 **14종은 2.5초, 5종만 3.2초**다. v2.15가 추상 이름을 기본 sequence로 확장했지만 클라이언트 복합 감지는 과거 motion signal 일부만 보므로 tail fallback 위험이 남는다.
+  - 결론: “19종 전부 실패”·전면 쿼터 장애는 재현되지 않았지만, **프롬프트 규칙 ↔ timeout 분류 ↔ 캐시 시드 정합 결함**은 재현됐다.
+- [~] **fixture 우회 없는 실플레이 교차 확인** — 로컬 게임 서버에서 `debugSpellPlan()` 카탈로그 이름과 `#seq <key>`를 쓰지 않고, 신규 단일·명시 복합·추상 영창을 실제 영창창에 입력한다. `VITE_JUDGE_MOCK≠1`, `VITE_SEQUENCE_JUDGE≠0`, 캐시 상태를 확인하고 `lastSource`·네트워크 status/지연·실제 sequence 실행을 함께 기록한다. 팀원 로컬의 “전부 단일”이 환경변수·fallback·cache·배포 중 어디서 갈리는지 비교한다.
+  - [x] 기존 `logs/play.jsonl` 구조 감사: DEV의 `LoggingJudge`가 `session_start` 판정기 이름과 cast/fizzle/blocked의 입력·대표 spell·`src`, 별도 `dmg` breakdown을 `/__log`로 append한다. fixture는 판정 전에 우회하므로 이 cast 로그에 들어오지 않는다.
+  - [ ] 현재 누락된 `elapsedMs`, plan 존재 여부, sequence/behavior 수, 실제 `runSequenceCast` 진입 이벤트와 절대시각을 보강해야 캡처 없이 실플레이 판정·fallback·실행층을 전부 검증할 수 있다. 현 로그만으로는 “대표 spell이 기록됨”과 “화면에서 단일 실행됨”을 구분할 수 없다.
 
-**④ 옵션 (여유 시) — "말이 곧 마법" R2 접점**
-- [ ] 제단방 "대가" 문구 / 방 진입 분위기 텍스트 **LLM 생성** — ⚠️ **프리워밍/캐시 필수**(2026-07-27 쿼터 인시던트: 매 방 라이브 호출 금지, 고정 소수 문구를 사전 판정해 시드)
+**④ 결과별 수정 분기**
+- [ ] `429`면 Gemini 프로젝트 쿼터/RPM과 Worker IP 제한을 분리하고, 제한 수치·키·프로젝트 정합과 심사 기간 유료 전환 결정을 다룬다.
+- [ ] Worker `200 cast+sequence`인데 게임만 fallback이면 2.5/3.2초 클라이언트 상한, Pages 버전·캐시·네트워크 경로를 진단한다.
+- [ ] Worker `200 fizzle` 또는 19종 단일 쏠림이면 입력 UTF-8·배포 프롬프트/모델 핀·응답 스키마를 확인한 뒤 최소 수정과 고정 회귀를 만든다.
+- [ ] 판정 JSON은 sequence인데 화면만 단일이면 `sequencePlan` 검증·런타임 배선·오버랩 경로를 진단한다.
+- [ ] 원인 수정 후 관련 회귀·전체 테스트·빌드 → 프리뷰 → 라이브 스모크 순서로 검증하고 [#158](https://github.com/jaepaly/NHN-Project/issues/158)에 원본 결과를 기록한다.
 
-**⑤ 상시 — 리뷰어**
-- [ ] R1 그래프 모델·프리셋 PR 리뷰 / R3 씬 통합(포탈·미니맵·전환) PR 리뷰
+**⑤ 최신 GitHub 알림에서 파생된 R2 작업**
+- [ ] [#258](https://github.com/jaepaly/NHN-Project/issues/258) — 위 P0 측정에서 2.5/3.2초 초과율·fallback 빈도를 얻은 뒤 총괄의 룸 목표시간 모델 질문에 수치로 답한다. 과거 N=6 max 2.554초, N=30 N=1만으로 현재 빈도를 추정하지 않는다.
+- [~] [#260](https://github.com/jaepaly/NHN-Project/pull/260) — 총괄이 #239 Step 3을 축소하고 R2 config 위에 잔류·정화 면역을 구현했다. 중복 구현 없이 config 소비·게임시간 타이머·방 전환 초기화·회귀만 검토한다.
+- [ ] [#246](https://github.com/jaepaly/NHN-Project/issues/246) — 선행 R1 계약 [#241](https://github.com/jaepaly/NHN-Project/pull/241)·[#245](https://github.com/jaepaly/NHN-Project/pull/245)가 7/29 머지되어 착수 가능. P0 안정화 뒤 용암·독지대 및 정적 장벽이 도착 포탈·플레이어 스폰 keep-out을 소비하도록 별도 PR.
+- [~] [#257](https://github.com/jaepaly/NHN-Project/pull/257)·[#249](https://github.com/jaepaly/NHN-Project/pull/249)은 R2 직접 구현 요청은 없고, 각각 #258 시연 기준선·원소 판정 계약에 미치는 영향만 추적한다.
 
-> **순서·의존성**: R1이 `MapGraph` 모델 + 프리셋 1종 PR을 먼저 냄 → 그게 나와야 방 타입·지형 배치를 **배선**. 그 전엔 보물방/제단방의 **보상 로직(독립적)**부터 준비 가능. **R2 실착수는 #158 ① 후**(총괄 지정). 관련 통합 검증 이슈 = [#216](https://github.com/jaepaly/NHN-Project/issues/216).
->
-> **뭘 먼저**: ① 형 실플레이(#158①) → ② 보물방·제단방 보상 로직 선준비 → R1 계약 나오면 배선 + 바닥형 지형. 옵션 LLM 텍스트는 프리워밍 얹어 마지막.
+**⑥ 완료된 기반**
+- [x] 개인 스킬 `track-nhn-work` 생성·구조 검증, GitHub 근거 기반 7/26~7/29 누락 로그 복구, 문서 PR [#261](https://github.com/jaepaly/NHN-Project/pull/261) 생성.
+- [x] 제단방 [#234](https://github.com/jaepaly/NHN-Project/pull/234), 보물방 [#235](https://github.com/jaepaly/NHN-Project/pull/235), 바닥형 지형 Step 1·2 [#237](https://github.com/jaepaly/NHN-Project/pull/237) 머지.
+
+> **다음 실행 순서**: P0 원본 증거 확보 → 3문장 안전 스모크 → 필요 시 19종 N=1 → 원인별 최소 수정. 그 실측으로 #258 답변 → #260 R2 계약 리뷰 → #246 keep-out 구현. **현재 단계에서는 Worker·프롬프트·제한 수치를 바꾸지 않는다.**
 
 ---
 
