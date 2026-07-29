@@ -15,6 +15,12 @@ import type { SpellElement, SpellEffect } from '../../spell/types';
 
 export type FloorHazardKind = 'lava' | 'poison';
 
+/**
+ * 피해 계약:
+ * - 아래 초당 피해에는 ProtoScene.damagePlayer의 이어가기 루프 배율이 추가로 곱해진다.
+ * - 바닥지형은 일반 피해 경로를 사용하므로 shield/ward가 적용된다.
+ *   피할 수 없는 폭염만 takeEnvironmentalDamage 경로로 shield/ward를 무시한다.
+ */
 export const FLOOR_HAZARD_CONFIG = {
   /** 틱 간격(초) — 이 간격마다 밟고 있으면 피해가 들어간다. 공통. */
   tickIntervalSeconds: 0.5,
