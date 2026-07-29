@@ -164,6 +164,39 @@
         border-color: var(--spell-core);
         box-shadow: 0 0 16px color-mix(in srgb, var(--spell-glow) 26%, transparent);
       }
+      /*
+       * 첫 영창 안내 (총괄 지적: "영창하면 화면이 흐려져서 설명도 흐리게 보인다").
+       *
+       * 원인: 안내는 Phaser 배너(캔버스)로 뜨는데 영창 창은 캔버스 **위에** 덮이는 DOM
+       * 오버레이라 어둠·블러가 통째로 걸린다. 하필 그 안내의 내용이 "ENTER를 눌러 이렇게
+       * 쳐라"라서, **누르라는 대로 눌렀더니 읽어야 할 예시가 흐려지는** 구조였다.
+       *
+       * 해법: 안내를 지우는 대신 **입력창 안으로 옮긴다.** 무엇을 칠지 알려주는 글은
+       * 치는 자리에 있어야 한다. 좌측 강조선 + 왼쪽 정렬 — 여러 줄의 시작점이 어긋나지
+       * 않게(중앙 정렬 지적과 같은 규율).
+       */
+      .incant-guide {
+        position: relative;
+        margin-top: 12px;
+        padding: 9px 12px;
+        border-left: 2px solid var(--spell-core);
+        border-radius: 0 7px 7px 0;
+        background: color-mix(in srgb, var(--spell-glow) 11%, transparent);
+        text-align: left;
+      }
+      .incant-guide[hidden] { display: none; }
+      .incant-guide-title {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: var(--spell-core);
+      }
+      .incant-guide-line {
+        margin-top: 4px;
+        font-size: 12.5px;
+        line-height: 1.45;
+        color: #c2cbee;
+      }
       .incant-input-shell {
         position: relative;
         margin-top: 12px;
@@ -330,6 +363,8 @@
           <span class="incant-kicker">INCANTATION LINK</span>
           <span id="incant-state">마나 0</span>
         </div>
+        <!-- 첫 영창 안내 — 배너 대신 여기서 읽힌다 (영창 창이 화면을 흐리므로) -->
+        <div id="incant-guide" class="incant-guide" hidden></div>
         <div class="incant-input-shell">
           <input id="incant-bar" type="text" autocomplete="off" maxlength="60"
                  aria-label="자유 텍스트 주문"
