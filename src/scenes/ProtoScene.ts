@@ -206,6 +206,12 @@ import {
   pushOutOfBarriers,
 } from '../combat-core/combat/terrainBarrier';
 import type { TerrainBarrier } from '../combat-core/combat/terrainBarrier';
+import {
+  FLOOR_HAZARD_CONFIG,
+  floorHazardTickDamage,
+  isInFloorHazard,
+} from '../combat-core/combat/floorHazardConfig';
+import type { FloorHazardZone } from '../combat-core/combat/floorHazardConfig';
 import { PortalField } from '../render/portalField';
 import { mockMinimapModel } from '../run/mapGraphMock';
 import {
@@ -710,6 +716,14 @@ export class ProtoScene extends Phaser.Scene {
   private terrainBarriers: TerrainBarrier[] = [];
   private terrainBarrierView: Phaser.GameObjects.Graphics | null = null;
   /**
+   * 바닥형 지형 (#214 지형 Tier 1 R2) — 용암·독지대. 배치는 R1 소유, 여기는 렌더·판정만.
+   * 방 진입 시 채우고 방 전환 시 비운다. 장벽(막는 것)과 달리 밟으면 아픈 것.
+   */
+  private floorHazards: FloorHazardZone[] = [];
+  private floorHazardView: Phaser.GameObjects.Graphics | null = null;
+  /** 스케일된 게임 시간 기준 지형 틱 쿨다운. */
+  private floorHazardTickCooldown = 0;
+  /**
    * 진행 중인 미러 캐스트(예고 단계). 타이머는 update에서 **스케일된 델타**로
    * 감소한다 — 영창 슬로모(timeScale 0.1) 중엔 예고도 같이 느려져, "예고를 보고
    * 슬로모를 열어 보호막을 친다"는 카운터플레이가 성립한다.
@@ -900,7 +914,12 @@ export class ProtoScene extends Phaser.Scene {
           { x: cx - 420, y: cy - 260, halfLength: 110, angleDeg: 90 },
           { x: cx + 420, y: cy + 260, halfLength: 110, angleDeg: 90 },
         ]);
-        return '미니맵 + 포탈 3개 + 지형 장벽 3개 프리뷰 생성';
+        // 바닥지형 프리뷰 — 용암·독지대 (배치는 R1 프리셋, 여기선 눈으로 확인용)
+        this.setFloorHazards([
+          { kind: 'lava', x: cx - 240, y: cy + 150, radius: 72 },
+          { kind: 'poison', x: cx + 240, y: cy - 150, radius: 84 },
+        ]);
+        return '미니맵 + 포탈 3개 + 지형 장벽 3개 + 바닥지형(용암·독) 프리뷰 생성';
       };
       (window as unknown as { __spellMatrix?: (step: () => void) => unknown }).__spellMatrix
         = (step: () => void) => {
@@ -1041,6 +1060,7 @@ export class ProtoScene extends Phaser.Scene {
       this.updatePersistentForms(d);
       this.updateEnemyProjectiles(d);
       this.updateHazards(d);
+      this.updateFloorHazards(d);
       this.updateBasicAttack();
       this.updateEngravedSpells(d);
       this.updateMirrorCast(d);
@@ -1646,6 +1666,7 @@ export class ProtoScene extends Phaser.Scene {
     this.clearPendingMirrorCast();
     this.clearBossArcana();
     this.clearTerrainBarriers();
+    this.clearFloorHazards();
   }
 
   /** 예고 중인 미러 캐스트 취소 — 방 전환·사망 후 마커가 남거나 유령 발사되는 것 방지 */
@@ -2266,6 +2287,59 @@ export class ProtoScene extends Phaser.Scene {
     this.terrainBarrierView?.destroy();
     this.terrainBarrierView = null;
     this.terrainBarriers = [];
+  }
+
+  // ── 바닥형 지형 (#214 지형 Tier 1 R2) ──────────────────────────────
+
+  /** 방 바닥지형 배치 — R1 프리셋 데이터를 그대로 깐다. 빈 배열이면 지형 없는 방. */
+  private setFloorHazards(zones: readonly FloorHazardZone[]): void {
+    this.clearFloorHazards();
+    if (zones.length === 0) return;
+    this.floorHazards = zones.map((zone) => ({ ...zone }));
+
+    // 바닥 데칼 — 위험 예고(-1)와 개체(0)보다 아래에 깔아 "밟는 것"으로 읽힌다.
+    // 용암=주황, 독지대=초록. 3겹(외곽 글로우·본체·테두리)으로 위험지대를 뚜렷이.
+    const view = this.add.graphics().setDepth(-1.5);
+    for (const zone of this.floorHazards) {
+      const [glow, body, edge] = zone.kind === 'lava'
+        ? [0x5a1e00, 0xff6a1a, 0xffb066]
+        : [0x0e2e12, 0x39b54a, 0x9be89b];
+      view.fillStyle(glow, 0.28).fillCircle(zone.x, zone.y, zone.radius + 6);
+      view.fillStyle(body, 0.30).fillCircle(zone.x, zone.y, zone.radius);
+      view.lineStyle(2, edge, 0.7).strokeCircle(zone.x, zone.y, zone.radius);
+    }
+    this.floorHazardView = view;
+    this.floorHazardTickCooldown = FLOOR_HAZARD_CONFIG.tickIntervalSeconds;
+  }
+
+  private clearFloorHazards(): void {
+    this.floorHazardTickCooldown = 0;
+    this.floorHazardView?.destroy();
+    this.floorHazardView = null;
+    this.floorHazards = [];
+  }
+
+  /** 기존 장판과 같은 스케일된 게임 시간으로 지형 틱을 진행한다. */
+  private updateFloorHazards(deltaSeconds: number): void {
+    if (this.floorHazards.length === 0) return;
+    this.floorHazardTickCooldown = Math.max(0, this.floorHazardTickCooldown - deltaSeconds);
+    if (this.floorHazardTickCooldown > 0) return;
+    this.tickFloorHazards();
+    this.floorHazardTickCooldown = FLOOR_HAZARD_CONFIG.tickIntervalSeconds;
+  }
+
+  /**
+   * 틱 간격마다 — 플레이어가 지형 존 위면 그 지형의 틱 피해를 준다.
+   * damagePlayer는 자체로 무음(HP만 감소)이라 "안 때렸는데 맞는 소리"가 안 난다.
+   * (틱 펄스 연출·상태이상은 후속 스텝.)
+   */
+  private tickFloorHazards(): void {
+    if (!this.playerState.alive || !this.isCombatActive()) return;
+    for (const zone of this.floorHazards) {
+      if (isInFloorHazard(this.player.x, this.player.y, zone)) {
+        this.damagePlayer(floorHazardTickDamage(zone.kind));
+      }
+    }
   }
 
   /**
