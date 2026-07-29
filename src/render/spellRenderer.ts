@@ -37,6 +37,9 @@ import {
   persistentFieldAlphaScale,
 } from './vfxBudget';
 import { requestCameraShake } from './cameraShake';
+import {
+  PARTICLE_TEXTURES, ensureParticleTextures, particleKey,
+} from './particleTextures';
 import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
 
 interface SpellImpactMeta {
@@ -126,6 +129,7 @@ export function ensureParticleTexture(scene: Phaser.Scene): void {
 
 export function castSpell(ctx: CastContext, spec: SpellSpec): void {
   ensureParticleTexture(ctx.scene);
+  ensureParticleTextures(ctx.scene);
   requestCastCameraShake(ctx, spec);
   const impactCtx = withAffinityImpactFlourish(ctx, spec);
   switch (spec.form) {
@@ -234,7 +238,7 @@ function castBolt(ctx: CastContext, spec: SpellSpec): void {
     .setBlendMode(Phaser.BlendModes.ADD);
 
   // 꼬리: 파티클 트레일 (주 원소)
-  const trail = scene.add.particles(0, 0, 'particle', {
+  const trail = scene.add.particles(0, 0, particleKey(scene, PARTICLE_TEXTURES.glow), {
     speed: { min: 10, max: 60 },
     scale: { start: 0.5 * scale, end: 0 },
     lifespan: 350,
@@ -248,7 +252,7 @@ function castBolt(ctx: CastContext, spec: SpellSpec): void {
   let subTrail: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   if (spec.element_secondary) {
     const sub = ELEMENT_PALETTES[spec.element_secondary];
-    subTrail = scene.add.particles(0, 0, 'particle', {
+    subTrail = scene.add.particles(0, 0, particleKey(scene, PARTICLE_TEXTURES.spark), {
       speed: { min: 40, max: 120 },
       scale: { start: 0.3 * scale, end: 0 },
       lifespan: 250,
@@ -968,7 +972,7 @@ function castZone(ctx: CastContext, spec: SpellSpec): void {
   const pulse = scene.add.circle(center.x, center.y, radius * 0.3, pal.core, 0)
     .setStrokeStyle(Math.max(2, 3 * scale), accent, 0.85)
     .setBlendMode(Phaser.BlendModes.ADD);
-  const particles = scene.add.particles(center.x, center.y, 'particle', {
+  const particles = scene.add.particles(center.x, center.y, particleKey(scene, PARTICLE_TEXTURES.glow), {
     speed: { min: radius * 0.15, max: radius * 0.55 },
     angle: { min: 0, max: 360 },
     scale: { start: 0.28 * scale, end: 0 },
@@ -1154,7 +1158,7 @@ function areaImpactBurst(
 function impactBurst(scene: Phaser.Scene, x: number, y: number, spec: SpellSpec): void {
   const pal = ELEMENT_PALETTES[spec.element_primary];
   const scale = SIZE_SCALE[spec.size];
-  const burst = scene.add.particles(x, y, 'particle', {
+  const burst = scene.add.particles(x, y, particleKey(scene, PARTICLE_TEXTURES.spark), {
     speed: { min: 60, max: 220 * scale },
     scale: { start: 0.6 * scale, end: 0 },
     lifespan: 400,
@@ -1206,7 +1210,7 @@ export function playAffinityImpactFlourish(
 
   // 스파크 버스트 — 양·속도가 강도에 연속 비례 (매 시전의 작은 성장도 보인다)
   const sparkCount = flourishSparkCount(t, spec.form);
-  const sparks = scene.add.particles(x, y, 'particle', {
+  const sparks = scene.add.particles(x, y, particleKey(scene, PARTICLE_TEXTURES.spark), {
     speed: { min: 60, max: 150 + t * 30 },
     scale: { start: 0.5 + t * 0.05, end: 0 },
     lifespan: 500,
