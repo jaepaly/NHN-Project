@@ -80,6 +80,7 @@ import {
 import { allGlyphTextures, formGlyphTextureKey } from '../render/formGlyphs';
 import type { BuildChip } from '../run/buildChipModel';
 import { buildChipModel } from '../run/buildChipModel';
+import { bandAffordances, reachableBand } from '../run/incantBands';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { UI_COLOR } from '../ui/uiTokens';
 import type { GameSettings } from '../run/gameSettings';
@@ -616,6 +617,8 @@ export class ProtoScene extends Phaser.Scene {
   private incantCount!: HTMLElement;
   private incantHint!: HTMLElement;
   private incantChargeLabel!: HTMLElement;
+  /** 대역 칩 컨테이너 (속삭임·영창·외침) — incantBands 모델로 채운다 */
+  private incantBands!: HTMLElement;
   private incanting = false;
   private casting = false;
   /**
@@ -3362,6 +3365,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.incantCount = document.getElementById('incant-count')!;
     this.incantHint = document.getElementById('incant-hint')!;
     this.incantChargeLabel = document.getElementById('incant-charge-label')!;
+    this.incantBands = document.getElementById('incant-bands')!;
 
     // 재진입 대비 — 같은 참조를 제거 후 등록해 누적을 차단한다 (#216 P0 겹시전).
     // 첫 호출에선 remove가 no-op이라 안전하고, 몇 번 들어와도 리스너는 정확히 1쌍이다.
@@ -3478,12 +3482,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 온보딩: 열 때마다 예시 문장을 순환해 "이렇게 쓰면 된다"를 보여준다
     this.incantBar.placeholder = onboardingPlaceholderAt(this.incantOpenCount);
     this.incantOpenCount += 1;
-    // 영창은 마나 예산 결정의 순간 — 보유량과 요금표를 창 안에서 바로 보이게 한다.
-    // 요금표는 비용 공식(max(5, power×0.6))의 체감 구간 — 말의 크기를 고르는 기준.
-    this.incantState.textContent = `시간 흐름 10% · 마나 ${Math.floor(this.playerState.mana)}`;
+    // 위계: 마나(예산) → 입력 → 대역(선택지) → 조작 안내. 종전에는 요금표와 조작 안내가
+    // 12px 회색 한 줄에 뭉쳐 있어 둘 다 안 읽혔다 — 이제 요금표는 대역 칩이 맡는다.
     this.incantHint.textContent = this.activeRoomCurse?.kind === 'word-limit'
       ? '한글 6자 · 영문 10자 상당 — Enter 발동 · Esc 취소'
-      : '속삭임 ~10 · 영창 ~25 · 외침 40+ — Enter 발동 · Esc 취소';
+      : 'Enter 발동 · Esc 취소';
+    this.incantChargeLabel.textContent = '시간 흐름 10%';
     this.updateIncantCharge();
     this.focusIncantBar();
   }
@@ -3506,6 +3510,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       'word-limit',
       'word-limit-over',
       'word-limit-blocked',
+      'mana-dry',
     );
     this.incantWrap.setAttribute('aria-hidden', 'true');
     this.incantBar.disabled = false;
@@ -3513,6 +3518,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private updateIncantCharge(): void {
+    // 마나는 두 경로 공통 — 금언 방에서도 예산은 마나다 (금언은 그 위에 얹힌 제약)
+    this.incantState.textContent = `마나 ${Math.floor(this.playerState.mana)}`;
+    this.incantWrap.classList.toggle(
+      'mana-dry', reachableBand(Math.floor(this.playerState.mana)) === null,
+    );
     if (this.activeRoomCurse?.kind === 'word-limit') {
       const cost = wordLimitCost(this.incantBar.value);
       const overBudget = cost > WORD_LIMIT_CURSE_CONFIG.budget;
@@ -3537,16 +3547,39 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     this.incantWrap.classList.remove('word-limit-over', 'word-limit-blocked');
     const length = Array.from(this.incantBar.value).length;
-    const percent = Math.min(100, Math.round((length / 24) * 100));
-    this.incantWrap.style.setProperty('--charge', `${percent}%`);
     this.incantCount.textContent = `${length}/60`;
-    this.incantChargeLabel.textContent = length === 0
-      ? '공명 대기'
-      : percent < 45
-        ? '문장 공명 중'
-        : percent < 100
-          ? '공명 상승'
-          : '최대 공명';
+    // 길이 기반 "공명" 게이지는 걷어냈다 — 위력은 심판이 문장의 구체성으로 매기는데
+    // 글자수로 차오르는 게이지가 가장 밝게 빛나며 "길게 쓰면 세진다"를 가르치고 있었다.
+    // 자리는 대역 칩(감당 가능 여부 = 거짓말하지 않는 정보)이 대신 쓴다.
+    this.refreshIncantBands();
+  }
+
+  /**
+   * 대역 칩 갱신 — 지금 마나로 어디까지 닿는지.
+   *
+   * 매번 다시 그리지 않고 첫 호출에만 만든 뒤 클래스만 토글한다 (영창 창은 자주 열린다).
+   */
+  private refreshIncantBands(): void {
+    const mana = Math.floor(this.playerState.mana);
+    const entries = bandAffordances(mana);
+    const reach = reachableBand(mana);
+
+    if (this.incantBands.childElementCount !== entries.length) {
+      this.incantBands.replaceChildren(...entries.map((entry) => {
+        const chip = document.createElement('div');
+        chip.className = 'incant-band';
+        chip.innerHTML = `<span class="incant-band-name">${entry.band.label}</span>`
+          + `<span class="incant-band-cost">${entry.cost}</span>`
+          + `<span class="incant-band-hint">${entry.band.hint}</span>`;
+        return chip;
+      }));
+    }
+    entries.forEach((entry, index) => {
+      const chip = this.incantBands.children[index] as HTMLElement;
+      chip.classList.toggle('locked', !entry.affordable);
+      chip.classList.toggle('reach', reach?.key === entry.band.key);
+    });
+
   }
 
   private blockWordLimitCast(): void {
@@ -3596,6 +3629,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       'word-limit',
       'word-limit-over',
       'word-limit-blocked',
+      'mana-dry',
     );
     this.incantWrap.setAttribute('aria-hidden', 'true');
     this.incantBar.disabled = false;
