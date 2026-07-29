@@ -12,12 +12,12 @@ const SHOOTER_SPRITE_KEY = 'enemy-shooter';
 export class ShooterEnemy implements CombatEnemy {
   readonly kind = 'shooter' as const;
   readonly view: Phaser.GameObjects.Container;
-  readonly maxHp: number = SHOOTER_CONFIG.maxHp;
+  readonly maxHp: number;
   readonly contactDamage: number = SHOOTER_CONFIG.contactDamage;
   readonly contactDistance: number = SHOOTER_CONFIG.contactDistance;
   readonly collisionRadius: number = SHOOTER_CONFIG.collisionRadius;
 
-  hp: number = this.maxHp;
+  hp: number;
   alive = true;
   contactDamageCooldownRemaining = 0;
   private dying = false;
@@ -28,7 +28,9 @@ export class ShooterEnemy implements CombatEnemy {
   private readonly healthFill: Phaser.GameObjects.Rectangle;
   private attackCooldownRemaining: number = SHOOTER_CONFIG.attackIntervalSeconds;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
+  constructor(scene: Phaser.Scene, x: number, y: number, hpScale = 1) {
+    this.maxHp = Math.max(1, Math.round(SHOOTER_CONFIG.maxHp * hpScale));
+    this.hp = this.maxHp;
     const glow = scene.add.rectangle(0, 0, 34, 34, 0xffb347, 0.14)
       .setBlendMode(Phaser.BlendModes.ADD);
     // AI 스프라이트는 재질 + 발광 두 겹으로 그린다(spriteLayers 참고). 통째로 틴트하면

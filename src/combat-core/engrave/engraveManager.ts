@@ -1,5 +1,5 @@
 import type { GrowthLevel, RewardOption } from '../../run/runContract';
-import type { SpellSize, SpellSpec } from '../../spell/types';
+import type { SpellSize, SpellSpec, SpellStatus } from '../../spell/types';
 import { ELEMENT_LABELS, FORM_LABELS } from '../../render/palette';
 import { FUSION_ELEMENT_STATUS } from '../player/fusionGauge';
 
@@ -158,11 +158,7 @@ export class EngraveManager {
     // 진화하면 그 원소의 **본성**이 드러난다 — 빙결은 얼려 세우고, 대지는 붙잡고,
     // 화염은 태운다. Lv3 정령이 이미 같은 문법을 쓴다(spiritManager ELEMENT_STATUSES).
     // 각인만 안 하고 있었다. 위력 숫자가 아니라 **성질**이 달라지는 축이다.
-    const innate = FUSION_ELEMENT_STATUS[slot.spell.element_primary];
-    const status = slot.spell.status.includes(innate)
-      ? [...slot.spell.status]
-      : [...slot.spell.status, innate];
-    slot.spell = { ...cloneSpell(slot.spell), name, status };
+    slot.spell = { ...cloneSpell(slot.spell), name, status: evolvedStatus(slot.spell) };
     return snapshot(slot);
   }
 
@@ -258,6 +254,31 @@ export function intervalForLevel(level: EngraveLevel): number {
   return level >= 3
     ? ENGRAVE_CONFIG.level3IntervalSeconds
     : ENGRAVE_CONFIG.baseIntervalSeconds;
+}
+
+/**
+ * 진화 각인의 상태이상 — 그 원소의 **본성**이 드러난다 (빙결은 얼려 세우고, 화염은 태운다).
+ *
+ * 원본 영창에 이미 그 상태이상이 있으면 더할 게 없다(#216 항목8). 그때는 **부속성의
+ * 본성**까지 드러낸다 — 이중 원소로 외운 사람에게만 열리는 갈래라 원소 정체성을
+ * 흐리지 않고, 위력·발수를 안 건드려 오토 비중(#67)에도 무관하다.
+ *
+ * 단일 원소인데 이미 본성을 담아 외운 경우는 그대로 둔다. 그건 결함이 아니라
+ * "이미 드러낸 본성은 또 드러낼 게 없다"는 정상 동작이고, 진화의 주보상(3발=DPS ×3 ·
+ * huge · 격상명)은 전부 그대로 주어진다. 억지 보정은 밸런스만 흔든다.
+ */
+export function evolvedStatus(spell: SpellSpec): SpellStatus[] {
+  const status = [...spell.status];
+  const primary = FUSION_ELEMENT_STATUS[spell.element_primary];
+  if (!status.includes(primary)) {
+    status.push(primary);
+    return status;
+  }
+  const secondary = spell.element_secondary
+    ? FUSION_ELEMENT_STATUS[spell.element_secondary]
+    : null;
+  if (secondary && !status.includes(secondary)) status.push(secondary);
+  return status;
 }
 
 export function shotCountForLevel(level: EngraveLevel, evolved = false): number {

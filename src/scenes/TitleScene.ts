@@ -5,6 +5,7 @@ import { showCodexOverlay } from '../ui/codexOverlay';
 import { clearRunHud } from '../ui/runHud';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { loadSettings } from '../run/gameSettings';
+import { UI_COLOR, UI_FONT } from '../ui/uiTokens';
 import { requestDemoRun } from '../run/demoLoadout';
 
 const TITLE_COLORS = {
@@ -71,13 +72,13 @@ export class TitleScene extends Phaser.Scene {
   private createLobbyTabs(width: number, height: number): void {
     const makeTab = (x: number, label: string, onPick: () => void): void => {
       const tab = this.add.text(x, height * 0.885, label, {
-        fontFamily: '"Noto Serif KR", "Malgun Gothic", serif',
+        fontFamily: UI_FONT.serif,
         fontSize: '15px',
-        color: '#8fa4ff',
+        color: UI_COLOR.accent,
         letterSpacing: 2,
       }).setOrigin(0.5).setAlpha(0.75).setInteractive({ useHandCursor: true });
-      tab.on('pointerover', () => tab.setAlpha(1).setColor('#c7d0ff'));
-      tab.on('pointerout', () => tab.setAlpha(0.75).setColor('#8fa4ff'));
+      tab.on('pointerover', () => tab.setAlpha(1).setColor(UI_COLOR.textBright));
+      tab.on('pointerout', () => tab.setAlpha(0.75).setColor(UI_COLOR.accent));
       tab.on('pointerdown', onPick);
     };
     makeTab(width / 2 - 78, '〔 주문 도감 〕', () => { void this.openCodex(); });
@@ -128,9 +129,9 @@ export class TitleScene extends Phaser.Scene {
    */
   private createDemoTab(width: number, height: number): void {
     const tab = this.add.text(width / 2, height * 0.935, '〔 각성한 영창가로 시작 〕', {
-      fontFamily: '"Noto Serif KR", "Malgun Gothic", serif',
+      fontFamily: UI_FONT.serif,
       fontSize: '15px',
-      color: '#ffd166',
+      color: UI_COLOR.warm,
       letterSpacing: 2,
     }).setOrigin(0.5).setAlpha(0.75).setInteractive({ useHandCursor: true });
 
@@ -139,7 +140,7 @@ export class TitleScene extends Phaser.Scene {
       height * 0.968,
       '각인·정령·친화가 쌓인 후반부터 — 무엇을 쳐야 할지는 화면이 알려준다',
       {
-        fontFamily: '"Noto Serif KR", "Malgun Gothic", serif',
+        fontFamily: UI_FONT.serif,
         fontSize: '11px',
         color: '#7a6a45',
         align: 'center',
@@ -248,14 +249,14 @@ export class TitleScene extends Phaser.Scene {
 
   private createTitle(width: number, height: number): void {
     const eyebrow = this.add.text(width / 2, height * 0.235, 'WORDS BECOME SPELLS', {
-      fontFamily: 'Georgia, "Times New Roman", serif',
+      fontFamily: UI_FONT.display,
       fontSize: '13px',
-      color: '#8fa4ff',
+      color: UI_COLOR.accent,
       letterSpacing: 6,
     }).setOrigin(0.5).setAlpha(0.82);
 
     const logoGlow = this.add.text(width / 2, height * 0.39, 'INCANT', {
-      fontFamily: 'Georgia, "Times New Roman", serif',
+      fontFamily: UI_FONT.display,
       fontSize: '104px',
       fontStyle: 'bold',
       color: '#536dff',
@@ -265,10 +266,10 @@ export class TitleScene extends Phaser.Scene {
     }).setOrigin(0.5).setAlpha(0.16).setBlendMode(Phaser.BlendModes.ADD);
 
     const logo = this.add.text(width / 2, height * 0.39, 'INCANT', {
-      fontFamily: 'Georgia, "Times New Roman", serif',
+      fontFamily: UI_FONT.display,
       fontSize: '96px',
       fontStyle: 'bold',
-      color: '#eef1ff',
+      color: UI_COLOR.textBright,
       stroke: '#18235a',
       strokeThickness: 3,
       letterSpacing: 13,
@@ -284,7 +285,7 @@ export class TitleScene extends Phaser.Scene {
     const rule = this.add.rectangle(width / 2, height * 0.505, 330, 1, TITLE_COLORS.core, 0.42)
       .setBlendMode(Phaser.BlendModes.ADD);
     const rune = this.add.text(width / 2, height * 0.505, '◇', {
-      fontFamily: 'Georgia, serif',
+      fontFamily: UI_FONT.display,
       fontSize: '19px',
       color: '#c7d0ff',
       backgroundColor: '#080b1a',
@@ -296,9 +297,9 @@ export class TitleScene extends Phaser.Scene {
       height * 0.56,
       '정해진 스킬은 없다. 당신의 문장이 주문이 된다',
       {
-        fontFamily: '"Noto Serif KR", "Malgun Gothic", serif',
+        fontFamily: UI_FONT.serif,
         fontSize: '19px',
-        color: '#c8cee9',
+        color: UI_COLOR.textSoft,
         letterSpacing: 1.2,
       },
     ).setOrigin(0.5);
@@ -332,16 +333,16 @@ export class TitleScene extends Phaser.Scene {
 
   private createStartPrompt(width: number, height: number): void {
     const prompt = this.add.text(width / 2, height * 0.77, 'PRESS ENTER', {
-      fontFamily: 'Consolas, monospace',
+      fontFamily: UI_FONT.mono,
       fontSize: '15px',
-      color: '#aeb9e8',
+      color: UI_COLOR.textSoft,
       letterSpacing: 5,
     }).setOrigin(0.5);
 
     this.add.text(width / 2, height * 0.82, '또는 화면을 클릭하세요', {
-      fontFamily: '"Malgun Gothic", sans-serif',
+      fontFamily: UI_FONT.serif,
       fontSize: '12px',
-      color: '#58638d',
+      color: UI_COLOR.textMuted,
     }).setOrigin(0.5);
 
     this.tweens.add({

@@ -109,4 +109,31 @@ const snapshot = JSON.stringify(src);
 buildChipModel(src, [spirit()]);
 assert.equal(JSON.stringify(src), snapshot, '입력 불변');
 
-console.log('build chip regression: 4칸고정·초과절단·각인·정령폴백·쿨다운·순수성 6군 통과');
+// 7) 각성 표식 — 원소 단위로 걸리고, 진화와 독립이다
+{
+  const awakened = { fire: 'searing' as const };
+  const [e0] = buildChipModel([engrave()], [], awakened);
+  assert.equal(e0.awakening, 'searing', '화염 각인 = 화염 각성 표식');
+  // 다른 원소 각인은 표식 없음
+  const [other] = buildChipModel(
+    [engrave({ spell: spell({ element_primary: 'ice' }) })], [], awakened,
+  );
+  assert.equal(other.awakening, null, '각성 안 한 원소는 표식 없음');
+  // 정령도 같은 원소면 걸린다 (각성은 원소 전체에 걸리므로)
+  const sp = buildChipModel([], [spirit({ element: 'fire' })], awakened);
+  assert.equal(sp[2].awakening, 'searing', '같은 원소 정령도 표식');
+  // 원소 없는 정령은 폴백 원소 기준
+  const heal = buildChipModel([], [spirit({ role: 'heal', element: undefined })], { light: 'brand' });
+  assert.equal(heal[2].awakening, 'brand', '폴백 원소(light)로 표식이 걸린다');
+  // 진화와 독립 — 진화했지만 각성 안 함 / 각성했지만 진화 안 함이 각각 가능
+  const [evolvedOnly] = buildChipModel([engrave({ evolved: true })], [], {});
+  assert.equal(evolvedOnly.evolved, true);
+  assert.equal(evolvedOnly.awakening, null, '진화해도 각성은 별개');
+  assert.equal(e0.evolved, false, '각성해도 진화는 별개');
+  // 인자를 안 주면 표식 없음 (기본값)
+  assert.equal(buildChipModel([engrave()], [])[0].awakening, null, '기본값은 각성 없음');
+  // 빈 칸은 항상 null
+  assert.equal(buildChipModel([], [], awakened)[0].awakening, null, '빈 칸은 표식 없음');
+}
+
+console.log('build chip regression: 4칸고정·초과절단·각인·정령폴백·쿨다운·순수성·각성표식 7군 통과');
