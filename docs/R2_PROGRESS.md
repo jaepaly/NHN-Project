@@ -19,7 +19,7 @@
 - [x] `wrangler versions upload`로 Version `e54fada5-60cd-4829-9417-0d7d8d181ce5` Preview 생성. `deploy`/production 트래픽 변경 없음.
 - [x] baseline/candidate 스모크 S6에서 중단: `팔원소 대합창` candidate만 입력에 없는 shield 추가(0→1), 6개 공격 form→4개 form으로 의미 축소. 30+12 품질·paired latency는 실행하지 않음.
 - [x] **NO-GO**: response bytes는 줄었지만 의미 비열화. PR/production 배포 없음. 결과 JSON·AI 사용 로그 기록.
-- [ ] #158 결과 공유.
+- [x] [#158 결과 공유](https://github.com/jaepaly/NHN-Project/issues/158#issuecomment-5116914575).
 
 ---
 
