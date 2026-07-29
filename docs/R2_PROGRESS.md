@@ -4,7 +4,7 @@
 > 규칙: **푸시할 때마다 이 파일에 "현재 어디까지 했는지"를 갱신해서 함께 커밋한다.**
 > (팀 공용 1줄 기록은 [AI_USAGE_LOG.md](AI_USAGE_LOG.md), 이 파일은 R2 상세 로그)
 
-## ☐ 지금 작업 흐름 — #158 v2.15 compact 프롬프트 격리 스파이크 (2026-07-29)
+## ☒ 지금 작업 흐름 — #158 v2.15 compact 프롬프트 격리 스파이크 NO-GO (2026-07-29)
 
 > **사용자 요청**: 판정 timeout을 늘려 몰입 저하를 가리는 대신, v2.15 프롬프트와 중첩 출력의 중복을 줄여 Gemini 응답 자체를 유의미하게 단축한다. 단 시퀀스 판별 성능을 크게 떨어뜨리지 않으며, 막히면 즉시 공유한다. **프로덕션 Worker·클라이언트 timeout·캐시 버전은 승인 전 변경하지 않는다.**
 
@@ -15,12 +15,13 @@
 
 **R2 작업**
 - [x] 1차 `compact-text`: named JSON·validator·엔진 불변, 규칙 7·예시·스키마 뒤 중복만 축약. **7,016→4,696자(-33.1%)**.
-- [x] 정적 계약 테스트 + 기존 plan/sequence/fallback 회귀 + 빌드 통과. 모델 품질은 Version Preview A/B 전이라 아직 미판정.
+- [x] 정적 계약 테스트 + 기존 plan/sequence/fallback 회귀 + 빌드 통과.
 - [x] 2차 `sparse-plan`: 동일 named/nested 구조에서 plan 내부 기본값·로컬 재계산 필드만 생략. 단일 spell·필수 enum·이동 계약은 유지.
 - [x] full/sparse plan 검증→resolve 동등성 + 기존 plan/sequence 회귀 + 빌드 통과. 실제 응답 절감률은 Preview A/B에서 판정.
-- [ ] `wrangler versions upload`로 배포와 분리된 Version Preview 생성. `wrangler deploy` 금지.
-- [ ] baseline/compact-text/sparse-plan 8종 스모크 → 통과 후보만 30종+held-out+N=3 지연 측정.
-- [ ] #158 결과 공유·AI 사용 로그·PR. 품질 또는 지연 게이트 실패 시 production 미변경 NO-GO.
+- [x] `wrangler versions upload`로 배포와 분리된 Version Preview 5개 생성. `wrangler deploy`/production 트래픽 변경 없음.
+- [x] 스모크 중단선 적용: compact-text는 malformed JSON 502, sparse r1은 명시 복합 single, r2/r3은 추상 동작·반복을 single로 강등. **품질 NO-GO라 42종+N=3는 실행하지 않음.**
+- [x] 최종 r3 표본: response 중앙값 549→343B(-37.5%)지만 p50 1,506→1,567ms(+61ms), 시퀀스 품질 저하. branch는 실험 증거로만 보존하고 PR/배포하지 않음.
+- [ ] #158 결과 공유·AI 사용 로그.
 
 ---
 
