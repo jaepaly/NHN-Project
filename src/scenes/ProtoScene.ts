@@ -219,7 +219,15 @@ import {
   floorHazardTickDamage,
   isInFloorHazard,
 } from '../combat-core/combat/floorHazardConfig';
-import type { FloorHazardZone } from '../combat-core/combat/floorHazardConfig';
+import type { FloorHazardKind, FloorHazardZone } from '../combat-core/combat/floorHazardConfig';
+import {
+  FLOOR_HAZARD_KINDS,
+  advanceFloorHazardTimers,
+  createFloorHazardPlayerState,
+  floorHazardTickKinds,
+  isFloorHazardImmune,
+  tryCleanseFloorHazards,
+} from '../combat-core/combat/floorHazardState';
 import { PortalField } from '../render/portalField';
 import { mockMinimapModel } from '../run/mapGraphMock';
 import { RunMapGraph, toMinimapModel } from '../run/mapGraph';
@@ -761,7 +769,10 @@ export class ProtoScene extends Phaser.Scene {
    * 방 진입 시 채우고 방 전환 시 비운다. 장벽(막는 것)과 달리 밟으면 아픈 것.
    */
   private floorHazards: FloorHazardZone[] = [];
-  private floorHazardView: Phaser.GameObjects.Graphics | null = null;
+  /** 종류별 데칼 — 정화 면역 중에 그 종류만 흐리게 하려면 따로 그려야 한다 (#239) */
+  private floorHazardViews = new Map<FloorHazardKind, Phaser.GameObjects.Graphics>();
+  /** 잔류 도트·면역·정화 횟수 — 방마다 초기화 (floorHazardState) */
+  private floorHazardPlayer = createFloorHazardPlayerState();
   /** 스케일된 게임 시간 기준 지형 틱 쿨다운. */
   private floorHazardTickCooldown = 0;
   /**
@@ -2607,47 +2618,97 @@ export class ProtoScene extends Phaser.Scene {
 
     // 바닥 데칼 — 위험 예고(-1)와 개체(0)보다 아래에 깔아 "밟는 것"으로 읽힌다.
     // 용암=주황, 독지대=초록. 3겹(외곽 글로우·본체·테두리)으로 위험지대를 뚜렷이.
-    const view = this.add.graphics().setDepth(-1.5);
-    for (const zone of this.floorHazards) {
-      const [glow, body, edge] = zone.kind === 'lava'
+    // **종류별로 따로 그린다** — 정화 면역 중에 그 종류만 흐려져야 하기 때문(#239).
+    for (const kind of FLOOR_HAZARD_KINDS) {
+      const zonesOfKind = this.floorHazards.filter((zone) => zone.kind === kind);
+      if (zonesOfKind.length === 0) continue;
+      const view = this.add.graphics().setDepth(-1.5);
+      const [glow, body, edge] = kind === 'lava'
         ? [0x5a1e00, 0xff6a1a, 0xffb066]
         : [0x0e2e12, 0x39b54a, 0x9be89b];
-      view.fillStyle(glow, 0.28).fillCircle(zone.x, zone.y, zone.radius + 6);
-      view.fillStyle(body, 0.30).fillCircle(zone.x, zone.y, zone.radius);
-      view.lineStyle(2, edge, 0.7).strokeCircle(zone.x, zone.y, zone.radius);
+      for (const zone of zonesOfKind) {
+        view.fillStyle(glow, 0.28).fillCircle(zone.x, zone.y, zone.radius + 6);
+        view.fillStyle(body, 0.30).fillCircle(zone.x, zone.y, zone.radius);
+        view.lineStyle(2, edge, 0.7).strokeCircle(zone.x, zone.y, zone.radius);
+      }
+      this.floorHazardViews.set(kind, view);
     }
-    this.floorHazardView = view;
     this.floorHazardTickCooldown = FLOOR_HAZARD_CONFIG.tickIntervalSeconds;
   }
 
   private clearFloorHazards(): void {
     this.floorHazardTickCooldown = 0;
-    this.floorHazardView?.destroy();
-    this.floorHazardView = null;
+    for (const view of this.floorHazardViews.values()) view.destroy();
+    this.floorHazardViews.clear();
     this.floorHazards = [];
+    // 잔류·면역·정화 횟수는 **방마다 초기화** — 정화 1회는 방당 예산이다
+    this.floorHazardPlayer = createFloorHazardPlayerState();
+  }
+
+  /** 이 방에 깔린 지형 종류 — 정화 대상 판정에 쓴다(없는 지형은 정화하지 않는다). */
+  private presentFloorHazardKinds(): FloorHazardKind[] {
+    return FLOOR_HAZARD_KINDS.filter(
+      (kind) => this.floorHazards.some((zone) => zone.kind === kind),
+    );
   }
 
   /** 기존 장판과 같은 스케일된 게임 시간으로 지형 틱을 진행한다. */
   private updateFloorHazards(deltaSeconds: number): void {
     if (this.floorHazards.length === 0) return;
+    this.floorHazardPlayer = advanceFloorHazardTimers(this.floorHazardPlayer, deltaSeconds);
+    this.syncFloorHazardImmunityView();
     this.floorHazardTickCooldown = Math.max(0, this.floorHazardTickCooldown - deltaSeconds);
     if (this.floorHazardTickCooldown > 0) return;
     this.tickFloorHazards();
     this.floorHazardTickCooldown = FLOOR_HAZARD_CONFIG.tickIntervalSeconds;
   }
 
+  /** 면역 중인 지형은 데칼을 흐린다 — "위험하던 것이 지금은 안 위험하다"가 눈에 보여야 한다. */
+  private syncFloorHazardImmunityView(): void {
+    for (const [kind, view] of this.floorHazardViews) {
+      view.setAlpha(isFloorHazardImmune(this.floorHazardPlayer, kind) ? 0.3 : 1);
+    }
+  }
+
   /**
-   * 틱 간격마다 — 플레이어가 지형 존 위면 그 지형의 틱 피해를 준다.
+   * 틱 간격마다 — 밟고 있거나(용암·독) **나온 뒤 잔류 중이면**(독) 그 지형의 틱 피해를 준다.
    * damagePlayer는 자체로 무음(HP만 감소)이라 "안 때렸는데 맞는 소리"가 안 난다.
-   * (틱 펄스 연출·상태이상은 후속 스텝.)
    */
   private tickFloorHazards(): void {
     if (!this.playerState.alive || !this.isCombatActive()) return;
-    for (const zone of this.floorHazards) {
-      if (isInFloorHazard(this.player.x, this.player.y, zone)) {
-        this.damagePlayer(floorHazardTickDamage(zone.kind));
-      }
-    }
+    const insideKinds = FLOOR_HAZARD_KINDS.filter((kind) => this.floorHazards.some(
+      (zone) => zone.kind === kind && isInFloorHazard(this.player.x, this.player.y, zone),
+    ));
+    const { kinds, state } = floorHazardTickKinds(this.floorHazardPlayer, insideKinds);
+    this.floorHazardPlayer = state;
+    for (const kind of kinds) this.damagePlayer(floorHazardTickDamage(kind));
+  }
+
+  /**
+   * 시전한 주문이 이 방의 지형을 정화하는가 (#239 축소안 — 상태 해제가 아니라 **면역**).
+   *
+   * 판정이 준 element/effect의 **카테고리**로 매칭하므로 `얼음 갑옷`·`서리 장화`·
+   * `물의 보호막`이 전부 용암을 카운터한다 — 정해진 단어가 아니라 자기가 지어낸 말이
+   * 작동하는 게 이 게임의 명제다. 방당 1회라 아무 때나 쓰면 안 되는 카드이기도 하다.
+   */
+  private tryCleanseFloorHazard(spec: SpellSpec): void {
+    if (this.floorHazards.length === 0) return;
+    const { state, cleansed } = tryCleanseFloorHazards(
+      this.floorHazardPlayer,
+      spec.element_primary,
+      spec.effect,
+      this.presentFloorHazardKinds(),
+    );
+    if (cleansed.length === 0) return;
+    this.floorHazardPlayer = state;
+    this.syncFloorHazardImmunityView();
+    const labels = cleansed.map((kind) => (kind === 'lava' ? '용암' : '독지대')).join('·');
+    this.announceBanner({
+      title: `${labels} 정화 — ${FLOOR_HAZARD_CONFIG.immunitySeconds}초 면역`,
+      lines: [`『${spec.name}』이(가) 발밑을 지켜낸다`],
+      color: cleansed.includes('lava') ? 0x72d8ff : 0xc7f9e0,
+      holdMs: 2200,
+    });
   }
 
   /**
@@ -4270,6 +4331,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       // 첫 성공 영창 — 이후 온보딩 안내는 다시 뜨지 않는다.
       this.markOnboarded();
       this.clearIncantGuide();
+
+      // 바닥지형 정화 — 판정이 준 원소·효과가 이 방의 지형을 카운터하면 면역을 준다 (#239).
+      // 융합본이 있으면 실제로 나가는 쪽(fusedSpec)의 원소로 판정한다.
+      this.tryCleanseFloorHazard(fusedSpec ?? spec);
 
       const historyEntry = this.spellHistory.record({
         rawText: text,
