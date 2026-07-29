@@ -21,7 +21,7 @@
 - [x] `wrangler versions upload`로 배포와 분리된 Version Preview 5개 생성. `wrangler deploy`/production 트래픽 변경 없음.
 - [x] 스모크 중단선 적용: compact-text는 malformed JSON 502, sparse r1은 명시 복합 single, r2/r3은 추상 동작·반복을 single로 강등. **품질 NO-GO라 42종+N=3는 실행하지 않음.**
 - [x] 최종 r3 표본: response 중앙값 549→343B(-37.5%)지만 p50 1,506→1,567ms(+61ms), 시퀀스 품질 저하. branch는 실험 증거로만 보존하고 PR/배포하지 않음.
-- [ ] #158 결과 공유·AI 사용 로그.
+- [x] [#158 결과 공유](https://github.com/jaepaly/NHN-Project/issues/158#issuecomment-5116261187)·AI 사용 로그 완료.
 
 ---
 
