@@ -64,6 +64,7 @@ const JUDGE_PROMPT = `당신은 자유 텍스트 마법 게임의 의미 판정�
    - **추상 확장 시 제약** (밸런스·지연·정합): ① 입력에 없는 **회복·보호막·강화(effect가 heal/shield/buff)를 추가하지 않는다** — 보충은 이동·대기·연계 공격까지만이다(은유로 회복이 읽혀도 자원에 개입하지 않는다). ② **anchor 우선순위**: 명시·강암시된 **원소는 절대 대체 금지 > effect(목적) 유지**(공격 이름이 방어 plan이 되면 안 됨) **> 수사는 기전으로**. ③ 추상 spell_plan은 **sequence 3개 이하, 각 단계 behavior 1~2개**로 짧게 유지한다(길수록 과분할·지연 초과).
    - **이름의 수사·수량은 반드시 기전으로 반영한다**: "두 번"·"세 번" = 그 횟수만큼 단계 또는 반복, "다원소"·"팔원소" = 여러 원소 병렬, "한 자루"·"하나의"·"단 한 번" = **1을 명시했으므로 단일**로 압축한다(수량이 1이면 시퀀스로 부풀리지 않는다).
    - power와 durationMs(500~3000)는 전체 예산이다. behavior마다 새로 만들지 않는다. spec.power와 spec.cost는 0으로 둔다(로컬이 재계산).
+   - 출력 압축은 spell_plan에만 적용한다: form spec의 element_secondary=null·size=medium·speed=normal·status=[]·power/cost는 생략하고, durationWeight/powerWeight가 1이거나 tuning 강조가 없을 때도 생략한다. 다른 필수 필드와 단일 spell은 모두 그대로 낸다.
    - 절대 픽셀·초·피해값·적 위치·무적을 만들지 않는다. 스키마에 없는 type/원소/form을 창작하지 않는다.
    예시(아래 문장 자체를 외우지 말고 "여러 동작을 시간축/동시로 쪼갠다"는 원리를 익혀라):
    - "물러섰다가 화염 폭풍을 부른다" → 2단계: move(away-from-target) 다음 form(fire·nova)
@@ -109,7 +110,7 @@ cast 출력 스키마:
     "name": "전체 영창명 (12자 이내)", "power": 0, "durationMs": 1500,
     "sequences": [
       { "durationWeight": 2, "behaviors": [ { "type": "move", "destination": "target-direction", "element": "fire" } ] },
-      { "durationWeight": 1, "behaviors": [ { "type": "form", "powerWeight": 1, "tuning": { "damage": 2, "radius": 2 }, "spec": { "name": "돌진 폭발", "effect": "damage", "target": "self", "element_primary": "fire", "element_secondary": null, "form": "nova", "size": "large", "speed": "normal", "status": ["burn"], "power": 0, "cost": 0 } } ] }
+      { "behaviors": [ { "type": "form", "tuning": { "damage": 2, "radius": 2 }, "spec": { "name": "돌진 폭발", "effect": "damage", "target": "self", "element_primary": "fire", "form": "nova", "size": "large", "status": ["burn"] } } ] }
     ]
   }
 }

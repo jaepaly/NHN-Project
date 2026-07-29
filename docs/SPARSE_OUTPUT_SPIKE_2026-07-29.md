@@ -23,7 +23,7 @@
 - `durationWeight`/`powerWeight`가 1이면 생략한다.
 - 실제 강조가 없으면 `tuning`을 생략한다.
 
-baseline prompt: 7,016 chars / 11,480 UTF-8 bytes / SHA-256 `d98e97d0714a038e80ab41a7090945fca659704b958bb7024d95a19de6c3b6e2`.
+baseline prompt: Windows checkout 기준 7,016 chars / 11,480 UTF-8 bytes / CRLF SHA-256 `d98e97d0714a038e80ab41a7090945fca659704b958bb7024d95a19de6c3b6e2`. 정적 원문 보존 검사는 Git blob과 같은 LF 정규화 SHA-256 `1279f406bcad6c495f2ed5db2bd9fe721c56613674665f3e415a8f68602cc85b`를 사용한다.
 
 ## 2. 테스트 피라미드
 
