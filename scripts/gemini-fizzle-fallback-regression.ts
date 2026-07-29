@@ -103,11 +103,28 @@ try {
 
   // 6) fallback 원인을 HTTP·timeout·invalid JSON·network로 구분해 관측한다.
   storage.clear();
-  globalThis.fetch = async () => new Response('quota', { status: 429 });
-  const quotaJudge = new GeminiJudge('https://proxy.invalid');
-  assert.equal((await quotaJudge.judge('별빛 공격')).disposition, 'cast');
-  assert.equal(quotaJudge.lastSource, 'fallback');
-  assert.equal(quotaJudge.lastFallbackReason, 'http_429');
+  globalThis.fetch = async () => new Response('rate limited', { status: 429 });
+  const workerRateLimitJudge = new GeminiJudge('https://proxy.invalid');
+  assert.equal((await workerRateLimitJudge.judge('별빛 공격')).disposition, 'cast');
+  assert.equal(workerRateLimitJudge.lastSource, 'fallback');
+  assert.equal(workerRateLimitJudge.lastFallbackReason, 'http_429');
+
+  globalThis.fetch = async () => new Response(
+    JSON.stringify({ error: 'upstream', status: 429 }),
+    { status: 502, headers: { 'Content-Type': 'application/json' } },
+  );
+  const upstreamQuotaJudge = new GeminiJudge('https://proxy.invalid');
+  assert.equal((await upstreamQuotaJudge.judge('별빛 폭발')).disposition, 'cast');
+  assert.equal(upstreamQuotaJudge.lastSource, 'fallback');
+  assert.equal(upstreamQuotaJudge.lastFallbackReason, 'http_502_upstream_429');
+
+  globalThis.fetch = async () => new Response(
+    JSON.stringify({ error: 'invalid llm output' }),
+    { status: 502, headers: { 'Content-Type': 'application/json' } },
+  );
+  const invalidOutputJudge = new GeminiJudge('https://proxy.invalid');
+  assert.equal((await invalidOutputJudge.judge('별빛 파동')).disposition, 'cast');
+  assert.equal(invalidOutputJudge.lastFallbackReason, 'http_502');
 
   globalThis.fetch = async () => {
     throw new DOMException('aborted', 'AbortError');

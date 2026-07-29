@@ -16,6 +16,12 @@
 - [x] fallback 사유·로그 요약 회귀 테스트, 전체 67종 테스트·프로덕션 빌드 통과.
 - [x] AI 사용 로그·#158·PR 동기화.
 
+**PR #268 총괄 리뷰 수정 (2026-07-29)**
+- [x] `run_started`·`room_started`·`run_completed` 경계를 기록해 완주당 원격 호출 수의 분모를 만든다.
+- [x] Worker HTTP 상태와 Gemini upstream 상태를 분리해 `http_502_upstream_429`처럼 기록한다.
+- [x] `sequence_exec`에 실제 실행 계획의 `power`·`manaCost`를 기록한다.
+- [x] 관련 회귀·전체 68종 테스트·프로덕션 빌드를 통과하고 AI 활용 로그를 갱신한다.
+
 > **완료 조건**: 사용자는 fixture가 아닌 문장을 로컬 게임에서 플레이하기만 하고, R2는 JSONL만으로 `gemini/cache/fallback/mock`, single/sequence, 단계 수, 판정 지연, 실제 sequence 실행 여부와 fallback 원인을 재구성할 수 있어야 한다.
 >
 > **구현 결과**: `session_start`가 판정기·프롬프트 버전·기능 플래그를 스냅샷으로 남기고, 각 이벤트는 동일 `sessionId`와 ISO 절대시각 `at`을 공유한다. `cast`는 `src`·`elapsedMs`·`mode`·단계 수·`fallbackReason`을, 실제 시퀀스 진입은 `sequence_exec`와 `fixture` 여부를 별도로 남긴다. 판정 정책·프롬프트·Worker 배포는 변경하지 않았다.

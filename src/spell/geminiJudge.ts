@@ -24,18 +24,30 @@ const TIMEOUT_MS = 2500;
 export type JudgeFallbackReason =
   | 'timeout'
   | `http_${number}`
+  | `http_${number}_upstream_${number}`
   | 'invalid_response'
   | 'remote_fizzle'
   | 'network_error';
 
 class JudgeHttpError extends Error {
-  constructor(readonly status: number) {
-    super(`proxy responded ${status}`);
+  constructor(
+    readonly status: number,
+    readonly upstreamStatus?: number,
+  ) {
+    super(
+      upstreamStatus === undefined
+        ? `proxy responded ${status}`
+        : `proxy responded ${status} (upstream ${upstreamStatus})`,
+    );
   }
 }
 
 function fallbackReasonFromError(error: unknown): JudgeFallbackReason {
-  if (error instanceof JudgeHttpError) return `http_${error.status}`;
+  if (error instanceof JudgeHttpError) {
+    return error.upstreamStatus === undefined
+      ? `http_${error.status}`
+      : `http_${error.status}_upstream_${error.upstreamStatus}`;
+  }
   if ((error as { name?: unknown })?.name === 'AbortError') return 'timeout';
   if (error instanceof SyntaxError) return 'invalid_response';
   return 'network_error';
@@ -120,7 +132,14 @@ export class GeminiJudge implements SpellJudge {
         body: JSON.stringify({ text }),
         signal: ctrl.signal,
       });
-      if (!res.ok) throw new JudgeHttpError(res.status);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { status?: unknown } | null;
+        const upstreamStatus = typeof body?.status === 'number'
+          && Number.isInteger(body.status)
+          ? body.status
+          : undefined;
+        throw new JudgeHttpError(res.status, upstreamStatus);
+      }
       return await res.json();
     } finally {
       clearTimeout(timer);
