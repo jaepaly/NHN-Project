@@ -92,6 +92,9 @@ import { flooredResistMultiplier } from '../combat-core/combat/debuffFloor';
 import { showBossChoice } from '../ui/bossChoiceOverlay';
 import { showSystemBanner } from '../render/systemBanner';
 import { playAwakeningSigil } from '../render/awakeningSigil';
+import {
+  PARTICLE_TEXTURES, ensureParticleTextures, particleKey,
+} from '../render/particleTextures';
 import type { SystemBannerCopy } from '../render/systemBanner';
 import { codexEntryFromSpec, codexEntryFromSequence, recordCodexEntry } from '../spell/spellCodex';
 import {
@@ -895,6 +898,7 @@ export class ProtoScene extends Phaser.Scene {
     const startX = this.worldBounds.centerX;
     const startY = this.worldBounds.centerY;
     ensureParticleTexture(this);
+    ensureParticleTextures(this);
     this.audio = new GameAudio(this);
     // BGM을 켜기 전에 설정을 반영해야 첫 재생부터 저장된 볼륨으로 나온다
     this.audio.applySettings(this.settings);
@@ -2462,7 +2466,7 @@ if (applied) this.playPlayerHit();
       const existing = this.burnEmbers.get(enemy);
       if (burning && !existing) {
         const pal = ELEMENT_PALETTES.fire;
-        const emitter = this.add.particles(enemy.x, enemy.y - 8, 'particle', {
+        const emitter = this.add.particles(enemy.x, enemy.y - 8, particleKey(this, PARTICLE_TEXTURES.glow), {
           speedY: { min: -36, max: -16 },
           speedX: { min: -10, max: 10 },
           scale: { start: 0.16, end: 0 },
