@@ -4,6 +4,24 @@
 > 규칙: **푸시할 때마다 이 파일에 "현재 어디까지 했는지"를 갱신해서 함께 커밋한다.**
 > (팀 공용 1줄 기록은 [AI_USAGE_LOG.md](AI_USAGE_LOG.md), 이 파일은 R2 상세 로그)
 
+## ☑ 지금 작업 흐름 — #158 실플레이 판정 로그 관측성 보강 (2026-07-29)
+
+> **요청**: 빠르게 사라지는 화면 결과를 캡처하지 않아도 `logs/play.jsonl`만으로 fixture 우회 여부, 실제 판정 출처, single/sequence, 지연, fallback 원인, 실제 sequence 실행을 검증할 수 있게 한다. 판정·프롬프트·Worker 거동은 변경하지 않고 DEV 로깅만 보강한다.
+
+**R2 작업**
+- [x] 공통 세션 ID·절대시각을 판정·시퀀스 실행·피해 로그에 부여.
+- [x] 판정 로그에 `elapsedMs`, `mode`, sequence/behavior 수, fallback 원인 기록.
+- [x] `runSequenceCast` 실제 진입을 별도 `sequence_exec` 이벤트로 기록.
+- [x] Mock 강제·sequence 기능 플래그·프롬프트 버전을 `session_start`에 기록.
+- [x] fallback 사유·로그 요약 회귀 테스트, 전체 67종 테스트·프로덕션 빌드 통과.
+- [x] AI 사용 로그·#158·PR 동기화.
+
+> **완료 조건**: 사용자는 fixture가 아닌 문장을 로컬 게임에서 플레이하기만 하고, R2는 JSONL만으로 `gemini/cache/fallback/mock`, single/sequence, 단계 수, 판정 지연, 실제 sequence 실행 여부와 fallback 원인을 재구성할 수 있어야 한다.
+>
+> **구현 결과**: `session_start`가 판정기·프롬프트 버전·기능 플래그를 스냅샷으로 남기고, 각 이벤트는 동일 `sessionId`와 ISO 절대시각 `at`을 공유한다. `cast`는 `src`·`elapsedMs`·`mode`·단계 수·`fallbackReason`을, 실제 시퀀스 진입은 `sequence_exec`와 `fixture` 여부를 별도로 남긴다. 판정 정책·프롬프트·Worker 배포는 변경하지 않았다.
+
+---
+
 ## ☐ 지금 작업 흐름 — #214 분기형 맵: R2 몫 (2026-07-27)
 
 > **총괄 분배**([#214](https://github.com/jaepaly/NHN-Project/issues/214) 07-26 14:39 코멘트 = **개정판**. 본문의 "R2 몫 없음"이 아니라 이게 최신): R2 = **보물방·제단방 + 바닥형 지형(용암·독지대)**. 단 **#158 ①실플레이·②할당량이 선행**, 그 뒤 착수. 맵 구조는 **R1 소유**(`MapGraph` 계약 — current/choices/enter/snapshot), 씬 통합은 **R3**. R2는 **독립성 높은 모듈(방 타입·지형)**만.

@@ -59,9 +59,11 @@ try {
   const castJudge = new GeminiJudge('https://proxy.invalid');
   assert.equal((await castJudge.judge('화염구')).disposition, 'cast');
   assert.equal(castJudge.lastSource, 'gemini');
+  assert.equal(castJudge.lastFallbackReason, undefined);
   assert.equal(fetchCount, 1);
   assert.equal((await castJudge.judge('화염구')).disposition, 'cast');
   assert.equal(castJudge.lastSource, 'cache');
+  assert.equal(castJudge.lastFallbackReason, undefined);
   assert.equal(fetchCount, 1);
 
   // 3) 모델이 의미 있는 짧은 주문을 fizzle해도 Mock이 발동으로 복구하고 캐시하지 않는다.
@@ -76,6 +78,7 @@ try {
   const recoveredFire = await driftJudge.judge('화염구');
   assert.equal(recoveredFire.disposition, 'cast');
   assert.equal(driftJudge.lastSource, 'fallback');
+  assert.equal(driftJudge.lastFallbackReason, 'remote_fizzle');
   assert.equal(storage.length, 0, '원격 fizzle은 캐시 금지');
   const countAfterFirstRecovery = fetchCount;
   assert.equal((await driftJudge.judge('화염구')).disposition, 'cast');
@@ -95,11 +98,39 @@ try {
   const countBeforePoisoned = fetchCount;
   assert.equal((await driftJudge.judge('얼음창')).disposition, 'cast');
   assert.equal(driftJudge.lastSource, 'fallback');
+  assert.equal(driftJudge.lastFallbackReason, 'remote_fizzle');
   assert.equal(fetchCount, countBeforePoisoned + 1, '오염된 fizzle 캐시를 읽지 않음');
+
+  // 6) fallback 원인을 HTTP·timeout·invalid JSON·network로 구분해 관측한다.
+  storage.clear();
+  globalThis.fetch = async () => new Response('quota', { status: 429 });
+  const quotaJudge = new GeminiJudge('https://proxy.invalid');
+  assert.equal((await quotaJudge.judge('별빛 공격')).disposition, 'cast');
+  assert.equal(quotaJudge.lastSource, 'fallback');
+  assert.equal(quotaJudge.lastFallbackReason, 'http_429');
+
+  globalThis.fetch = async () => {
+    throw new DOMException('aborted', 'AbortError');
+  };
+  const timeoutJudge = new GeminiJudge('https://proxy.invalid');
+  assert.equal((await timeoutJudge.judge('달빛 공격')).disposition, 'cast');
+  assert.equal(timeoutJudge.lastFallbackReason, 'timeout');
+
+  globalThis.fetch = async () => new Response('{not-json', { status: 200 });
+  const invalidJudge = new GeminiJudge('https://proxy.invalid');
+  assert.equal((await invalidJudge.judge('서리 공격')).disposition, 'cast');
+  assert.equal(invalidJudge.lastFallbackReason, 'invalid_response');
+
+  globalThis.fetch = async () => {
+    throw new Error('offline');
+  };
+  const networkJudge = new GeminiJudge('https://proxy.invalid');
+  assert.equal((await networkJudge.judge('폭풍 공격')).disposition, 'cast');
+  assert.equal(networkJudge.lastFallbackReason, 'network_error');
 
   assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.15-abstract-seq');
 } finally {
   globalThis.fetch = originalFetch;
 }
 
-console.log('Gemini fizzle safety regression: 로컬차단·cast캐시·fizzle폴백·회복의도·오염캐시 5군 통과');
+console.log('Gemini fizzle safety regression: 로컬차단·cast캐시·fizzle폴백·회복의도·오염캐시·fallback원인 6군 통과');

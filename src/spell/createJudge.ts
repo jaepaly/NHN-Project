@@ -1,6 +1,6 @@
 import type { SpellJudge } from './judge';
 import { MockJudge } from './mockJudge';
-import { GeminiJudge, seedJudgeCache } from './geminiJudge';
+import { GeminiJudge, JUDGE_PROMPT_VERSION, seedJudgeCache } from './geminiJudge';
 import { CACHE_SEED } from './cacheSeed.generated';
 import { LoggingJudge } from './loggingJudge';
 
@@ -34,5 +34,11 @@ export function createJudge(): SpellJudge {
 
 /** 개발 모드에서만 판정을 logs/play.jsonl로 기록 (피드백용). 프로덕션은 그대로 반환. */
 function withDevLogging(judge: SpellJudge): SpellJudge {
-  return import.meta.env.DEV ? new LoggingJudge(judge) : judge;
+  return import.meta.env.DEV
+    ? new LoggingJudge(judge, {
+        promptVersion: JUDGE_PROMPT_VERSION,
+        sequenceJudgeEnabled: import.meta.env.VITE_SEQUENCE_JUDGE !== '0',
+        mockForced: import.meta.env.VITE_JUDGE_MOCK === '1',
+      })
+    : judge;
 }

@@ -3,6 +3,7 @@ import { createSpriteLayers } from '../render/spriteLayers';
 import { playHitReact, playImpactSquash } from '../combat-core/enemies/enemyJuice';
 import type { SpellJudge } from '../spell/judge';
 import { createJudge } from '../spell/createJudge';
+import { postPlayLog } from '../spell/playLog';
 import type { SpellElement, SpellForm, SpellSpec } from '../spell/types';
 import { ELEMENTS } from '../spell/types';
 import { SpellHistory } from '../spell/spellHistory';
@@ -4366,6 +4367,24 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceManaShortage(plan.manaCost);
       return;
     }
+    if (import.meta.env.DEV) {
+      void postPlayLog({
+        type: 'sequence_exec',
+        input: text,
+        source,
+        fixture: source === 'local',
+        name: plan.name,
+        sequenceCount: plan.sequences.length,
+        behaviorCount: plan.sequences.reduce(
+          (sum, sequence) => sum + sequence.behaviors.length,
+          0,
+        ),
+        durationMs: plan.sequences.reduce(
+          (sum, sequence) => sum + sequence.durationMs,
+          0,
+        ),
+      });
+    }
     // 융합 게이지 — 시퀀스도 수동 영창이므로 충전한다 (방출 격상은 v1에선 단일 주문만)
     if (this.fusionGauge.charge(plan.manaCost)) {
       this.announceSystemMessage('융합의 힘이 응축됐다 — 두 원소를 담아 영창하라 (마나 무소모)', '#e2b7ff', 3400);
@@ -4542,26 +4561,22 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       if (import.meta.env.DEV) {
         const base = historyEntry.basePower;
         const bossResist = this.activeBossResistances.get(spec.element_primary) ?? 1;
-        void fetch('/__log', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            t: Math.round(this.time.now / 100) / 10,
-            type: 'dmg',
-            input: text,
-            el: spec.element_primary,
-            base,
-            repeat: base > 0 ? Number((historyEntry.power / base).toFixed(2)) : 1,
-            affinity: Number(affinityBonus.toFixed(2)),
-            escalation: Number(escalationWeaken.toFixed(2)),
-            diversity: Number(diversity.toFixed(2)),
-            empower: Number(this.playerState.damageOutMultiplier.toFixed(2)),
-            degraded: Number(castPlan.ratio.toFixed(2)),
-            effective: effectiveSpec.power,
-            bossResist: Number(bossResist.toFixed(2)),
-            finalVsBoss: Math.round(effectiveSpec.power * bossResist),
-          }),
-        }).catch(() => {});
+        void postPlayLog({
+          t: Math.round(this.time.now / 100) / 10,
+          type: 'dmg',
+          input: text,
+          el: spec.element_primary,
+          base,
+          repeat: base > 0 ? Number((historyEntry.power / base).toFixed(2)) : 1,
+          affinity: Number(affinityBonus.toFixed(2)),
+          escalation: Number(escalationWeaken.toFixed(2)),
+          diversity: Number(diversity.toFixed(2)),
+          empower: Number(this.playerState.damageOutMultiplier.toFixed(2)),
+          degraded: Number(castPlan.ratio.toFixed(2)),
+          effective: effectiveSpec.power,
+          bossResist: Number(bossResist.toFixed(2)),
+          finalVsBoss: Math.round(effectiveSpec.power * bossResist),
+        });
       }
       if (castPlan.ratio < 1) {
         this.announceSystemMessage(

@@ -11,4 +11,6 @@ export interface SpellJudge {
   readonly name: string;
   /** [디버그] 직전 judge() 호출의 실제 출처 (예: gemini/cache/fallback). HUD 표기용, 선택적. */
   readonly lastSource?: string;
+  /** [디버그] fallback일 때 원격 판정이 실패한 이유. 관측 전용, 게임 로직에서 소비하지 않는다. */
+  readonly lastFallbackReason?: string;
 }
