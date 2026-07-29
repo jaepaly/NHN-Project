@@ -95,6 +95,9 @@ import { playAwakeningSigil } from '../render/awakeningSigil';
 import {
   PARTICLE_TEXTURES, ensureParticleTextures, particleKey,
 } from '../render/particleTextures';
+import {
+  DAMAGE_NUMBER, damageColor, damageEmphasis, damageLabel,
+} from '../render/damageNumber';
 import type { SystemBannerCopy } from '../render/systemBanner';
 import { codexEntryFromSpec, codexEntryFromSequence, recordCodexEntry } from '../spell/spellCodex';
 import {
@@ -738,6 +741,15 @@ export class ProtoScene extends Phaser.Scene {
    * 방식으로 바꾼다. 틱 자체는 무음이다 — 잔불이 "타고 있다"를 전담한다.
    */
   private readonly burnEmbers = new Map<CombatEnemy, Phaser.GameObjects.Particles.ParticleEmitter>();
+
+  /**
+   * 적별 피해 숫자 — 짧은 창(mergeWindowMs) 안의 재타격은 새 숫자를 띄우지 않고
+   * **기존 것에 누적**한다. zone 틱·chain 재적중이 숫자를 도배하는 걸 막고,
+   * 오히려 "이 장판이 총 얼마를 넣었나"로 읽힌다.
+   */
+  private readonly damageNumbers = new Map<CombatEnemy, {
+    text: Phaser.GameObjects.Text; total: number; expireAt: number; resisted: boolean;
+  }>();
   /** 연쇄 감전 남발 방지 — 적별 마지막 발동 시각 */
   private readonly shockCooldowns = new Map<CombatEnemy, number>();
   private readonly controlIndicators = new Map<CombatEnemy, Phaser.GameObjects.Arc>();
@@ -1295,6 +1307,7 @@ export class ProtoScene extends Phaser.Scene {
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
     this.clearBurnEmbers();
+    this.clearDamageNumbers();
     this.shockCooldowns.clear();
     // 이어가기는 친화를 유지하므로 각성도 유지한다 — 비우면 같은 원소를
     // 매 루프 재각성하는 무한 파밍이 된다 (친화가 이미 임계 위이므로).
@@ -1322,6 +1335,7 @@ export class ProtoScene extends Phaser.Scene {
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
     this.clearBurnEmbers();
+    this.clearDamageNumbers();
     this.shockCooldowns.clear();
     this.awakenings = {};
     this.lastResistNoticeAt = 0;
@@ -1342,6 +1356,7 @@ export class ProtoScene extends Phaser.Scene {
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
     this.clearBurnEmbers();
+    this.clearDamageNumbers();
     this.shockCooldowns.clear();
     this.awakenings = {};
     this.lastResistNoticeAt = 0;
@@ -2496,6 +2511,11 @@ if (applied) this.playPlayerHit();
   private dropBurnEmber(enemy: CombatEnemy): void {
     this.burnEmbers.get(enemy)?.destroy();
     this.burnEmbers.delete(enemy);
+  }
+
+  private clearDamageNumbers(): void {
+    for (const { text } of this.damageNumbers.values()) text.destroy();
+    this.damageNumbers.clear();
   }
 
   private clearBurnEmbers(): void {
@@ -5932,6 +5952,81 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   /** 환류 부상 텍스트 — 킬 지점에서 마나색 "+N"이 떠오른다 */
+  /**
+   * 피해 숫자 — 맞은 적 위에 뜬다. 크기는 **적 최대 체력 대비 비율**로 정한다
+   * (총괄 지적: 친화·루프로 절대 피해가 무한히 커지므로 절대값 기준은 금방 상한에
+   * 붙어 정보가 죽는다). 같은 적 재타격은 짧은 창 안에서 누적해 틱 스팸을 막는다.
+   */
+  /**
+   * 이 타격이 저항에 깎였나 — 피해 숫자 색·표식용.
+   * elementalDamageAgainst와 **같은 조건**을 쓴다: 보스이고, 내성이 걸려 있고,
+   * 마스터리 면역(친화 0.9) 미만일 때만 실제로 깎인다.
+   */
+  private isResistedHit(enemy: CombatEnemy, element?: SpellElement): boolean {
+    if (!element || enemy.kind !== 'boss') return false;
+    const multiplier = this.activeBossResistances.get(element) ?? 1;
+    if (multiplier >= 1) return false;
+    const affinity = this.combatRunController.state.elementalAffinity[element] ?? 0;
+    return affinity < RESISTANCE.masteryImmunityAffinity;
+  }
+
+  private showDamageNumber(
+    enemy: CombatEnemy, damage: number, resisted: boolean, x: number, y: number,
+  ): void {
+    // 생존을 보지 않는다 — takeDamage가 먼저 돌아서, 처치 일격은 이미 alive=false다.
+    // 가장 통쾌한 숫자라 반드시 띄운다. 좌표는 호출측이 넘긴다(파괴 후엔 못 읽는다).
+    if (damage <= 0) return;
+    const now = this.time.now;
+    const existing = this.damageNumbers.get(enemy);
+
+    if (existing && existing.text.active && now < existing.expireAt) {
+      // 누적 — 새 숫자를 띄우지 않고 기존 것을 키운다 ("이 장판이 총 얼마를 넣었나")
+      existing.total += damage;
+      existing.resisted = existing.resisted || resisted;
+      existing.expireAt = now + DAMAGE_NUMBER.mergeWindowMs;
+      const e = damageEmphasis(existing.total, enemy.maxHp);
+      existing.text
+        .setText(damageLabel(existing.total, existing.resisted))
+        .setFontSize(e.fontPx)
+        .setColor(damageColor(e.tier, existing.resisted));
+      return;
+    }
+
+    const e = damageEmphasis(damage, enemy.maxHp);
+    // 좌우로 살짝 흩어 놓는다 — 여러 적이 동시에 맞아도 숫자가 포개지지 않게
+    const jitter = (Math.random() - 0.5) * 18;
+    const label = this.add.text(x + jitter, y - 24, damageLabel(damage, resisted), {
+      fontFamily: '"Consolas", "D2Coding", monospace',
+      fontSize: `${e.fontPx}px`,
+      fontStyle: 'bold',
+      color: damageColor(e.tier, resisted),
+      stroke: '#05060f',
+      strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(11);
+
+    const entry = { text: label, total: damage, expireAt: now + DAMAGE_NUMBER.mergeWindowMs, resisted };
+    this.damageNumbers.set(enemy, entry);
+
+    // 묵직한 타격은 살짝 튀어오른다 — 등급이 움직임으로도 읽힌다
+    if (e.tier > 0) {
+      this.tweens.add({
+        targets: label, scale: { from: 0.7, to: 1 }, duration: 150, ease: 'Back.easeOut',
+      });
+    }
+    this.tweens.add({
+      targets: label,
+      y: label.y - DAMAGE_NUMBER.riseDistance,
+      alpha: 0,
+      delay: DAMAGE_NUMBER.mergeWindowMs,
+      duration: DAMAGE_NUMBER.durationMs,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        label.destroy();
+        if (this.damageNumbers.get(enemy) === entry) this.damageNumbers.delete(enemy);
+      },
+    });
+  }
+
   private showManaRefundFloat(x: number, y: number, amount: number): void {
     const label = this.add.text(x, y - 18, `+${Math.round(amount)}`, {
       fontSize: '13px',
@@ -6372,7 +6467,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private damageEnemy(
     enemy: CombatEnemy,
     damage: number,
-    _element?: SpellElement,
+    element?: SpellElement,
     sourceX = this.player.x,
     sourceY = this.player.y,
     bypassDirectionalShield = false,
@@ -6401,6 +6496,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       defeated = enemy.takeDamage(damage);
     }
     this.damageLedger[source] += damage;
+    // 피해 숫자 — **수동 영창만**. 이 게임에서 숫자는 타격감이 아니라 "내 문장이 얼마나
+    // 셌나"에 대한 답이므로, 자동 시전(각인·정령)·기본탄·상태이상 틱에는 붙이지 않는다.
+    // 전부 띄우면 화면이 숫자로 덮이고 오토 비중을 시각적으로 과대평가하게 된다.
+    if (source === 'manual' && feedback !== 'status-tick') {
+      this.showDamageNumber(
+        enemy, damage, this.isResistedHit(enemy, element), enemy.x, enemy.y,
+      );
+    }
     if (feedback !== 'status-tick') this.audio.playSfx('hit');
     if (!defeated && feedback !== 'status-tick') {
       const direction = new Phaser.Math.Vector2(enemy.x - sourceX, enemy.y - sourceY);
@@ -6454,6 +6557,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.enemyHitStop.remove(enemy);
     this.enemyKnockbacks.delete(enemy);
     this.dropBurnEmber(enemy);
+    this.damageNumbers.delete(enemy);
     enemy.destroy();
     this.enemies = this.enemies.filter((candidate) => candidate !== enemy);
     if (wasBoss) {
