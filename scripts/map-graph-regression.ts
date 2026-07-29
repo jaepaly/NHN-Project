@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict';
-import { RunMapGraph, toMinimapModel, type MapGraphDefinition } from '../src/run/mapGraph';
+import {
+  RunMapGraph,
+  maximumMapPathRooms,
+  toMinimapModel,
+  type MapGraphDefinition,
+} from '../src/run/mapGraph';
+import { encounterFromMapNode } from '../src/run/mapEncounter';
 import { MAP_GRAPH_PRESET_01 } from '../src/run/mapGraphPreset';
 
 const graph = new RunMapGraph(MAP_GRAPH_PRESET_01);
 
 assert.equal(graph.current().id, 's1-start');
+assert.equal(maximumMapPathRooms(MAP_GRAPH_PRESET_01), 8);
 assert.deepEqual(graph.progress(), { stage: 1, roomNumber: 1, totalVisitedRooms: 1 });
 assert.deepEqual(graph.choices().map((node) => node.id), ['s1-combat', 's1-treasure']);
 assert.equal(graph.canEnter('s1-combat'), true);
@@ -35,6 +42,28 @@ graph.enter('s2-memory-boss');
 assert.equal(graph.isBossNode(graph.current().id), true);
 assert.equal(graph.isFinalBossNode(graph.current().id), true);
 assert.deepEqual(graph.choices(), []);
+
+const demoGraph = new RunMapGraph(
+  MAP_GRAPH_PRESET_01,
+  MAP_GRAPH_PRESET_01.lastBeforeBossNodeId,
+);
+assert.equal(demoGraph.current().id, 's2-elite', '시연 런은 마지막 보스 직전 노드에서 시작');
+
+const trapEncounter = encounterFromMapNode(
+  MAP_GRAPH_PRESET_01.nodes.find((node) => node.id === 's2-trap')!,
+);
+assert.deepEqual(trapEncounter, {
+  id: 's2-trap',
+  stage: 2,
+  kind: 'combat',
+  rewardAfterClear: true,
+  waveSetId: 'trap-hazard',
+});
+const memoryBossEncounter = encounterFromMapNode(
+  MAP_GRAPH_PRESET_01.nodes.find((node) => node.id === 's2-memory-boss')!,
+);
+assert.equal(memoryBossEncounter.kind, 'memory-boss');
+assert.equal(memoryBossEncounter.rewardAfterClear, false);
 
 state = graph.snapshot();
 const minimap = toMinimapModel(state);

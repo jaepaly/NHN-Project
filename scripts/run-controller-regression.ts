@@ -11,7 +11,7 @@ import {
   drawRewardOptions,
   RUN_REWARD_CONFIG,
 } from '../src/combat-core/run/rewardConfig';
-import type { RewardOption, RunEvents } from '../src/run/runContract';
+import type { EncounterDefinition, RewardOption, RunEvents } from '../src/run/runContract';
 
 interface RunHarness {
   player: PlayerCombatState;
@@ -296,4 +296,44 @@ for (let room = 1; room <= 6; room++) {
 assert.equal(phase4RewardCount, 5);
 assert.equal(phase4Run.state.phase, 'run-over');
 
-console.log('CombatRunController regression: 능력치·3택 보상·2개 방·이벤트·친화·보상풀 7군 통과');
+// 9) MapGraph 통합: 방 번호별 외부 조우 공급자가 선형 RUN_ENCOUNTERS를 대체한다.
+const graphEncounters = new Map<number, EncounterDefinition>([
+  [1, {
+    id: 'graph-start', stage: 1, kind: 'combat', rewardAfterClear: true, waveSetId: 'room-a',
+  }],
+  [2, {
+    id: 'graph-trap', stage: 2, kind: 'combat', rewardAfterClear: true, waveSetId: 'trap-hazard',
+  }],
+  [3, {
+    id: 'graph-memory-boss', stage: 2, kind: 'memory-boss', rewardAfterClear: false,
+  }],
+]);
+let graphTransition: (() => void) | null = null;
+const graphRun = new CombatRunController({
+  playerState: new PlayerCombatState(),
+  maxRooms: 3,
+  encounterProvider: (roomIndex) => {
+    const encounter = graphEncounters.get(roomIndex);
+    if (!encounter) throw new Error(`missing graph encounter ${roomIndex}`);
+    return encounter;
+  },
+  rewardDraw: (roomIndex) => [{
+    id: `room-${roomIndex}-hp`, kind: 'max-hp', title: 'HP', description: 'test',
+  }],
+  scheduleTransition: (_delay, callback) => { graphTransition = callback; },
+});
+assert.equal(graphRun.state.encounterId, 'graph-start');
+graphRun.notifyRoomCleared();
+graphRun.chooseReward('room-1-hp');
+graphTransition!();
+assert.equal(graphRun.state.roomIndex, 2);
+assert.equal(graphRun.state.encounterId, 'graph-trap');
+assert.equal(graphRun.state.waveSetId, 'trap-hazard');
+graphRun.notifyRoomCleared();
+graphRun.chooseReward('room-2-hp');
+graphTransition!();
+assert.equal(graphRun.state.encounterKind, 'memory-boss');
+graphRun.notifyRoomCleared();
+assert.equal(graphRun.state.phase, 'run-over');
+
+console.log('CombatRunController regression: 능력치·3택 보상·2개 방·이벤트·친화·보상풀·외부조우 8군 통과');

@@ -13,6 +13,8 @@ import {
 import { EngraveManager, ENGRAVE_CONFIG } from '../src/combat-core/engrave/engraveManager';
 import { SpiritManager, SPIRIT_CONFIG } from '../src/combat-core/spirit/spiritManager';
 import { CombatRunController } from '../src/combat-core/run/runController';
+import { maximumMapPathRooms } from '../src/run/mapGraph';
+import { MAP_GRAPH_PRESET_01 } from '../src/run/mapGraphPreset';
 import { PlayerCombatState } from '../src/combat-core/player/playerCombatState';
 import { AFFINITY_VFX_CONFIG, affinityVfxIntensity } from '../src/render/affinityVfx';
 import { MockJudge } from '../src/spell/mockJudge';
@@ -109,7 +111,10 @@ const build = () => {
 
 // ── 시작 방: 힘이 필요한 자리여야 한다 ───────────────────────────────
 {
-  const controller = new CombatRunController({ playerState: new PlayerCombatState() });
+  const controller = new CombatRunController({
+    playerState: new PlayerCombatState(),
+    maxRooms: maximumMapPathRooms(MAP_GRAPH_PRESET_01),
+  });
   assert.ok(DEMO_START_ROOM > 1, '1번 방에서 강하게 시작하면 잡몹만 뭉갠다');
   assert.ok(DEMO_START_ROOM <= controller.state.maxRooms, '시작 방이 런 길이를 넘는다');
   controller.reset(1, false, DEMO_START_ROOM);

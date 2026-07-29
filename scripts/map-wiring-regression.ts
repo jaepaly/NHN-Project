@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { RunMapGraph, toMinimapModel } from '../src/run/mapGraph';
+import { PlayerCombatState } from '../src/combat-core/player/playerCombatState';
+import { CombatRunController } from '../src/combat-core/run/runController';
+import { encounterFromMapNode } from '../src/run/mapEncounter';
+import { RunMapGraph, maximumMapPathRooms, toMinimapModel } from '../src/run/mapGraph';
 import { MAP_GRAPH_PRESET_01 } from '../src/run/mapGraphPreset';
+import type { EncounterDefinition } from '../src/run/runContract';
 
 /**
  * 맵 **씬 배선** 회귀 (#214).
@@ -55,6 +59,45 @@ function bodyOf(startMarker: string, endMarker: string): string {
     body.includes('layoutRoomArrival('),
     '도착 지점 계약(#245·#246)이 빠졌다 — 진입 좌표가 방마다 달라진다',
   );
+  assert.ok(
+    body.includes('this.mapEncounterByRoom.set(')
+      && body.includes('encounterFromMapNode(node)'),
+    '선택한 MapNode가 다음 실제 조우로 고정되지 않는다 — 두 진행축이 다시 갈라진다',
+  );
+}
+
+// ── 실제 방 내용이 MapNode 하나를 보는가 ─────────────────────────────
+{
+  assert.ok(
+    scene.includes('encounterProvider: (roomIndex) => this.mapEncounterForRoom(roomIndex)'),
+    'RunController가 MapNode 조우 공급자를 쓰지 않는다 — RUN_ENCOUNTERS가 다시 실제 방을 덮는다',
+  );
+  assert.ok(
+    scene.includes('maxRooms: maximumMapPathRooms(MAP_GRAPH_PRESET_01)'),
+    '컨트롤러 방 수가 그래프 최대 경로와 맞지 않는다 — 중간 노드에서 런이 끝날 수 있다',
+  );
+
+  const roomBody = bodyOf('private startRoom(', 'private isBossEncounter()');
+  assert.ok(
+    roomBody.includes("this.activeTrapProfile?.kind === 'hazard'"),
+    '함정 프로필이 실제 방 시작에 연결되지 않았다',
+  );
+  assert.ok(
+    !roomBody.includes("roomIndex === 1 && this.activeTrapProfile?.kind === 'hazard'"),
+    '함정 프로필이 DEV 첫 방에서만 실행된다',
+  );
+
+  const curseBody = bodyOf('private activateRoomCurse(', 'private activateRoomCurseAssignment(');
+  assert.ok(
+    curseBody.includes('this.mapGraph.current().trapProfile'),
+    '선택한 trap 노드의 프로필을 방 기믹이 소비하지 않는다',
+  );
+
+  const rewardlessBody = bodyOf('private rewardlessNodeKind()', 'private startRewardlessRoom(');
+  assert.ok(
+    !rewardlessBody.includes('if (this.isBossEncounter()) return null'),
+    '선형 보스 가드가 보물·제단 MapNode를 다시 덮는다',
+  );
 }
 
 // ── 갈림길: 모든 경로가 그래프를 전진시키는가 ────────────────────────
@@ -90,7 +133,7 @@ function bodyOf(startMarker: string, endMarker: string): string {
 
 // ── 새 런에서 그래프·미니맵이 같이 초기화되는가 ──────────────────────
 {
-  const body = bodyOf('private resetMapGraph()', 'private refreshMinimap()');
+  const body = bodyOf('private resetMapGraph(', 'private refreshMinimap()');
 
   assert.ok(
     body.includes('this.destroyRunMapUi()'),
@@ -147,6 +190,68 @@ function bodyOf(startMarker: string, endMarker: string): string {
   );
 }
 
+// ── 함정/제단 양 경로: 선택 노드와 실제 컨트롤러 조우가 끝까지 같은가 ──
+function assertIntegratedPath(path: readonly string[]): void {
+  const graph = new RunMapGraph(MAP_GRAPH_PRESET_01);
+  const encounterByRoom = new Map<number, EncounterDefinition>([[
+    1,
+    encounterFromMapNode(graph.current()),
+  ]]);
+  let transition: (() => void) | null = null;
+  const controller = new CombatRunController({
+    playerState: new PlayerCombatState(),
+    maxRooms: maximumMapPathRooms(MAP_GRAPH_PRESET_01),
+    encounterProvider: (roomIndex) => {
+      const encounter = encounterByRoom.get(roomIndex);
+      if (!encounter) throw new Error(`missing encounter for room ${roomIndex}`);
+      return encounter;
+    },
+    rewardDraw: (roomIndex) => [{
+      id: `room-${roomIndex}-hp`,
+      kind: 'max-hp',
+      title: 'HP',
+      description: 'test',
+    }],
+    scheduleTransition: (_delay, callback) => { transition = callback; },
+  });
+
+  for (let index = 0; index < path.length; index += 1) {
+    const node = graph.current();
+    assert.equal(node.id, path[index], '그래프가 예상 경로와 다르다');
+    assert.equal(
+      controller.state.encounterId,
+      node.id,
+      `${node.id}: 선택 MapNode와 실제 시작 조우가 다르다`,
+    );
+
+    controller.notifyRoomCleared();
+    if (node.kind === 'memory-boss') {
+      assert.equal(controller.state.phase, 'run-over');
+      break;
+    }
+
+    const nextId = path[index + 1];
+    assert.ok(nextId, `${node.id}: 종착 보스 전에 경로가 끝났다`);
+    const nextNode = graph.enter(nextId);
+    encounterByRoom.set(controller.state.roomIndex + 1, encounterFromMapNode(nextNode));
+    // 그래프가 먼저 움직여도 현재 보상 이벤트는 방 번호에 고정된 이전 조우를 봐야 한다.
+    assert.equal(controller.state.encounterId, node.id);
+    controller.chooseReward(`room-${controller.state.roomIndex}-hp`);
+    assert.ok(transition, `${node.id}: 다음 방 전환이 예약되지 않았다`);
+    transition();
+    transition = null;
+  }
+}
+
+assertIntegratedPath([
+  's1-start', 's1-combat', 's1-elite', 's1-boss',
+  's2-combat', 's2-trap', 's2-elite', 's2-memory-boss',
+]);
+assertIntegratedPath([
+  's1-start', 's1-treasure', 's1-elite', 's1-boss',
+  's2-combat', 's2-altar', 's2-elite', 's2-memory-boss',
+]);
+
 console.log(
-  'Map wiring regression: 미니맵실데이터·이동배선·갈림길3경로·런초기화·포탈갱신·어댑터 6군 통과',
+  'Map wiring regression: 미니맵·이동·단일조우·양경로주파·갈림길·런초기화·포탈·어댑터 8군 통과',
 );
