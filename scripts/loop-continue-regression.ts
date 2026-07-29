@@ -63,79 +63,55 @@ assert.ok(
 );
 
 
-// ── 적 체력 스케일링 — **플레이어 성장 대비 상대값** (총괄 지적) ────────────
-// 성장이 없으면(파워 1) 바닥값만 걸린다
-assert.equal(enemyHpScale(0, 1), 1, '첫 런 · 성장 없음 = 배율 1');
-assert.equal(enemyHpScale(2, 1), 1 + LOOP_CONFIG.hpFloorPerLoop * 2, '성장 0이면 바닥값');
-// 성장하면 흡수율만큼 따라온다
-assert.equal(enemyHpScale(0, 2), 1 + LOOP_CONFIG.hpGainFromPower, '파워 ×2 → 성장분의 55%');
-assert.equal(enemyHpScale(0, 3), 1 + LOOP_CONFIG.hpGainFromPower * 2, '파워 ×3');
-// 바닥값과 상대값 중 큰 쪽
-assert.equal(enemyHpScale(20, 1.1), Math.max(1 + 0.05 * 20, 1 + 0.55 * 0.1), '큰 쪽을 쓴다');
-assert.equal(enemyHpScale(999, 99), LOOP_CONFIG.maxHpScale, '체력 배율 상한');
-assert.equal(enemyHpScale(Number.NaN, Number.NaN), 1, 'NaN 방어');
-assert.equal(enemyHpScale(-5, 0.2), 1, '음수·1 미만 파워 방어 (성장은 음수일 수 없다)');
+// ── 적 체력 스케일링 — **이어가기 루프 단계만** (#267) ────────────────
+assert.equal(enemyHpScale(0), 1, '첫 런은 배율 1');
+assert.equal(enemyHpScale(1), 1 + LOOP_CONFIG.enemyHpPerLoop, 'loop 1');
+assert.equal(enemyHpScale(2), 1 + LOOP_CONFIG.enemyHpPerLoop * 2, 'loop 2');
+assert.equal(enemyHpScale(999), LOOP_CONFIG.maxHpScale, '체력 배율 상한');
+assert.equal(enemyHpScale(Number.NaN), 1, 'NaN 방어');
+assert.equal(enemyHpScale(-5), 1, '음수 방어');
 
-// ══ **핵심 불변식**: 성장하면 반드시 순이득이다 ══
-// 흡수율이 1 이상이면 고무줄이 되어 "보상을 먹어도 그대로"가 된다.
-assert.ok(LOOP_CONFIG.hpGainFromPower < 1, '흡수율 < 1 — 고무줄 금지');
-// 실효 비율(파워 ÷ 체력배율)이 파워에 대해 **단조 증가**. 성장이 손해가 되는 구간이 없다.
-// 이게 고무줄 함정을 막는 유일한 보증이다: 비율 = P/(1+g(P−1)), d/dP = (1−g)/(…)² > 0.
-for (const loop of [0, 3, 10, 30]) {
-  let prevRatio = 0;
-  for (let p = 1; p <= 6; p += 0.05) {
-    const ratio = p / enemyHpScale(loop, p);
-    assert.ok(ratio >= prevRatio - 1e-9, `loop ${loop} 파워 ${p.toFixed(2)}: 성장이 손해가 됐다`);
-    prevRatio = ratio;
-  }
+// ══ **핵심 불변식**: 적 체력은 플레이어 성장을 참조하지 않는다 (#267) ══
+// 성장에 연동하면 분기 맵에서 위험한 경로를 고른 이점이 상쇄되고(실측 +24%→+7%),
+// 같은 프리셋이 빌드마다 다른 클리어 시간을 내 목표시간(#258)을 검증할 수 없다.
+// 시그니처가 (loopIndex, isBoss=false)라 Function.length는 1이다 — 성장 인자가
+// 끼어들면 2가 되어 여기서 깨진다. 시그니처 자체를 잠그는 트립와이어.
+assert.equal(enemyHpScale.length, 1, '성장 인자를 받지 않는다 (loopIndex만 필수)');
+for (const loop of [0, 1, 3, 10, 30]) {
+  const base = enemyHpScale(loop);
+  assert.equal(enemyHpScale(loop, false), base, `loop ${loop}: 같은 루프면 항상 같은 값`);
 }
-// 성장을 안 하면 바닥값이 걸려 비율이 1 아래로 내려간다 — **의도된 동작**이다.
-// 적 피해는 루프당 +30%씩 오르므로, 안 크는 플레이어에게 체력까지 그대로 두면
-// "보상 스킵이 공략"이 되어버린다.
-assert.ok(3 / enemyHpScale(3, 1) < 3, '성장 없이 루프만 돌면 적이 상대적으로 세진다');
-assert.ok(1 / enemyHpScale(10, 1) < 1, '바닥값은 무성장 플레이어를 봐주지 않는다');
-// 반대로 상대값이 걸리는 구간(성장한 플레이어)에서는 비율이 반드시 1 이상이다
-for (const loop of [0, 3, 10]) {
-  for (const p of [1.5, 2, 3, 4]) {
-    const relative = 1 + LOOP_CONFIG.hpGainFromPower * (p - 1);
-    if (relative < 1 + LOOP_CONFIG.hpFloorPerLoop * loop) continue; // 바닥값 구간은 위에서 다룸
-    assert.ok(p / enemyHpScale(loop, p) >= 1, `loop ${loop} 파워 ${p}: 성장했는데 순이득이 없다`);
-  }
-}
+
 // 체력은 피해보다 완만하게 오른다 — 두 축이 동시에 상한을 치면 즉사 판이 된다
-assert.ok(LOOP_CONFIG.hpFloorPerLoop < LOOP_CONFIG.enemyDamagePerLoop, '바닥값 < 피해 증가율');
+assert.ok(LOOP_CONFIG.enemyHpPerLoop < LOOP_CONFIG.enemyDamagePerLoop, '체력 < 피해 증가율');
 for (const loop of [1, 3, 5, 10]) {
-  assert.ok(enemyHpScale(loop, 1) <= loopDamageScale(loop), `loop ${loop}: 바닥값 ≤ 피해 배율`);
+  assert.ok(enemyHpScale(loop) <= loopDamageScale(loop), `loop ${loop}: 체력 ≤ 피해 배율`);
 }
-// 파워·루프 각각에 단조 비감소
+// 루프에 단조 비감소
 let prevHp = 0;
 for (let l = 0; l <= 30; l += 1) {
-  const v = enemyHpScale(l, 1);
+  const v = enemyHpScale(l);
   assert.ok(v >= prevHp, `루프 단조 비감소 위반 at ${l}`);
-  prevHp = v;
-}
-prevHp = 0;
-for (let p = 1; p <= 8; p += 0.1) {
-  const v = enemyHpScale(0, p);
-  assert.ok(v >= prevHp, `파워 단조 비감소 위반 at ${p.toFixed(1)}`);
   prevHp = v;
 }
 
 // 보스는 초과분의 절반만 — 내성 누적(#77)과 이중 강화가 되지 않게
-assert.equal(enemyHpScale(0, 1, true), 1, '보스도 성장 없으면 1');
-assert.ok(enemyHpScale(4, 2, true) < enemyHpScale(4, 2), '보스 배율 < 일반 배율');
+assert.equal(enemyHpScale(0, true), 1, '보스도 첫 런은 1');
+assert.ok(enemyHpScale(4, true) < enemyHpScale(4), '보스 배율 < 일반 배율');
 assert.equal(
-  enemyHpScale(0, 2, true),
-  1 + LOOP_CONFIG.hpGainFromPower * LOOP_CONFIG.bossHpScaleFactor,
+  enemyHpScale(2, true),
+  1 + LOOP_CONFIG.enemyHpPerLoop * 2 * LOOP_CONFIG.bossHpScaleFactor,
   '보스는 초과분에 계수만큼만',
 );
 assert.equal(
-  enemyHpScale(999, 99, true),
+  enemyHpScale(999, true),
   1 + (LOOP_CONFIG.maxHpScale - 1) * LOOP_CONFIG.bossHpScaleFactor,
   '보스 상한도 계수 반영',
 );
 
-// ── 파워 지표 (playerPower) ────────────────────────────────────────────
+// ── 파워 지표 (playerPower) — **측정 전용** (#267 7번) ─────────────────
+// 적 스탯에는 쓰지 않는다. #258 프리셋 목표시간 검증에서 "이 판은 파워 2.4였다"를
+// 기록하는 용도라, 같은 빌드 = 같은 값이라는 순수성이 여전히 중요하다.
 const NO_BUILD = { engraves: [], spirits: [], awakenings: {} };
 assert.equal(playerPowerIndex({ affinity: {}, ...NO_BUILD }), 1, '빈 빌드 = 1');
 assert.equal(playerPowerIndex({ affinity: { fire: 0.45 }, ...NO_BUILD }), 1.45, '사용 상한만');
@@ -176,4 +152,4 @@ assert.equal(
   'NaN·음수 입력 방어',
 );
 
-console.log('loop continue regression: 난이도배율·이어가기빌드유지·reset초기화·상한지속·상대체력·파워지표 6군 통과');
+console.log('loop continue regression: 난이도배율·이어가기빌드유지·reset초기화·상한지속·루프체력·성장비연동·파워지표 7군 통과');
