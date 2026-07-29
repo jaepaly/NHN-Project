@@ -73,7 +73,8 @@
     "test:debufffloor": "esbuild scripts/debuff-floor-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-debuff-floor-regression.mjs && node node_modules/.cache/incant-debuff-floor-regression.mjs",
     "audit:judge": "esbuild scripts/judge-fidelity-audit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-judge-fidelity-audit.mjs && node node_modules/.cache/incant-judge-fidelity-audit.mjs",
     "test:slash": "esbuild scripts/slash-form-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-slash-form-regression.mjs && node node_modules/.cache/incant-slash-form-regression.mjs",
-    "test:incant-bands": "esbuild scripts/incant-bands-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-incant-bands-regression.mjs && node node_modules/.cache/incant-incant-bands-regression.mjs"
+    "test:incant-bands": "esbuild scripts/incant-bands-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-incant-bands-regression.mjs && node node_modules/.cache/incant-incant-bands-regression.mjs",
+    "test:floorhazardstate": "esbuild scripts/floor-hazard-state-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-floor-hazard-state-regression.mjs && node node_modules/.cache/incant-floor-hazard-state-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
