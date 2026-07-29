@@ -4,6 +4,24 @@
 > 규칙: **푸시할 때마다 이 파일에 "현재 어디까지 했는지"를 갱신해서 함께 커밋한다.**
 > (팀 공용 1줄 기록은 [AI_USAGE_LOG.md](AI_USAGE_LOG.md), 이 파일은 R2 상세 로그)
 
+## ☐ 지금 작업 흐름 — #158 원본 v2.15 + sparse output 격리 스파이크 (2026-07-29)
+
+> compact-text NO-GO 후속. `origin/main`의 v2.15 규칙·예시·named/nested 구조는 보존하고, `spell_plan` 내부에서 validator가 복원하거나 로컬이 재계산하는 기본값만 생략한다. production Worker·클라이언트 timeout·캐시 버전은 승인 전 변경하지 않는다.
+
+**기준·의존성**
+- [x] 별도 브랜치 `codex/judge-sparse-output-spike`를 최신 `origin/main`(`2f14ba9`)에서 생성.
+- [x] baseline `JUDGE_PROMPT` 7,016자·SHA-256 `d98e97d…` 고정, Cloudflare/Wrangler 최신 자료 확인.
+- [x] corpus·품질/지연 GO/NO-GO·호출 상한 동결([SPARSE_OUTPUT_SPIKE_2026-07-29.md](SPARSE_OUTPUT_SPIKE_2026-07-29.md)).
+
+**R2 작업**
+- [ ] 원본 규칙·예시를 유지한 채 plan 기본값 생략 지시·예시만 변경.
+- [ ] full/sparse validate→resolve 동등성, 기존 judge/plan/sequence 회귀·빌드.
+- [ ] `wrangler versions upload`로 Version Preview 생성. `deploy`/production 트래픽 변경 금지.
+- [ ] baseline/candidate 8종 스모크 → candidate 30+12 품질 → 통과 시 paired latency 6종×N=3.
+- [ ] 결과에 따라 PR 또는 NO-GO 기록, #158 공유, AI 사용 로그.
+
+---
+
 ## ☐ 지금 작업 흐름 — #214 분기형 맵: R2 몫 (2026-07-27)
 
 > **총괄 분배**([#214](https://github.com/jaepaly/NHN-Project/issues/214) 07-26 14:39 코멘트 = **개정판**. 본문의 "R2 몫 없음"이 아니라 이게 최신): R2 = **보물방·제단방 + 바닥형 지형(용암·독지대)**. 단 **#158 ①실플레이·②할당량이 선행**, 그 뒤 착수. 맵 구조는 **R1 소유**(`MapGraph` 계약 — current/choices/enter/snapshot), 씬 통합은 **R3**. R2는 **독립성 높은 모듈(방 타입·지형)**만.
