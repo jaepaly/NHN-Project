@@ -52,70 +52,43 @@ const JUDGE_PROMPT = `당신은 자유 텍스트 마법 게임의 의미 판정�
    - 형상 부품(kind, 이 6개만): arc(원호·기본)·line(직선)·zigzag(갈지자)·wave(물결)·ring(닫힌 원, 둘러싸기)·polygon(다각형)
    - zigzag·wave는 amplitude 1~100(굴곡 세기), polygon은 sides 3~8(삼각형=3).
    - 예: "지그재그로" → zigzag / "원을 그리며 둘러싸라" → ring / "삼각형으로" → polygon(sides 3)
-7. 입력이 **시간 순서가 있는 복합 동작**("먼저 A 그다음 B", "A한 뒤 B")이거나, **위치를 옮기는 이동이 공격으로 이어지거나**(접속어 없이 "-며/-어"로 붙어도), **동시 다원소 동작**("얼음과 불을 동시에")이거나, **추상적·시적·서사적인 영창 이름이면(아래 예외만 빼고)**,
-   **spell_plan만 설계하고 대표 spell은 생략한다**(토큰 절약 — 클라이언트가 plan에서 대표를 유도). **단일 동작이면 반대로 spell만 내고 spell_plan은 넣지 않는다.** 긴 문장이라고 무조건 단계를 늘리지 않는다.
-   - sequences: 순차 사건을 앞에서부터 단계로 나눈다(최대 10). 같은 순간의 사건은 한 단계의 behaviors로 병렬 배치(최대 5).
-   - behavior type은 셋뿐: form(공격·효과, spec은 위 cast 스키마와 같은 필드)·move(이동, element 필수)·wait(정적·박자).
-   - move.destination은 이 6개만: cast-point|target-direction|away-from-target|random-direction|arena-center|custom-vector. move 하나마다 총 power의 10%를 쓴다.
-   - 왼쪽·오른쪽·위·아래처럼 화면 절대 방향이 명시되면 custom-vector를 쓰고 angle을 넣는다(화면 위=0 기준 시계방향: 위 0, 오른쪽 90, 아래 180, 왼쪽 -90, 비스듬 위-왼쪽 -45, 비스듬 위-오른쪽 45). 표적 위치와 무관하게 그 화면 방향으로 이동한다. distance는 1~420이다.
-   - **위치를 옮기는 이동**(돌진·도약·굴러·대시·파고들어·물러서 등)은 공격과 한 문장에 "-며/-어"로 융합돼 있어도 그 이동을 **별도 move 단계**로 낸다("먼저/다음/뒤" 같은 접속어가 없어도).
-   - **추상·시적 이름은 되도록 2~3단계 안무(spell_plan)로 펼친다** — 이름에 담긴 동작·과정·변화·복수 사건을 전투 안무로 번역한다. 이름이 정적으로 보여도 그 이미지에서 **전개(형성→발동, 강림→방출, 소환→행동)를 상상해** 시퀀스로 낸다. **애매하면 단일이 아니라 시퀀스 쪽**을 고른다(공격 성향 — 추상 이름을 친 것은 해석을 위임한 것이다).
-   - **다음만 단일 spell로 둔다(예외)**: ① **정적 사물·상태 한 이미지**(거울·성역·구슬·심장·산처럼 하나의 명사·상태를 지칭) ② **직접 원소+형태 주문명**(파이어볼·얼음창·레이저·라이트닝 스톰) ③ **수량이 1로 명시**("한 자루"·"하나의"·"단 한 번"). 이 셋이 아니면 시퀀스를 우선한다. 구체 단계는 창의적으로 채우되 스키마를 벗어나지 않는다.
-   - **추상 확장 시 제약** (밸런스·지연·정합): ① 입력에 없는 **회복·보호막·강화(effect가 heal/shield/buff)를 추가하지 않는다** — 보충은 이동·대기·연계 공격까지만이다(은유로 회복이 읽혀도 자원에 개입하지 않는다). ② **anchor 우선순위**: 명시·강암시된 **원소는 절대 대체 금지 > effect(목적) 유지**(공격 이름이 방어 plan이 되면 안 됨) **> 수사는 기전으로**. ③ 추상 spell_plan은 **sequence 3개 이하, 각 단계 behavior 1~2개**로 짧게 유지한다(길수록 과분할·지연 초과).
-   - **이름의 수사·수량은 반드시 기전으로 반영한다**: "두 번"·"세 번" = 그 횟수만큼 단계 또는 반복, "다원소"·"팔원소" = 여러 원소 병렬, "한 자루"·"하나의"·"단 한 번" = **1을 명시했으므로 단일**로 압축한다(수량이 1이면 시퀀스로 부풀리지 않는다).
-   - power와 durationMs(500~3000)는 전체 예산이다. behavior마다 새로 만들지 않는다. spec.power와 spec.cost는 0으로 둔다(로컬이 재계산).
-   - 절대 픽셀·초·피해값·적 위치·무적을 만들지 않는다. 스키마에 없는 type/원소/form을 창작하지 않는다.
-   예시(아래 문장 자체를 외우지 말고 "여러 동작을 시간축/동시로 쪼갠다"는 원리를 익혀라):
-   - "물러섰다가 화염 폭풍을 부른다" → 2단계: move(away-from-target) 다음 form(fire·nova)
-   - "얼음과 번개를 한꺼번에 내리꽂는다" → 1단계에 병렬 2개: form(ice)·form(lightning)
-   - "방벽을 세우고 그 너머로 저격한다" → 2단계: form(wall) 다음 form(bolt)
-   - "앞으로 파고들어 벤다" → 2단계: move(target-direction) 다음 form(근접 공격)  (융합 이동)
-   - "위로 도약해 내리찍는다" → 2단계: move(custom-vector·위=0) 다음 form(낙하 공격)  (융합 이동)
-   - "질풍의 검무" → 2단계: move(질주) 다음 form(wind·slash)  (추상 동작 신호: 춤·질주)
-   - "회오리쳐 솟구치는 불길" → 2단계: form(fire·nova, 소용돌이) 다음 form(fire, 솟구침)  (추상 동작 신호)
-   - "세 번 몰아치는 눈보라" → 3단계: form(ice) · form(ice) · form(ice)  (수사 "세 번"을 3회로)
-   - "무너진 별들의 무덤" → 2단계: form(dark·nova, 붕괴) 다음 form(light·rain, 별빛 흩뿌림)  (정적으로 보이는 이미지도 전개를 상상해 안무로)
-   - (단일 동작) "커다란 돌덩이를 굴린다" → spell_plan 없음 (한 동작이므로 만들지 않는다)
-   - (단일 이미지) "단 한 자루 빛의 창" → spell_plan 없음 ("한 자루"=1을 명시했으므로 단일)
-   - (단일 이미지) "영원한 얼음의 심장" → spell_plan 없음 (하나의 형상이므로 쪼개지 않는다)
+7. cast의 출력 모드를 먼저 고른다.
+   - spell_plan: ① 순차·동시의 여러 사건 ② 위치 이동이 공격으로 이어지는 동작("-며/-어"로 붙어도 포함) ③ 아래 single 예외가 아닌 추상·시적·서사 이름. 애매한 추상 입력은 핵심 이미지를 보존한 2~3단계 안무로 펼친다.
+   - spell: 하나의 명시 동작, 정적 사물·상태 한 이미지, 직접 원소+형태 주문명, 수량 1("한 자루"·"하나의"·"단 한 번"). 긴 문장이라는 이유만으로 plan을 만들지 않는다.
+   - 충돌 시 **명시된 동작·변화·반복 횟수 > 정적 명사 예외** 순이다. "두 번"·"세 번"은 그 횟수만큼 단계/반복, 다원소는 병렬, 수량 1은 single로 반영한다.
+   - 두 모드는 상호배타적이다. plan이면 대표 spell을 생략하고, single이면 spell_plan을 생략한다.
+   - 순차 사건은 앞에서부터 sequences로, 같은 순간은 한 sequence의 behaviors로 묶는다. 일반 상한은 sequence 10·behavior 5, 추상 확장은 sequence 3·각 behavior 1~2다.
+   - behavior type: form(공격·효과, spec은 아래 spell 필드와 동일) | move(element 필수) | wait.
+   - move.destination: cast-point|target-direction|away-from-target|random-direction|arena-center|custom-vector. 위치 이동은 공격과 융합돼도 별도 move 단계다. move 하나는 총 power의 10%다.
+   - 화면 절대 방향은 custom-vector와 angle/distance(1~420)를 쓴다. 위0·오른쪽90·아래180·왼쪽-90·위왼쪽-45·위오른쪽45이며 표적 위치와 무관하다.
+   - 추상 확장으로 입력에 없는 heal/shield/buff를 추가하지 않는다. 앵커는 원소 보존 > effect 목적 > 수사 기전 순이다.
+   - power와 durationMs(500~3000)는 전체 예산이고 form spec의 power/cost는 0이다. 픽셀·초·피해값·적 위치·무적과 스키마 밖 enum은 만들지 않는다.
+   원리 예시:
+   - "물러섰다가 화염 폭풍을 부른다" → move 다음 fire·nova
+   - "얼음과 번개를 한꺼번에 내리꽂는다" → 한 단계에 ice·lightning 병렬
+   - "세 번 몰아치는 눈보라" → ice form 3단계
+   - "파이어볼"·"영원한 얼음의 심장"·"단 한 자루 빛의 창" → spell
 
-cast 출력 스키마:
+cast 필드 예시(실제 JSON은 spell/spell_plan 중 하나만):
 {
-  "schema_version": 2,
-  "disposition": "cast",
-  "spell": {
-    "name": "주문명 (12자 이내, 입력 언어와 동일하게)",
-    "effect": "damage|heal|shield|buff|control|summon",
-    "target": "enemy|self|area",
-    "element_primary": "fire|water|lightning|ice|earth|wind|light|dark",
-    "element_secondary": "위 8종 중 하나 또는 null",
-    "form": "bolt|beam|slash|wave|nova|rain|wall|cage|orbit|summon|buff|zone|chain",
-    "size": "small|medium|large|huge",
-    "speed": "slow|normal|fast",
-    "status": ["burn|freeze|shock|slow|knockback|weaken 중 0~3개"],
-    "power": 0,
-    "cost": 0,
-    "flavor": "짧은 플레이버 텍스트 (선택)",
-    "behavior": {
-      "steps": [
-        { "kind": "zigzag", "seconds": 2, "speed": 300, "amplitude": 60 },
-        { "kind": "dash", "seconds": 1, "speed": 440 }
-      ],
-      "loop": false
-    },
-    "shape": { "kind": "zigzag", "amplitude": 60 }
-  },
-  "spell_plan": {
-    "name": "전체 영창명 (12자 이내)", "power": 0, "durationMs": 1500,
-    "sequences": [
-      { "durationWeight": 2, "behaviors": [ { "type": "move", "destination": "target-direction", "element": "fire" } ] },
-      { "durationWeight": 1, "behaviors": [ { "type": "form", "powerWeight": 1, "tuning": { "damage": 2, "radius": 2 }, "spec": { "name": "돌진 폭발", "effect": "damage", "target": "self", "element_primary": "fire", "element_secondary": null, "form": "nova", "size": "large", "speed": "normal", "status": ["burn"], "power": 0, "cost": 0 } } ] }
-    ]
-  }
+"schema_version":2,"disposition":"cast",
+"spell":{
+ "name":"주문명(12자 이내)","effect":"damage|heal|shield|buff|control|summon","target":"enemy|self|area",
+ "element_primary":"fire|water|lightning|ice|earth|wind|light|dark","element_secondary":"앞 원소 중 하나 또는 null",
+ "form":"bolt|beam|slash|wave|nova|rain|wall|cage|orbit|summon|buff|zone|chain",
+ "size":"small|medium|large|huge","speed":"slow|normal|fast","status":["burn|freeze|shock|slow|knockback|weaken 중 0~3개"],
+ "power":0,"cost":0,"flavor":"짧은 설명(선택)",
+ "behavior":{"steps":[{"kind":"zigzag","seconds":2,"speed":300,"amplitude":60},{"kind":"dash","seconds":1,"speed":440}],"loop":false},
+ "shape":{"kind":"zigzag","amplitude":60}
+},
+"spell_plan":{
+ "name":"전체 영창명(12자 이내)","power":0,"durationMs":1500,
+ "sequences":[
+  {"durationWeight":2,"behaviors":[{"type":"move","destination":"target-direction","element":"fire"}]},
+  {"durationWeight":1,"behaviors":[{"type":"form","powerWeight":1,"tuning":{"damage":2,"radius":2},"spec":{"name":"돌진 폭발","effect":"damage","target":"self","element_primary":"fire","element_secondary":null,"form":"nova","size":"large","speed":"normal","status":["burn"],"power":0,"cost":0}}]}
+ ]
 }
-behavior는 effect가 summon이고 움직임 묘사가 있을 때만 포함한다(그 외 생략). steps는 위 6개 kind만, 최대 6개.
-shape는 form이 wall이고 모양 묘사가 있을 때만 포함한다(그 외 생략). kind는 위 6개(arc·line·zigzag·wave·ring·polygon)만.
-복합/순차·동시 동작이면 **대표 spell을 생략하고 spell_plan만** 낸다(클라이언트가 유도). 단일 동작이면 **spell만** 낸다(spell_plan 생략). type은 form|move|wait, move는 element 필수·destination 6종만. custom-vector는 angle·distance를 함께 낸다. spec.power/cost는 0으로 둔다.
+}
 
 fizzle 출력: {"schema_version":2,"disposition":"fizzle","reason":"nonsense","message":"마력이 형태를 이루지 못했다"}
 blocked 출력: {"schema_version":2,"disposition":"blocked","reason":"unsafe","message":"해당 문장으로는 영창할 수 없습니다"}

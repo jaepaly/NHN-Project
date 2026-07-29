@@ -14,8 +14,8 @@
 - [x] 사전 corpus·측정 지표·GO/NO-GO 중단선 고정([PROMPT_COMPACT_SPIKE_2026-07-29.md](PROMPT_COMPACT_SPIKE_2026-07-29.md)).
 
 **R2 작업**
-- [ ] 1차 `compact-text`: named JSON·validator·엔진 불변, 규칙 7·예시·스키마 뒤 중복만 축약.
-- [ ] 정적 계약 테스트·전체 회귀·빌드 후 text 후보 중간 판정.
+- [x] 1차 `compact-text`: named JSON·validator·엔진 불변, 규칙 7·예시·스키마 뒤 중복만 축약. **7,016→4,696자(-33.1%)**.
+- [x] 정적 계약 테스트 + 기존 plan/sequence/fallback 회귀 + 빌드 통과. 모델 품질은 Version Preview A/B 전이라 아직 미판정.
 - [ ] 2차 `sparse-plan`: 동일 named/nested 구조에서 validator 기본값·로컬 재계산 필드만 생략.
 - [ ] sparse plan 검증→resolve 계약 회귀 후 중간 판정.
 - [ ] `wrangler versions upload`로 배포와 분리된 Version Preview 생성. `wrangler deploy` 금지.
