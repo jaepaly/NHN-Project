@@ -1461,38 +1461,55 @@
   }
 
   const ROOM_DURATION_SECONDS = {
-    combat: 60,
-    trap: 65,
-    elite: 65,
+    combat: 47,
+    trap: 54,
+    elite: 60,
     treasure: 20,
     altar: 20,
-    boss: 75,
   };
-  const RUN_OVERHEAD_SECONDS = 90;
+  const STAGE_BOSS_SECONDS = 78;
+  const FINAL_BOSS_SECONDS = 90;
+  const POST_COMBAT_CHOICE_SECONDS = 9;
+  const PORTAL_SELECTION_SECONDS = 3;
+  const ROOM_TRANSITION_SECONDS = 1;
+
+  function roomDurationSeconds(node) {
+    if (node.kind === 'boss') {
+      return node.stage === 1 ? STAGE_BOSS_SECONDS : FINAL_BOSS_SECONDS;
+    }
+    return ROOM_DURATION_SECONDS[node.kind];
+  }
 
   function averageRouteMix(graph, stages) {
     const combatKinds = new Set(['combat', 'trap', 'elite', 'boss']);
     let combat = 0;
     let nonCombat = 0;
-    let runtimeSeconds = RUN_OVERHEAD_SECONDS;
+    let runtimeSeconds = 0;
+    let roomCount = 0;
     for (const stage of stages) {
       const paths = enumerateStagePaths(graph, stage.start.id, stage.boss.id);
       if (paths.length === 0) continue;
       const totals = paths.reduce((sum, path) => {
-        sum.combat += path.filter(node => combatKinds.has(node.kind)).length;
+        const pathCombatCount = path.filter(node => combatKinds.has(node.kind)).length;
+        sum.combat += pathCombatCount;
         sum.nonCombat += path.filter(
           node => node.kind === 'treasure' || node.kind === 'altar',
         ).length;
+        sum.rooms += path.length;
         sum.runtimeSeconds += path.reduce(
-          (pathTotal, node) => pathTotal + ROOM_DURATION_SECONDS[node.kind],
+          (pathTotal, node) => pathTotal + roomDurationSeconds(node),
           0,
-        );
+        ) + pathCombatCount * POST_COMBAT_CHOICE_SECONDS;
         return sum;
-      }, { combat: 0, nonCombat: 0, runtimeSeconds: 0 });
+      }, { combat: 0, nonCombat: 0, rooms: 0, runtimeSeconds: 0 });
       combat += totals.combat / paths.length;
       nonCombat += totals.nonCombat / paths.length;
+      roomCount += totals.rooms / paths.length;
       runtimeSeconds += totals.runtimeSeconds / paths.length;
     }
+    const transitionCount = Math.max(0, roomCount - 1);
+    runtimeSeconds += transitionCount
+      * (PORTAL_SELECTION_SECONDS + ROOM_TRANSITION_SECONDS);
     return {
       combat,
       nonCombat,
