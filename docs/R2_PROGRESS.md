@@ -4,6 +4,21 @@
 > 규칙: **푸시할 때마다 이 파일에 "현재 어디까지 했는지"를 갱신해서 함께 커밋한다.**
 > (팀 공용 1줄 기록은 [AI_USAGE_LOG.md](AI_USAGE_LOG.md), 이 파일은 R2 상세 로그)
 
+## ☑ 지금 작업 흐름 — #158 fixture 유사 자연어 실플레이 지연 진단 (2026-07-29)
+
+> **목표**: 공개 fixture 문자열과 `#seq` 명령을 쓰지 않은 신규 자연어 영창으로 라이브 Gemini 경로를 호출하고, DEV 플레이 로그의 `src`·`elapsedMs`·`mode`·`fallbackReason`·`sequence_exec`를 기준으로 실제 지연과 fallback 비율을 정리한다. 프롬프트·판정 시간·Worker는 이번 측정에서 변경하지 않는다.
+
+**체크리스트**
+- [x] 관측성 보강 커밋을 최신 `origin/main` 기반 진단 브랜치에 적용.
+- [x] fixture·기존 held-out과 겹치지 않는 신규 자연어 코퍼스 확정.
+- [x] 로컬 게임의 실제 입력 경로로 신규 영창 7종 호출.
+- [x] 판정 출처·지연·single/sequence·fallback 사유·실행 여부 집계.
+- [x] 측정 결과와 timeout 조정 판단을 진단 문서·AI 사용 로그·#158에 동기화.
+
+> **결과**: Gemini 7/7, fallback 0/7. sequence 경계군 5/5와 single 대조군 2/2가 기대대로 분류됐고 sequence 5건은 모두 `fixture:false` 상태로 실제 실행됐다. 지연은 중앙값 1,533ms, p90/최대 1,833ms로 현재 timeout(single 2,500ms / sequence 3,200ms)보다 충분히 짧았다. 이번 소표본만으로 timeout을 늘릴 근거는 없으며, 기존 timeout 세션과 합친 장시간 p95·p99 관찰을 후속으로 둔다. 상세: [JUDGE_NATURAL_PROMPT_TIMING_2026-07-29.md](JUDGE_NATURAL_PROMPT_TIMING_2026-07-29.md)
+
+---
+
 ## ☑ 지금 작업 흐름 — #158 실플레이 판정 로그 관측성 보강 (2026-07-29)
 
 > **요청**: 빠르게 사라지는 화면 결과를 캡처하지 않아도 `logs/play.jsonl`만으로 fixture 우회 여부, 실제 판정 출처, single/sequence, 지연, fallback 원인, 실제 sequence 실행을 검증할 수 있게 한다. 판정·프롬프트·Worker 거동은 변경하지 않고 DEV 로깅만 보강한다.
