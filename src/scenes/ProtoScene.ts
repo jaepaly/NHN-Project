@@ -93,6 +93,7 @@ import { playerPowerIndex } from '../combat-core/run/playerPower';
 import { flooredResistMultiplier } from '../combat-core/combat/debuffFloor';
 import { showBossChoice } from '../ui/bossChoiceOverlay';
 import { showSystemBanner } from '../render/systemBanner';
+import { bossResistanceLines, bossResistanceReadout } from '../render/bossResistanceReadout';
 import { playAwakeningSigil } from '../render/awakeningSigil';
 import {
   PARTICLE_TEXTURES, ensureParticleTextures, particleKey,
@@ -1967,7 +1968,9 @@ export class ProtoScene extends Phaser.Scene {
       fontSize: '14px',
       fontStyle: 'bold',
       color: '#72f1b8',
-      align: 'right',
+      // 블록은 우측 고정(origin 1,0)이되 **안쪽은 왼쪽 정렬** — 우측 정렬은 오른쪽 끝만
+      // 맞고 줄 시작점이 어긋나 눈이 매 줄 시작을 다시 찾는다 (중앙 정렬 지적의 거울상).
+      align: 'left',
       lineSpacing: 3,
       wordWrap: { width: 256, useAdvancedWrap: true },
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
@@ -5466,18 +5469,22 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.waveText.setText(`NEXT ROOM ${runState.roomIndex + 1}/${runState.maxRooms}`);
     } else if (this.isBossEncounter()) {
       const boss = this.enemies.find((enemy) => enemy.kind === 'boss');
-      // 저항을 상시 노출한다 — 보스 링 색만으로는 "무엇이 안 통하는지" 알 수 없다
-      const resistances = this.sortedBossResistanceEntries();
-      const resistLabel = resistances.length > 0
-        ? `\n저항 ${resistances
-          .map(([element, multiplier]) => `${ELEMENT_LABELS[element]} ×${multiplier}`)
-          .join(' / ')}`
-        : '';
-      this.waveText.setText(
-        boss
-          ? `BOSS ${Math.ceil(boss.hp)}/${boss.maxHp}${resistLabel}  ·  ENEMIES ${this.enemies.length}`
-          : 'BOSS',
+      // 저항을 상시 노출한다 — 보스 링 색만으로는 "무엇이 안 통하는지" 알 수 없다.
+      // 단, **마스터리로 관통한 원소는 저항으로 적지 않는다**(#171) — 실제론 온전히
+      // 들어가는데 화면이 "안 통한다"고 말하면 가장 키운 원소를 버리게 된다.
+      const readout = bossResistanceReadout(
+        this.sortedBossResistanceEntries().map(([element, multiplier]) => ({
+          element,
+          multiplier,
+          affinity: this.combatRunController.state.elementalAffinity[element] ?? 0,
+        })),
+        RESISTANCE.masteryImmunityAffinity,
       );
+      // 한 줄에 한 사실 — 적 수를 저항 목록 꼬리에 붙이면 저항 정보처럼 읽힌다
+      const status = boss
+        ? `BOSS ${Math.ceil(boss.hp)}/${boss.maxHp}  ·  ENEMIES ${this.enemies.length}`
+        : 'BOSS';
+      this.waveText.setText(bossResistanceLines(status, readout).join('\n'));
     } else if (this.waveManager.phase === 'waiting') {
       this.waveText.setText(
         `NEXT WAVE ${this.waveManager.delayRemaining.toFixed(1)}s`,
