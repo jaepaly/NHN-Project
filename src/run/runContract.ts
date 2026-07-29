@@ -22,7 +22,8 @@ export type RewardKind =
   | 'spirit-haste'
   | 'engrave'
   | 'spirit'
-  | 'evolve';
+  | 'evolve'
+  | 'awaken';
 
 /** 각인·정령 공통 성장 레벨 — 범위 밖 값이 보상으로 소비되는 경로를 타입에서 차단 (R1 리뷰) */
 export type GrowthLevel = 1 | 2 | 3;
@@ -56,6 +57,15 @@ export interface EvolveRewardData {
   elements: readonly SpellElement[];
 }
 
+/**
+ * 원소 각성 — 친화가 임계(1.2)에 닿은 원소에 성질을 새긴다. 원소당 1회.
+ * 세 갈래 모두 **수동 영창 전용**이라 오토 비중 상한(#67)과 무관하다.
+ */
+export interface AwakenRewardData {
+  element: SpellElement;
+  awakening: 'searing' | 'chaining' | 'brand';
+}
+
 export interface RewardOption {
   /** 고유 id — chooseReward()에 그대로 전달 */
   id: string;
@@ -72,6 +82,8 @@ export interface RewardOption {
   spirit?: SpiritRewardData;
   /** kind='evolve' 전용 — 진화·융합 대상 */
   evolve?: EvolveRewardData;
+  /** kind='awaken' 전용 — 각성할 원소와 갈래 (AWAKENING_PROPOSAL) */
+  awaken?: AwakenRewardData;
   /**
    * 강화 배율 — 표준 보상은 미지정(=1). 제단방(#214) 같은 "상급" 보상이 1보다 큰 값을
    * 실어 `applyReward`가 수치형 효과(HP·마나·친화·수호 등)에 곱한다. 미지정이면 1로 본다.

@@ -66,6 +66,16 @@ import type { CameraShakeTier } from '../combat-core/combat/cameraShakeConfig';
 import { requestCameraShake, resetCameraShake } from '../render/cameraShake';
 import { reducedAffinityVfxIntensity } from '../render/affinityVfx';
 import { VFX_BUDGET_CONFIG } from '../render/vfxBudget';
+import type { AwakeningState } from '../combat-core/run/awakening';
+import {
+  AWAKENING_CONFIG,
+  AWAKENING_LABELS,
+  applyAwakening,
+  awakenableElement,
+  awakeningFor,
+  awakeningOptions,
+  searingStatus,
+} from '../combat-core/run/awakening';
 import { allGlyphTextures, formGlyphTextureKey } from '../render/formGlyphs';
 import type { BuildChip } from '../run/buildChipModel';
 import { buildChipModel } from '../run/buildChipModel';
@@ -439,6 +449,8 @@ export class ProtoScene extends Phaser.Scene {
   private readonly engraveManager = new EngraveManager();
   private readonly spiritManager = new SpiritManager();
   private engraveRewardRand = createRunRandom(Date.now());
+  /** 원소별 각성 — 원소당 1회. 런 리셋에서 비운다 (AWAKENING_PROPOSAL) */
+  private awakenings: AwakeningState = {};
   // 명시적 타입: rewardDraw 클로저가 컨트롤러 상태(친화)를 읽어 자기참조 추론이 막히는 것 회피
   private readonly combatRunController: CombatRunController = new CombatRunController({
     playerState: this.playerState,
@@ -454,6 +466,14 @@ export class ProtoScene extends Phaser.Scene {
         roomIndex,
         this.engraveRewardRand,
       );
+      // 각성 — 친화 임계(1.2)에 닿은 원소가 있으면 **3택 전체**를 각성 갈래로 바꾼다.
+      // 한 장만 끼우지 않는 이유: 세 갈래 중 고르는 것이 각성의 핵심이고, 일반 카드와
+      // 섞으면 "스타일 선택"이 아니라 "운 좋으면 각성"이 된다.
+      const awakenTarget = awakenableElement(
+        this.combatRunController.state.elementalAffinity,
+        this.awakenings,
+      );
+      if (awakenTarget) return awakeningOptions(awakenTarget);
       // 성장의 정점(④) — 진화·융합 후보가 있으면 정적 카드 한 장을 치환
       return injectEvolveReward(
         withSpirit,
@@ -1026,6 +1046,17 @@ export class ProtoScene extends Phaser.Scene {
         this.player.x,
         this.player.y,
       );
+      if (chosen.kind === 'awaken' && chosen.awaken) {
+        const { element, awakening } = chosen.awaken;
+        this.awakenings = applyAwakening(this.awakenings, element, awakening);
+        this.announceSystemMessage(
+          `${ELEMENT_LABELS[element]} 각성 — ${AWAKENING_LABELS[awakening]}`,
+          '#d0a8ff',
+          3000,
+        );
+        devInfo('[Run] awakened', chosen.awaken, state);
+        return;
+      }
       if (chosen.kind === 'evolve' && chosen.evolve) {
         // 진화·융합은 LLM 작명이 필요해 비동기 — 작명은 반드시 성공하므로(폴백) 미완료 상태가 없다
         void this.applyEvolution(chosen.evolve);
@@ -1247,6 +1278,8 @@ export class ProtoScene extends Phaser.Scene {
     this.enemyAilments.clear();
     this.clearBurnEmbers();
     this.shockCooldowns.clear();
+    // 이어가기는 친화를 유지하므로 각성도 유지한다 — 비우면 같은 원소를
+    // 매 루프 재각성하는 무한 파밍이 된다 (친화가 이미 임계 위이므로).
     this.lastResistNoticeAt = 0;
     this.runMovementDistance = 0;
     this.combatRunController.continueRun();
@@ -1272,6 +1305,7 @@ export class ProtoScene extends Phaser.Scene {
     this.enemyAilments.clear();
     this.clearBurnEmbers();
     this.shockCooldowns.clear();
+    this.awakenings = {};
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
     this.engraveManager.reset();
@@ -1291,6 +1325,7 @@ export class ProtoScene extends Phaser.Scene {
     this.enemyAilments.clear();
     this.clearBurnEmbers();
     this.shockCooldowns.clear();
+    this.awakenings = {};
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
     this.engraveManager.reset();
@@ -3667,8 +3702,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         priorCasts.map((e) => ({ element: e.elementPrimary, form: e.form })),
       );
       // 융합 방출은 페널티·친화·감쇠 체인을 덮는 고정 최대치 — "최대 방출"의 약속
+      // 작열 각성 — 그 원소 수동 영창이 언제나 본성을 새긴다 (수동 경로라 auto=false)
+      const searing = awakeningFor(this.awakenings, spec, false) === 'searing';
       const effectiveSpec: SpellSpec = fusedSpec ?? {
         ...spec,
+        status: searing ? searingStatus(spec) : spec.status,
         power: Math.round(
           spellPowerWithAffinity(historyEntry.power, affinityBonus)
           * escalationWeaken * diversity * this.playerState.damageOutMultiplier // empower 버프
@@ -5563,6 +5601,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         }
       }
       this.applyOnHitStatuses(enemy, spec);
+      this.applyAwakeningOnHit(enemy, spec, auto);
     };
     if (impact.kind === 'point') {
       if (impact.chainIndex !== undefined) {
@@ -6194,6 +6233,55 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       } else if (status === 'shock') {
         this.applyShockChain(enemy, spec);
       }
+    }
+  }
+
+  /**
+   * 원소 각성 적중 효과 (AWAKENING_PROPOSAL) — **수동 영창의 주속성만**.
+   *
+   * awakeningFor()가 auto를 걸러내므로 각인·정령은 절대 여기 안 걸린다. 자동 쪽에
+   * 효과를 주면 오토 비중 40% 상한(#67)이 깨지기 때문이다 — 회귀로 고정된 불변식.
+   *
+   * 작열은 시전 스펙 단계에서 상태이상으로 새겨지므로(effectiveSpec) 여기선 다루지
+   * 않는다. 여기는 "맞은 뒤"에만 의미가 있는 두 갈래다.
+   */
+  private applyAwakeningOnHit(enemy: CombatEnemy, spec: SpellSpec, auto: boolean): void {
+    if (!enemy.alive) return;
+    const kind = awakeningFor(this.awakenings, spec, auto);
+    if (kind === 'chaining') {
+      // 연환 — 곁의 적에게 번진다. 이미 있는 연쇄 감전 문법을 그대로 쓴다
+      // (새 전투 규칙을 만들지 않는다). 파급은 본체보다 약하다.
+      this.spreadAwakenedChain(enemy, spec);
+    } else if (kind === 'brand') {
+      // 낙인 — 맞은 적이 무너지기 쉬워진다. 위력이 아니라 **다음 한 방**을 키운다.
+      this.enemyAilments.applyWeaken(
+        enemy,
+        AWAKENING_CONFIG.brandWeakenMultiplier,
+        AWAKENING_CONFIG.brandWeakenSeconds,
+      );
+    }
+  }
+
+  /** 연환 파급 — shock 연쇄와 같은 형태·쿨다운을 쓰되 원소색으로 그린다. */
+  private spreadAwakenedChain(source: CombatEnemy, spec: SpellSpec): void {
+    const now = this.time.now;
+    if (now - (this.shockCooldowns.get(source) ?? -Infinity)
+      < AILMENT_CONFIG.shock.cooldownSeconds * 1000) return;
+    this.shockCooldowns.set(source, now);
+    const spill = spellImpactDamageFromPower(spec.power, AWAKENING_CONFIG.chainingDamageScale);
+    const pal = ELEMENT_PALETTES[spec.element_primary];
+    const targets = this.enemies
+      .filter((e) => e.alive && e !== source
+        && Phaser.Math.Distance.Between(e.x, e.y, source.x, source.y) <= AILMENT_CONFIG.shock.radius)
+      .slice(0, AWAKENING_CONFIG.chainingExtraTargets);
+    for (const target of targets) {
+      const arc = this.add.line(0, 0, source.x, source.y, target.x, target.y, pal.core, 0.9)
+        .setOrigin(0, 0).setLineWidth(2).setDepth(6).setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({ targets: arc, alpha: 0, duration: 200, onComplete: () => arc.destroy() });
+      this.damageEnemy(
+        target, this.spellDamageAgainst(target, spec, spill), spec.element_primary,
+        source.x, source.y, false, 'standard', 0, 'manual',
+      );
     }
   }
 
