@@ -30,6 +30,8 @@ const requiredContracts = [
   'cast-point|target-direction|away-from-target|random-direction|arena-center|custom-vector',
   '명시된 동작·변화·반복 횟수 > 정적 명사 예외',
   '이동 동사+공격 동사가 함께 있으면 접속어와 무관하게 반드시 plan',
+  '반복 2회 이상도 반드시 plan',
+  '신체·생명 명사만으로 heal을 추론하지 않는다',
   '두 모드는 상호배타적',
   '입력에 없는 heal/shield/buff를 추가하지 않는다',
   'sequence 3·각 behavior 1~2',

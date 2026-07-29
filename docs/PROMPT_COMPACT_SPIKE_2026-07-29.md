@@ -162,3 +162,7 @@
 - `sparse-plan` Version `37cda1a0-f68f-484d-91c7-9f83afb3f587`
   - 같은 명시 복합 입력은 유효 JSON이었지만 `적에게 파고들어 칼날로 벤다`를 single spell+dash behavior로 융합해 분류. 동결 중단선에 따라 이 버전도 NO-GO.
   - held-out은 건드리지 않고 일반 규칙 `이동 동사+공격 동사 → 접속어와 무관하게 반드시 plan`과 원리 예시 1개만 보강한 r2 후보로 재검증한다.
+- `sparse-plan-r2` Version `598bfadf-9695-43bf-b977-e3afde8dbd32`
+  - 이동+공격 3종은 모두 2-sequence로 복구.
+  - `불사조의 낙화`를 single, `심장이 두 번 뛰는 동안`을 single+heal로 분류해 여전히 NO-GO.
+  - 일반 규칙 `동작 명사도 plan`, `반복 2회 이상은 plan`, `신체 명사만으로 heal 추론 금지`를 보강한 r3를 마지막 축약 튜닝으로 검증한다.

@@ -53,15 +53,15 @@ const JUDGE_PROMPT = `당신은 자유 텍스트 마법 게임의 의미 판정�
    - zigzag·wave는 amplitude 1~100(굴곡 세기), polygon은 sides 3~8(삼각형=3).
    - 예: "지그재그로" → zigzag / "원을 그리며 둘러싸라" → ring / "삼각형으로" → polygon(sides 3)
 7. cast의 출력 모드를 먼저 고른다.
-   - spell_plan: ① 순차·동시의 여러 사건 ② 위치 이동이 공격으로 이어지는 동작("-며/-어"로 붙어도 포함) ③ 아래 single 예외가 아닌 추상·시적·서사 이름. 애매한 추상 입력은 핵심 이미지를 보존한 2~3단계 안무로 펼친다.
+   - spell_plan: ① 순차·동시의 여러 사건 ② 위치 이동이 공격으로 이어지는 동작("-며/-어"로 붙어도 포함) ③ 아래 single 예외가 아닌 추상·시적·서사 이름. 동작을 명사화한 이름(비행·낙하 등)은 정적 이미지가 아니다. 애매한 추상 입력은 핵심 이미지를 보존한 2~3단계 안무로 펼친다.
    - spell: 하나의 명시 동작, 정적 사물·상태 한 이미지, 직접 원소+형태 주문명, 수량 1("한 자루"·"하나의"·"단 한 번"). 긴 문장이라는 이유만으로 plan을 만들지 않는다.
-   - 충돌 시 **명시된 동작·변화·반복 횟수 > 정적 명사 예외** 순이다. 이동 동사+공격 동사가 함께 있으면 접속어와 무관하게 반드시 plan이다. "두 번"·"세 번"은 그 횟수만큼 단계/반복, 다원소는 병렬, 수량 1은 single로 반영한다.
+   - 충돌 시 **명시된 동작·변화·반복 횟수 > 정적 명사 예외** 순이다. 이동 동사+공격 동사가 함께 있으면 접속어와 무관하게 반드시 plan이다. 반복 2회 이상도 반드시 plan이며 그 횟수만큼 단계/반복한다. 다원소는 병렬, 수량 1은 single이다.
    - 두 모드는 상호배타적이다. plan이면 대표 spell을 생략하고, single이면 spell_plan을 생략한다.
    - 순차 사건은 앞에서부터 sequences로, 같은 순간은 한 sequence의 behaviors로 묶는다. 일반 상한은 sequence 10·behavior 5, 추상 확장은 sequence 3·각 behavior 1~2다.
    - behavior type: form(공격·효과, spec은 아래 spell 필드와 동일) | move(element 필수) | wait.
    - move.destination: cast-point|target-direction|away-from-target|random-direction|arena-center|custom-vector. 위치 이동은 공격과 융합돼도 별도 move 단계다. move 하나는 총 power의 10%다.
    - 화면 절대 방향은 custom-vector와 angle/distance(1~420)를 쓴다. 위0·오른쪽90·아래180·왼쪽-90·위왼쪽-45·위오른쪽45이며 표적 위치와 무관하다.
-   - 추상 확장으로 입력에 없는 heal/shield/buff를 추가하지 않는다. 앵커는 원소 보존 > effect 목적 > 수사 기전 순이다.
+   - 추상 확장으로 입력에 없는 heal/shield/buff를 추가하지 않는다. 신체·생명 명사만으로 heal을 추론하지 않는다. 앵커는 원소 보존 > effect 목적 > 수사 기전 순이다.
    - power와 durationMs(500~3000)는 전체 예산이다. plan의 form spec은 name/effect/target/element_primary/form을 필수로 내고, element_secondary=null·size=medium·speed=normal·status=[]·power/cost는 생략한다. durationWeight/powerWeight가 1이거나 tuning 강조가 없을 때도 생략한다.
    - 픽셀·초·피해값·적 위치·무적과 스키마 밖 enum은 만들지 않는다.
    원리 예시:
