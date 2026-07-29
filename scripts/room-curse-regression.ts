@@ -71,17 +71,17 @@ assert.deepEqual(
     lightFireCastCount: 2,
     wordLimitTopQuartileCost: 36,
   }),
-  { silence: 1, blackout: 0.8, 'word-limit': 0.8 },
+  { silence: 1, blackout: 0.8, heatwave: 0.5, 'word-limit': 0.8 },
   '직전 행동을 저주 후보별 가중치로 계산',
 );
 assert.deepEqual(
   roomCurseWeights(),
-  { silence: 0.5, blackout: 0.5, 'word-limit': 0.5 },
+  { silence: 0.5, blackout: 0.5, heatwave: 0.5, 'word-limit': 0.5 },
 );
 assert.equal(
   selectHighestWeightedCurse(
     ['silence', 'blackout'],
-    { silence: 0.2, blackout: 0.9, 'word-limit': 0.5 },
+    { silence: 0.2, blackout: 0.9, heatwave: 0.5, 'word-limit': 0.5 },
     () => 0.5,
   ),
   'blackout',
@@ -99,7 +99,7 @@ assert.deepEqual(
       element: ['silence', 'blackout'],
       casting: ['blackout'],
     },
-    { silence: 1, blackout: 0.8, 'word-limit': 0.5 },
+    { silence: 1, blackout: 0.8, heatwave: 0.5, 'word-limit': 0.5 },
     () => 0,
   ),
   { movement: 'silence', element: 'blackout' },
@@ -108,7 +108,7 @@ assert.deepEqual(
 assert.deepEqual(
   selectRoomCursesByCategory(
     { casting: ['word-limit'] },
-    { silence: 0.5, blackout: 0.5, 'word-limit': 1 },
+    { silence: 0.5, blackout: 0.5, heatwave: 0.5, 'word-limit': 1 },
     () => 0.5,
   ),
   { casting: 'word-limit' },
