@@ -87,7 +87,8 @@ import { DEFAULT_SETTINGS, loadSettings } from '../run/gameSettings';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import { devInfo } from '../debug/devLog';
 import { FusionGauge } from '../combat-core/player/fusionGauge';
-import { loopDamageScale, loopHpScale } from '../combat-core/run/loopDifficulty';
+import { enemyHpScale, loopDamageScale } from '../combat-core/run/loopDifficulty';
+import { playerPowerIndex } from '../combat-core/run/playerPower';
 import { flooredResistMultiplier } from '../combat-core/combat/debuffFloor';
 import { showBossChoice } from '../ui/bossChoiceOverlay';
 import { showSystemBanner } from '../render/systemBanner';
@@ -1475,7 +1476,7 @@ export class ProtoScene extends Phaser.Scene {
       this.player.y - 340,
       usesMemory ? 'memory' : 'stage',
       // 보스는 절반 배율 — 내성 누적(#77)과 이중 강화가 되지 않게
-      loopHpScale(this.combatRunController.state.loopIndex, true),
+      enemyHpScale(this.combatRunController.state.loopIndex, this.currentPlayerPower(), true),
     );
     this.bossPatternController = new BossPatternController(usesMemory ? 'memory' : 'stage');
     const isCurrentBossRoom = (): boolean => {
@@ -2422,6 +2423,22 @@ if (applied) this.playPlayerHit();
     return new Phaser.Math.Vector2(x, y);
   }
 
+  /**
+   * 지금 빌드의 파워 배율 (1 = 런 시작). 적 체력 스케일링의 입력이다.
+   *
+   * 스폰 시점에 매번 계산한다 — 방 중간에 각성·진화가 붙어도 **이미 나온 적은 그대로**이고
+   * 다음 방부터 반영된다. 진행 중인 전투가 갑자기 어려워지면 플레이어는 자기가 뭘 잘못했는지
+   * 모른다 (스냅샷 시점을 스폰으로 고정하는 이유).
+   */
+  private currentPlayerPower(): number {
+    return playerPowerIndex({
+      affinity: this.combatRunController.state.elementalAffinity,
+      engraves: this.engraveManager.entries,
+      spirits: this.spiritManager.entries,
+      awakenings: this.awakenings,
+    });
+  }
+
   private spawnEnemy(
     kind: EnemyKind,
     x: number,
@@ -2429,10 +2446,11 @@ if (applied) this.playPlayerHit();
     applyEncounterModifier = false,
     explicitModifier?: EliteModifier,
   ): void {
-    // 이어가기 루프마다 체력이 오른다 (총괄 지적: 딜만 성장해 한 방에 쓸린다).
-    // 플레이어 성장(+15~21%/루프)보다 살짝 완만한 +15%라 이길수록 앞서 나가되
-    // 전투가 무의미해지지 않는다.
-    const hpScale = loopHpScale(this.combatRunController.state.loopIndex);
+    // 적 체력은 **플레이어가 실제로 성장한 만큼** 오른다 (총괄 지적: 절대 수치가 아니라
+    // 상대적으로). 흡수율 0.55 < 1이라 키울수록 항상 순이득이다 — loopDifficulty 참고.
+    const hpScale = enemyHpScale(
+      this.combatRunController.state.loopIndex, this.currentPlayerPower(),
+    );
     let enemy: CombatEnemy;
     switch (kind) {
       case 'shield-sentinel':
