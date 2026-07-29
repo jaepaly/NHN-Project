@@ -114,3 +114,25 @@ function seededRand(seed: number): () => number {
 }
 
 console.log('Altar reward regression: 3택·다양성·프리미엄배율·재현성·HP대가·실적용·설명배율 7군 통과');
+
+// ── 대가가 죽이지 않는다 (R3 배선, 2026-07-29) ──────────────────────────
+// 대가는 최대 HP 기준이라 저체력에서 제단에 들어서면 그 자리에서 죽는다.
+// 방에 들어선 것만으로 사망하면 선택이 아니라 함정이다.
+{
+  const { altarHpCostFor } = await import('../src/combat-core/run/altarRewardConfig');
+  const assert2 = (await import('node:assert/strict')).default;
+  assert2.equal(altarHpCostFor(100, 100), 25, '만피에선 정가 그대로');
+  assert2.equal(altarHpCostFor(100, 26), 25, '딱 버틸 수 있으면 정가');
+  assert2.equal(altarHpCostFor(100, 25), 24, '정가를 내면 죽는 지점부터 깎인다');
+  assert2.equal(altarHpCostFor(100, 5), 4, '저체력');
+  assert2.equal(altarHpCostFor(100, 1), 0, 'HP 1이면 공짜 — 죽일 바엔 안 받는다');
+  assert2.equal(altarHpCostFor(100, 0), 0);
+  assert2.equal(altarHpCostFor(100, Number.NaN), 0, 'NaN 방어');
+  // 어떤 조합에서도 사망하지 않는다
+  for (let maxHp = 20; maxHp <= 400; maxHp += 20) {
+    for (let hp = 1; hp <= maxHp; hp += 1) {
+      assert2.ok(hp - altarHpCostFor(maxHp, hp) >= 1, `제단이 죽였다 (maxHp ${maxHp}, hp ${hp})`);
+    }
+  }
+  console.log('altar reward regression: 대가 사망 방지 통과');
+}

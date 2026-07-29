@@ -21,12 +21,12 @@ const CONFIG = {
 export class ShieldSentinelEnemy implements CombatEnemy {
   readonly kind = 'shield-sentinel' as const;
   readonly view: Phaser.GameObjects.Container;
-  readonly maxHp = CONFIG.maxHp;
+  readonly maxHp: number;
   readonly contactDamage = CONFIG.contactDamage;
   readonly contactDistance = CONFIG.contactDistance;
   readonly collisionRadius = CONFIG.collisionRadius;
 
-  hp: number = this.maxHp;
+  hp: number;
   alive = true;
   private contactDamageCooldownRemaining = 0;
   /** 재질+발광 두 겹 — 회전을 함께 받아야 하므로 묶어둔다. */
@@ -34,7 +34,9 @@ export class ShieldSentinelEnemy implements CombatEnemy {
   private readonly shieldRing: Phaser.GameObjects.Graphics;
   private readonly healthFill: Phaser.GameObjects.Rectangle;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
+  constructor(scene: Phaser.Scene, x: number, y: number, hpScale = 1) {
+    this.maxHp = Math.max(1, Math.round(CONFIG.maxHp * hpScale));
+    this.hp = this.maxHp;
     this.shieldRing = scene.add.graphics();
     this.shieldRing.lineStyle(5, 0x66d9ff, 0.9);
     this.shieldRing.beginPath();

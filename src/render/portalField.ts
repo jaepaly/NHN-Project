@@ -40,6 +40,16 @@ const KIND_COLOR: Record<MapNodeKind, number> = {
 export interface PortalChoice {
   nodeId: string;
   kind: MapNodeKind;
+  /**
+   * 배치 좌표 (#245 `layoutRoomExits` 결과). 주면 그대로 세우고, 없으면 앵커 기준
+   * 가로 부채꼴로 벌린다(선행 개발 시절의 자체 배치 — DEV 프리뷰가 아직 쓴다).
+   *
+   * 본 게임은 **반드시 계약값을 준다**: 출구는 오른쪽 가장자리에 목적지 lane 순서로
+   * 세로 배치되고, 도착은 항상 왼쪽 중앙이다. 자체 배치를 쓰면 세 번째 포탈이
+   * 방 밖(x > width)으로 밀려난다.
+   */
+  x?: number;
+  y?: number;
 }
 
 interface PortalView {
@@ -73,10 +83,10 @@ export class PortalField {
 
     const count = Math.max(1, choices.length);
     choices.forEach((choice, index) => {
-      // 가로로 벌려 세운다 — 선택지가 3개여도 겹치지 않게 간격 130px
+      // 계약값(#245)이 있으면 그대로. 없으면 앵커 기준 가로 부채꼴(DEV 프리뷰 폴백).
       const offsetX = (index - (count - 1) / 2) * 130;
-      const x = anchorX + offsetX;
-      const y = anchorY - 40;
+      const x = choice.x ?? anchorX + offsetX;
+      const y = choice.y ?? anchorY - 40;
       const color = KIND_COLOR[choice.kind];
 
       const ring = scene.add.graphics().setDepth(5).setBlendMode(Phaser.BlendModes.ADD);

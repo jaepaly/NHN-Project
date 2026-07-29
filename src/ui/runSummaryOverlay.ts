@@ -1,4 +1,5 @@
-/**
+
+import { UI_FONT, UI_LAYER } from './uiTokens';/**
  * 런 요약 오버레이 — 승리(RUN COMPLETE)·패배(YOU DIED) 공용, "이번 런의 주문서" (GDD §2 사망 흐름)
  * R3 소유 자립형 DOM 오버레이 — 씬은 데이터만 넘기고 Enter/클릭으로 재도전을 resolve받는다.
  */
@@ -8,11 +9,11 @@ const WRAP_ID = 'r3-summary-wrap';
 
 const CSS = `
 #${WRAP_ID} {
-  position: fixed; inset: 0; z-index: 40;
+  position: fixed; inset: 0; z-index: ${UI_LAYER.summary};
   display: grid; place-items: center;
   background: rgba(3, 5, 16, 0.88);
   opacity: 0; visibility: hidden; transition: opacity 240ms ease;
-  font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+  font-family: ${UI_FONT.sans};
   text-align: center;
 }
 #${WRAP_ID}.active { opacity: 1; visibility: visible; }
