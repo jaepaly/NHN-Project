@@ -14,7 +14,7 @@ import {
 } from '../render/spellRenderer';
 import type { SpellImpact } from '../render/spellRenderer';
 import type {
-  EliteModifier, EvolveRewardData, RewardOption, RunController,
+  EliteModifier, EncounterDefinition, EvolveRewardData, RewardOption, RunController,
 } from '../run/runContract';
 import {
   ELEMENT_LABELS,
@@ -235,8 +235,9 @@ import {
 } from '../combat-core/combat/floorHazardState';
 import { PortalField } from '../render/portalField';
 import { mockMinimapModel } from '../run/mapGraphMock';
-import { RunMapGraph, toMinimapModel } from '../run/mapGraph';
+import { RunMapGraph, maximumMapPathRooms, toMinimapModel } from '../run/mapGraph';
 import { MAP_GRAPH_PRESET_01 } from '../run/mapGraphPreset';
+import { encounterFromMapNode } from '../run/mapEncounter';
 import { layoutRoomArrival, layoutRoomExits } from '../run/roomPortalLayout';
 import type { RoomArrivalPlacement, RoomBounds } from '../run/roomPortalContract';
 import {
@@ -504,10 +505,21 @@ export class ProtoScene extends Phaser.Scene {
   private awakenings: AwakeningState = {};
   /** 제단 최상위 거래 — 수동 단일 영창이 한 번 더 울린다 (#214). 런 리셋에서 끈다 */
   private echoUnlocked = false;
+  /**
+   * 런 맵 그래프가 실제 방 내용의 단일 원본이다. 포탈 선택은 보상 적용 전에 끝나므로
+   * 선택된 조우를 방 번호별로 고정해 현재 방 이벤트에 다음 노드가 섞이지 않게 한다.
+   */
+  private mapGraph: RunMapGraph = new RunMapGraph(MAP_GRAPH_PRESET_01);
+  private readonly mapEncounterByRoom = new Map<number, EncounterDefinition>([[
+    DEBUG_START_ROOM,
+    encounterFromMapNode(this.mapGraph.current()),
+  ]]);
   // 명시적 타입: rewardDraw 클로저가 컨트롤러 상태(친화)를 읽어 자기참조 추론이 막히는 것 회피
   private readonly combatRunController: CombatRunController = new CombatRunController({
     playerState: this.playerState,
     initialRoomIndex: DEBUG_START_ROOM,
+    maxRooms: maximumMapPathRooms(MAP_GRAPH_PRESET_01),
+    encounterProvider: (roomIndex) => this.mapEncounterForRoom(roomIndex),
     rewardDraw: (roomIndex) => {
       // 무전투 방(보물·제단)은 전용 보상표를 쓴다 — 포탈에 붙은 라벨이 지켜져야 한다.
       // 종전엔 그래프 노드 종류가 표시만 되고 보상·내용에 반영되지 않아, "보물"로
@@ -767,15 +779,6 @@ export class ProtoScene extends Phaser.Scene {
   /** #214 선행 개발 프리뷰 전용 (DEV 콘솔 훅이 생성) — 본 게임 경로 미배선 */
   private devMinimap: MinimapHud | null = null;
   private devPortalField: PortalField | null = null;
-  /**
-   * 런 맵 그래프 (#214 본배선). 지금은 고정 프리셋(MAP_GRAPH_PRESET_01)을 쓰고,
-   * #240 파티션 생성기가 승인되면 **이 공급부만** 교체한다 — 계약은 그대로다.
-   *
-   * ⚠️ RunController와 **병행 트랙**이다. 방 개수·보상은 여전히 RunController가 세고,
-   * 그래프는 "어느 갈래로 갔는가"를 센다. 둘을 합치는 것은 R1 몫이라(#240) 여기서는
-   * 그래프가 정한 **함정 프로필만** 방에 얹는다. 두 축이 어긋나도 런은 진행된다.
-   */
-  private mapGraph: RunMapGraph = new RunMapGraph(MAP_GRAPH_PRESET_01);
   private runMinimap: MinimapHud | null = null;
   private portalField: PortalField | null = null;
   /** 다음 방에서 적용할 도착 배치 — 포탈로 넘어왔을 때만 설정된다 (첫 방은 null) */
@@ -1082,7 +1085,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   /**
-   * 시연 상태 주입 — 각인 2종(Lv3 진화)·정령 2체 Lv2·친화 2원소, 5번 방(엘리트)부터.
+   * 시연 상태 주입 — 각인 2종(Lv3 진화)·정령 2체 Lv2·친화 2원소, 보스 직전 엘리트부터.
    * 실제 보상 경로(applyReward)를 그대로 쓴다 — 별도 주입로면 도달 불가능한 상태를
    * 보여주게 되고, 그건 심사위원에게 거짓말이다.
    */
@@ -1090,6 +1093,7 @@ export class ProtoScene extends Phaser.Scene {
     this.demoRun = true;
     // 방 지정 리셋을 **먼저** 한다 — reset()이 elementalAffinity를 비우므로
     // 친화를 심은 뒤에 부르면 그대로 지워진다.
+    this.resetMapGraph(MAP_GRAPH_PRESET_01.lastBeforeBossNodeId, DEMO_START_ROOM);
     this.combatRunController.reset(Date.now(), false, DEMO_START_ROOM);
     applyDemoLoadout(this.engraveManager, this.spiritManager, this.combatRunController);
     this.syncSpiritViews();
@@ -1098,7 +1102,7 @@ export class ProtoScene extends Phaser.Scene {
       '#ffd166',
       3200,
     );
-    // 온보딩 힌트는 1번 방에서만 뜬다(startRoom). 시연은 5번 방에서 시작하므로
+    // 온보딩 힌트는 1번 방에서만 뜬다(startRoom). 시연은 후반 방에서 시작하므로
     // 여기서 따로 알려줘야 한다 — **강해진 상태로 떨어뜨려도 뭘 칠지 모르면
     // 아무 일도 안 일어난다.** 이 게임의 훅은 성장이 아니라 자유 영창이다.
     // 같은 내용을 영창 창 안에도 세운다 — 배너는 캔버스라 영창 창의 어둠·블러에 묻힌다.
@@ -1604,9 +1608,9 @@ export class ProtoScene extends Phaser.Scene {
     this.waveManager = new WaveManager(waveSet);
     this.audio.playBgm('combat');
     this.spawnWave(this.waveManager.start());
-    if (roomIndex === 1 && this.activeTrapProfile?.kind === 'hazard') {
+    if (this.activeTrapProfile?.kind === 'hazard') {
       this.spawnHazards(this.activeTrapProfile.safeCorridor);
-      this.announceSystemMessage('DEV: trap hazard', '#db73ff');
+      this.announceSystemMessage('함정: 위험지대', '#db73ff');
     }
     this.announceSystemMessage(`방 ${roomIndex}`, '#8fa4ff');
     // 첫 방 진입 시, 아직 한 번도 영창해본 적 없는 플레이어에게 조작을 안내한다.
@@ -1741,6 +1745,20 @@ export class ProtoScene extends Phaser.Scene {
         stage: this.combatRunController.state.stage,
         kind,
       }, this.debugTrapProfile);
+      return;
+    }
+    const graphProfile = this.mapGraph.current().trapProfile;
+    if (graphProfile) {
+      if (graphProfile.kind === 'hazard') {
+        this.activeRoomCurse = null;
+        this.activeTrapProfile = graphProfile;
+        return;
+      }
+      this.activateRoomCurseAssignment({
+        roomIndex,
+        stage: this.combatRunController.state.stage,
+        kind: graphProfile.kind,
+      }, graphProfile);
       return;
     }
     const assignment = curseForRoom(this.roomCursePlan, roomIndex);
@@ -2578,14 +2596,25 @@ export class ProtoScene extends Phaser.Scene {
 
   // ── 맵 그래프 · 포탈 · 미니맵 (#214 본배선) ──────────────────────────
 
-  /** 런 시작·이어가기마다 그래프를 새로 만든다 — cleared/current가 인스턴스에 쌓이므로. */
-  private resetMapGraph(): void {
+  /** 런 시작·이어가기마다 그래프와 방별 조우를 같이 새로 만든다. */
+  private resetMapGraph(
+    initialNodeId = MAP_GRAPH_PRESET_01.startNodeId,
+    roomIndex = DEBUG_START_ROOM,
+  ): void {
     // **먼저 걷어낸다** — Phaser는 씬 인스턴스를 재사용하므로(타이틀→새 런) 필드는
     // 남아 있는데 가리키는 GameObject는 이미 파괴돼 있다. 그대로 update하면 죽는다.
     this.destroyRunMapUi();
-    this.mapGraph = new RunMapGraph(MAP_GRAPH_PRESET_01);
+    this.mapGraph = new RunMapGraph(MAP_GRAPH_PRESET_01, initialNodeId);
+    this.mapEncounterByRoom.clear();
+    this.mapEncounterByRoom.set(roomIndex, encounterFromMapNode(this.mapGraph.current()));
     this.pendingArrival = null;
     this.refreshMinimap();
+  }
+
+  private mapEncounterForRoom(roomIndex: number): EncounterDefinition {
+    const encounter = this.mapEncounterByRoom.get(roomIndex);
+    if (!encounter) throw new Error(`Map encounter is missing for run room ${roomIndex}`);
+    return encounter;
   }
 
   private refreshMinimap(): void {
@@ -2668,13 +2697,9 @@ export class ProtoScene extends Phaser.Scene {
 
   /**
    * 지금 방이 **전투 없는 방**인가 (보물·제단). 아니면 null.
-   *
-   * 포탈에 붙은 라벨이 지켜지게 하는 단일 판정점이다. RunController는 여전히
-   * 선형 목록(RUN_ENCOUNTERS)으로 방을 세므로, **보스 방은 보스가 이긴다** —
-   * 두 축이 어긋났을 때 최종 보스를 건너뛰면 런이 끝나지 않는다.
+   * 포탈 라벨·보상·실제 방 내용이 모두 같은 MapNode를 보게 하는 판정점이다.
    */
   private rewardlessNodeKind(): 'treasure' | 'altar' | null {
-    if (this.isBossEncounter()) return null;
     const kind = this.mapGraph.current().kind;
     return kind === 'treasure' || kind === 'altar' ? kind : null;
   }
@@ -2720,6 +2745,10 @@ export class ProtoScene extends Phaser.Scene {
     if (!this.mapGraph.canEnter(nodeId)) return;
     const from = this.mapGraph.current().id;
     const node = this.mapGraph.enter(nodeId);
+    this.mapEncounterByRoom.set(
+      this.combatRunController.state.roomIndex + 1,
+      encounterFromMapNode(node),
+    );
     this.refreshMinimap();
     // 도착은 **항상 왼쪽 중앙**이다 (#245·#246) — 방마다 진입 계약이 하나여야
     // 함정·지형·적 스폰이 여러 진입 좌표를 고려하지 않아도 된다.

@@ -24,10 +24,16 @@ export type RunTransitionScheduler = (
 
 /** 보상 추첨기 — 프로덕션은 시드 랜덤, 회귀 하네스는 고정 3택 주입 가능 */
 export type RewardDraw = (roomIndex: number) => readonly RewardOption[];
+export type EncounterProvider = (roomIndex: number) => EncounterDefinition;
 
 export interface CombatRunControllerOptions {
   playerState: PlayerCombatState;
   encounters?: readonly EncounterDefinition[];
+  /**
+   * 그래프 통합용 현재 조우 공급자. 방 번호별로 선택된 노드를 고정해 반환해야 한다.
+   * 지정하면 maxRooms는 그래프의 최대 경로 길이로 사용한다.
+   */
+  encounterProvider?: EncounterProvider;
   /** 로컬 조우 검증용. 제품 기본값은 첫 번째 조우다. */
   initialRoomIndex?: number;
   maxRooms?: number;
@@ -56,6 +62,7 @@ export class CombatRunController implements RunController {
   private readonly playerState: PlayerCombatState;
   private readonly maxRooms: number;
   private readonly encounterDefinitions: readonly EncounterDefinition[];
+  private readonly encounterProvider?: EncounterProvider;
   private encounters: ResolvedEncounter[];
   private readonly initialRoomIndex: number;
   private readonly transitionDurationMs: number;
@@ -78,11 +85,14 @@ export class CombatRunController implements RunController {
 
   constructor(options: CombatRunControllerOptions) {
     this.playerState = options.playerState;
+    this.encounterProvider = options.encounterProvider;
     this.encounterDefinitions = options.encounters
       ?? (options.maxRooms === undefined
         ? RUN_ENCOUNTERS
         : createLegacyEncounters(positiveInteger(options.maxRooms)));
-    this.maxRooms = this.encounterDefinitions.length;
+    this.maxRooms = this.encounterProvider
+      ? positiveInteger(options.maxRooms ?? this.encounterDefinitions.length)
+      : this.encounterDefinitions.length;
     this.initialRoomIndex = clampRoomIndex(options.initialRoomIndex ?? 1, this.maxRooms);
     this.roomIndex = this.initialRoomIndex;
     this.transitionDurationMs = Math.max(
@@ -301,6 +311,7 @@ export class CombatRunController implements RunController {
   }
 
   private currentEncounter(): ResolvedEncounter {
+    if (this.encounterProvider) return { ...this.encounterProvider(this.roomIndex) };
     return this.encounters[Math.min(this.roomIndex - 1, this.encounters.length - 1)];
   }
 
