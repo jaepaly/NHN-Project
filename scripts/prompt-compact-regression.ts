@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { resolveSpellPlan } from '../src/spell/sequencePlan';
+import { validateJudgement } from '../src/spell/validate';
 
 const BASELINE_CHARS = 7016;
 const MAX_COMPACT_CHARS = Math.floor(BASELINE_CHARS * 0.75);
@@ -65,6 +67,80 @@ const heldOutInputs = [
 for (const input of heldOutInputs) {
   assert(!prompt.includes(input), `held-out 입력이 프롬프트에 유출됐습니다: ${input}`);
 }
+
+const fullPlan = {
+  schema_version: 2,
+  disposition: 'cast',
+  spell_plan: {
+    name: '돌진 폭발',
+    power: 75,
+    durationMs: 1500,
+    sequences: [
+      {
+        durationWeight: 2,
+        behaviors: [{ type: 'move', destination: 'target-direction', element: 'fire' }],
+      },
+      {
+        durationWeight: 1,
+        behaviors: [{
+          type: 'form',
+          powerWeight: 1,
+          spec: {
+            name: '돌진 폭발',
+            effect: 'damage',
+            target: 'self',
+            element_primary: 'fire',
+            element_secondary: null,
+            form: 'nova',
+            size: 'medium',
+            speed: 'normal',
+            status: [],
+            power: 0,
+            cost: 0,
+          },
+        }],
+      },
+    ],
+  },
+};
+
+const sparsePlan = {
+  schema_version: 2,
+  disposition: 'cast',
+  spell_plan: {
+    name: '돌진 폭발',
+    power: 75,
+    durationMs: 1500,
+    sequences: [
+      {
+        durationWeight: 2,
+        behaviors: [{ type: 'move', destination: 'target-direction', element: 'fire' }],
+      },
+      {
+        behaviors: [{
+          type: 'form',
+          spec: {
+            name: '돌진 폭발',
+            effect: 'damage',
+            target: 'self',
+            element_primary: 'fire',
+            form: 'nova',
+          },
+        }],
+      },
+    ],
+  },
+};
+
+const validatedFull = validateJudgement(fullPlan);
+const validatedSparse = validateJudgement(sparsePlan);
+assert(validatedFull?.disposition === 'cast' && validatedFull.plan, 'full plan 검증 실패');
+assert(validatedSparse?.disposition === 'cast' && validatedSparse.plan, 'sparse plan 검증 실패');
+assert.deepEqual(
+  resolveSpellPlan(validatedSparse.plan),
+  resolveSpellPlan(validatedFull.plan),
+  '기본값 생략 전후의 실행 plan이 달라졌습니다.',
+);
 
 console.log(
   `prompt compact regression passed: ${BASELINE_CHARS} -> ${prompt.length} chars `

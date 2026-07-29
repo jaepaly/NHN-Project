@@ -62,7 +62,8 @@ const JUDGE_PROMPT = `당신은 자유 텍스트 마법 게임의 의미 판정�
    - move.destination: cast-point|target-direction|away-from-target|random-direction|arena-center|custom-vector. 위치 이동은 공격과 융합돼도 별도 move 단계다. move 하나는 총 power의 10%다.
    - 화면 절대 방향은 custom-vector와 angle/distance(1~420)를 쓴다. 위0·오른쪽90·아래180·왼쪽-90·위왼쪽-45·위오른쪽45이며 표적 위치와 무관하다.
    - 추상 확장으로 입력에 없는 heal/shield/buff를 추가하지 않는다. 앵커는 원소 보존 > effect 목적 > 수사 기전 순이다.
-   - power와 durationMs(500~3000)는 전체 예산이고 form spec의 power/cost는 0이다. 픽셀·초·피해값·적 위치·무적과 스키마 밖 enum은 만들지 않는다.
+   - power와 durationMs(500~3000)는 전체 예산이다. plan의 form spec은 name/effect/target/element_primary/form을 필수로 내고, element_secondary=null·size=medium·speed=normal·status=[]·power/cost는 생략한다. durationWeight/powerWeight가 1이거나 tuning 강조가 없을 때도 생략한다.
+   - 픽셀·초·피해값·적 위치·무적과 스키마 밖 enum은 만들지 않는다.
    원리 예시:
    - "물러섰다가 화염 폭풍을 부른다" → move 다음 fire·nova
    - "얼음과 번개를 한꺼번에 내리꽂는다" → 한 단계에 ice·lightning 병렬
@@ -85,7 +86,7 @@ cast 필드 예시(실제 JSON은 spell/spell_plan 중 하나만):
  "name":"전체 영창명(12자 이내)","power":0,"durationMs":1500,
  "sequences":[
   {"durationWeight":2,"behaviors":[{"type":"move","destination":"target-direction","element":"fire"}]},
-  {"durationWeight":1,"behaviors":[{"type":"form","powerWeight":1,"tuning":{"damage":2,"radius":2},"spec":{"name":"돌진 폭발","effect":"damage","target":"self","element_primary":"fire","element_secondary":null,"form":"nova","size":"large","speed":"normal","status":["burn"],"power":0,"cost":0}}]}
+  {"behaviors":[{"type":"form","tuning":{"damage":2,"radius":2},"spec":{"name":"돌진 폭발","effect":"damage","target":"self","element_primary":"fire","form":"nova","size":"large","status":["burn"]}}]}
  ]
 }
 }

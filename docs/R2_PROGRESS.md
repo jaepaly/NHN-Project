@@ -16,8 +16,8 @@
 **R2 작업**
 - [x] 1차 `compact-text`: named JSON·validator·엔진 불변, 규칙 7·예시·스키마 뒤 중복만 축약. **7,016→4,696자(-33.1%)**.
 - [x] 정적 계약 테스트 + 기존 plan/sequence/fallback 회귀 + 빌드 통과. 모델 품질은 Version Preview A/B 전이라 아직 미판정.
-- [ ] 2차 `sparse-plan`: 동일 named/nested 구조에서 validator 기본값·로컬 재계산 필드만 생략.
-- [ ] sparse plan 검증→resolve 계약 회귀 후 중간 판정.
+- [x] 2차 `sparse-plan`: 동일 named/nested 구조에서 plan 내부 기본값·로컬 재계산 필드만 생략. 단일 spell·필수 enum·이동 계약은 유지.
+- [x] full/sparse plan 검증→resolve 동등성 + 기존 plan/sequence 회귀 + 빌드 통과. 실제 응답 절감률은 Preview A/B에서 판정.
 - [ ] `wrangler versions upload`로 배포와 분리된 Version Preview 생성. `wrangler deploy` 금지.
 - [ ] baseline/compact-text/sparse-plan 8종 스모크 → 통과 후보만 30종+held-out+N=3 지연 측정.
 - [ ] #158 결과 공유·AI 사용 로그·PR. 품질 또는 지연 게이트 실패 시 production 미변경 NO-GO.
