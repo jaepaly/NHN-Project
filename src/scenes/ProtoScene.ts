@@ -1061,6 +1061,9 @@ export class ProtoScene extends Phaser.Scene {
     this.runFlowBound = true;
     this.combatRunController.on('room-cleared', (options, state) => {
       this.audio.playSfx('room-clear');
+      // 포탈/보상 선택 구간은 안전 상태여야 한다. 다음 방 시작까지 함정 판정과
+      // 저주 연출을 남겨 두면 출구 접근을 방해하거나 전투 종료 뒤에도 피해처럼 보인다.
+      this.clearRoomGimmicks();
       this.deferTransientCombatCleanup();
       this.stopCastingForRunPause();
       this.announceSystemMessage(`방 ${state.roomIndex} 클리어`, '#72f1b8');
@@ -1511,12 +1514,18 @@ export class ProtoScene extends Phaser.Scene {
     this.clearEnemyControls();
     for (const enemy of this.enemies) enemy.destroy({ animate: false });
     this.enemies = [];
-    for (const decoration of this.hazardDecorations) decoration.destroy();
-    this.hazardDecorations = [];
+    this.clearRoomGimmicks();
     this.clearManaCrystals();
     this.clearManaPotion();
-    this.clearRoomCurse();
     this.clearTransientCombatObjects();
+  }
+
+  /** 전투 종료 즉시 포탈 접근을 방해할 수 있는 모든 룸 기믹을 제거한다. */
+  private clearRoomGimmicks(): void {
+    this.clearHazardZones();
+    for (const decoration of this.hazardDecorations) decoration.destroy();
+    this.hazardDecorations = [];
+    this.clearRoomCurse();
   }
 
   private activateRoomCurse(roomIndex: number): void {
@@ -2418,11 +2427,15 @@ export class ProtoScene extends Phaser.Scene {
       if (warning.active) warning.destroy();
     }
     this.bossHazardWarnings = [];
+    this.clearHazardZones();
+    this.clearEnemyProjectiles();
+  }
+
+  private clearHazardZones(): void {
     for (const hazard of this.hazardZones) {
       if (hazard.view.active) hazard.view.destroy();
     }
     this.hazardZones = [];
-    this.clearEnemyProjectiles();
   }
 
   private spawnHazards(safeCorridor?: TrapSafeCorridor): void {

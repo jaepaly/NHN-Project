@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { RunMapGraph } from '../src/run/mapGraph';
 import { MAP_GRAPH_PRESET_01 } from '../src/run/mapGraphPreset';
 import {
@@ -48,4 +49,29 @@ const missingProfile = {
 };
 assert.throws(() => new RunMapGraph(missingProfile), /requires a trap profile/);
 
-console.log('Trap room profile regression: legacy mapping, cross corridor, node contract passed');
+const sceneSource = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+const roomClearedHandler = sceneSource.match(
+  /on\('room-cleared',[\s\S]*?\n    \}\);/,
+)?.[0] ?? '';
+assert.match(
+  roomClearedHandler,
+  /this\.clearRoomGimmicks\(\)/,
+  'room clear must remove trap effects before portal or reward interaction',
+);
+
+const clearRoomGimmicks = sceneSource.match(
+  /private clearRoomGimmicks\(\): void \{[\s\S]*?\n  \}/,
+)?.[0] ?? '';
+for (const cleanup of [
+  'this.clearHazardZones()',
+  'decoration.destroy()',
+  'this.hazardDecorations = []',
+  'this.clearRoomCurse()',
+]) {
+  assert.ok(
+    clearRoomGimmicks.includes(cleanup),
+    `room gimmick cleanup is missing: ${cleanup}`,
+  );
+}
+
+console.log('Trap room profile regression: legacy mapping, cross corridor, node contract, room-clear cleanup passed');
