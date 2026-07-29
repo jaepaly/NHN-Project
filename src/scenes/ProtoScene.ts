@@ -139,9 +139,11 @@ import {
   silenceManaDrainPerSecond,
 } from '../combat-core/run/roomCurse';
 import {
+  advanceHeatwaveTimers,
   HEATWAVE_CURSE_CONFIG,
   heatwaveCoolingHeal,
   heatwaveDamagePerSecond,
+  isHeatwaveDamaging,
   isHeatwaveCoolingElement,
 } from '../combat-core/run/heatwaveCurse';
 import {
@@ -1627,18 +1629,21 @@ export class ProtoScene extends Phaser.Scene {
     this.blackoutCurseField?.update(combatDeltaSeconds, this.player.x, this.player.y);
     const heatwave = this.heatwaveCurseField;
     if (heatwave && this.activeRoomCurse?.kind === 'heatwave') {
-      this.heatwaveGraceRemaining = Math.max(0, this.heatwaveGraceRemaining - combatDeltaSeconds);
-      this.heatwaveImmunityRemaining = Math.max(0, this.heatwaveImmunityRemaining - combatDeltaSeconds);
-      const isOverheating = this.heatwaveGraceRemaining <= 0 && this.heatwaveImmunityRemaining <= 0;
+      const timerStep = advanceHeatwaveTimers({
+        graceRemaining: this.heatwaveGraceRemaining,
+        immunityRemaining: this.heatwaveImmunityRemaining,
+      }, combatDeltaSeconds);
+      this.heatwaveGraceRemaining = timerStep.graceRemaining;
+      this.heatwaveImmunityRemaining = timerStep.immunityRemaining;
       heatwave.update(
         combatDeltaSeconds,
         this.player.x,
         this.player.y,
         this.heatwaveImmunityRemaining,
       );
-      if (isOverheating) {
+      if (timerStep.damagingSeconds > 0) {
         const hpDamage = this.playerState.takeEnvironmentalDamage(
-          heatwaveDamagePerSecond(this.playerState.maxHp) * combatDeltaSeconds,
+          heatwaveDamagePerSecond(this.playerState.maxHp) * timerStep.damagingSeconds,
         );
         this.heatwaveDamageNotice += hpDamage;
         this.heatwaveDamageNoticeElapsed += combatDeltaSeconds;
@@ -1664,7 +1669,7 @@ export class ProtoScene extends Phaser.Scene {
     }
   }
 
-  /** 물·얼음·바람 영창은 폭염 중 회복과 열기 면역을 plan당 한 번 부여한다. */
+  /** 누적된 폭염 피해를 플레이어 본체의 짧은 열손상 반응으로 전달한다. */
   private playHeatwaveDamageReact(): void {
     if (!this.player?.active) return;
 
@@ -4987,8 +4992,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
             : '#72f1b8';
     this.statusText.setText(`● ${actionState}`).setColor(statusColor);
     const heatwaveDamaging = this.activeRoomCurse?.kind === 'heatwave'
-      && this.heatwaveGraceRemaining <= 0
-      && this.heatwaveImmunityRemaining <= 0;
+      && isHeatwaveDamaging({
+        graceRemaining: this.heatwaveGraceRemaining,
+        immunityRemaining: this.heatwaveImmunityRemaining,
+      });
     this.hpText
       .setText(`HP    ${hp.toString().padStart(3)} / ${this.playerState.maxHp}`)
       .setColor(heatwaveDamaging ? '#ffad62' : '#ff91ad');
@@ -5565,8 +5572,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       1,
     );
     const heatwaveDamaging = this.activeRoomCurse?.kind === 'heatwave'
-      && this.heatwaveGraceRemaining <= 0
-      && this.heatwaveImmunityRemaining <= 0;
+      && isHeatwaveDamaging({
+        graceRemaining: this.heatwaveGraceRemaining,
+        immunityRemaining: this.heatwaveImmunityRemaining,
+      });
     const heatPulse = 0.36 + Math.sin(this.time.now / 420) * 0.12;
     const g = this.hudGraphics.clear();
 
