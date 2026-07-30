@@ -3045,7 +3045,6 @@ export class ProtoScene extends Phaser.Scene {
         options: choices.map((node) => ({
           nodeId: node.id,
           kind: node.kind,
-          rewardHint: rewardScaleFor(node.kind).hint,
         })),
       });
       const selectedId = choices.some((node) => node.id === selected.nodeId)
