@@ -4,6 +4,26 @@
 > 규칙: **푸시할 때마다 이 파일에 "현재 어디까지 했는지"를 갱신해서 함께 커밋한다.**
 > (팀 공용 1줄 기록은 [AI_USAGE_LOG.md](AI_USAGE_LOG.md), 이 파일은 R2 상세 로그)
 
+## ☑ 지금 작업 흐름 — #276 보스 대사 호출 안전장치 (2026-07-30)
+
+> **목표**: 보스 대사 호출이 Mock 모드와 사용자 지정 프록시를 우회하고 플레이 로그에서 누락되는 문제를 고친다. 주문 판정 프롬프트·스키마·Worker는 건드리지 않고, 캐시는 후순위로 제외한다.
+
+**의존성**
+- [x] 승인된 PR #268 HEAD `95588b0`의 공용 `postPlayLog` 위에 로컬 전용 브랜치 생성.
+- [x] PR #268이 `c128f44`로 main에 머지되고 머지 후 CI·배포까지 통과.
+
+**R2 작업**
+- [x] `VITE_JUDGE_MOCK=1`이면 보스 대사 원격 호출 없이 템플릿 사용.
+- [x] 보스 대사 호출도 `VITE_JUDGE_PROXY_URL`을 존중.
+- [x] `boss_line` 로그에 source·elapsedMs·remoteAttempted를 기록해 쿼터 집계 가능하게 함.
+- [x] Mock·원격 성공·원격 fallback과 씬 배선 회귀 추가.
+- [x] `test:bossline`·`test:playlog`, 전체 회귀 74종, 프로덕션 빌드, `git diff --check` 통과.
+- [x] 프로덕션 번들에서 DEV 전용 `boss_line` 로그 토큰 제거 확인.
+- [x] 최신 main `c128f44`로 리베이스한 뒤 동일 검증을 다시 통과.
+- [x] 브랜치 `codex/boss-line-quota-safety-276` 푸시 및 PR #292 생성.
+
+---
+
 ## ☑ 지금 작업 흐름 — #158 실플레이 판정 로그 관측성 보강 (2026-07-29)
 
 > **요청**: 빠르게 사라지는 화면 결과를 캡처하지 않아도 `logs/play.jsonl`만으로 fixture 우회 여부, 실제 판정 출처, single/sequence, 지연, fallback 원인, 실제 sequence 실행을 검증할 수 있게 한다. 판정·프롬프트·Worker 거동은 변경하지 않고 DEV 로깅만 보강한다.

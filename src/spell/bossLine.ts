@@ -18,6 +18,11 @@ export interface BossLine {
   source: 'gemini' | 'template';
 }
 
+export interface BossLineOptions {
+  proxyUrl?: string;
+  mockForced?: boolean;
+}
+
 /** 대사에 쓸 원소 한글 이름 (외부 팔레트 의존 없이 최소 매핑) */
 const ELEMENT_KO: Record<SpellElement, string> = {
   fire: '불꽃', water: '물', lightning: '번개', ice: '얼음',
@@ -93,4 +98,16 @@ export async function getBossLine(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * 실행 환경에 맞는 보스 대사를 선택한다.
+ * Mock 모드에서는 fetch를 전혀 시작하지 않고, 그 외에는 지정 프록시를 우선한다.
+ */
+export async function resolveBossLine(
+  memory: RunMemory,
+  options: BossLineOptions = {},
+): Promise<BossLine> {
+  if (options.mockForced) return templateBossLine(memory);
+  return getBossLine(memory, options.proxyUrl);
 }

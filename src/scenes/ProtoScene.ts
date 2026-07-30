@@ -209,7 +209,7 @@ import {
   RESISTANCE,
   computeResistance,
   diversityBonus,
-  getBossLine,
+  resolveBossLine,
   loadRunMemory,
   longTermResistedElement,
   runEscalationProfile,
@@ -1906,14 +1906,27 @@ export class ProtoScene extends Phaser.Scene {
     requestCameraShake(this, 'medium');
 
     this.announceBanner({ title: '보스의 방', color: 0xff6b86, holdMs: 2000 });
-    // 오프닝 대사 — R2 /boss-line (프록시 생성 우선, 템플릿 폴백 내장)
-    if (usesMemory) void getBossLine(runMemory).then((line) => {
-      if (!isCurrentBossRoom()) return;
-      this.time.delayedCall(500, () => {
+    // 오프닝 대사 — Mock은 원격 호출 없이 템플릿, 라이브는 사용자 지정 프록시를 우선한다.
+    if (usesMemory) {
+      const mockForced = import.meta.env.VITE_JUDGE_MOCK === '1';
+      const proxyUrl = import.meta.env.VITE_JUDGE_PROXY_URL?.trim() || undefined;
+      const startedAt = import.meta.env.DEV ? Date.now() : 0;
+      void resolveBossLine(runMemory, { mockForced, proxyUrl }).then((line) => {
+        if (import.meta.env.DEV) {
+          void postPlayLog({
+            type: 'boss_line',
+            source: line.source,
+            elapsedMs: Date.now() - startedAt,
+            remoteAttempted: !mockForced,
+          });
+        }
         if (!isCurrentBossRoom()) return;
-        this.announceSystemMessage(`"${line.text}"`, '#d0a8ff', 2800);
+        this.time.delayedCall(500, () => {
+          if (!isCurrentBossRoom()) return;
+          this.announceSystemMessage(`"${line.text}"`, '#d0a8ff', 2800);
+        });
       });
-    });
+    }
     // 저항 알림은 activeBossResistances(단일 소스)에서 뽑는다 — 격상 이중 저항이면 두 원소를
     // 함께 알려야 플레이어가 대응할 수 있다. 단일 저항이면 기존과 동일하게 한 원소만 나온다.
     const resistedElements = this.sortedBossResistanceElements();
