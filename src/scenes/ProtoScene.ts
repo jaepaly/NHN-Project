@@ -598,8 +598,33 @@ export class ProtoScene extends Phaser.Scene {
     encounterFromMapNode(this.mapGraph.current()),
   ]]);
   // 명시적 타입: rewardDraw 클로저가 컨트롤러 상태(친화)를 읽어 자기참조 추론이 막히는 것 회피
+  /**
+   * 방 전환 게이트 (#214 · 총괄 제보 후속).
+   *
+   * `chooseReward()`는 보상 적용과 전환 타이머를 **같이** 건다. 보상을 즉시 반영하려면
+   * chooseReward를 먼저 불러야 하는데, 그러면 포탈을 고르기 전에 방이 넘어간다.
+   *
+   * 그래서 전환 콜백을 여기 보관하고, 포탈 진입이 끝나면 그때 실행한다. 컨트롤러는
+   * 자기가 타이머를 걸었다고 믿고 있고 실제로는 씬이 시점을 정한다 — 계약을 넘지 않는다.
+   */
+  private pendingRunTransition: { delayMs: number; run: () => void } | null = null;
+
   private readonly combatRunController: CombatRunController = new CombatRunController({
     playerState: this.playerState,
+    /**
+     * 전환 타이머 주입 — 미지정이면 컨트롤러가 setTimeout으로 바로 걸어버린다.
+     * 포탈 선택이 있는 방에서는 붙잡아 두고, 없으면 종전대로 즉시 예약한다.
+     */
+    scheduleTransition: (delayMs, callback) => {
+      if (this.transitionNeedsPortalChoice()) {
+        this.pendingRunTransition = { delayMs, run: callback };
+        return;
+      }
+      this.time.delayedCall(delayMs, () => {
+        if (!this.scene?.isActive?.()) return;
+        callback();
+      });
+    },
     initialRoomIndex: DEBUG_START_ROOM,
     /**
      * ⚠️ 컨트롤러의 `maxRooms`는 `readonly`라 런 중에 바꿀 수 없다. 그래서 생성 맵도
@@ -1270,10 +1295,26 @@ export class ProtoScene extends Phaser.Scene {
       this.updateManaCrystals(d);
       this.updateManaPotion(d);
       this.updateWaveFlow(d);
-    } else if (this.portalField) {
-      // 포탈 선택 중에는 **이동만** 허용한다 — 전투는 멈춘 채로 갈림길을 걸어간다.
+    } else if (this.portalField || this.roomFixture) {
+      // 포탈·설치물 단계에서는 **이동만** 허용한다 — 전투는 멈춘 채로 갈림길을 걸어간다.
       // 이게 없으면 방을 정리한 순간 조작이 잠겨 포탈에 닿을 수 없다(런이 갇힌다).
+      const d = (delta / 1000) * this.timeScale;
       this.updatePlayerMovement(delta / 1000);
+      // ⚠️ **따라다니는 것들은 여기서도 갱신해야 한다** (총괄 제보: "보상 선택시 정령이
+      // 갑자기 거기에 멈추는 버그").
+      //
+      // 종전엔 이 분기가 `updatePlayerMovement` 하나뿐이었다. 그런데 #262로 보상 선택
+      // 뒤에 **포탈까지 걸어가는 단계**가 생겼고, 그 동안 플레이어는 움직이는데
+      // updateSpirits가 안 돌아 정령이 마지막 궤도 좌표에 그대로 박혀 있었다.
+      // 방을 정리한 직후가 아니라 **몇 초씩 걸어가는 동안** 그러니 눈에 띈다.
+      //
+      // 전투 없이 따라다니기만 하는 것들만 고른다 — 적·투사체·웨이브는 멈춘 채로 둔다.
+      this.updateSpirits(d);
+      this.updateSummon(d);
+      this.updateFriendlyMissiles(d);
+      // 마나 결정·물약도 걸어가면서 줍는 게 자연스럽다 (전투가 아니라 수거다)
+      this.updateManaCrystals(d);
+      this.updateManaPotion(d);
     }
     // 성장 표식은 전투 정지 중(보상 선택·전환)에도 플레이어를 따라간다
     this.growthMarks.follow(this.player.x, this.player.y);
@@ -2786,6 +2827,31 @@ export class ProtoScene extends Phaser.Scene {
     this.terrainBarrierView = view;
   }
 
+  /**
+   * 이 전환이 포탈 선택을 기다려야 하나.
+   *
+   * 다음 노드가 둘 이상이면 플레이어가 골라야 하고, 하나여도 그 방이 무전투 방이면
+   * 자동 진입하지 않는다(`rewardlessNodeKind` 규칙). 선택지가 없으면(보스 직전 등)
+   * 붙잡을 이유가 없으므로 종전대로 즉시 예약한다.
+   */
+  private transitionNeedsPortalChoice(): boolean {
+    return this.mapGraph.choices().length > 0;
+  }
+
+  /**
+   * 붙잡아 둔 전환을 실행한다 — 포탈 진입이 끝난 시점에 씬이 부른다.
+   * 보관된 게 없으면 아무 일도 하지 않는다(선택지가 없어 즉시 예약된 경우).
+   */
+  private releaseRunTransition(): void {
+    const pending = this.pendingRunTransition;
+    if (!pending) return;
+    this.pendingRunTransition = null;
+    this.time.delayedCall(pending.delayMs, () => {
+      if (!this.scene?.isActive?.()) return;
+      pending.run();
+    });
+  }
+
   private clearTerrainBarriers(): void {
     this.terrainBarrierView?.destroy();
     this.terrainBarrierView = null;
@@ -2831,6 +2897,8 @@ export class ProtoScene extends Phaser.Scene {
     // **먼저 걷어낸다** — Phaser는 씬 인스턴스를 재사용하므로(타이틀→새 런) 필드는
     // 남아 있는데 가리키는 GameObject는 이미 파괴돼 있다. 그대로 update하면 죽는다.
     this.destroyRunMapUi();
+    // 보관된 전환을 버린다 — 남겨두면 새 런에서 지난 런의 전환이 터진다
+    this.pendingRunTransition = null;
     const definition = this.runMapDefinition(initialNodeId === null);
     this.mapGraph = new RunMapGraph(definition, initialNodeId ?? definition.startNodeId);
     this.mapEncounterByRoom.clear();
@@ -2887,21 +2955,32 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   /**
-   * 보상 선택 후 다음 방을 고른다 (runUiBinding.beforeAdvance). **이게 resolve될 때까지
-   * 방 전환이 멈춘다** — RunController는 chooseReward에서 전환 타이머를 걸기 때문이다.
+   * 보상 선택 후 다음 방을 고른다 (runUiBinding.beforeAdvance).
+   *
+   * ⚠️ 종전엔 이게 resolve될 때까지 `chooseReward` 자체를 미뤘다. 그런데 그 호출이
+   * **보상 적용도 같이** 하므로, 카드를 골라도 포탈에 진입할 때까지 최대 체력·마나가
+   * 바뀌지 않았다(총괄 제보). 이제 보상은 즉시 적용되고, 붙잡히는 건 **전환 타이머**
+   * 하나다(`scheduleTransition` 주입 → `pendingRunTransition`).
+   *
+   * 그래서 이 함수의 **모든 종료 경로**가 `releaseRunTransition()`을 불러야 한다.
+   * 하나라도 빠뜨리면 보상은 반영됐는데 방이 영영 안 넘어간다 — 런이 갇힌다.
    *
    * 갈래가 하나뿐이면 포탈을 세우지 않고 조용히 넘어간다 — 선택지가 없는데 선택을
    * 시키면 걸어가는 시간만 늘어난다. 둘 이상일 때만 세운다.
    */
   choosePortalDestination(): Promise<void> {
     const choices = this.mapGraph.choices();
-    if (choices.length === 0) return Promise.resolve();
+    // 선택지가 없으면 전환은 애초에 붙잡히지 않았다(transitionNeedsPortalChoice=false).
+    // 그래도 해제를 부른다 — 보관된 게 없으면 no-op이라 안전하고, 조건이 나중에
+    // 갈라져도 갇히지 않는다.
+    if (choices.length === 0) { this.releaseRunTransition(); return Promise.resolve(); }
     // 갈래가 하나면 보통 포탈을 세우지 않는다 — 선택지가 없는데 선택을 시키면 걸어가는
     // 시간만 늘어난다. **단, 무전투 방은 예외다** (총괄 지적): 그 방의 흐름은
     // "왼쪽 도착 → 중앙 상호작용 → 오른쪽 출구"이고, 마지막 구간을 자동으로 건너뛰면
     // 다시 방이 아니라 팝업이 된다. 그 방에서는 걷는 것 자체가 내용이다.
     if (choices.length === 1 && !this.rewardlessNodeKind()) {
       this.enterMapNode(choices[0].id);
+      this.releaseRunTransition();
       return Promise.resolve();
     }
     // 출구 슬롯 y는 R1 계약이 정한다 — 목적지 lane 순서대로 위에서 아래로 (#245).
@@ -2916,6 +2995,7 @@ export class ProtoScene extends Phaser.Scene {
     } catch (error) {
       devInfo('[Map] portal layout failed — 첫 갈래로 진행', error);
       this.enterMapNode(choices[0].id);
+      this.releaseRunTransition();
       return Promise.resolve();
     }
     const kindById = new Map(choices.map((node) => [node.id, node.kind]));
@@ -2943,6 +3023,9 @@ export class ProtoScene extends Phaser.Scene {
           this.portalField?.destroy();
           this.portalField = null;
           this.syncMinimapVisibility();
+          // 붙잡아 둔 전환을 여기서 놓아준다 — 이게 빠지면 보상은 반영됐는데
+          // 방이 영영 안 넘어가 런이 갇힌다
+          this.releaseRunTransition();
           resolve();
         },
       );
