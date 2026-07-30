@@ -333,11 +333,26 @@ const HUD = {
   rowTop: 44,
   /** 행 간격 — 종전 34에서 축소 */
   rowPitch: 22,
-  /** 라벨·수치가 차지하는 좌측 폭 */
-  labelWidth: 88,
-  barX: 104,
-  barWidth: 196,
+  /**
+   * ⚠️ 한 줄 배치의 함정 (총괄 제보: "숫자랑 바랑 겹침"):
+   * 라벨+수치를 한 텍스트로 두면 `SHIELD 100 / 100`이 x=138까지 뻗어 바(x=104)를 덮었다.
+   * 폰트 폭에 의존하는 배치는 내용이 길어지는 순간 깨진다.
+   *
+   * 그래서 **라벨(왼쪽 고정) · 바(가운데) · 수치(오른쪽 정렬)**로 셋을 분리한다.
+   * 수치는 origin(1,0)으로 박스 우측에 붙어 자라므로 어떤 값이 와도 바를 침범하지 않고,
+   * 바는 두 고정 좌표 사이라 폭이 항상 확정된다.
+   */
+  labelX: 14,
+  barX: 78,
+  /**
+   * 바 폭 — 수치 자리수가 늘어도(보상·제단으로 최대 체력이 4자리까지) 침범하지 않게
+   * 우측에 80px을 비워둔 값이다. 실측으로 잡았다: `100/100`(7자)이 47px, 4자리
+   * `1000/1000`(9자)이 60px.
+   */
+  barWidth: 140,
   barHeight: 6,
+  /** 수치 오른쪽 끝 (박스 우측에서 안쪽으로) */
+  valueRight: 10,
 } as const;
 
 /**
@@ -2052,22 +2067,30 @@ export class ProtoScene extends Phaser.Scene {
       fontStyle: 'bold',
       color: '#72f1b8',
     }).setScrollFactor(0).setDepth(100);
-    this.hpText = this.add.text(HUD.x + 14, hudRowY(0), '', {
+    // 정적 라벨 — 값이 안 바뀌므로 한 번만 만든다
+    (['HP', 'MANA', 'SHIELD'] as const).forEach((label, index) => {
+      this.add.text(HUD.x + HUD.labelX, hudRowY(index), label, {
+        fontFamily: 'Consolas, monospace',
+        fontSize: '11px',
+        color: '#7f8aba',
+      }).setScrollFactor(0).setDepth(100);
+    });
+    this.hpText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(0), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: '#ff91ad',
-    }).setScrollFactor(0).setDepth(100);
-    this.manaText = this.add.text(HUD.x + 14, hudRowY(1), '', {
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+    this.manaText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(1), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: '#91b7ff',
-    }).setScrollFactor(0).setDepth(100);
-    this.shieldText = this.add.text(HUD.x + 14, hudRowY(2), '', {
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+    this.shieldText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(2), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: '#72d8ff',
-    }).setScrollFactor(0).setDepth(100);
-    this.attunementText = this.add.text(HUD.x + 14, hudRowY(3) - 4, 'ARCANE // UNBOUND', {
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+    this.attunementText = this.add.text(HUD.x + HUD.labelX, hudRowY(3) - 4, 'ARCANE // UNBOUND', {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
       color: '#8fa4ff',
@@ -5713,11 +5736,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         graceRemaining: this.heatwaveGraceRemaining,
         immunityRemaining: this.heatwaveImmunityRemaining,
       });
+    // 라벨(HP/MANA/SHIELD)이 왼쪽에 따로 있으므로 수치만 적는다. 우측 정렬이라
+    // 자리수가 늘어도 왼쪽으로 자라 바를 침범하지 않는다 — padStart 정렬이 필요 없다.
     this.hpText
-      .setText(`HP    ${hp.toString().padStart(3)} / ${this.playerState.maxHp}`)
+      .setText(`${hp}/${this.playerState.maxHp}`)
       .setColor(heatwaveDamaging ? '#ffad62' : '#ff91ad');
-    this.manaText.setText(`MANA  ${mana.toString().padStart(3)} / ${this.playerState.maxMana}`);
-    this.shieldText.setText(`SHIELD ${shield.toString().padStart(3)} / ${this.playerState.maxHp}`);
+    this.manaText.setText(`${mana}/${this.playerState.maxMana}`);
+    this.shieldText.setText(`${shield}/${this.playerState.maxHp}`);
     this.drawBuildChips();
     // 활성 자기 강화 — 매 프레임 남은 시간 갱신, 없으면 빈 줄
     const buffs = this.playerState.activeBuffs();
