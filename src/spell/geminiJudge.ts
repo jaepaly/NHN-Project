@@ -1,14 +1,14 @@
 import type { SpellJudge } from './judge';
 import type { SpellJudgement } from './types';
 import { validateJudgement } from './validate';
-import { MockJudge, looksSequential, precheckText } from './mockJudge';
+import { MockJudge, precheckText } from './mockJudge';
 
 /**
  * GeminiJudge — 실제 LLM 판정기 (Cloudflare 프록시 경유) — GDD §3.5
  *
  * 판정 체인:
  *   1) localStorage 캐시 조회 (동일 문장 = 동일 판정 → 재현성·속도·호출량 절감)
- *   2) 프록시로 판정 요청 (2.5초 타임아웃)
+ *   2) 프록시로 판정 요청 (모든 정상 입력에 공통 6초 타임아웃)
  *   3) validateJudgement 재검증 — 스키마 밖 값은 거부 (LLM을 신뢰하지 않음)
  *   4) 실패/타임아웃/무효/의미 입력의 원격 fizzle → MockJudge 폴백
  *
@@ -17,22 +17,21 @@ import { MockJudge, looksSequential, precheckText } from './mockJudge';
  */
 
 export const JUDGE_SCHEMA_VERSION = 2;
-export const JUDGE_PROMPT_VERSION = 'meaning-v2.15-abstract-seq';
+export const JUDGE_PROMPT_VERSION = 'meaning-v2.16-all-plan';
 const CACHE_PREFIX = `incant:judge:v${JUDGE_SCHEMA_VERSION}:${JUDGE_PROMPT_VERSION}:`;
-const TIMEOUT_MS = 2500;
 /**
- * 복합 영창 전용 상한 (#180, 총괄 승인). 복합은 spell_plan을 실어 응답이 커서 tail이
- * 2.5초 경계에 붙는다(실측 1.86~2.55s). 단순 영창(p90 1.35s)은 여유가 있으므로 2.5초를
- * 그대로 두고, **순차 마커가 보이는 입력만** 더 기다린다.
+ * 후보 58부터 모든 정상 cast가 spell_plan이며 짧은 제목도 복합 사건으로 확장될 수
+ * 있다. 입력 키워드만으로 출력 복잡도를 예측하면 정상 Gemini 응답을 먼저 버리고
+ * 품질이 낮은 Mock fallback을 실행할 수 있으므로 단순/복합 제한을 구분하지 않는다.
  *
- * 왜 기다리는 쪽이 맞나: 긴 문장을 친 직후라 기대 대기가 다르고, 영창 슬로모션 UI가
- * 대기를 흡수한다. 폴백되면 Mock의 뭉툭한 plan이 나가 복합 영창의 인상이 되레 나빠진다.
+ * 후보 58 안정성 표본의 최대 응답은 4.756초였다. 공통 6초는 이 tail에 여유를 두면서
+ * 무한 대기를 막는 상한이다. fallback 최소화가 추가 대기보다 우선한다.
  */
-const SEQUENCE_TIMEOUT_MS = 3200;
+const JUDGE_TIMEOUT_MS = 6000;
 
-/** 입력 모양에 따른 판정 대기 상한 — 단순 2.5초 / 복합 3.2초 (#180) */
-export function judgeTimeoutMs(text: string): number {
-  return looksSequential(text) ? SEQUENCE_TIMEOUT_MS : TIMEOUT_MS;
+/** 모든 정상 원격 판정의 공통 대기 상한. 인자는 기존 호출 계약 호환용이다. */
+export function judgeTimeoutMs(_text: string): number {
+  return JUDGE_TIMEOUT_MS;
 }
 
 export class GeminiJudge implements SpellJudge {
@@ -83,7 +82,7 @@ export class GeminiJudge implements SpellJudge {
     return this.fallback.judge(text);
   }
 
-  /** 프록시에 POST하고 상한(단순 2.5초 / 복합 3.2초) 초과 시 abort. */
+  /** 프록시에 POST하고 상한(단순 2.5초 / 복합 4.5초) 초과 시 abort. */
   private async fetchWithTimeout(text: string): Promise<unknown> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), judgeTimeoutMs(text));

@@ -268,7 +268,6 @@ import { GameAudio } from '../audio/gameAudio';
 import {
   behaviorElements,
   behaviorUsesAnyElement,
-  debugSpellPlan,
   resolveSpellPlan,
   moveChainRoles,
   screenDirectionFromAngle,
@@ -4421,22 +4420,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private async castFromText(text: string): Promise<void> {
     this.casting = true;
     try {
-      // DEV 쇼케이스: 픽스처 이름/#seq 키로 시퀀스를 바로 실행 (판정 우회)
-      const debugPlan = import.meta.env.DEV ? debugSpellPlan(text) : null;
-      if (debugPlan) {
-        await this.runSequenceCast(debugPlan, text, 'local');
-        return;
-      }
-      if (import.meta.env.DEV && text.toLowerCase().startsWith('#seq ')) {
-        this.audio.playSfx('fizzle');
-        this.announceSystemMessage(
-          'SEQ fixture not found · enter a showcase name or a valid #seq key',
-          '#ffd166',
-          4200,
-        );
-        return;
-      }
-
       const judgement = await this.judge.judge(text);
       if (!this.playerState.alive || !this.isCombatActive()) {
         this.announceSystemMessage('행동 불가');
@@ -4690,7 +4673,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const meta = this.add.text(
       width / 2,
       height * 0.32 + 36,
-      `${elementLabel} · sequence ${plan.sequences.length} · power ${plan.power} · [local fixture]`,
+      `${elementLabel} · sequence ${plan.sequences.length} · power ${plan.power}`,
       { fontSize: '14px', color: '#8fa4ff' },
     ).setOrigin(0.5).setAlpha(0).setScrollFactor(0).setDepth(100);
     this.tweens.add({

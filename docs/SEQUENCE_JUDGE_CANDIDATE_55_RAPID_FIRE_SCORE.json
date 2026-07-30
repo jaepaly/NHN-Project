@@ -1,0 +1,1245 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T11:30:29.232Z",
+  "baselinePath": "docs/SEQUENCE_JUDGE_CANDIDATE_55_RAPID_FIRE.json",
+  "expectationsPath": "docs/SEQUENCE_JUDGE_CANDIDATE_43_RAPID_FIRE_EXPECTATIONS.json",
+  "workerUrl": "https://incant-judge-proxy.incant-judge-proxy.workers.dev",
+  "results": [
+    {
+      "id": 1,
+      "key": "heldout-01",
+      "input": "불씨 화살 연사",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 18,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:fire",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 fire 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "behavior:wait",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 wait 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 bolt 중 실제 bolt"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "allowed-speed",
+          "state": "pass",
+          "weight": 1,
+          "detail": "허용 속도 fast 중 실제 fast"
+        },
+        {
+          "id": "relation:repetition",
+          "state": "pass",
+          "weight": 2,
+          "detail": "repetition 검출"
+        },
+        {
+          "id": "relation:delay",
+          "state": "pass",
+          "weight": 2,
+          "detail": "delay 검출"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "forbidden:parallel",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 parallel 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 5, 허용 3~5"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 1350, 선호 500~1800"
+        },
+        {
+          "id": "maximum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 0/0 이하"
+        },
+        {
+          "id": "minimum-form-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "form 3/2 이상"
+        },
+        {
+          "id": "maximum-form-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "form 3/3 이하"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "불씨 화살이 짧은 간격을 두고 2~3발 연속 발사된다."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "key": "heldout-02",
+      "input": "얼음 송곳을 세 발 연속으로 쏜다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 18,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:ice",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 ice 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "behavior:wait",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 wait 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 bolt 중 실제 bolt"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage/control 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "allowed-speed",
+          "state": "pass",
+          "weight": 1,
+          "detail": "허용 속도 fast 중 실제 fast"
+        },
+        {
+          "id": "relation:repetition",
+          "state": "pass",
+          "weight": 2,
+          "detail": "repetition 검출"
+        },
+        {
+          "id": "relation:delay",
+          "state": "pass",
+          "weight": 2,
+          "detail": "delay 검출"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "forbidden:parallel",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 parallel 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 5, 허용 5~5"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 1400, 선호 700~1900"
+        },
+        {
+          "id": "maximum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 0/0 이하"
+        },
+        {
+          "id": "minimum-form-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "form 3/3 이상"
+        },
+        {
+          "id": "maximum-form-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "form 3/3 이하"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "얼음 송곳 form 세 개가 두 번의 짧은 wait을 사이에 두고 발사된다."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "key": "heldout-03",
+      "input": "천둥 창을 잇달아 꽂는다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 17,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:lightning",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 lightning 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "behavior:wait",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 wait 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 bolt/beam 중 실제 bolt"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "relation:repetition",
+          "state": "pass",
+          "weight": 2,
+          "detail": "repetition 검출"
+        },
+        {
+          "id": "relation:delay",
+          "state": "pass",
+          "weight": 2,
+          "detail": "delay 검출"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "forbidden:parallel",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 parallel 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 5, 허용 3~5"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 1350, 선호 500~1800"
+        },
+        {
+          "id": "maximum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 0/0 이하"
+        },
+        {
+          "id": "minimum-form-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "form 3/2 이상"
+        },
+        {
+          "id": "maximum-form-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "form 3/3 이하"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "천둥 창이 짧은 간격으로 잇달아 적에게 꽂힌다."
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "key": "heldout-04",
+      "input": "작은 물방울을 두 번 쏘고 마지막에 파도를 터뜨린다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 19,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:water",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 water 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "behavior:wait",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 wait 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 bolt/wave/nova 중 실제 bolt/wave"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage/control 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "relation:repetition",
+          "state": "pass",
+          "weight": 2,
+          "detail": "repetition 검출"
+        },
+        {
+          "id": "relation:delay",
+          "state": "pass",
+          "weight": 2,
+          "detail": "delay 검출"
+        },
+        {
+          "id": "relation:order",
+          "state": "pass",
+          "weight": 2,
+          "detail": "order 검출"
+        },
+        {
+          "id": "relation:finale",
+          "state": "pass",
+          "weight": 2,
+          "detail": "finale 검출"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "forbidden:parallel",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 parallel 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 5, 허용 5~7"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 1600, 선호 900~2400"
+        },
+        {
+          "id": "maximum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 0/0 이하"
+        },
+        {
+          "id": "minimum-form-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "form 3/3 이상"
+        },
+        {
+          "id": "maximum-form-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "form 3/3 이하"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "작은 물방울 두 발이 시간차로 나가고 마지막 파도 form이 피날레로 터진다."
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "key": "heldout-05",
+      "input": "어둠의 칼날을 속사한다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 18,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:dark",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 dark 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "behavior:wait",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 wait 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 slash/bolt 중 실제 slash"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "allowed-speed",
+          "state": "pass",
+          "weight": 1,
+          "detail": "허용 속도 fast 중 실제 fast"
+        },
+        {
+          "id": "relation:repetition",
+          "state": "pass",
+          "weight": 2,
+          "detail": "repetition 검출"
+        },
+        {
+          "id": "relation:delay",
+          "state": "pass",
+          "weight": 2,
+          "detail": "delay 검출"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "forbidden:parallel",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 parallel 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 5, 허용 3~5"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 1350, 선호 400~1500"
+        },
+        {
+          "id": "maximum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 0/0 이하"
+        },
+        {
+          "id": "minimum-form-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "form 3/2 이상"
+        },
+        {
+          "id": "maximum-form-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "form 3/3 이하"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "어둠 칼날이 빠른 간격을 두고 2~3회 연속 발생한다."
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "key": "heldout-06",
+      "input": "대지 충격파를 두 차례 연발한다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 96,
+      "passed": 16,
+      "failed": 1,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:earth",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 earth 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "behavior:wait",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 wait 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 wave/nova 중 실제 wave"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage/control 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "relation:repetition",
+          "state": "pass",
+          "weight": 2,
+          "detail": "repetition 검출"
+        },
+        {
+          "id": "relation:delay",
+          "state": "pass",
+          "weight": 2,
+          "detail": "delay 검출"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "forbidden:parallel",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 parallel 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 3, 허용 3~3"
+        },
+        {
+          "id": "duration-range",
+          "state": "fail",
+          "weight": 1,
+          "detail": "durationMs 1800, 선호 600~1600"
+        },
+        {
+          "id": "maximum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 0/0 이하"
+        },
+        {
+          "id": "minimum-form-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "form 2/2 이상"
+        },
+        {
+          "id": "maximum-form-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "form 2/2 이하"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "대지 충격파 form 두 개가 짧은 wait 하나를 사이에 두고 발생한다."
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "key": "heldout-07",
+      "input": "불꽃 창을 한꺼번에 쏟아붓는다",
+      "legacyStatus": "new",
+      "expectedMode": "either",
+      "actualMode": "single",
+      "automaticScore": 100,
+      "passed": 9,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 2,
+          "detail": "single 허용"
+        },
+        {
+          "id": "element:fire",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 fire 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 rain/bolt 중 실제 rain"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "시간차 연사가 아니라 동시에 쏟아지는 병렬 화염창 또는 밀집 rain이다."
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "key": "heldout-08",
+      "input": "서리 포대 일제사격",
+      "legacyStatus": "new",
+      "expectedMode": "either",
+      "actualMode": "single",
+      "automaticScore": 100,
+      "passed": 9,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 2,
+          "detail": "single 허용"
+        },
+        {
+          "id": "element:ice",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 ice 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 rain/bolt/beam 중 실제 rain"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage/control 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "서리 포대가 동시에 발사되며 발사 사이 wait을 만들지 않는다."
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "key": "heldout-09",
+      "input": "태양 광선을 계속 유지한다",
+      "legacyStatus": "new",
+      "expectedMode": "single_preferred",
+      "actualMode": "single",
+      "automaticScore": 100,
+      "passed": 10,
+      "failed": 0,
+      "manualPending": 2,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 2,
+          "detail": "기대 single_preferred, 실제 single"
+        },
+        {
+          "id": "element:light",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 light 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 beam 중 실제 beam"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "relation:persistence",
+          "state": "manual",
+          "weight": 2,
+          "detail": "persistence 의미 보존은 수동 판정 필요"
+        },
+        {
+          "id": "forbidden:repetition",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 repetition 없음"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "여러 광선을 쏘는 것이 아니라 하나의 지속 beam을 유지한다."
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "key": "heldout-10",
+      "input": "독안개 장판을 오래 유지한다",
+      "legacyStatus": "new",
+      "expectedMode": "single_preferred",
+      "actualMode": "single",
+      "automaticScore": 88,
+      "passed": 9,
+      "failed": 1,
+      "manualPending": 2,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 2,
+          "detail": "기대 single_preferred, 실제 single"
+        },
+        {
+          "id": "element:earth",
+          "state": "fail",
+          "weight": 2,
+          "detail": "필수 원소 earth 누락"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 2/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 zone 중 실제 zone"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage/control 중 실제 control"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "relation:persistence",
+          "state": "manual",
+          "weight": 2,
+          "detail": "persistence 의미 보존은 수동 판정 필요"
+        },
+        {
+          "id": "forbidden:repetition",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 repetition 없음"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "독안개 zone 하나가 오래 지속되며 반복 form이나 wait을 만들지 않는다."
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "key": "heldout-11",
+      "input": "유성 소나기가 전장을 덮는다",
+      "legacyStatus": "new",
+      "expectedMode": "single_preferred",
+      "actualMode": "single",
+      "automaticScore": 100,
+      "passed": 9,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 2,
+          "detail": "기대 single_preferred, 실제 single"
+        },
+        {
+          "id": "element:fire",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 fire 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 2/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 rain 중 실제 rain"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "개별 유성을 시간차 form으로 늘어놓지 않고 하나의 밀집 rain으로 표현한다."
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "key": "heldout-12",
+      "input": "단 한 발의 바람 화살",
+      "legacyStatus": "new",
+      "expectedMode": "single_preferred",
+      "actualMode": "single",
+      "automaticScore": 100,
+      "passed": 10,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 2,
+          "detail": "기대 single_preferred, 실제 single"
+        },
+        {
+          "id": "element:wind",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 wind 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 bolt 중 실제 bolt"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "forbidden:repetition",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 repetition 없음"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "바람 화살 한 발의 단일 spell로 끝난다."
+        }
+      ]
+    }
+  ]
+}

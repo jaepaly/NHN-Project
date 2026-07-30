@@ -1,0 +1,1527 @@
+{
+  "workerUrl": "https://incant-judge-proxy.incant-judge-proxy.workers.dev",
+  "generatedAt": "2026-07-30T12:38:41.212Z",
+  "repeats": 5,
+  "attempts": [
+    {
+      "input": "찰나의 전이",
+      "repetition": 1,
+      "status": 200,
+      "elapsedMs": 1811,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "찰나의 전이",
+          "power": 65,
+          "durationMs": 120,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "light"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "range": 1,
+                    "speed": 3
+                  },
+                  "spec": {
+                    "name": "공간 전이",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "찰나의 전이",
+      "repetition": 2,
+      "status": 200,
+      "elapsedMs": 2099,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "찰나의 전이",
+          "power": 65,
+          "durationMs": 120,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "light"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "공간 왜곡",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "찰나의 전이",
+      "repetition": 3,
+      "status": 200,
+      "elapsedMs": 1511,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "찰나의 전이",
+          "power": 65,
+          "durationMs": 120,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "light"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "range": 1,
+                    "speed": 3
+                  },
+                  "spec": {
+                    "name": "공간 전이",
+                    "effect": "control",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "찰나의 전이",
+      "repetition": 4,
+      "status": 200,
+      "elapsedMs": 1322,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "찰나의 전이",
+          "power": 65,
+          "durationMs": 120,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "light"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "공간 왜곡",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "nova",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "찰나의 전이",
+      "repetition": 5,
+      "status": 200,
+      "elapsedMs": 1398,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "찰나의 전이",
+          "power": 65,
+          "durationMs": 120,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "light"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "공간 왜곡",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "nova",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "심장이 두 번 뛰는 동안",
+      "repetition": 1,
+      "status": 200,
+      "elapsedMs": 2060,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "이중 심장박동",
+          "power": 65,
+          "durationMs": 1800,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "첫 번째 고동",
+                    "effect": "buff",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "두 번째 고동",
+                    "effect": "buff",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "심장이 두 번 뛰는 동안",
+      "repetition": 2,
+      "status": 200,
+      "elapsedMs": 1629,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "심장의 이중박동",
+          "power": 52,
+          "durationMs": 1900,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "첫 번째 박동",
+                    "effect": "heal",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "small",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "두 번째 박동",
+                    "effect": "buff",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "small",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "심장이 두 번 뛰는 동안",
+      "repetition": 3,
+      "status": 200,
+      "elapsedMs": 1931,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "심장의 이중 박동",
+          "power": 65,
+          "durationMs": 1800,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "amount": 1,
+                    "duration": 1
+                  },
+                  "spec": {
+                    "name": "첫 번째 고동",
+                    "effect": "heal",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "amount": 1,
+                    "duration": 1
+                  },
+                  "spec": {
+                    "name": "두 번째 고동",
+                    "effect": "heal",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "심장이 두 번 뛰는 동안",
+      "repetition": 4,
+      "status": 200,
+      "elapsedMs": 2011,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "이중 심장박동",
+          "power": 65,
+          "durationMs": 2000,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "amount": 1,
+                    "duration": 1
+                  },
+                  "spec": {
+                    "name": "첫 번째 고동",
+                    "effect": "buff",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "buff",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "amount": 2,
+                    "duration": 1
+                  },
+                  "spec": {
+                    "name": "두 번째 고동",
+                    "effect": "heal",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "buff",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "심장이 두 번 뛰는 동안",
+      "repetition": 5,
+      "status": 200,
+      "elapsedMs": 1501,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "심장의 이중 박동",
+          "power": 72,
+          "durationMs": 1900,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "첫 번째 박동",
+                    "effect": "heal",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "두 번째 박동",
+                    "effect": "heal",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "허공답보",
+      "repetition": 1,
+      "status": 200,
+      "elapsedMs": 1324,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "허공답보",
+          "power": 72,
+          "durationMs": 350,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "wind",
+                  "angle": -60,
+                  "distance": 240
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "공중 발걸음",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "wind",
+                  "angle": 60,
+                  "distance": 240
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "공중 발걸음",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "허공답보",
+      "repetition": 2,
+      "status": 200,
+      "elapsedMs": 2916,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "허공답보",
+          "power": 75,
+          "durationMs": 300,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "wind",
+                  "angle": -60,
+                  "distance": 220
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "damage": 2,
+                    "range": 1
+                  },
+                  "spec": {
+                    "name": "공중 발걸음",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": "earth",
+                    "form": "nova",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "wind",
+                  "angle": 60,
+                  "distance": 220
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "damage": 2,
+                    "range": 1
+                  },
+                  "spec": {
+                    "name": "공중 발걸음",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": "earth",
+                    "form": "nova",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "허공답보",
+      "repetition": 3,
+      "status": 200,
+      "elapsedMs": 2140,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "허공답보",
+          "power": 75,
+          "durationMs": 800,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "wind",
+                  "angle": -60,
+                  "distance": 240
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "공중 보행",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "wind",
+                  "angle": 60,
+                  "distance": 240
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "공중 보행",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "허공답보",
+      "repetition": 4,
+      "status": 200,
+      "elapsedMs": 1716,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "허공답보",
+          "power": 72,
+          "durationMs": 350,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "wind",
+                  "angle": -60,
+                  "distance": 240
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "공중 발걸음",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "wind",
+                  "angle": 60,
+                  "distance": 240
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "공중 발걸음",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "허공답보",
+      "repetition": 5,
+      "status": 200,
+      "elapsedMs": 1766,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "허공답보",
+          "power": 68,
+          "durationMs": 300,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "wind",
+                  "angle": -60,
+                  "distance": 220
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "range": 1,
+                    "radius": 1
+                  },
+                  "spec": {
+                    "name": "공중 발걸음",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "wind",
+                  "angle": 60,
+                  "distance": 220
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "range": 1,
+                    "radius": 1
+                  },
+                  "spec": {
+                    "name": "공중 발걸음",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "팔원소 대합창",
+      "repetition": 1,
+      "status": 200,
+      "elapsedMs": 1842,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "팔원소 대합창",
+          "power": 90,
+          "durationMs": 2200,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "화염과 바람의 음률",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "fire",
+                    "element_secondary": "wind",
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "물과 얼음의 화음",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "water",
+                    "element_secondary": "ice",
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "freeze"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "번개와 대지의 맥동",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "lightning",
+                    "element_secondary": "earth",
+                    "form": "beam",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "shock"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "빛과 어둠의 여운",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "zone",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "weaken"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "팔원소 대합창",
+      "repetition": 2,
+      "status": 200,
+      "elapsedMs": 2022,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "팔원소 대합창",
+          "power": 90,
+          "durationMs": 2200,
+          "sequences": [
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "화염과 바람의 음협",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "fire",
+                    "element_secondary": "wind",
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "물과 얼음의 화음",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "water",
+                    "element_secondary": "ice",
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "freeze"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "번개와 대지의 화음",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "lightning",
+                    "element_secondary": "earth",
+                    "form": "zone",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "shock"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "빛과 어둠의 종장",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "beam",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "weaken"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "팔원소 대합창",
+      "repetition": 3,
+      "status": 200,
+      "elapsedMs": 2067,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "팔원소 대합창",
+          "power": 90,
+          "durationMs": 2400,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "화염과 바람의 음률",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "fire",
+                    "element_secondary": "wind",
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "얼음과 물의 화음",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "ice",
+                    "element_secondary": "water",
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "freeze"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "번개와 대지의 선율",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "lightning",
+                    "element_secondary": "earth",
+                    "form": "beam",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "shock"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "빛과 어둠의 교향곡",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "weaken"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "팔원소 대합창",
+      "repetition": 4,
+      "status": 200,
+      "elapsedMs": 1830,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "팔원소 대합창",
+          "power": 92,
+          "durationMs": 1600,
+          "sequences": [
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "화염과 얼음의 조화",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "fire",
+                    "element_secondary": "ice",
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "burn",
+                      "freeze"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "번개와 대지의 공명",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "lightning",
+                    "element_secondary": "earth",
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "stun"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "바람과 물의 흐름",
+                    "effect": "buff",
+                    "target": "self",
+                    "element_primary": "wind",
+                    "element_secondary": "water",
+                    "form": "zone",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "빛과 어둠의 교차",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "beam",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "weaken"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "팔원소 대합창",
+      "repetition": 5,
+      "status": 200,
+      "elapsedMs": 4756,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "팔원소 대합창",
+          "power": 92,
+          "durationMs": 1800,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "radius": 2,
+                    "amount": 2
+                  },
+                  "spec": {
+                    "name": "화염과 얼음의 서곡",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "fire",
+                    "element_secondary": "water",
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "burn",
+                      "freeze"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "radius": 2,
+                    "amount": 2
+                  },
+                  "spec": {
+                    "name": "번개와 대지의 울림",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "lightning",
+                    "element_secondary": "earth",
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "shock",
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "radius": 2,
+                    "amount": 2
+                  },
+                  "spec": {
+                    "name": "빛과 어둠의 교차",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "beam",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "weaken"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "radius": 2,
+                    "amount": 2
+                  },
+                  "spec": {
+                    "name": "바람과 독의 합주",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": "poison",
+                    "form": "rain",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "poison"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

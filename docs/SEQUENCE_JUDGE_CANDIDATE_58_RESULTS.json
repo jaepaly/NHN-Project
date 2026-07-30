@@ -1,0 +1,253 @@
+{
+  "workerUrl": "https://incant-judge-proxy.incant-judge-proxy.workers.dev",
+  "generatedAt": "2026-07-30T12:02:22.702Z",
+  "results": [
+    {
+      "index": 1,
+      "key": "heldout-01",
+      "input": "황혼이 갈라진다",
+      "intent": "갈라짐의 변화 전후를 최소 두 form 또는 두 사건으로 표현한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "황혼 분열",
+          "power": 75,
+          "durationMs": 1200,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "damage": 2,
+                    "range": 1
+                  },
+                  "spec": {
+                    "name": "빛의 갈래",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "beam",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "damage": 2,
+                    "range": 1
+                  },
+                  "spec": {
+                    "name": "어둠의 갈래",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "beam",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "weaken"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 2640
+    },
+    {
+      "index": 2,
+      "key": "heldout-02",
+      "input": "심연의 개화",
+      "intent": "개화의 형성·확장을 최소 두 form 또는 두 사건으로 표현한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "심연의 개화",
+          "power": 85,
+          "durationMs": 1400,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "radius": 1,
+                    "duration": 2
+                  },
+                  "spec": {
+                    "name": "어둠의 응집",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "zone",
+                    "size": "large",
+                    "speed": "slow",
+                    "status": [
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 3,
+                    "radius": 2
+                  },
+                  "spec": {
+                    "name": "심연의 만개",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "dark",
+                    "element_secondary": "nature",
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "weaken"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 2073
+    },
+    {
+      "index": 3,
+      "key": "heldout-03",
+      "input": "파이어볼",
+      "intent": "변화 과정이 없는 닫힌 투사체는 80ms 원자 plan을 유지한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "파이어볼",
+          "power": 40,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "화염구",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "fire",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1423
+    },
+    {
+      "index": 4,
+      "key": "heldout-04",
+      "input": "새벽의 방패",
+      "intent": "변화 과정이 없는 닫힌 방어는 80ms 원자 plan을 유지한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "새벽의 방패",
+          "power": 65,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "새벽의 방패",
+                    "effect": "shield",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "wall",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1317
+    }
+  ]
+}
