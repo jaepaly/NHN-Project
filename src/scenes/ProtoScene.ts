@@ -1667,8 +1667,24 @@ export class ProtoScene extends Phaser.Scene {
       this.startRewardlessRoom(roomless, roomIndex);
       return;
     }
-    const waveSet = encounter.waveSetId ? WAVE_SETS[encounter.waveSetId] : undefined;
-    if (!waveSet) throw new Error(`Unknown wave set: ${encounter.waveSetId ?? '(missing)'}`);
+    // ⚠️ 없는 웨이브셋에 **예외를 던지지 않는다** (총괄 제보로 드러난 사고):
+    // 프리셋이 'room-c'(WAVE_SETS에 없음)를 가리켜 여기서 throw했고, 이미 방을 비운
+    // 뒤였으므로 몹도 포탈도 없는 빈 방이 되어 런이 진행 불가가 됐다. 데이터 오타 하나가
+    // 플레이를 벽돌로 만들면 안 된다 — 대체 웨이브로 계속 가고 DEV에서 크게 알린다.
+    // (오타 자체는 map-graph-regression이 프리셋 전 노드를 검사해 막는다.)
+    const requestedWaveSet = encounter.waveSetId;
+    let waveSet = requestedWaveSet ? WAVE_SETS[requestedWaveSet] : undefined;
+    if (!waveSet) {
+      waveSet = WAVE_SETS['room-a'];
+      devInfo('[Room] 알 수 없는 웨이브셋 — room-a로 대체', { requested: requestedWaveSet });
+      if (import.meta.env.DEV) {
+        this.announceSystemMessage(
+          `[DEV] 웨이브셋 '${requestedWaveSet ?? '(없음)'}' 없음 — room-a로 대체`,
+          '#ff8fa3',
+          4000,
+        );
+      }
+    }
     this.waveManager = new WaveManager(waveSet);
     this.audio.playBgm('combat');
     this.spawnWave(this.waveManager.start());

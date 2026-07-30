@@ -102,3 +102,28 @@ assert.throws(
 );
 
 console.log('MapGraph regression: progress, idempotent navigation, completion authority, typed content, graph guards passed');
+
+// ── 프리셋이 가리키는 웨이브셋이 실제로 존재하는가 (총괄 제보로 추가) ──────
+// 없는 키를 가리키면 startRoom이 방을 비운 뒤 예외를 던져 **몹도 포탈도 없는 빈 방**이
+// 되고 런이 진행 불가가 된다. 실제로 s2-combat이 'room-c'(WAVE_SETS에 없음)를
+// 가리켜 매 런 5번 방에서 터졌다. 씬에 대체 폴백을 넣었지만 오타 자체는 여기서 막는다.
+{
+  const { WAVE_SETS } = await import('../src/combat-core/waves/waveManager');
+  const assertWave = (await import('node:assert/strict')).default;
+  const missing: string[] = [];
+  for (const node of MAP_GRAPH_PRESET_01.nodes) {
+    if (!node.waveSetId) continue;
+    if (!WAVE_SETS[node.waveSetId]) missing.push(`${node.id} → '${node.waveSetId}'`);
+  }
+  assertWave.deepEqual(missing, [], `존재하지 않는 웨이브셋을 가리키는 노드: ${missing.join(', ')}`);
+
+  // 역방향도 본다 — 전투 노드는 반드시 웨이브셋을 가져야 한다(빈 전투방 방지)
+  for (const node of MAP_GRAPH_PRESET_01.nodes) {
+    const needsWave = node.kind === 'start' || node.kind === 'combat'
+      || node.kind === 'elite' || node.kind === 'trap';
+    if (needsWave) {
+      assertWave.ok(node.waveSetId, `${node.id}(${node.kind})는 웨이브셋이 있어야 한다`);
+    }
+  }
+  console.log('map graph regression: 프리셋 웨이브셋 참조 무결성 통과');
+}
