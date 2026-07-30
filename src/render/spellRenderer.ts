@@ -25,6 +25,20 @@ import {
   rotatePointsAbout,
 } from '../combat-core/combat/slashConfig';
 import {
+  ELEMENT_FLOURISH,
+  boltPolyline,
+  flourishRingScaleFor,
+  hasElementFlourish,
+  iceShardCount,
+  iceSpikeLength,
+  iceSpikeCount,
+  lightningBranchCount,
+  lightningFlickerCount,
+  lightningJitter,
+  lightningReach,
+  lightningSegmentCount,
+} from './elementFlourish';
+import {
   AFFINITY_VFX_CONFIG,
   flourishEmberCount,
   flourishMaxRadius,
@@ -1184,6 +1198,127 @@ function impactBurst(scene: Phaser.Scene, x: number, y: number, spec: SpellSpec)
  * 친화 격상 플러리시 — 첫 적중·전개 지점에서 원소색 링·스파크·엠버가 티어만큼 쌓인다.
  * 순수 오버레이(짧은 수명, 판정 무관). 티어 0이면 아무것도 하지 않는다.
  */
+/**
+ * 번개 친화 연출 — 갈래 방전. **이징 없이 툭, 그리고 재점멸.**
+ *
+ * 부드러운 확장(easeOut)을 쓰지 않는 것이 핵심이다 — 곡선 이징을 쓰는 순간 물처럼
+ * 읽힌다. 짧게 켜고(strikeMs) 완전히 끄고(gapMs) 다른 지그재그로 다시 켠다.
+ * 그 공백이 "찌릿"의 정체다. 강도가 오르면 갈래·꺾임·거칠기·점멸 횟수가 함께 는다.
+ */
+function playLightningFlourish(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  spec: SpellSpec,
+  intensity: number,
+): void {
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const cfg = ELEMENT_FLOURISH.lightning;
+  const branches = lightningBranchCount(intensity, spec.form);
+  const segments = lightningSegmentCount(intensity);
+  const jitter = lightningJitter(intensity);
+  const reach = lightningReach(intensity, spec.form);
+  const flickers = lightningFlickerCount(intensity);
+
+  const g = scene.add.graphics().setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
+  const strike = (): void => {
+    g.clear();
+    // 굵은 코어 + 얇은 흰 심 — 두 겹이라 선이 얇아도 또렷하다(면적은 거의 0)
+    for (const [width, color, alpha] of [[3, pal.core, 0.85], [1.2, pal.accent, 1]] as const) {
+      g.lineStyle(width, color, alpha);
+      for (let b = 0; b < branches; b += 1) {
+        const angle = (Math.PI * 2 * b) / branches + (Math.random() - 0.5) * 0.4;
+        const points = boltPolyline(angle, reach, segments, jitter, Math.random);
+        g.beginPath();
+        g.moveTo(x + points[0].x, y + points[0].y);
+        for (let i = 1; i < points.length; i += 1) g.lineTo(x + points[i].x, y + points[i].y);
+        g.strokePath();
+      }
+    }
+  };
+
+  let elapsed = 0;
+  for (let f = 0; f < flickers; f += 1) {
+    scene.time.delayedCall(elapsed, () => { if (g.active) strike(); });
+    scene.time.delayedCall(elapsed + cfg.strikeMs, () => { if (g.active) g.clear(); });
+    elapsed += cfg.strikeMs + cfg.gapMs;
+  }
+  scene.time.delayedCall(elapsed + 40, () => g.destroy());
+}
+
+/**
+ * 얼음 친화 연출 — 결정이 **계단으로** 자라고, 깊은 투자에서 파편으로 깨진다.
+ *
+ * 성장이 연속이면 물처럼 보이므로 `Stepped` 이징으로 끊는다. 발광(ADD)을 쓰지 않는다 —
+ * 얼음은 스스로 빛나는 게 아니라 빛을 꺾는 것이고, 선만 또렷하면 결정으로 읽힌다.
+ */
+function playIceFlourish(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  spec: SpellSpec,
+  intensity: number,
+): void {
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const cfg = ELEMENT_FLOURISH.ice;
+  const spikes = iceSpikeCount(intensity, spec.form);
+  const length = iceSpikeLength(intensity, spec.form);
+
+  const g = scene.add.graphics().setDepth(7);
+  const grown = { t: 0 };
+  scene.tweens.add({
+    targets: grown,
+    t: 1,
+    duration: cfg.growMs,
+    ease: `Stepped.easeNone`,
+    easeParams: [cfg.growthSteps],
+    onUpdate: () => {
+      if (!g.active) return;
+      g.clear();
+      for (const [width, color, alpha] of [[3, pal.glow, 0.7], [1.2, pal.accent, 0.95]] as const) {
+        g.lineStyle(width, color, alpha);
+        for (let i = 0; i < spikes; i += 1) {
+          const angle = (Math.PI * 2 * i) / spikes;
+          const len = length * grown.t;
+          const tipX = x + Math.cos(angle) * len;
+          const tipY = y + Math.sin(angle) * len;
+          // 좌우 어깨를 달아 침(針)이 아니라 결정으로 읽히게
+          const shoulder = len * 0.34;
+          const sx = -Math.sin(angle) * len * 0.16;
+          const sy = Math.cos(angle) * len * 0.16;
+          g.beginPath();
+          g.moveTo(x, y);
+          g.lineTo(x + Math.cos(angle) * shoulder + sx, y + Math.sin(angle) * shoulder + sy);
+          g.lineTo(tipX, tipY);
+          g.lineTo(x + Math.cos(angle) * shoulder - sx, y + Math.sin(angle) * shoulder - sy);
+          g.closePath();
+          g.strokePath();
+        }
+      }
+    },
+    onComplete: () => {
+      const shards = iceShardCount(intensity, spec.form);
+      if (shards > 0) {
+        // 깨짐 — 결정이 파편으로 흩어진다 (마스터리 표식)
+        const burst = scene.add.particles(x, y, elementParticleKey(scene, 'ice'), {
+          speed: { min: 90, max: 90 + length * 2 },
+          scale: { start: 0.42, end: 0 },
+          lifespan: 420,
+          quantity: shards,
+          tint: [pal.core, pal.accent],
+          emitting: false,
+        }).setDepth(7);
+        burst.explode(shards);
+        scene.time.delayedCall(520, () => burst.destroy());
+      }
+      // 결정은 부서지며 사라진다 — 페이드가 아니라 짧게 툭
+      scene.tweens.add({
+        targets: g, alpha: 0, duration: shards > 0 ? 90 : 220, onComplete: () => g.destroy(),
+      });
+    },
+  });
+}
+
 export function playAffinityImpactFlourish(
   scene: Phaser.Scene,
   x: number,
@@ -1198,8 +1333,14 @@ export function playAffinityImpactFlourish(
 
   // 확장 링 — 개수·반경·스파크·엠버는 순수 함수(affinityVfx.ts)가 결정한다.
   // nova는 폼배율(#216 항목7)로 축소 — 조준점 폭발이 적 무리를 덮지 않게.
-  const rings = flourishRingCount(t, spec.form);
+  // 고유 연출이 붙는 원소(번개·얼음)는 링을 줄인다 — 선이 늘어난 만큼 면을 뺀다(#220).
+  const ringScale = flourishRingScaleFor(spec.element_primary);
+  const rings = Math.max(1, Math.round(flourishRingCount(t, spec.form) * ringScale));
   const maxRadius = flourishMaxRadius(t, spec.form);
+  if (hasElementFlourish(spec.element_primary)) {
+    if (spec.element_primary === 'lightning') playLightningFlourish(scene, x, y, spec, t);
+    else playIceFlourish(scene, x, y, spec, t);
+  }
   for (let i = 0; i < rings; i += 1) {
     const ring = scene.add.circle(x, y, 10, 0x000000, 0)
       .setStrokeStyle(5 - i * 0.5, i === 0 ? pal.core : i === 1 ? pal.glow : pal.accent, 1)
@@ -1219,7 +1360,9 @@ export function playAffinityImpactFlourish(
 
   // 스파크 버스트 — 양·속도가 강도에 연속 비례 (매 시전의 작은 성장도 보인다)
   const sparkCount = flourishSparkCount(t, spec.form);
-  const sparks = scene.add.particles(x, y, particleKey(scene, PARTICLE_TEXTURES.spark), {
+  // 원소별 파티클 — 종전엔 PARTICLE_TEXTURES.spark 하드코딩이라 **모든 원소가 번개
+  // 파티클**을 썼다. 얼음·대지는 파편, 번개는 섬광, 나머지는 발광을 쓴다.
+  const sparks = scene.add.particles(x, y, elementParticleKey(scene, spec.element_primary), {
     speed: { min: 60, max: 150 + t * 30 },
     scale: { start: 0.5 + t * 0.05, end: 0 },
     lifespan: 500,
@@ -1231,8 +1374,13 @@ export function playAffinityImpactFlourish(
   sparks.explode(sparkCount);
   scene.time.delayedCall(620, () => sparks.destroy());
 
-  // 엠버 잔광 — 강도 3(친화 0.45)부터, 강도에 비례해 더 많이 (마스터리의 표식)
-  const embers = flourishEmberCount(t, spec.form);
+  // 엠버 잔광 — 강도 3(친화 0.45)부터, 강도에 비례해 더 많이 (마스터리의 표식).
+  // **고유 연출 원소는 제외한다**: 위로 떠오르는 불씨는 불·재의 문법이라 번개의 날카로움과
+  // 얼음의 결정감을 흐린다. 그 원소들은 성장 신호를 이미 갈래·꺾임·점멸(번개)과
+  // 스파이크·파편(얼음)이 나르므로 잃는 정보가 없다.
+  const embers = hasElementFlourish(spec.element_primary)
+    ? 0
+    : flourishEmberCount(t, spec.form);
   if (embers > 0) {
     for (let i = 0; i < embers; i += 1) {
       const angle = (Math.PI * 2 * i) / embers;
