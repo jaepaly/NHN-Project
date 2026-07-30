@@ -27,6 +27,7 @@ import { applyWorldFx } from '../render/postFx';
 import { TRAIL_CONFIG, spawnTrailGhost } from '../render/trailEffect';
 import {
   backdropPaletteForEncounter,
+  backdropPaletteForNode,
   ROOM_BACKDROP_PALETTES,
 } from '../render/roomBackdropConfig';
 import type { RoomBackdropPalette } from '../render/roomBackdropConfig';
@@ -2262,7 +2263,13 @@ export class ProtoScene extends Phaser.Scene {
 
   private applyRoomBackdrop(_roomIndex: number): void {
     const state = this.combatRunController.state;
-    const palette = backdropPaletteForEncounter(state.stage, this.isBossEncounter());
+    // 배경은 **노드 종류**로 고른다 (총괄 지적). 종전엔 stage + isBoss 세 가지뿐이라
+    // 정예·함정·보물·제단이 전부 그 스테이지의 일반 방과 똑같이 생겼다 — 포탈 라벨을
+    // 보고 고른 방이 구분되지 않으면 선택이 무의미해 보인다.
+    // 보스 조우는 그래프 종류보다 우선한다: 두 축이 어긋나도 보스방은 보스로 보여야 한다.
+    const palette = this.isBossEncounter()
+      ? backdropPaletteForEncounter(state.stage, true)
+      : backdropPaletteForNode(this.mapGraph.current().kind, state.stage);
     const from = Phaser.Display.Color.IntegerToColor(this.backdropColor);
     const to = Phaser.Display.Color.IntegerToColor(palette.base);
     this.tweens.addCounter({

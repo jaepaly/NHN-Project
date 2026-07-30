@@ -83,7 +83,8 @@
     "test:bossresist": "esbuild scripts/boss-resistance-readout-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-boss-resistance-readout-regression.mjs && node node_modules/.cache/incant-boss-resistance-readout-regression.mjs",
     "test:altaroffer": "esbuild scripts/altar-offer-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-altar-offer-regression.mjs && node node_modules/.cache/incant-altar-offer-regression.mjs",
     "test:elementflourish": "esbuild scripts/element-flourish-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-element-flourish-regression.mjs && node node_modules/.cache/incant-element-flourish-regression.mjs",
-    "test:roomfixture": "esbuild scripts/room-fixture-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-fixture-regression.mjs && node node_modules/.cache/incant-room-fixture-regression.mjs"
+    "test:roomfixture": "esbuild scripts/room-fixture-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-fixture-regression.mjs && node node_modules/.cache/incant-room-fixture-regression.mjs",
+    "test:roombackdrop": "esbuild scripts/room-kind-backdrop-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-kind-backdrop-regression.mjs && node node_modules/.cache/incant-room-kind-backdrop-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
