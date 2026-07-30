@@ -243,6 +243,7 @@ import {
   tryCleanseFloorHazards,
 } from '../combat-core/combat/floorHazardState';
 import { PortalField } from '../render/portalField';
+import { barriersFromPlacements, terrainForRoom } from '../run/roomTerrainConfig';
 import { RoomFixture } from '../render/roomFixture';
 import { ROOM_FIXTURE_GUIDE } from '../run/roomFixtureConfig';
 import { mockMinimapModel } from '../run/mapGraphMock';
@@ -1778,6 +1779,7 @@ export class ProtoScene extends Phaser.Scene {
     this.eliteModifierAssignments = [];
     this.clearCombatRoom();
     this.applyRoomBackdrop(roomIndex);
+    this.applyRoomTerrain();
     this.basicAttackCooldownRemaining = 0;
     // 포탈로 넘어왔으면 왼쪽 중앙 도착(#245), 첫 방이면 종전대로 방 중앙.
     // 도착 지점이 하나로 고정돼 있어야 함정·지형·적 스폰이 그 한 점만 비우면 된다(#246).
@@ -2850,6 +2852,28 @@ export class ProtoScene extends Phaser.Scene {
       if (!this.scene?.isActive?.()) return;
       pending.run();
     });
+  }
+
+  /**
+   * 방 종류에 맞는 지형 장벽을 세운다 (#214 지형 Tier 2 배선).
+   *
+   * 기전은 진작 완성돼 있었다 — 플레이어·보행 적을 밀어내고 적 투사체까지 막는다.
+   * 그런데 `setTerrainBarriers` 호출이 **DEV 프리뷰 한 곳뿐**이어서 실제 런에서는
+   * 장벽이 한 번도 나오지 않았다. 방이 전부 텅 빈 사각 아레나였고, 슈터 적의 사격을
+   * 피하는 방법이 발로 도는 것밖에 없었다.
+   *
+   * R1이 노드 `terrain`에 장벽을 채우면 **그것이 이긴다**. 비어 있으면 방 종류별
+   * 기본 배치를 쓴다(`roomTerrainConfig`).
+   */
+  private applyRoomTerrain(): void {
+    const node = this.mapGraph.current();
+    const fromNode = barriersFromPlacements(node.terrain);
+    if (fromNode.length > 0) {
+      this.setTerrainBarriers(fromNode);
+      return;
+    }
+    const stage = node.stage === 2 ? 2 : 1;
+    this.setTerrainBarriers(terrainForRoom(node.kind, stage));
   }
 
   private clearTerrainBarriers(): void {

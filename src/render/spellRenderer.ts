@@ -197,7 +197,22 @@ export function castSpell(ctx: CastContext, spec: SpellSpec): void {
       break;
     case 'bolt':
     default:
-      // 미구현 폼은 bolt로 대체 렌더링 (후속 개발에서 12폼 구현)
+      /**
+       * 전용 렌더가 있는 폼은 위 9개(bolt 포함)다. 남은 넷(wall·orbit·summon·buff)은
+       * **여기 오지 않는다** — 씬의 시전 디스패치가 `effect` 우선이라 그 전에 각자
+       * 전용 경로로 빠진다:
+       *
+       *   wall   → `isBattlefieldWall` → createWall (전장 장벽)
+       *   orbit  → form + damage/control → createOrbit (회전체)
+       *   summon → effect 'summon' → createSummon (소환체)
+       *   buff   → effect 'buff' → castSelfBuff (자기 강화)
+       *
+       * 실측(기록된 Gemini 판정 48건, SPELL_EXPRESSION_AUDIT): 이 default로 떨어진
+       * 폼 **0건**. 그래도 default를 두는 이유는 `validate.ts`가 폼이 enum에 있는지만
+       * 보고 **form↔effect 정합성은 검사하지 않기** 때문이다 — 예컨대
+       * `form: 'summon', effect: 'damage'` 같은 어긋난 쌍이 오면 여기로 온다.
+       * 그때 화살로라도 나가는 게 아무것도 안 나가는 것보다 낫다.
+       */
       castBolt(impactCtx, spec);
       break;
   }
