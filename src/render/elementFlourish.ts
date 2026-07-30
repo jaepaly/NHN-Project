@@ -25,7 +25,7 @@ import { AFFINITY_VFX_CONFIG, flourishFormScale } from './affinityVfx';
  */
 
 /** 고유 연출을 가진 원소 — 나머지는 기존 링 문법을 그대로 쓴다 (그것도 각자 어울린다) */
-export type FlourishElement = 'lightning' | 'ice';
+export type FlourishElement = 'lightning' | 'ice' | 'fire' | 'wind';
 
 /**
  * ⚠️ 모든 `max*`는 **강도 상한(intensityCap 8 = 친화 1.2)에서 실제로 도달**해야 한다.
@@ -83,10 +83,64 @@ export const ELEMENT_FLOURISH = {
     shardsPerStack: 3,
     maxShards: 14,
   },
+  /**
+   * 불 — 난류 상승. 혀(tongue)가 흔들리며 위로 오른다.
+   *
+   * 기존 상승 엠버와 다른 점: 엠버는 **직선으로 뜨는 점**이었고, 이건 **좌우로 휘는 선**이다.
+   * 불의 정체는 "위로 간다"가 아니라 "위로 가면서 계속 흔들린다"다. 사인 위상을 혀마다
+   * 다르게 줘서 전체가 한 몸처럼 흔들리지 않게 한다.
+   *
+   * ADD를 쓴다 — 불은 실제로 빛을 낸다. 대신 링을 크게 줄여 상쇄한다.
+   */
+  fire: {
+    ringScale: 0.4,
+    tonguesBase: 3,
+    tonguesPerStack: 0.75,
+    maxTongues: 9,
+    /** 혀 하나의 높이(px) */
+    riseBase: 30,
+    risePerStack: 7,
+    /** 좌우 휘는 폭(px) — 강도에 비례해 더 거칠게 난류 */
+    swayBase: 7,
+    swayPerStack: 1.6,
+    /** 혀를 몇 점으로 그리나 — 많으면 곡선이 부드럽다 */
+    samples: 6,
+    riseMs: 420,
+  },
+  /**
+   * 바람 — 나선. **타격 순간이 없다.**
+   *
+   * 다른 원소는 "터진다"가 핵심이지만 바람은 계속 도는 것이다. 그래서 확장 섬광
+   * (flash)을 쓰지 않고, 호(arc)를 여러 겹 돌려 회전만 남긴다. 시작과 끝이 뚜렷하지
+   * 않은 게 의도다.
+   */
+  wind: {
+    ringScale: 0.3,
+    armsBase: 2,
+    armsPerStack: 0.5,
+    maxArms: 6,
+    /** 한 팔이 감는 회전 수 */
+    turnsBase: 0.8,
+    turnsPerStack: 0.15,
+    maxTurns: 2,
+    radiusBase: 26,
+    radiusPerStack: 7,
+    samples: 14,
+    spinMs: 520,
+  },
 } as const;
 
 export function hasElementFlourish(element: SpellElement): element is FlourishElement {
-  return element === 'lightning' || element === 'ice';
+  return element === 'lightning' || element === 'ice'
+    || element === 'fire' || element === 'wind';
+}
+
+/**
+ * 이 원소가 확장 섬광(flash)을 쓰는가 — **바람만 안 쓴다.**
+ * 바람은 타격 순간이 없는 원소라, 확 퍼지는 원이 붙으면 "터졌다"로 읽혀 회전감을 죽인다.
+ */
+export function usesImpactFlash(element: SpellElement): boolean {
+  return element !== 'wind';
 }
 
 /** 고유 연출 원소는 링을 줄인다 — 총광량을 늘리지 않기 위한 상쇄 (#220) */
@@ -151,6 +205,91 @@ export function iceShardCount(intensity: number, form: SpellForm): number {
   const t = clampIntensity(intensity);
   if (t < c.shatterFromIntensity) return 0;
   return scaled(c.shardsBase, c.shardsPerStack, t - c.shatterFromIntensity, c.maxShards, form);
+}
+
+// ── 불 ─────────────────────────────────────────────────────────────────
+
+export function fireTongueCount(intensity: number, form: SpellForm): number {
+  const c = ELEMENT_FLOURISH.fire;
+  return scaled(c.tonguesBase, c.tonguesPerStack, clampIntensity(intensity), c.maxTongues, form);
+}
+
+export function fireRise(intensity: number, form: SpellForm): number {
+  const c = ELEMENT_FLOURISH.fire;
+  return (c.riseBase + c.risePerStack * clampIntensity(intensity)) * flourishFormScale(form);
+}
+
+export function fireSway(intensity: number): number {
+  const c = ELEMENT_FLOURISH.fire;
+  return c.swayBase + c.swayPerStack * clampIntensity(intensity);
+}
+
+/**
+ * 불 혀 하나의 점열 (순수) — 위로 오르며 좌우로 휜다.
+ * `phase`가 혀마다 달라야 전체가 한 몸처럼 흔들리지 않는다.
+ */
+export function tonguePolyline(
+  rise: number,
+  sway: number,
+  phase: number,
+  samples: number,
+): Array<{ x: number; y: number }> {
+  const count = Math.max(2, Math.floor(samples));
+  const safeRise = Number.isFinite(rise) ? Math.max(0, rise) : 0;
+  const safeSway = Number.isFinite(sway) ? Math.max(0, sway) : 0;
+  const safePhase = Number.isFinite(phase) ? phase : 0;
+  const points: Array<{ x: number; y: number }> = [];
+  for (let i = 0; i <= count; i += 1) {
+    const t = i / count;
+    // 위로 갈수록 흔들림이 커진다 — 뿌리는 붙어 있고 끝이 날린다
+    const amplitude = safeSway * t;
+    points.push({
+      x: Math.sin(safePhase + t * Math.PI * 2.2) * amplitude,
+      y: -safeRise * t,
+    });
+  }
+  return points;
+}
+
+// ── 바람 ───────────────────────────────────────────────────────────────
+
+export function windArmCount(intensity: number, form: SpellForm): number {
+  const c = ELEMENT_FLOURISH.wind;
+  return scaled(c.armsBase, c.armsPerStack, clampIntensity(intensity), c.maxArms, form);
+}
+
+export function windTurns(intensity: number): number {
+  const c = ELEMENT_FLOURISH.wind;
+  return Math.min(c.maxTurns, c.turnsBase + c.turnsPerStack * clampIntensity(intensity));
+}
+
+export function windRadius(intensity: number, form: SpellForm): number {
+  const c = ELEMENT_FLOURISH.wind;
+  return (c.radiusBase + c.radiusPerStack * clampIntensity(intensity)) * flourishFormScale(form);
+}
+
+/**
+ * 나선 팔 하나의 점열 (순수) — 중심에서 밖으로 감긴다.
+ * 반경이 t에 비례하고 각도가 t×회전수로 도니 아르키메데스 나선이 된다.
+ */
+export function spiralPolyline(
+  startAngle: number,
+  radius: number,
+  turns: number,
+  samples: number,
+): Array<{ x: number; y: number }> {
+  const count = Math.max(2, Math.floor(samples));
+  const safeRadius = Number.isFinite(radius) ? Math.max(0, radius) : 0;
+  const safeTurns = Number.isFinite(turns) ? Math.max(0, turns) : 0;
+  const safeStart = Number.isFinite(startAngle) ? startAngle : 0;
+  const points: Array<{ x: number; y: number }> = [];
+  for (let i = 0; i <= count; i += 1) {
+    const t = i / count;
+    const angle = safeStart + t * Math.PI * 2 * safeTurns;
+    const r = safeRadius * t;
+    points.push({ x: Math.cos(angle) * r, y: Math.sin(angle) * r });
+  }
+  return points;
 }
 
 /**
