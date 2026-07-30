@@ -98,6 +98,7 @@ import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { UI_COLOR } from '../ui/uiTokens';
 import type { GameSettings } from '../run/gameSettings';
 import { DEFAULT_SETTINGS, loadSettings } from '../run/gameSettings';
+import { setVfxBrightness } from '../render/vfxBrightness';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import { devInfo } from '../debug/devLog';
 import { FusionGauge } from '../combat-core/player/fusionGauge';
@@ -6321,6 +6322,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
    * 그대로 읽힌다**. 밝기 조절이 정보 가독성을 깎으면 접근성 장치의 취지에 어긋난다.
    */
   private applyBrightness(): void {
+    // 이펙트 밝기는 **막이 아니라 배율**이다 — 렌더러가 시전 객체 알파에 곱한다.
+    // 같은 함수에서 함께 반영해 호출 지점(초기화·설정 변경·복귀)이 갈리지 않게 한다.
+    setVfxBrightness(this.settings.vfxBrightness);
+
     const { width, height } = this.scale;
     const g = this.brightnessVeil.clear();
     const b = this.settings.brightness;

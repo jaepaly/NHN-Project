@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { scaledAlpha, withVfxBrightness } from './vfxBrightness';
 import type { SpellElement, SpellSpec } from '../spell/types';
 import { SPELL_DAMAGE_CONFIG } from '../combat-core/combat/combatConfig';
 import { CAGE_CONFIG, CHAIN_CONFIG } from '../combat-core/combat/advancedFormConfig';
@@ -166,8 +167,14 @@ export function ensureParticleTexture(scene: Phaser.Scene): void {
 }
 
 export function castSpell(ctx: CastContext, spec: SpellSpec): void {
+  // VFX 밝기(설정) — 이 시전이 만드는 객체의 알파만 줄인다. 배경·적은 그대로다.
+  // 텍스처 준비는 밖에 둔다: 한 번만 만들어지는 공용 자원이라 배율 대상이 아니다.
   ensureParticleTexture(ctx.scene);
   ensureParticleTextures(ctx.scene);
+  withVfxBrightness(ctx.scene, () => castSpellForm(ctx, spec));
+}
+
+function castSpellForm(ctx: CastContext, spec: SpellSpec): void {
   requestCastCameraShake(ctx, spec);
   const impactCtx = withAffinityImpactFlourish(ctx, spec);
   switch (spec.form) {
@@ -449,7 +456,8 @@ function castCage(ctx: CastContext, spec: SpellSpec): void {
   scene.tweens.add({
     targets: [ring, inner],
     scale: { from: 1.35, to: 1 },
-    alpha: { from: 1, to: 0 },
+    // 시작 알파를 명시하면 withVfxBrightness가 줄여둔 값을 덮어쓴다 — 여기서 직접 곱한다
+    alpha: { from: scaledAlpha(1), to: 0 },
     duration: 520,
     ease: 'Cubic.easeOut',
     onComplete: () => {
@@ -755,7 +763,8 @@ export function castSlash(ctx: CastContext, spec: SpellSpec): void {
     scene.tweens.add({
       targets: flash,
       scaleY: { from: 1, to: 4 },
-      alpha: { from: weight, to: 0 },
+      // 시작 알파를 명시하면 withVfxBrightness가 줄여둔 값을 덮어쓴다 — 여기서 직접 곱한다
+      alpha: { from: scaledAlpha(weight), to: 0 },
       duration: SLASH_CONFIG.flashMs,
       ease: 'Cubic.easeOut',
       onComplete: () => flash.destroy(),
@@ -913,7 +922,8 @@ function explodeNova(ctx: CastContext, spec: SpellSpec, x: number, y: number): v
   scene.tweens.add({
     targets: ring,
     radius,
-    alpha: { from: 1, to: 0 },
+    // 시작 알파를 명시하면 withVfxBrightness가 줄여둔 값을 덮어쓴다 — 여기서 직접 곱한다
+    alpha: { from: scaledAlpha(1), to: 0 },
     duration: 450,
     ease: 'Cubic.easeOut',
     onUpdate: () => ring.setStrokeStyle(4 * scale, pal.core, ring.alpha * 0.9),
@@ -1032,7 +1042,8 @@ function castZone(ctx: CastContext, spec: SpellSpec): void {
     speed: { min: radius * 0.15, max: radius * 0.55 },
     angle: { min: 0, max: 360 },
     scale: { start: 0.28 * scale, end: 0 },
-    alpha: { start: 0.55, end: 0 },
+    // 시작 알파를 명시하면 withVfxBrightness가 줄여둔 값을 덮어쓴다 — 여기서 직접 곱한다
+    alpha: { start: scaledAlpha(0.55), end: 0 },
     lifespan: Math.max(500, tickIntervalMs),
     frequency: VFX_BUDGET_CONFIG.particleBaseFrequencyMs,
     quantity: 1,
@@ -1053,7 +1064,8 @@ function castZone(ctx: CastContext, spec: SpellSpec): void {
   scene.tweens.add({
     targets: pulse,
     scale: { from: 0.45, to: 1 },
-    alpha: { from: 0.9, to: 0 },
+    // 시작 알파를 명시하면 withVfxBrightness가 줄여둔 값을 덮어쓴다 — 여기서 직접 곱한다
+    alpha: { from: scaledAlpha(0.9), to: 0 },
     duration: tickIntervalMs,
     repeat: ZONE_CONFIG.tickCount - 1,
     ease: 'Cubic.easeOut',

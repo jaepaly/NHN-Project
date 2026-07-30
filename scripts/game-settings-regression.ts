@@ -45,9 +45,20 @@ const storage = {
   setItem: (k: string, v: string) => { mem.set(k, v); },
 };
 assert.deepEqual(loadSettings(storage), d, '저장 전 = 기본값');
-const custom = { sfxVolume: 0.3, bgmVolume: 0.1, brightness: 0.6 };
+// ⚠️ **축을 추가하면 여기가 깨진다 — 그게 의도다.** deepEqual이 리터럴이라
+// 새 설정이 저장·복원 경로를 타는지 확인하지 않고 넘어가는 일이 없다.
+// (vfxBrightness 추가 때 실제로 걸렸다)
+const custom = { sfxVolume: 0.3, bgmVolume: 0.1, brightness: 0.6, vfxBrightness: 0.5 };
 saveSettings(storage, custom);
 assert.deepEqual(loadSettings(storage), custom, '왕복 보존');
+// 모든 축이 빠짐없이 왕복하는가 — 리터럴이 기본값과 같은 값이면 통과해도 의미가 없다
+for (const key of Object.keys(d) as (keyof typeof d)[]) {
+  assert.ok(key in custom, `설정 축 ${key}가 왕복 검사에 빠져 있다`);
+  assert.notEqual(
+    custom[key], d[key],
+    `${key}는 기본값과 다른 값으로 검사해야 왕복이 실제로 확인된다`,
+  );
+}
 mem.set(SETTINGS_CONFIG.storageKey, '{깨진');
 assert.deepEqual(loadSettings(storage), d, '손상 JSON → 기본값');
 mem.set(SETTINGS_CONFIG.storageKey, '[]');
