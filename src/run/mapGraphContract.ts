@@ -49,11 +49,28 @@ export interface MinimapModel {
  * R1이 소유하는 실제 방 노드 데이터입니다. Phaser/씬 객체를 참조하지 않아
  * 그래프 생성, 회귀 테스트, 미니맵 소비자가 같은 값을 안전하게 공유할 수 있습니다.
  */
+/**
+ * 방에 놓이는 지형 한 개.
+ *
+ * 두 종류를 담는다:
+ *  - **원형** (`radius`) — 바닥 장판. `FloorHazardZone`과 같은 모양이다
+ *  - **선분** (`halfLength`·`angleDeg`) — 지형 장벽. `kind: 'barrier'`로 표시한다
+ *
+ * ⚠️ `halfLength`/`angleDeg`는 나중에 추가됐다. 원래 이 타입은 원형뿐이어서
+ * **장벽을 표현할 수 없었고**, 그래서 `MapNode.terrain`이 채워진 적이 없다
+ * (`TerrainBarrier`는 각도와 길이를 요구한다). 배선이 빠진 게 아니라 담을 자리가
+ * 없었던 것이다. 자세한 경위는 `roomTerrainConfig.ts` 참조.
+ */
 export interface MapTerrainPlacement {
   kind: string;
   x: number;
   y: number;
+  /** 원형 지형(바닥 장판)의 반경 */
   radius?: number;
+  /** 선분 지형(장벽)의 길이 절반 — 있으면 장벽으로 읽는다 */
+  halfLength?: number;
+  /** 선분 지형의 각도(도). 0 = 가로 */
+  angleDeg?: number;
 }
 
 /** 기존 위험지대·저주방을 MapNode.kind='trap'으로 통합하는 프로필 종류입니다. */
