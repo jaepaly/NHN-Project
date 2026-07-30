@@ -16,6 +16,17 @@ export interface GameSettings {
   bgmVolume: number;
   /** 화면 밝기 0.4~1.3 (1=기본). 1 미만은 어둡게, 초과는 밝게 */
   brightness: number;
+  /**
+   * 이펙트 밝기 0.3~1 (1=기본) — **시전 연출만** 어둡게 한다 (팀 의견: "이펙트가 너무 밝다").
+   *
+   * `brightness`와 나누는 이유: 그건 월드 위에 검은 막을 씌우므로 이펙트를 낮추려고
+   * 내리면 **배경 아트와 적 스프라이트까지** 어두워진다. 적이 안 보이는 건 접근성
+   * 개선이 아니라 새 문제다. 이 축은 이펙트가 만드는 객체의 알파만 곱한다.
+   *
+   * 하한이 0이 아니라 0.3인 이유: 완전히 지우면 "무엇이 맞았는지"를 볼 수 없다.
+   * 밝기가 아니라 **가독성**이 무너지는 지점이라 소거는 허용하지 않는다.
+   */
+  vfxBrightness: number;
 }
 
 export const SETTINGS_CONFIG = {
@@ -27,6 +38,9 @@ export const SETTINGS_CONFIG = {
   /** 완전 암전·과다 발광을 막는 밝기 범위 (광과민성 대응이 되레 위험해지면 안 된다) */
   brightnessMin: 0.4,
   brightnessMax: 1.3,
+  /** 이펙트 밝기 — 1을 넘길 이유가 없다(더 밝게 하려고 만든 축이 아니다) */
+  vfxBrightnessMin: 0.3,
+  vfxBrightnessMax: 1,
 } as const;
 
 /** 기본값은 step(0.1) 격자 위에 둔다 — 격자 밖 값은 정규화에서 반올림돼 왕복이 깨진다. */
@@ -34,6 +48,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   sfxVolume: 0.8,
   bgmVolume: 0.5,
   brightness: 1,
+  vfxBrightness: 1,
 };
 
 function clamp(value: number, min: number, max: number, fallback: number): number {
@@ -61,14 +76,20 @@ export function normalizeSettings(raw: Partial<GameSettings> | null | undefined)
       raw?.brightness ?? DEFAULT_SETTINGS.brightness,
       c.brightnessMin, c.brightnessMax, DEFAULT_SETTINGS.brightness,
     )),
+    vfxBrightness: round1(clamp(
+      raw?.vfxBrightness ?? DEFAULT_SETTINGS.vfxBrightness,
+      c.vfxBrightnessMin, c.vfxBrightnessMax, DEFAULT_SETTINGS.vfxBrightness,
+    )),
   };
 }
 
 export type SettingKey = keyof GameSettings;
 
-/** 화면에 쓰는 표시값 — 밝기는 배율(×1.0), 볼륨은 백분율. */
+/** 화면에 쓰는 표시값 — 밝기 계열은 배율(×1.0), 볼륨은 백분율. */
 export function settingDisplay(settings: GameSettings, key: SettingKey): string {
-  if (key === 'brightness') return `×${settings.brightness.toFixed(1)}`;
+  if (key === 'brightness' || key === 'vfxBrightness') {
+    return `×${settings[key].toFixed(1)}`;
+  }
   return `${Math.round(settings[key] * 100)}%`;
 }
 

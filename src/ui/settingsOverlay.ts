@@ -32,7 +32,9 @@ interface SettingRow {
 const ROWS: SettingRow[] = [
   { key: 'sfxVolume', label: '효과음', hint: '타격·시전 소리' },
   { key: 'bgmVolume', label: '배경음악', hint: '전투·보스 음악' },
-  { key: 'brightness', label: '화면 밝기', hint: '이펙트가 과하면 낮추세요' },
+  // 화면 밝기는 **배경·적까지** 어두워진다 — 이펙트만 줄이고 싶으면 아래 행이다
+  { key: 'brightness', label: '화면 밝기', hint: '배경·적을 포함한 전체' },
+  { key: 'vfxBrightness', label: '이펙트 밝기', hint: '마법 연출만 (배경·적은 그대로)' },
 ];
 
 const CSS = `
@@ -111,9 +113,9 @@ function ensureDom(): { wrap: HTMLDivElement; panel: HTMLDivElement } {
 
 function rangeAttrs(key: SettingKey): { min: number; max: number } {
   const c = SETTINGS_CONFIG;
-  return key === 'brightness'
-    ? { min: c.brightnessMin, max: c.brightnessMax }
-    : { min: c.volumeMin, max: c.volumeMax };
+  if (key === 'brightness') return { min: c.brightnessMin, max: c.brightnessMax };
+  if (key === 'vfxBrightness') return { min: c.vfxBrightnessMin, max: c.vfxBrightnessMax };
+  return { min: c.volumeMin, max: c.volumeMax };
 }
 
 export interface SettingsOverlayOptions {
