@@ -33,8 +33,14 @@ export {
 export type { CurseBehaviorMemory, RunMemory, RunOutcome, StorageLike } from './runMemory';
 
 // ── ③ 보스 대사 — 프록시 우선, 템플릿 폴백 ──
-export { getBossLine, templateBossLine, sanitizeLine, toBossLineRequest } from './bossLine';
-export type { BossLine, BossLineRequest } from './bossLine';
+export {
+  getBossLine,
+  resolveBossLine,
+  templateBossLine,
+  sanitizeLine,
+  toBossLineRequest,
+} from './bossLine';
+export type { BossLine, BossLineOptions, BossLineRequest } from './bossLine';
 
 // ── ⑤ 진화·융합 작명 (성장 시스템 ④가 소비) — 프록시 우선, 템플릿 폴백, localStorage 캐시 ──
 //   진화: getEvolvedName({ kind: 'evolve', baseName, elements }) → 격상 주문명(string)

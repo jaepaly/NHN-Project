@@ -19,16 +19,39 @@ import { MockJudge, precheckText } from './mockJudge';
 export const JUDGE_SCHEMA_VERSION = 2;
 export const JUDGE_PROMPT_VERSION = 'meaning-v2.16-all-plan';
 const CACHE_PREFIX = `incant:judge:v${JUDGE_SCHEMA_VERSION}:${JUDGE_PROMPT_VERSION}:`;
-/**
- * 후보 58부터 모든 정상 cast가 spell_plan이며 짧은 제목도 복합 사건으로 확장될 수
- * 있다. 입력 키워드만으로 출력 복잡도를 예측하면 정상 Gemini 응답을 먼저 버리고
- * 품질이 낮은 Mock fallback을 실행할 수 있으므로 단순/복합 제한을 구분하지 않는다.
- *
- * 후보 58 안정성 표본의 최대 응답은 4.756초였다. 공통 6초는 이 tail에 여유를 두면서
- * 무한 대기를 막는 상한이다. fallback 최소화가 추가 대기보다 우선한다.
- */
 const JUDGE_TIMEOUT_MS = 6000;
 
+export type JudgeFallbackReason =
+  | 'timeout'
+  | `http_${number}`
+  | `http_${number}_upstream_${number}`
+  | 'invalid_response'
+  | 'remote_fizzle'
+  | 'network_error';
+
+class JudgeHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly upstreamStatus?: number,
+  ) {
+    super(
+      upstreamStatus === undefined
+        ? `proxy responded ${status}`
+        : `proxy responded ${status} (upstream ${upstreamStatus})`,
+    );
+  }
+}
+
+function fallbackReasonFromError(error: unknown): JudgeFallbackReason {
+  if (error instanceof JudgeHttpError) {
+    return error.upstreamStatus === undefined
+      ? `http_${error.status}`
+      : `http_${error.status}_upstream_${error.upstreamStatus}`;
+  }
+  if ((error as { name?: unknown })?.name === 'AbortError') return 'timeout';
+  if (error instanceof SyntaxError) return 'invalid_response';
+  return 'network_error';
+}
 /** 모든 정상 원격 판정의 공통 대기 상한. 인자는 기존 호출 계약 호환용이다. */
 export function judgeTimeoutMs(_text: string): number {
   return JUDGE_TIMEOUT_MS;
@@ -38,6 +61,8 @@ export class GeminiJudge implements SpellJudge {
   readonly name = 'GeminiJudge(gemini-via-proxy)';
   /** [디버그] 직전 판정 출처 — HUD 표기용 (⑤ 폴백 빈도 관찰) */
   lastSource: 'gemini' | 'cache' | 'fallback' | 'local' = 'gemini';
+  /** [디버그] 직전 fallback의 직접 원인 — 플레이 로그 관측용. */
+  lastFallbackReason: JudgeFallbackReason | undefined;
   private readonly fallback: SpellJudge;
 
   constructor(
@@ -48,6 +73,7 @@ export class GeminiJudge implements SpellJudge {
   }
 
   async judge(text: string): Promise<SpellJudgement> {
+    this.lastFallbackReason = undefined;
     const key = text.trim();
     const prechecked = precheckText(key);
     if (prechecked) {
@@ -72,8 +98,11 @@ export class GeminiJudge implements SpellJudge {
         this.lastSource = 'gemini';
         return judgement;
       }
-    } catch {
-      // 네트워크 오류·타임아웃·비정상 응답 — 아래 폴백으로 처리
+      this.lastFallbackReason = judgement?.disposition === 'fizzle'
+        ? 'remote_fizzle'
+        : 'invalid_response';
+    } catch (error) {
+      this.lastFallbackReason = fallbackReasonFromError(error);
     }
 
     // 4) 폴백 — 로컬 사전검사를 통과한 입력은 원격 fizzle도 모델 오류로 간주한다.
@@ -82,7 +111,7 @@ export class GeminiJudge implements SpellJudge {
     return this.fallback.judge(text);
   }
 
-  /** 프록시에 POST하고 상한(단순 2.5초 / 복합 4.5초) 초과 시 abort. */
+  /** 프록시에 POST하고 상한(단순 2.5초 / 복합 3.2초) 초과 시 abort. */
   private async fetchWithTimeout(text: string): Promise<unknown> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), judgeTimeoutMs(text));
@@ -93,7 +122,14 @@ export class GeminiJudge implements SpellJudge {
         body: JSON.stringify({ text }),
         signal: ctrl.signal,
       });
-      if (!res.ok) throw new Error(`proxy responded ${res.status}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { status?: unknown } | null;
+        const upstreamStatus = typeof body?.status === 'number'
+          && Number.isInteger(body.status)
+          ? body.status
+          : undefined;
+        throw new JudgeHttpError(res.status, upstreamStatus);
+      }
       return await res.json();
     } finally {
       clearTimeout(timer);

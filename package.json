@@ -16,6 +16,7 @@
     "test:floorhazard": "esbuild scripts/floor-hazard-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-floor-hazard-regression.mjs && node node_modules/.cache/incant-floor-hazard-regression.mjs",
     "test:spell": "esbuild scripts/spell-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-regression.mjs && node node_modules/.cache/incant-spell-regression.mjs",
     "test:judge-fallback": "esbuild scripts/gemini-fizzle-fallback-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-gemini-fizzle-fallback-regression.mjs && node node_modules/.cache/incant-gemini-fizzle-fallback-regression.mjs",
+    "test:playlog": "esbuild scripts/play-logging-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-play-logging-regression.mjs && node node_modules/.cache/incant-play-logging-regression.mjs",
     "test:history": "esbuild scripts/spell-history-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-history-regression.mjs && node node_modules/.cache/incant-spell-history-regression.mjs",
     "test:run": "esbuild scripts/run-controller-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-run-controller-regression.mjs && node node_modules/.cache/incant-run-controller-regression.mjs",
     "test:control": "esbuild scripts/control-effects-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-control-effects-regression.mjs && node node_modules/.cache/incant-control-effects-regression.mjs",
@@ -45,7 +46,6 @@
     "snapshot:quality": "esbuild scripts/spell-quality-snapshot.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-spell-quality-snapshot.mjs && node node_modules/.cache/incant-spell-quality-snapshot.mjs",
     "preview": "vite preview",
     "test:bossarcana": "esbuild scripts/boss-arcana-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-boss-arcana-regression.mjs && node node_modules/.cache/incant-boss-arcana-regression.mjs",
-    "test:terrain": "esbuild scripts/terrain-barrier-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-terrain-barrier-regression.mjs && node node_modules/.cache/incant-terrain-barrier-regression.mjs",
     "test:minimap": "esbuild scripts/minimap-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-minimap-regression.mjs && node node_modules/.cache/incant-minimap-regression.mjs",
     "test:room-portal-layout": "esbuild scripts/room-portal-layout-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-portal-layout-regression.mjs && node node_modules/.cache/incant-room-portal-layout-regression.mjs",
     "test:mapgraph": "esbuild scripts/map-graph-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-map-graph-regression.mjs && node node_modules/.cache/incant-map-graph-regression.mjs",
@@ -87,7 +87,17 @@
     "test:incant-bands": "esbuild scripts/incant-bands-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-incant-bands-regression.mjs && node node_modules/.cache/incant-incant-bands-regression.mjs",
     "test:floorhazardstate": "esbuild scripts/floor-hazard-state-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-floor-hazard-state-regression.mjs && node node_modules/.cache/incant-floor-hazard-state-regression.mjs",
     "test:bossresist": "esbuild scripts/boss-resistance-readout-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-boss-resistance-readout-regression.mjs && node node_modules/.cache/incant-boss-resistance-readout-regression.mjs",
-    "test:altaroffer": "esbuild scripts/altar-offer-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-altar-offer-regression.mjs && node node_modules/.cache/incant-altar-offer-regression.mjs"
+    "test:altaroffer": "esbuild scripts/altar-offer-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-altar-offer-regression.mjs && node node_modules/.cache/incant-altar-offer-regression.mjs",
+    "test:elementflourish": "esbuild scripts/element-flourish-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-element-flourish-regression.mjs && node node_modules/.cache/incant-element-flourish-regression.mjs",
+    "test:roomfixture": "esbuild scripts/room-fixture-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-fixture-regression.mjs && node node_modules/.cache/incant-room-fixture-regression.mjs",
+    "test:roomrewardscale": "esbuild scripts/room-reward-scale-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-reward-scale-regression.mjs && node node_modules/.cache/incant-room-reward-scale-regression.mjs",
+    "test:roombackdrop": "esbuild scripts/room-kind-backdrop-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-kind-backdrop-regression.mjs && node node_modules/.cache/incant-room-kind-backdrop-regression.mjs",
+    "test:mapgen": "esbuild scripts/map-generator-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-map-generator-regression.mjs && node node_modules/.cache/incant-map-generator-regression.mjs",
+    "test:rewardtiming": "esbuild scripts/reward-timing-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-reward-timing-regression.mjs && node node_modules/.cache/incant-reward-timing-regression.mjs",
+    "test:roomterrain": "esbuild scripts/room-terrain-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-terrain-regression.mjs && node node_modules/.cache/incant-room-terrain-regression.mjs",
+    "test:cleansereadout": "esbuild scripts/cleanse-readout-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-cleanse-readout-regression.mjs && node node_modules/.cache/incant-cleanse-readout-regression.mjs",
+    "test:pausekey": "esbuild scripts/pause-key-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-pause-key-regression.mjs && node node_modules/.cache/incant-pause-key-regression.mjs",
+    "test:vfxbrightness": "esbuild scripts/vfx-brightness-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-vfx-brightness-regression.mjs && node node_modules/.cache/incant-vfx-brightness-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

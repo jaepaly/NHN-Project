@@ -18,11 +18,39 @@ export const MAP_GRAPH_PRESET_01: MapGraphDefinition = {
   lastBeforeBossNodeId: 's2-elite',
   nodes: [
     { id: 's1-start', stage: 1, kind: 'start', layer: 0, lane: 0, waveSetId: 'room-a', ...emptyRoom },
-    { id: 's1-combat', stage: 1, kind: 'combat', layer: 1, lane: 0, waveSetId: 'room-b', ...emptyRoom },
+    /**
+     * 1스테이지 분기의 위험한 쪽 — **위험지대 함정방**.
+     *
+     * 종전엔 일반 전투방이었다. 그래서 프리셋에는 1스테이지 함정이 하나도 없었고
+     * (유일한 함정이 `s2-trap`), 팀원이 *"1런에는 원래 독지대 같은 함정이 안
+     * 등장하나?"*라고 물을 만큼 안 보였다. 정화 안내(#293)를 볼 기회도 그만큼 없었다.
+     *
+     * ⚠️ **노드를 추가하지 않고 교체한다.** 프리셋의 가장 긴 경로가 정확히 8방이고,
+     * 컨트롤러의 `maxRooms`가 readonly라 그 값에 묶여 있다(map-generator-regression이
+     * 생성 맵과의 일치를 고정한다). 하나 늘리면 `ROOM x/8`과 보스 판정이 어긋난다.
+     *
+     * 교체가 오히려 낫다: 분기가 `안전한 보물(총리턴 0.767) vs 기믹 전투(1.4)`가 되어
+     * 총괄이 지적한 "다들 보상방을 가고 싶을 거 아냐"에 실제 답이 생긴다. 시작 방이
+     * 이미 전투(room-a)라 1스테이지에 싸울 곳이 없어지지도 않는다.
+     */
+    {
+      id: 's1-combat',
+      stage: 1,
+      kind: 'trap',
+      layer: 1,
+      lane: 0,
+      waveSetId: 'trap-hazard',
+      trapProfile: TRAP_ROOM_PROFILES.hazard,
+      ...emptyRoom,
+    },
     { id: 's1-treasure', stage: 1, kind: 'treasure', layer: 1, lane: 1, waveSetId: null, ...emptyRoom },
     { id: 's1-elite', stage: 1, kind: 'elite', layer: 2, lane: 0, waveSetId: 'elite', ...emptyRoom },
     { id: 's1-boss', stage: 1, kind: 'stage-boss', layer: 3, lane: 0, waveSetId: null, ...emptyRoom },
-    { id: 's2-combat', stage: 2, kind: 'combat', layer: 4, lane: 0, waveSetId: 'room-c', ...emptyRoom },
+    // ⚠️ 'room-c'는 WAVE_SETS에 없다 — 실제 키는 room-c-shield / room-c-hazard 두 변형이다.
+    // 그래서 5번 방에서 startRoom이 예외를 던져 몹도 포탈도 없는 빈 방이 됐다(총괄 제보).
+    // 그래프에는 변형(variants) 개념이 없어 하나를 골라야 한다 — 실드 파수꾼이 별개
+    // 기믹이라 shield를 택했다. 두 변형을 살릴지는 R1 판단(#283).
+    { id: 's2-combat', stage: 2, kind: 'combat', layer: 4, lane: 0, waveSetId: 'room-c-shield', ...emptyRoom },
     {
       id: 's2-trap',
       stage: 2,

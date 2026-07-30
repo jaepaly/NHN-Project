@@ -3,6 +3,7 @@ import { createSpriteLayers } from '../render/spriteLayers';
 import { playHitReact, playImpactSquash } from '../combat-core/enemies/enemyJuice';
 import type { SpellJudge } from '../spell/judge';
 import { createJudge } from '../spell/createJudge';
+import { postPlayLog } from '../spell/playLog';
 import type { SpellElement, SpellForm, SpellSpec } from '../spell/types';
 import { ELEMENTS } from '../spell/types';
 import { SpellHistory } from '../spell/spellHistory';
@@ -14,7 +15,12 @@ import {
 } from '../render/spellRenderer';
 import type { SpellImpact } from '../render/spellRenderer';
 import type {
-  EliteModifier, EvolveRewardData, RewardOption, RunController,
+  EliteModifier,
+  EncounterDefinition,
+  EvolveRewardData,
+  RewardOption,
+  RunController,
+  RunStateSnapshot,
 } from '../run/runContract';
 import {
   ELEMENT_LABELS,
@@ -27,6 +33,8 @@ import { applyWorldFx } from '../render/postFx';
 import { TRAIL_CONFIG, spawnTrailGhost } from '../render/trailEffect';
 import {
   backdropPaletteForEncounter,
+  backdropPaletteForNode,
+  roomKindTexture,
   ROOM_BACKDROP_PALETTES,
 } from '../render/roomBackdropConfig';
 import type { RoomBackdropPalette } from '../render/roomBackdropConfig';
@@ -85,10 +93,12 @@ import { buildChipModel } from '../run/buildChipModel';
 import { bandAffordances, reachableBand } from '../run/incantBands';
 import { drawTreasureReward } from '../combat-core/run/treasureRewardConfig';
 import { ALTAR_OFFER_CONFIG, drawAltarOffer } from '../combat-core/run/altarOffer';
+import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomRewardScale';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { UI_COLOR } from '../ui/uiTokens';
 import type { GameSettings } from '../run/gameSettings';
 import { DEFAULT_SETTINGS, loadSettings } from '../run/gameSettings';
+import { setVfxBrightness } from '../render/vfxBrightness';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
 import { devInfo } from '../debug/devLog';
 import { FusionGauge } from '../combat-core/player/fusionGauge';
@@ -200,7 +210,7 @@ import {
   RESISTANCE,
   computeResistance,
   diversityBonus,
-  getBossLine,
+  resolveBossLine,
   loadRunMemory,
   longTermResistedElement,
   runEscalationProfile,
@@ -213,12 +223,8 @@ import { EMPTY_RUN_MEMORY } from '../spell/runMemory';
 import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { showRewardCards } from '../ui/rewardCardOverlay';
 import { MinimapHud } from '../ui/minimapHud';
-import {
-  TERRAIN_BARRIER_CONFIG,
-  barrierEndpoints,
-  pushOutOfBarriers,
-} from '../combat-core/combat/terrainBarrier';
-import type { TerrainBarrier } from '../combat-core/combat/terrainBarrier';
+import { pushOutOfBlocks, segmentBlocked } from '../combat-core/combat/terrainBlock';
+import type { TerrainBlock } from '../combat-core/combat/terrainBlock';
 import {
   FLOOR_HAZARD_CONFIG,
   floorHazardTickDamage,
@@ -234,9 +240,16 @@ import {
   tryCleanseFloorHazards,
 } from '../combat-core/combat/floorHazardState';
 import { PortalField } from '../render/portalField';
+import { cleanseReadoutLine } from '../render/floorHazardReadout';
+import { blocksFromPlacements, terrainForRoom } from '../run/roomTerrainConfig';
+import { RoomFixture } from '../render/roomFixture';
+import { ROOM_FIXTURE_GUIDE } from '../run/roomFixtureConfig';
 import { mockMinimapModel } from '../run/mapGraphMock';
-import { RunMapGraph, toMinimapModel } from '../run/mapGraph';
+import { RunMapGraph, maximumMapPathRooms, toMinimapModel } from '../run/mapGraph';
 import { MAP_GRAPH_PRESET_01 } from '../run/mapGraphPreset';
+import { generateRunMap } from '../run/mapGenerator';
+import type { MapGraphDefinition } from '../run/mapGraph';
+import { encounterFromMapNode } from '../run/mapEncounter';
 import { layoutRoomArrival, layoutRoomExits } from '../run/roomPortalLayout';
 import type { RoomArrivalPlacement, RoomBounds } from '../run/roomPortalContract';
 import {
@@ -306,15 +319,79 @@ const NO_BOSS_RESISTANCE: BossResistanceProfile = {
   resistMultiplier: 1,
   counterStrategy: null,
 };
+/**
+ * 좌상단 전투 HUD (총괄 지적: "네모 박스 크기를 더 줄여도 될 것 같음. 최대한 컴팩트하게").
+ *
+ * 종전 360×186의 실제 내용은 **270×7 바 세 개**였다 — 라벨을 바 위에 따로 두어
+ * 스탯 하나가 34px을 먹었고, 나머지는 죽은 공간이었다.
+ *
+ * 바꾼 방식: **라벨·수치·바를 한 줄에** 놓는다. 스탯당 34 → 22px로 줄고, 바가
+ * 짧아지는 대신(270 → 196) 같은 비율 정보를 그대로 전달한다 — 바의 정보량은 길이가
+ * 아니라 채움 비율이다. 높이 186 → 130 (−30%), 폭 360 → 300 (−17%).
+ *
+ * 높이가 118이 아닌 130인 이유: 마지막 줄(attunement·버프)이 박스 밖으로 나가고
+ * 하단 쿨다운 띠(height − 5)와 겹쳤다. 실측으로 잡은 값이다.
+ *
+ * 친화 바가 이 박스 **아래**에 붙으므로(HUD.y + HUD.height 기준) 박스가 줄면
+ * 친화 바도 함께 올라와 좌상단 전체가 조여진다.
+ */
 const HUD = {
   x: 18,
   y: 18,
-  width: 360,
-  height: 186,
-  barX: 34,
-  barWidth: 270,
-  barHeight: 7,
+  width: 300,
+  height: 130,
+  /** 스탯 행 시작 y (박스 상단 기준 오프셋) */
+  rowTop: 44,
+  /** 행 간격 — 종전 34에서 축소 */
+  rowPitch: 22,
+  /**
+   * ⚠️ 한 줄 배치의 함정 (총괄 제보: "숫자랑 바랑 겹침"):
+   * 라벨+수치를 한 텍스트로 두면 `SHIELD 100 / 100`이 x=138까지 뻗어 바(x=104)를 덮었다.
+   * 폰트 폭에 의존하는 배치는 내용이 길어지는 순간 깨진다.
+   *
+   * 그래서 **라벨(왼쪽 고정) · 바(가운데) · 수치(오른쪽 정렬)**로 셋을 분리한다.
+   * 수치는 origin(1,0)으로 박스 우측에 붙어 자라므로 어떤 값이 와도 바를 침범하지 않고,
+   * 바는 두 고정 좌표 사이라 폭이 항상 확정된다.
+   */
+  labelX: 14,
+  barX: 78,
+  /**
+   * 바 폭 — 수치 자리수가 늘어도(보상·제단으로 최대 체력이 4자리까지) 침범하지 않게
+   * 우측에 80px을 비워둔 값이다. 실측으로 잡았다: `100/100`(7자)이 47px, 4자리
+   * `1000/1000`(9자)이 60px.
+   */
+  barWidth: 140,
+  barHeight: 6,
+  /** 수치 오른쪽 끝 (박스 우측에서 안쪽으로) */
+  valueRight: 10,
 } as const;
+
+/**
+ * 우상단 상태 패널 — ROOM·WAVE·BOSS를 한 판에 담는다.
+ * 종전엔 ROOM 칩(DOM)·WAVE 패널·미니맵이 **3단**으로 쌓여 있었다 (총괄 지적).
+ */
+const RIGHT_PANEL = {
+  y: 18,
+  /** 텍스트 위 여백 */
+  padTop: 10,
+  /** 텍스트 아래 여백 */
+  padBottom: 12,
+  /** 패널과 미니맵 사이 간격 */
+  gap: 10,
+  /** 평시(2줄) 텍스트 높이 — 미니맵 초기 위치 계산용 */
+  baseTextHeight: 35,
+} as const;
+
+/** 상태 텍스트 높이 → 패널 높이. 보스전(저항·관통 줄)에서 늘어난다. */
+function rightPanelHeight(textHeight: number): number {
+  const h = Number.isFinite(textHeight) ? Math.max(0, textHeight) : 0;
+  return Math.round(RIGHT_PANEL.padTop + h + RIGHT_PANEL.padBottom);
+}
+
+/** 스탯 행 i(0=HP, 1=마나, 2=보호막)의 y 중심 */
+function hudRowY(index: number): number {
+  return HUD.y + HUD.rowTop + index * HUD.rowPitch;
+}
 
 interface PauseRow {
   id: 'resume' | 'settings' | 'quit';
@@ -396,6 +473,12 @@ interface SpellExecutionOptions {
   controlDurationScale?: number;
   controlStrengthScale?: number;
   shieldAmountScale?: number;
+  /**
+   * 장식 VFX 밝기 배율 — 에코(제단 거래)가 원본보다 **투명하게** 나가는 데 쓴다
+   * (총괄 지적: "에코라는 걸 알 수 있게, 유저가 쓴 영창보다는 좀 더 투명하게").
+   * 미지정이면 자동 시전 여부로 결정하는 기존 동작 그대로.
+   */
+  decorVfxScale?: number;
 }
 
 interface EnemyKnockbackState {
@@ -503,10 +586,58 @@ export class ProtoScene extends Phaser.Scene {
   private awakenings: AwakeningState = {};
   /** 제단 최상위 거래 — 수동 단일 영창이 한 번 더 울린다 (#214). 런 리셋에서 끈다 */
   private echoUnlocked = false;
+  /**
+   * 런 맵 그래프가 실제 방 내용의 단일 원본이다. 포탈 선택은 보상 적용 전에 끝나므로
+   * 선택된 조우를 방 번호별로 고정해 현재 방 이벤트에 다음 노드가 섞이지 않게 한다.
+   */
+  private mapGraph: RunMapGraph = new RunMapGraph(MAP_GRAPH_PRESET_01);
+  private readonly mapEncounterByRoom = new Map<number, EncounterDefinition>([[
+    DEBUG_START_ROOM,
+    encounterFromMapNode(this.mapGraph.current()),
+  ]]);
   // 명시적 타입: rewardDraw 클로저가 컨트롤러 상태(친화)를 읽어 자기참조 추론이 막히는 것 회피
+  /**
+   * 방 전환 게이트 (#214 · 총괄 제보 후속).
+   *
+   * `chooseReward()`는 보상 적용과 전환 타이머를 **같이** 건다. 보상을 즉시 반영하려면
+   * chooseReward를 먼저 불러야 하는데, 그러면 포탈을 고르기 전에 방이 넘어간다.
+   *
+   * 그래서 전환 콜백을 여기 보관하고, 포탈 진입이 끝나면 그때 실행한다. 컨트롤러는
+   * 자기가 타이머를 걸었다고 믿고 있고 실제로는 씬이 시점을 정한다 — 계약을 넘지 않는다.
+   */
+  private pendingRunTransition: { delayMs: number; run: () => void } | null = null;
+
   private readonly combatRunController: CombatRunController = new CombatRunController({
     playerState: this.playerState,
+    /**
+     * 전환 타이머 주입 — 미지정이면 컨트롤러가 setTimeout으로 바로 걸어버린다.
+     * 포탈 선택이 있는 방에서는 붙잡아 두고, 없으면 종전대로 즉시 예약한다.
+     */
+    scheduleTransition: (delayMs, callback) => {
+      if (this.transitionNeedsPortalChoice()) {
+        this.pendingRunTransition = { delayMs, run: callback };
+        return;
+      }
+      this.time.delayedCall(delayMs, () => {
+        if (!this.scene?.isActive?.()) return;
+        callback();
+      });
+    },
     initialRoomIndex: DEBUG_START_ROOM,
+    /**
+     * ⚠️ 컨트롤러의 `maxRooms`는 `readonly`라 런 중에 바꿀 수 없다. 그래서 생성 맵도
+     * **프리셋과 같은 8방이어야** `ROOM x/8` 표시와 보스 판정(`roomIndex >= maxRooms`)이
+     * 맞는다. #272에서 미니맵·포탈 라벨이 상수 2칸 어긋난 것과 같은 종류의 결합이다.
+     *
+     * 생성기는 파티션 예산이 `1 + 2 + 1 + 3 + 1`로 고정이고 한 파티션의 모든 분기가
+     * 같은 길이를 갖기 때문에 **모든 경로가 정확히 8방**이다. 실측 500시드에서 나타난
+     * 경로 길이는 8 하나뿐이었고 한 맵 안에서 길이가 갈린 경우도 0이었다.
+     *
+     * 우연이 아니라 구조적 성질이지만, 예산을 건드리면 조용히 깨진다 —
+     * `map-generator-regression`이 이 일치를 못박는다.
+     */
+    maxRooms: maximumMapPathRooms(MAP_GRAPH_PRESET_01),
+    encounterProvider: (roomIndex) => this.mapEncounterForRoom(roomIndex),
     rewardDraw: (roomIndex) => {
       // 무전투 방(보물·제단)은 전용 보상표를 쓴다 — 포탈에 붙은 라벨이 지켜져야 한다.
       // 종전엔 그래프 노드 종류가 표시만 되고 보상·내용에 반영되지 않아, "보물"로
@@ -523,8 +654,13 @@ export class ProtoScene extends Phaser.Scene {
         // 대가와 보상이 한 장에 붙은 거래 카드 + 거절 카드 (#214 재설계)
         return drawAltarOffer(this.playerState.maxHp, this.altarAwakenElement());
       }
+      // 방 종류별 배율 (총괄 지적: "누가 함정방을 선택하겠어"). 종전엔 정예·함정이
+      // 일반 전투방과 **완전히 같은 보상**이라 더 위험한 방을 고를 이유가 없었다.
+      const kind = this.mapGraph.current().kind;
+      const kindScale = rewardScaleFor(kind).scale;
       const engraved = this.engraveManager.injectReward(
-        drawRewardOptions(roomIndex, this.engraveRewardRand),
+        drawRewardOptions(roomIndex, this.engraveRewardRand, kindScale)
+          .slice(0, rewardOptionCount(kind)),
         roomIndex,
         this.engraveRewardRand,
       );
@@ -600,7 +736,9 @@ export class ProtoScene extends Phaser.Scene {
 
   private buildChips: BuildChip[] = [];
 
-  /** Tab 검사 모드 — 전투를 멈추고 칩에 마우스를 올려 상세를 본다 */
+  /** DOM 설정 오버레이가 떠 있나 — ESC가 두 겹을 한 번에 닫는 걸 막는다 */
+  private settingsOverlayOpen = false;
+  /** ESC 검사 모드 — 전투를 멈추고 칩에 마우스를 올려 상세를 본다 */
   private buildInspectOpen = false;
 
   /** 일시정지 암막 — 게임 월드만 덮는다(깊이 97). HUD·칩은 위에 남아 밝게 읽힌다. */
@@ -766,24 +904,18 @@ export class ProtoScene extends Phaser.Scene {
   /** #214 선행 개발 프리뷰 전용 (DEV 콘솔 훅이 생성) — 본 게임 경로 미배선 */
   private devMinimap: MinimapHud | null = null;
   private devPortalField: PortalField | null = null;
-  /**
-   * 런 맵 그래프 (#214 본배선). 지금은 고정 프리셋(MAP_GRAPH_PRESET_01)을 쓰고,
-   * #240 파티션 생성기가 승인되면 **이 공급부만** 교체한다 — 계약은 그대로다.
-   *
-   * ⚠️ RunController와 **병행 트랙**이다. 방 개수·보상은 여전히 RunController가 세고,
-   * 그래프는 "어느 갈래로 갔는가"를 센다. 둘을 합치는 것은 R1 몫이라(#240) 여기서는
-   * 그래프가 정한 **함정 프로필만** 방에 얹는다. 두 축이 어긋나도 런은 진행된다.
-   */
-  private mapGraph: RunMapGraph = new RunMapGraph(MAP_GRAPH_PRESET_01);
   private runMinimap: MinimapHud | null = null;
   private portalField: PortalField | null = null;
+  /** 방 중앙 설치물 (보물상자·제단) — 다가가야 보상이 열린다 (#214) */
+  private roomFixture: RoomFixture | null = null;
   /** 다음 방에서 적용할 도착 배치 — 포탈로 넘어왔을 때만 설정된다 (첫 방은 null) */
   private pendingArrival: RoomArrivalPlacement | null = null;
   /**
    * 정적 지형 장벽 (#214 지형 Tier 2). 배치 데이터는 R1 소유이고 여기는 기전만 —
    * 방 진입 시 채우고 방 전환 시 비운다. 비어 있으면 전 경로가 무비용으로 통과한다.
    */
-  private terrainBarriers: TerrainBarrier[] = [];
+  /** 방 구조물 (정사각 블록) — 이동·투사체·**플레이어 주문**을 모두 막는다 */
+  private terrainBarriers: TerrainBlock[] = [];
   private terrainBarrierView: Phaser.GameObjects.Graphics | null = null;
   /**
    * 바닥형 지형 (#214 지형 Tier 1 R2) — 용암·독지대. 배치는 R1 소유, 여기는 렌더·판정만.
@@ -869,6 +1001,8 @@ export class ProtoScene extends Phaser.Scene {
   private bossEliteSummonIndex = 0;
   private bossHazardWarnings: Phaser.GameObjects.Container[] = [];
   private deathHandled = false;
+  /** 다음 room-started가 새 런의 첫 방이면, 방 로그보다 먼저 남길 시작 사유. */
+  private pendingRunStartReason: 'continue' | 'death-restart' | null = null;
   private audio!: GameAudio;
   private backdropBase!: Phaser.GameObjects.Rectangle;
   private backdropGrid!: Phaser.GameObjects.Graphics;
@@ -914,6 +1048,17 @@ export class ProtoScene extends Phaser.Scene {
       'bg-boss',
       `${import.meta.env.BASE_URL}assets/backgrounds/arena-boss.jpg`,
     );
+    // 방 종류별 전용 배경 (총괄 생성, 2026-07-30) — 정예·함정·보물·제단.
+    // 종전엔 이 넷이 스테이지 배경 + 색 틴트로만 구분됐다(#285). 검수 실측:
+    // 워터마크 제거 확인(0.7 초과 화소 0개) · 2528×1696 → 1920×1280 리샘플.
+    for (const [key, file] of [
+      ['bg-elite', 'arena-elite.jpg'],
+      ['bg-trap', 'arena-trap.jpg'],
+      ['bg-treasure', 'arena-treasure.jpg'],
+      ['bg-altar', 'arena-altar.jpg'],
+    ] as const) {
+      this.load.image(key, `${import.meta.env.BASE_URL}assets/backgrounds/${file}`);
+    }
     // 적 스프라이트 — 무채색으로 저장해두고 타입 색은 인게임 틴트로 입힌다
     // 파수꾼·보스는 코어만 잘라낸 버전 — 방패 링/저항 링은 정보를 담고 있어 절차적으로 남긴다.
     // 각 스프라이트는 재질(<key>)과 발광(<key>-glow) 두 장이다. 통째로 틴트하면 재질감이
@@ -983,9 +1128,9 @@ export class ProtoScene extends Phaser.Scene {
         const cx = this.worldBounds.centerX;
         const cy = this.worldBounds.centerY;
         this.setTerrainBarriers([
-          { x: cx, y: cy, halfLength: 150, angleDeg: 0 },
-          { x: cx - 420, y: cy - 260, halfLength: 110, angleDeg: 90 },
-          { x: cx + 420, y: cy + 260, halfLength: 110, angleDeg: 90 },
+          { x: cx, y: cy, half: 68 },
+          { x: cx - 420, y: cy - 260, half: 56 },
+          { x: cx + 420, y: cy + 260, half: 56 },
         ]);
         // 바닥지형 프리뷰 — 용암·독지대 (배치는 R1 프리셋, 여기선 눈으로 확인용)
         this.setFloorHazards([
@@ -1051,7 +1196,10 @@ export class ProtoScene extends Phaser.Scene {
     const demo = consumeDemoRunRequest();
     if (demo) this.seedDemoRun();
     this.prepareRunEscalation();
-    this.startRoom(this.combatRunController.state.roomIndex);
+    const initialRunState = this.combatRunController.state;
+    this.logRunStarted('new', initialRunState);
+    this.logRoomStarted(initialRunState);
+    this.startRoom(initialRunState.roomIndex);
     this.updateStatusText();
 
     this.setupIncantBar();
@@ -1066,14 +1214,27 @@ export class ProtoScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-DOWN', () => {
       if (this.buildInspectOpen) this.movePauseMenu(+1);
     });
-    // Tab 빌드 검사 — 브라우저 기본 포커스 이동을 반드시 막아야 한다.
-    // 안 막으면 포커스가 영창 입력창이나 브라우저 UI로 튀어 이후 키 입력이 엉킨다.
+    /**
+     * 일시정지·빌드 검사 = **ESC** (총괄 지시: "화면 멈추는 거 tab 대신 esc키로 바꿔").
+     *
+     * 이 화면은 빌드 칩 검사이자 일시정지 메뉴(재개·설정·나가기)라 ESC가 관례에 맞다.
+     * TAB은 더 이상 열지 않는다.
+     *
+     * ⚠️ TAB 캡처는 **남긴다.** 토글을 뗐다고 캡처까지 풀면 브라우저 기본 포커스
+     * 이동이 살아나 포커스가 영창 입력창이나 브라우저 UI로 튀고, 그 뒤 키 입력이
+     * 통째로 엉킨다. 아무 동작도 안 하는 게 포커스가 튀는 것보다 낫다.
+     */
     this.input.keyboard!.addCapture('TAB');
     this.input.keyboard!.on('keydown-TAB', (event: KeyboardEvent) => {
       event.preventDefault();
+    });
+    this.input.keyboard!.on('keydown-ESC', () => {
+      // ⚠️ DOM 설정 오버레이가 열려 있으면 건드리지 않는다. 그쪽도 Escape로 닫히는데
+      // Phaser 키보드는 window에서 듣기 때문에 **둘 다 발화한다** — 설정이 닫히면서
+      // 일시정지까지 같이 풀려 한 번에 두 겹이 사라진다. 설정만 닫고 메뉴에 남아야 한다.
+      if (this.settingsOverlayOpen) return;
       this.toggleBuildInspect();
     });
-    this.input.keyboard!.on('keydown-ESC', () => this.closeBuildInspect());
 
     // 시연 런은 유산 선택을 건너뛴다 — 이미 후반 상태라 카드가 겹치고,
     // 심사위원을 시작하자마자 선택 UI로 막는 게 이 모드의 취지에 어긋난다.
@@ -1081,7 +1242,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   /**
-   * 시연 상태 주입 — 각인 2종(Lv3 진화)·정령 2체 Lv2·친화 2원소, 5번 방(엘리트)부터.
+   * 시연 상태 주입 — 각인 2종(Lv3 진화)·정령 2체 Lv2·친화 2원소, 보스 직전 엘리트부터.
    * 실제 보상 경로(applyReward)를 그대로 쓴다 — 별도 주입로면 도달 불가능한 상태를
    * 보여주게 되고, 그건 심사위원에게 거짓말이다.
    */
@@ -1089,6 +1250,7 @@ export class ProtoScene extends Phaser.Scene {
     this.demoRun = true;
     // 방 지정 리셋을 **먼저** 한다 — reset()이 elementalAffinity를 비우므로
     // 친화를 심은 뒤에 부르면 그대로 지워진다.
+    this.resetMapGraph(MAP_GRAPH_PRESET_01.lastBeforeBossNodeId, DEMO_START_ROOM);
     this.combatRunController.reset(Date.now(), false, DEMO_START_ROOM);
     applyDemoLoadout(this.engraveManager, this.spiritManager, this.combatRunController);
     this.syncSpiritViews();
@@ -1097,7 +1259,7 @@ export class ProtoScene extends Phaser.Scene {
       '#ffd166',
       3200,
     );
-    // 온보딩 힌트는 1번 방에서만 뜬다(startRoom). 시연은 5번 방에서 시작하므로
+    // 온보딩 힌트는 1번 방에서만 뜬다(startRoom). 시연은 후반 방에서 시작하므로
     // 여기서 따로 알려줘야 한다 — **강해진 상태로 떨어뜨려도 뭘 칠지 모르면
     // 아무 일도 안 일어난다.** 이 게임의 훅은 성장이 아니라 자유 영창이다.
     // 같은 내용을 영창 창 안에도 세운다 — 배너는 캔버스라 영창 창의 어둠·블러에 묻힌다.
@@ -1147,17 +1309,36 @@ export class ProtoScene extends Phaser.Scene {
       this.updateManaCrystals(d);
       this.updateManaPotion(d);
       this.updateWaveFlow(d);
-    } else if (this.portalField) {
-      // 포탈 선택 중에는 **이동만** 허용한다 — 전투는 멈춘 채로 갈림길을 걸어간다.
+    } else if (this.portalField || this.roomFixture) {
+      // 포탈·설치물 단계에서는 **이동만** 허용한다 — 전투는 멈춘 채로 갈림길을 걸어간다.
       // 이게 없으면 방을 정리한 순간 조작이 잠겨 포탈에 닿을 수 없다(런이 갇힌다).
+      const d = (delta / 1000) * this.timeScale;
       this.updatePlayerMovement(delta / 1000);
+      // ⚠️ **따라다니는 것들은 여기서도 갱신해야 한다** (총괄 제보: "보상 선택시 정령이
+      // 갑자기 거기에 멈추는 버그").
+      //
+      // 종전엔 이 분기가 `updatePlayerMovement` 하나뿐이었다. 그런데 #262로 보상 선택
+      // 뒤에 **포탈까지 걸어가는 단계**가 생겼고, 그 동안 플레이어는 움직이는데
+      // updateSpirits가 안 돌아 정령이 마지막 궤도 좌표에 그대로 박혀 있었다.
+      // 방을 정리한 직후가 아니라 **몇 초씩 걸어가는 동안** 그러니 눈에 띈다.
+      //
+      // 전투 없이 따라다니기만 하는 것들만 고른다 — 적·투사체·웨이브는 멈춘 채로 둔다.
+      this.updateSpirits(d);
+      this.updateSummon(d);
+      this.updateFriendlyMissiles(d);
+      // 마나 결정·물약도 걸어가면서 줍는 게 자연스럽다 (전투가 아니라 수거다)
+      this.updateManaCrystals(d);
+      this.updateManaPotion(d);
     }
     // 성장 표식은 전투 정지 중(보상 선택·전환)에도 플레이어를 따라간다
     this.growthMarks.follow(this.player.x, this.player.y);
     // 포탈은 **전투가 끝난 뒤**에 서므로 isCombatActive 게이트 밖에서 돌려야 한다 —
     // 안에 두면 방을 정리한 순간 포탈이 멈춰 접촉 판정이 영영 안 걸린다.
     this.portalField?.update(this.player.x, this.player.y);
-    this.runMinimap?.pulse();
+    // 설치물도 게이트 밖에서 — 보상 카드가 뜬 뒤에도 좌표 갱신이 멈추면 안 된다
+    this.roomFixture?.update(this.player.x, this.player.y);
+    // 숨겨져 있으면 다시 그리지 않는다 — 펄스는 보일 때만 의미가 있다
+    if (this.shouldShowMinimap()) this.runMinimap?.pulse();
     this.updateStatusText();
     this.updateSequenceProgress();
   }
@@ -1281,6 +1462,11 @@ export class ProtoScene extends Phaser.Scene {
       devInfo('[Run] room-transition', { state, durationMs });
     });
     this.combatRunController.on('room-started', (state) => {
+      if (this.pendingRunStartReason) {
+        this.logRunStarted(this.pendingRunStartReason, state);
+        this.pendingRunStartReason = null;
+      }
+      this.logRoomStarted(state);
       this.startRoom(state.roomIndex);
       devInfo('[Run] room-started', state);
       this.reportAutoShare(`방 ${state.roomIndex} 진입 누적`);
@@ -1292,6 +1478,12 @@ export class ProtoScene extends Phaser.Scene {
       // 플레이어 사망이 먼저 확정된 동시 확정 레이스(사망 후 장판 틱이 보스 처치 등)
       // — 패배가 선점: 기억 저장·승리 연출 모두 생략해 한 런에 lose/win 이중 기록을 막는다
       if (this.deathHandled) return;
+      if (import.meta.env.DEV) {
+        void postPlayLog({
+          type: 'run_completed',
+          loopIndex: state.loopIndex,
+        });
+      }
       this.announceSystemMessage('런 완료', '#72f1b8');
       this.reportAutoShare('런 완주');
       if (import.meta.env.DEV) {
@@ -1477,6 +1669,7 @@ export class ProtoScene extends Phaser.Scene {
     // 새 루프 = 새 맵. 그래프는 cleared/current가 인스턴스에 쌓이므로 재사용하면
     // 지난 루프의 방들이 계속 '클리어됨'으로 남는다 (#241 리뷰 지적).
     this.resetMapGraph();
+    this.pendingRunStartReason = 'continue';
     this.combatRunController.continueRun();
     const loop = this.combatRunController.state.loopIndex;
     this.announceSystemMessage(
@@ -1493,6 +1686,7 @@ export class ProtoScene extends Phaser.Scene {
    */
   private resetForNewRun(): void {
     this.deathHandled = false;
+    this.pendingRunStartReason = null;
     this.fusionGauge.reset();
     this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
@@ -1538,9 +1732,32 @@ export class ProtoScene extends Phaser.Scene {
     this.runMovementDistance = 0;
     this.resetMapGraph();
     this.prepareRunEscalation();
+    this.pendingRunStartReason = 'death-restart';
     this.combatRunController.reset();
     // 새 런에도 유산 선택 — 직전 런에서 기록된 주문이 곧바로 후보가 된다
     void this.offerLegacyEngrave();
+  }
+
+  private logRunStarted(
+    reason: 'new' | 'continue' | 'death-restart',
+    state: Readonly<RunStateSnapshot>,
+  ): void {
+    if (!import.meta.env.DEV) return;
+    void postPlayLog({
+      type: 'run_started',
+      reason,
+      loopIndex: state.loopIndex,
+    });
+  }
+
+  private logRoomStarted(state: Readonly<RunStateSnapshot>): void {
+    if (!import.meta.env.DEV) return;
+    void postPlayLog({
+      type: 'room_started',
+      roomIndex: state.roomIndex,
+      encounterId: state.encounterId,
+      loopIndex: state.loopIndex,
+    });
   }
 
   /** 런 시작 시 한 번만 격상과 저주방 계획을 확정한다. */
@@ -1575,6 +1792,7 @@ export class ProtoScene extends Phaser.Scene {
     this.eliteModifierAssignments = [];
     this.clearCombatRoom();
     this.applyRoomBackdrop(roomIndex);
+    this.applyRoomTerrain();
     this.basicAttackCooldownRemaining = 0;
     // 포탈로 넘어왔으면 왼쪽 중앙 도착(#245), 첫 방이면 종전대로 방 중앙.
     // 도착 지점이 하나로 고정돼 있어야 함정·지형·적 스폰이 그 한 점만 비우면 된다(#246).
@@ -1595,17 +1813,33 @@ export class ProtoScene extends Phaser.Scene {
     // 안 주고 몹만 나왔다"). 웨이브를 뿌리지 않고 바로 클리어 처리해 보상표를 띄운다.
     const roomless = this.rewardlessNodeKind();
     if (roomless) {
-      this.startRewardlessRoom(roomless, roomIndex);
+      this.startRewardlessRoom(roomless);
       return;
     }
-    const waveSet = encounter.waveSetId ? WAVE_SETS[encounter.waveSetId] : undefined;
-    if (!waveSet) throw new Error(`Unknown wave set: ${encounter.waveSetId ?? '(missing)'}`);
+    // ⚠️ 없는 웨이브셋에 **예외를 던지지 않는다** (총괄 제보로 드러난 사고):
+    // 프리셋이 'room-c'(WAVE_SETS에 없음)를 가리켜 여기서 throw했고, 이미 방을 비운
+    // 뒤였으므로 몹도 포탈도 없는 빈 방이 되어 런이 진행 불가가 됐다. 데이터 오타 하나가
+    // 플레이를 벽돌로 만들면 안 된다 — 대체 웨이브로 계속 가고 DEV에서 크게 알린다.
+    // (오타 자체는 map-graph-regression이 프리셋 전 노드를 검사해 막는다.)
+    const requestedWaveSet = encounter.waveSetId;
+    let waveSet = requestedWaveSet ? WAVE_SETS[requestedWaveSet] : undefined;
+    if (!waveSet) {
+      waveSet = WAVE_SETS['room-a'];
+      devInfo('[Room] 알 수 없는 웨이브셋 — room-a로 대체', { requested: requestedWaveSet });
+      if (import.meta.env.DEV) {
+        this.announceSystemMessage(
+          `[DEV] 웨이브셋 '${requestedWaveSet ?? '(없음)'}' 없음 — room-a로 대체`,
+          '#ff8fa3',
+          4000,
+        );
+      }
+    }
     this.waveManager = new WaveManager(waveSet);
     this.audio.playBgm('combat');
     this.spawnWave(this.waveManager.start());
-    if (roomIndex === 1 && this.activeTrapProfile?.kind === 'hazard') {
+    if (this.activeTrapProfile?.kind === 'hazard') {
       this.spawnHazards(this.activeTrapProfile.safeCorridor);
-      this.announceSystemMessage('DEV: trap hazard', '#db73ff');
+      this.announceSystemMessage('함정: 위험지대', '#db73ff');
     }
     this.announceSystemMessage(`방 ${roomIndex}`, '#8fa4ff');
     // 첫 방 진입 시, 아직 한 번도 영창해본 적 없는 플레이어에게 조작을 안내한다.
@@ -1656,10 +1890,14 @@ export class ProtoScene extends Phaser.Scene {
       }
     }
 
+    // ⚠️ **방 중앙**에서 나타난다 (총괄 지적: "맵에 진입하자마자 보스가 바로 근처에서
+    // 나타나더라"). 종전엔 `player.y - 340`으로 플레이어 기준이었는데, #262에서 도착을
+    // 왼쪽 중앙(176, 640)으로 옮기면서 보스가 (176, 300) — 플레이어 옆에 붙어 나왔다.
+    // 내가 도착 지점을 바꾸며 만든 회귀다. 절대 좌표로 고정해 다시 어긋나지 않게 한다.
     const boss = new BossEnemy(
       this,
-      this.player.x,
-      this.player.y - 340,
+      this.worldBounds.centerX,
+      this.worldBounds.centerY,
       usesMemory ? 'memory' : 'stage',
       // 보스는 절반 배율 — 내성 누적(#77)과 이중 강화가 되지 않게
       enemyHpScale(this.combatRunController.state.loopIndex, true),
@@ -1681,14 +1919,27 @@ export class ProtoScene extends Phaser.Scene {
     requestCameraShake(this, 'medium');
 
     this.announceBanner({ title: '보스의 방', color: 0xff6b86, holdMs: 2000 });
-    // 오프닝 대사 — R2 /boss-line (프록시 생성 우선, 템플릿 폴백 내장)
-    if (usesMemory) void getBossLine(runMemory).then((line) => {
-      if (!isCurrentBossRoom()) return;
-      this.time.delayedCall(500, () => {
+    // 오프닝 대사 — Mock은 원격 호출 없이 템플릿, 라이브는 사용자 지정 프록시를 우선한다.
+    if (usesMemory) {
+      const mockForced = import.meta.env.VITE_JUDGE_MOCK === '1';
+      const proxyUrl = import.meta.env.VITE_JUDGE_PROXY_URL?.trim() || undefined;
+      const startedAt = import.meta.env.DEV ? Date.now() : 0;
+      void resolveBossLine(runMemory, { mockForced, proxyUrl }).then((line) => {
+        if (import.meta.env.DEV) {
+          void postPlayLog({
+            type: 'boss_line',
+            source: line.source,
+            elapsedMs: Date.now() - startedAt,
+            remoteAttempted: !mockForced,
+          });
+        }
         if (!isCurrentBossRoom()) return;
-        this.announceSystemMessage(`"${line.text}"`, '#d0a8ff', 2800);
+        this.time.delayedCall(500, () => {
+          if (!isCurrentBossRoom()) return;
+          this.announceSystemMessage(`"${line.text}"`, '#d0a8ff', 2800);
+        });
       });
-    });
+    }
     // 저항 알림은 activeBossResistances(단일 소스)에서 뽑는다 — 격상 이중 저항이면 두 원소를
     // 함께 알려야 플레이어가 대응할 수 있다. 단일 저항이면 기존과 동일하게 한 원소만 나온다.
     const resistedElements = this.sortedBossResistanceElements();
@@ -1740,6 +1991,20 @@ export class ProtoScene extends Phaser.Scene {
         stage: this.combatRunController.state.stage,
         kind,
       }, this.debugTrapProfile);
+      return;
+    }
+    const graphProfile = this.mapGraph.current().trapProfile;
+    if (graphProfile) {
+      if (graphProfile.kind === 'hazard') {
+        this.activeRoomCurse = null;
+        this.activeTrapProfile = graphProfile;
+        return;
+      }
+      this.activateRoomCurseAssignment({
+        roomIndex,
+        stage: this.combatRunController.state.stage,
+        kind: graphProfile.kind,
+      }, graphProfile);
       return;
     }
     const assignment = curseForRoom(this.roomCursePlan, roomIndex);
@@ -1948,6 +2213,7 @@ export class ProtoScene extends Phaser.Scene {
     this.clearBossArcana();
     this.clearTerrainBarriers();
     this.clearFloorHazards();
+    this.clearRoomFixture();
   }
 
   /** 예고 중인 미러 캐스트 취소 — 방 전환·사망 후 마커가 남거나 유령 발사되는 것 방지 */
@@ -1978,34 +2244,42 @@ export class ProtoScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(99);
 
-    this.statusText = this.add.text(34, 29, 'READY', {
+    this.statusText = this.add.text(HUD.x + 14, HUD.y + 12, 'READY', {
       fontFamily: 'Consolas, monospace',
       fontSize: '14px',
       fontStyle: 'bold',
       color: '#72f1b8',
     }).setScrollFactor(0).setDepth(100);
-    this.hpText = this.add.text(34, 54, '', {
+    // 정적 라벨 — 값이 안 바뀌므로 한 번만 만든다
+    (['HP', 'MANA', 'SHIELD'] as const).forEach((label, index) => {
+      this.add.text(HUD.x + HUD.labelX, hudRowY(index), label, {
+        fontFamily: 'Consolas, monospace',
+        fontSize: '11px',
+        color: '#7f8aba',
+      }).setScrollFactor(0).setDepth(100);
+    });
+    this.hpText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(0), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: '#ff91ad',
-    }).setScrollFactor(0).setDepth(100);
-    this.manaText = this.add.text(34, 88, '', {
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+    this.manaText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(1), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: '#91b7ff',
-    }).setScrollFactor(0).setDepth(100);
-    this.shieldText = this.add.text(34, 122, '', {
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+    this.shieldText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(2), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: '#72d8ff',
-    }).setScrollFactor(0).setDepth(100);
-    this.attunementText = this.add.text(34, 160, 'ARCANE // UNBOUND', {
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+    this.attunementText = this.add.text(HUD.x + HUD.labelX, hudRowY(3) - 4, 'ARCANE // UNBOUND', {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
       color: '#8fa4ff',
     }).setScrollFactor(0).setDepth(100);
     // 활성 자기 강화 — 종류·세기·남은 시간 (버프 없으면 빈 줄)
-    this.buffStatusText = this.add.text(34, 179, '', {
+    this.buffStatusText = this.add.text(HUD.x + 152, hudRowY(3) - 4, '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
       fontStyle: 'bold',
@@ -2031,7 +2305,7 @@ export class ProtoScene extends Phaser.Scene {
       align: 'center',
     }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(100);
 
-    this.waveText = this.add.text(width - 34, 72, '', {
+    this.waveText = this.add.text(width - 34, RIGHT_PANEL.y + 10, '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '14px',
       fontStyle: 'bold',
@@ -2047,7 +2321,7 @@ export class ProtoScene extends Phaser.Scene {
     // 우하단은 비어 있어 전투 시야를 가리지 않는다. 우상단은 ROOM/WAVE 전용으로 남긴다.
     this.createBuildChips(width, height);
 
-    this.add.text(20, height - 28, 'WASD 이동  ·  ENTER 영창  ·  TAB 빌드', {
+    this.add.text(20, height - 28, 'WASD 이동  ·  ENTER 영창  ·  ESC 일시정지', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: '#59679d',
@@ -2098,7 +2372,7 @@ export class ProtoScene extends Phaser.Scene {
       // 지형 장벽 — 이동 후 파고든 만큼 밀어낸다. 이동을 막는 게 아니라 밀어내는
       // 방식이라 모서리에 끼지 않고, 벽을 따라 미끄러진다.
       if (this.terrainBarriers.length > 0) {
-        const pushed = pushOutOfBarriers(this.player.x, this.player.y, 16, this.terrainBarriers);
+        const pushed = pushOutOfBlocks(this.player.x, this.player.y, 16, this.terrainBarriers);
         this.player.setPosition(pushed.x, pushed.y);
       }
 
@@ -2147,7 +2421,13 @@ export class ProtoScene extends Phaser.Scene {
 
   private applyRoomBackdrop(_roomIndex: number): void {
     const state = this.combatRunController.state;
-    const palette = backdropPaletteForEncounter(state.stage, this.isBossEncounter());
+    // 배경은 **노드 종류**로 고른다 (총괄 지적). 종전엔 stage + isBoss 세 가지뿐이라
+    // 정예·함정·보물·제단이 전부 그 스테이지의 일반 방과 똑같이 생겼다 — 포탈 라벨을
+    // 보고 고른 방이 구분되지 않으면 선택이 무의미해 보인다.
+    // 보스 조우는 그래프 종류보다 우선한다: 두 축이 어긋나도 보스방은 보스로 보여야 한다.
+    const palette = this.isBossEncounter()
+      ? backdropPaletteForEncounter(state.stage, true)
+      : backdropPaletteForNode(this.mapGraph.current().kind, state.stage);
     const from = Phaser.Display.Color.IntegerToColor(this.backdropColor);
     const to = Phaser.Display.Color.IntegerToColor(palette.base);
     this.tweens.addCounter({
@@ -2168,11 +2448,17 @@ export class ProtoScene extends Phaser.Scene {
     this.redrawBackdropDetails(palette);
     // 방 종류·스테이지별 전용 배경으로 교체한다. setTexture가 표시 크기를 리셋하므로 월드 크기를 다시 준다.
     // 스테이지2는 부패한 보라 아케인 배경(#72) — 없으면(로드 실패) stage1로 폴백.
+    // 방 종류 전용 배경이 있으면 그것을 쓰고, 없거나 **로드 실패면 스테이지 배경으로
+    // 폴백**한다. 배경 한 장이 없다고 방이 안 뜨면 안 된다(#283 교훈).
+    const kindKey = this.isBossEncounter() ? null : roomKindTexture(this.mapGraph.current().kind);
+    const stageKey = state.stage === 2 && this.textures.exists('bg-stage2')
+      ? 'bg-stage2'
+      : 'bg-stage1';
     const bgKey = this.isBossEncounter()
       ? 'bg-boss'
-      : state.stage === 2 && this.textures.exists('bg-stage2')
-        ? 'bg-stage2'
-        : 'bg-stage1';
+      : kindKey && this.textures.exists(kindKey)
+        ? kindKey
+        : stageKey;
     if (
       this.backdropImage
       && this.textures.exists(bgKey)
@@ -2550,23 +2836,101 @@ export class ProtoScene extends Phaser.Scene {
    * 방 장벽 배치 — R1 프리셋이 준 데이터를 그대로 세운다.
    * 빈 배열이면 장벽 없는 방(기존 동작과 동일).
    */
-  private setTerrainBarriers(barriers: readonly TerrainBarrier[]): void {
+  /**
+   * 방 구조물을 세운다 — 정사각 석재 블록 (총괄 지시: "정사각형 형태의 지형지물로,
+   * 구조물답게 너무 허접하게 생기면 안 된다").
+   *
+   * 종전엔 두께 14px 선분 3겹이었다. 얇은 막대는 구조물이 아니라 울타리로 읽힌다.
+   *
+   * ⚠️ **ADD 블렌드를 쓰지 않는다.** 구조물은 발광체가 아니라 돌이고, 광과민성
+   * 예산(#220)은 장식 VFX가 아닌 것도 화면을 밝히면 안 된다고 본다. 정지 상태로
+   * 계속 떠 있는 물체라 미세한 깜빡임도 누적 피로가 된다 — 애니메이션도 없다.
+   *
+   * 다섯 겹으로 부피를 만든다: 바닥 그림자 → 본체 → 상단 경사면(빛) →
+   * 하단 경사면(그늘) → 테두리. 여기에 룬 균열을 얹어 "마력 구조물"임을 드러낸다.
+   */
+  private setTerrainBarriers(blocks: readonly TerrainBlock[]): void {
     this.clearTerrainBarriers();
-    if (barriers.length === 0) return;
-    this.terrainBarriers = barriers.map((barrier) => ({ ...barrier }));
+    if (blocks.length === 0) return;
+    this.terrainBarriers = blocks.map((block) => ({ ...block }));
 
-    // 전장 장벽(wall 폼)과 같은 3겹 문법 — 플레이어가 "저건 못 지나간다"를 이미 안다.
     const view = this.add.graphics().setDepth(4);
-    for (const barrier of this.terrainBarriers) {
-      const [a, b] = barrierEndpoints(barrier);
-      view.lineStyle(TERRAIN_BARRIER_CONFIG.thickness + 8, 0x2c3a6e, 0.34);
-      view.lineBetween(a.x, a.y, b.x, b.y);
-      view.lineStyle(TERRAIN_BARRIER_CONFIG.thickness, 0x536dff, 0.5);
-      view.lineBetween(a.x, a.y, b.x, b.y);
-      view.lineStyle(2, 0xaebdff, 0.85);
-      view.lineBetween(a.x, a.y, b.x, b.y);
+    for (const block of this.terrainBarriers) {
+      const { x, y, half } = block;
+      const size = half * 2;
+      const bevel = Math.max(6, half * 0.22);
+
+      // ① 바닥 그림자 — 아래로 살짝 밀어 부피감을 만든다
+      view.fillStyle(0x05070f, 0.5);
+      view.fillRoundedRect(x - half + 3, y - half + 8, size, size, 6);
+      // ② 본체
+      view.fillStyle(0x232c4e, 1);
+      view.fillRoundedRect(x - half, y - half, size, size, 6);
+      // ③ 상단 경사면 — 위에서 빛이 온다
+      view.fillStyle(0x3b4878, 1);
+      view.fillRect(x - half + bevel * 0.5, y - half + 3, size - bevel, bevel);
+      // ④ 하단 경사면 — 그늘
+      view.fillStyle(0x161d36, 1);
+      view.fillRect(x - half + bevel * 0.5, y + half - bevel - 3, size - bevel, bevel);
+      // ⑤ 테두리 — 안쪽 밝은 선 + 바깥 어두운 선으로 각을 세운다
+      view.lineStyle(2, 0x6d7fc4, 0.9);
+      view.strokeRoundedRect(x - half + 2, y - half + 2, size - 4, size - 4, 5);
+      view.lineStyle(2, 0x0b0f1e, 0.85);
+      view.strokeRoundedRect(x - half, y - half, size, size, 6);
+
+      // 룬 균열 — 대각 한 줄 + 짧은 가지. 마력 구조물임을 드러내되 정지 상태다
+      view.lineStyle(2, 0x8fa4ff, 0.42);
+      view.lineBetween(x - half * 0.45, y - half * 0.5, x + half * 0.2, y + half * 0.45);
+      view.lineBetween(x - half * 0.1, y - half * 0.05, x + half * 0.4, y - half * 0.35);
     }
     this.terrainBarrierView = view;
+  }
+
+  /**
+   * 이 전환이 포탈 선택을 기다려야 하나.
+   *
+   * 다음 노드가 둘 이상이면 플레이어가 골라야 하고, 하나여도 그 방이 무전투 방이면
+   * 자동 진입하지 않는다(`rewardlessNodeKind` 규칙). 선택지가 없으면(보스 직전 등)
+   * 붙잡을 이유가 없으므로 종전대로 즉시 예약한다.
+   */
+  private transitionNeedsPortalChoice(): boolean {
+    return this.mapGraph.choices().length > 0;
+  }
+
+  /**
+   * 붙잡아 둔 전환을 실행한다 — 포탈 진입이 끝난 시점에 씬이 부른다.
+   * 보관된 게 없으면 아무 일도 하지 않는다(선택지가 없어 즉시 예약된 경우).
+   */
+  private releaseRunTransition(): void {
+    const pending = this.pendingRunTransition;
+    if (!pending) return;
+    this.pendingRunTransition = null;
+    this.time.delayedCall(pending.delayMs, () => {
+      if (!this.scene?.isActive?.()) return;
+      pending.run();
+    });
+  }
+
+  /**
+   * 방 종류에 맞는 지형 장벽을 세운다 (#214 지형 Tier 2 배선).
+   *
+   * 기전은 진작 완성돼 있었다 — 플레이어·보행 적을 밀어내고 적 투사체까지 막는다.
+   * 그런데 `setTerrainBarriers` 호출이 **DEV 프리뷰 한 곳뿐**이어서 실제 런에서는
+   * 장벽이 한 번도 나오지 않았다. 방이 전부 텅 빈 사각 아레나였고, 슈터 적의 사격을
+   * 피하는 방법이 발로 도는 것밖에 없었다.
+   *
+   * R1이 노드 `terrain`에 장벽을 채우면 **그것이 이긴다**. 비어 있으면 방 종류별
+   * 기본 배치를 쓴다(`roomTerrainConfig`).
+   */
+  private applyRoomTerrain(): void {
+    const node = this.mapGraph.current();
+    const fromNode = blocksFromPlacements(node.terrain);
+    if (fromNode.length > 0) {
+      this.setTerrainBarriers(fromNode);
+      return;
+    }
+    const stage = node.stage === 2 ? 2 : 1;
+    this.setTerrainBarriers(terrainForRoom(node.kind, stage));
   }
 
   private clearTerrainBarriers(): void {
@@ -2577,22 +2941,94 @@ export class ProtoScene extends Phaser.Scene {
 
   // ── 맵 그래프 · 포탈 · 미니맵 (#214 본배선) ──────────────────────────
 
-  /** 런 시작·이어가기마다 그래프를 새로 만든다 — cleared/current가 인스턴스에 쌓이므로. */
-  private resetMapGraph(): void {
+  /**
+   * 런의 맵 정의를 고른다 (#240 배선).
+   *
+   * 기본은 **생성기**다 — 런마다 분기 구조와 방 구성이 달라진다. 두 경우에 프리셋으로
+   * 돌아간다:
+   *
+   *  1. `useGenerator === false` — **시연 로드아웃**. 심사자가 하는 판은 고정 판이어야
+   *     한다. 매번 다른 맵을 뽑으면 시연 중에만 드러나는 조합을 만날 수 있고, 그건
+   *     생성기를 붙여서 얻는 것보다 잃는 게 크다. 시드 재현이 되더라도 심사 자리에서
+   *     "다시 뽑아보자"를 할 수는 없다.
+   *  2. 생성 실패 — 상한(160회)까지 규칙을 만족하는 후보를 못 찾은 경우. 실측
+   *     600시드에서 0%였지만 **폴백이 없으면 런이 시작되지 않는다**. 안전망은 남긴다.
+   */
+  private runMapDefinition(useGenerator: boolean): MapGraphDefinition {
+    if (!useGenerator) return MAP_GRAPH_PRESET_01;
+    const generated = generateRunMap((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
+    if (!generated) {
+      // 조용히 넘어가면 "왜 항상 같은 맵이지"를 아무도 모른다
+      console.warn('[map] 생성 상한 초과 — 고정 프리셋으로 폴백');
+      return MAP_GRAPH_PRESET_01;
+    }
+    return generated.definition;
+  }
+
+  /**
+   * 런 시작·이어가기마다 그래프와 방별 조우를 같이 새로 만든다.
+   *
+   * @param initialNodeId 시작 노드. 시연 로드아웃이 중간 방부터 시작할 때 쓴다.
+   *   **생성 맵에는 프리셋 노드 id가 없으므로**, 이 값이 주어지면 프리셋을 쓴다.
+   */
+  private resetMapGraph(
+    initialNodeId: string | null = null,
+    roomIndex = DEBUG_START_ROOM,
+  ): void {
     // **먼저 걷어낸다** — Phaser는 씬 인스턴스를 재사용하므로(타이틀→새 런) 필드는
     // 남아 있는데 가리키는 GameObject는 이미 파괴돼 있다. 그대로 update하면 죽는다.
     this.destroyRunMapUi();
-    this.mapGraph = new RunMapGraph(MAP_GRAPH_PRESET_01);
+    // 보관된 전환을 버린다 — 남겨두면 새 런에서 지난 런의 전환이 터진다
+    this.pendingRunTransition = null;
+    const definition = this.runMapDefinition(initialNodeId === null);
+    this.mapGraph = new RunMapGraph(definition, initialNodeId ?? definition.startNodeId);
+    this.mapEncounterByRoom.clear();
+    this.mapEncounterByRoom.set(roomIndex, encounterFromMapNode(this.mapGraph.current()));
     this.pendingArrival = null;
     this.refreshMinimap();
+  }
+
+  private mapEncounterForRoom(roomIndex: number): EncounterDefinition {
+    const encounter = this.mapEncounterByRoom.get(roomIndex);
+    if (!encounter) throw new Error(`Map encounter is missing for run room ${roomIndex}`);
+    return encounter;
   }
 
   private refreshMinimap(): void {
     if (!this.runMinimap) {
       // 상단 우측 — ROOM 칩(DOM) 아래. 전투 중에도 떠 있어야 "어디까지 왔나"가 읽힌다.
-      this.runMinimap = new MinimapHud(this, this.scale.width - 306, 150);
+      this.runMinimap = new MinimapHud(
+        this,
+        this.scale.width - 306,
+        // 초기 y는 평시 2줄 기준. 이후 drawHudBars가 패널 높이에 맞춰 옮긴다.
+        RIGHT_PANEL.y + rightPanelHeight(RIGHT_PANEL.baseTextHeight) + RIGHT_PANEL.gap,
+      );
     }
     this.runMinimap.update(toMinimapModel(this.mapGraph.snapshot()));
+    this.syncMinimapVisibility();
+  }
+
+  /**
+   * 미니맵을 지금 보여야 하나 (총괄 결정: "탭을 눌렀을 때만 띄우는 건 어떻게 생각함?").
+   * ⚠️ 그 뒤 일시정지 키가 TAB → ESC로 바뀌었다(총괄 지시). 미니맵은 검사 모드에
+   * 묶여 있으므로 **함께 ESC로 옮겨간다** — 판단 근거("상시 노출은 시야를 좁힌다")는
+   * 그대로고 여는 키만 달라졌다.
+   *
+   * 상시 노출을 접은 이유: 미니맵은 초당 정보가 아니라 **가끔 확인하는 정보**다.
+   * 전투 중엔 우상단 자리만 먹고, Tab이 이미 "내 상태를 들여다본다"는 제스처라
+   * (빌드 검사·일시정지·툴팁) 거기 얹으면 의미가 일관된다.
+   *
+   * ⚠️ **포탈 선택 중에는 예외로 자동 표시한다.** 갈림길에서 걸어가는 그 순간이 맵이
+   * 가장 필요한 시점인데 거기서 Tab을 눌러야 한다면 상시 노출보다 오히려 나쁘다.
+   * 두 조건 모두 "맵이 결정에 쓰이는 순간"이라는 하나의 원칙이다.
+   */
+  private shouldShowMinimap(): boolean {
+    return this.buildInspectOpen || this.portalField !== null;
+  }
+
+  /** 가시성 동기화 — update와 상태 전환 지점에서 호출 (setVisible은 동일 값이면 무해) */
+  private syncMinimapVisibility(): void {
+    this.runMinimap?.setVisible(this.shouldShowMinimap());
   }
 
   private destroyRunMapUi(): void {
@@ -2603,17 +3039,32 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   /**
-   * 보상 선택 후 다음 방을 고른다 (runUiBinding.beforeAdvance). **이게 resolve될 때까지
-   * 방 전환이 멈춘다** — RunController는 chooseReward에서 전환 타이머를 걸기 때문이다.
+   * 보상 선택 후 다음 방을 고른다 (runUiBinding.beforeAdvance).
+   *
+   * ⚠️ 종전엔 이게 resolve될 때까지 `chooseReward` 자체를 미뤘다. 그런데 그 호출이
+   * **보상 적용도 같이** 하므로, 카드를 골라도 포탈에 진입할 때까지 최대 체력·마나가
+   * 바뀌지 않았다(총괄 제보). 이제 보상은 즉시 적용되고, 붙잡히는 건 **전환 타이머**
+   * 하나다(`scheduleTransition` 주입 → `pendingRunTransition`).
+   *
+   * 그래서 이 함수의 **모든 종료 경로**가 `releaseRunTransition()`을 불러야 한다.
+   * 하나라도 빠뜨리면 보상은 반영됐는데 방이 영영 안 넘어간다 — 런이 갇힌다.
    *
    * 갈래가 하나뿐이면 포탈을 세우지 않고 조용히 넘어간다 — 선택지가 없는데 선택을
    * 시키면 걸어가는 시간만 늘어난다. 둘 이상일 때만 세운다.
    */
   choosePortalDestination(): Promise<void> {
     const choices = this.mapGraph.choices();
-    if (choices.length === 0) return Promise.resolve();
-    if (choices.length === 1) {
+    // 선택지가 없으면 전환은 애초에 붙잡히지 않았다(transitionNeedsPortalChoice=false).
+    // 그래도 해제를 부른다 — 보관된 게 없으면 no-op이라 안전하고, 조건이 나중에
+    // 갈라져도 갇히지 않는다.
+    if (choices.length === 0) { this.releaseRunTransition(); return Promise.resolve(); }
+    // 갈래가 하나면 보통 포탈을 세우지 않는다 — 선택지가 없는데 선택을 시키면 걸어가는
+    // 시간만 늘어난다. **단, 무전투 방은 예외다** (총괄 지적): 그 방의 흐름은
+    // "왼쪽 도착 → 중앙 상호작용 → 오른쪽 출구"이고, 마지막 구간을 자동으로 건너뛰면
+    // 다시 방이 아니라 팝업이 된다. 그 방에서는 걷는 것 자체가 내용이다.
+    if (choices.length === 1 && !this.rewardlessNodeKind()) {
       this.enterMapNode(choices[0].id);
+      this.releaseRunTransition();
       return Promise.resolve();
     }
     // 출구 슬롯 y는 R1 계약이 정한다 — 목적지 lane 순서대로 위에서 아래로 (#245).
@@ -2628,6 +3079,7 @@ export class ProtoScene extends Phaser.Scene {
     } catch (error) {
       devInfo('[Map] portal layout failed — 첫 갈래로 진행', error);
       this.enterMapNode(choices[0].id);
+      this.releaseRunTransition();
       return Promise.resolve();
     }
     const kindById = new Map(choices.map((node) => [node.id, node.kind]));
@@ -2637,21 +3089,38 @@ export class ProtoScene extends Phaser.Scene {
         this,
         exits[0].x,
         this.worldBounds.centerY,
-        exits.map((exit) => ({
-          nodeId: exit.targetNodeId,
-          kind: kindById.get(exit.targetNodeId) ?? 'combat',
-          // 계약값을 그대로 넘긴다 — 자체 가로 배치를 쓰면 포탈이 방 밖으로 밀려난다
-          x: exit.x,
-          y: exit.y,
-        })),
+        exits.map((exit) => {
+          const kind = kindById.get(exit.targetNodeId) ?? 'combat';
+          return {
+            nodeId: exit.targetNodeId,
+            kind,
+            // 계약값을 그대로 넘긴다 — 자체 가로 배치를 쓰면 포탈이 방 밖으로 밀려난다
+            x: exit.x,
+            y: exit.y,
+            // 보상 크기를 **고르기 전에** 보여준다. 방 이름만 보이면 위험한 방을 고를
+            // 근거가 없어 "누가 함정방을 선택하겠어"가 된다(총괄 지적).
+            rewardHint: rewardScaleFor(kind).hint,
+          };
+        }),
         (choice) => {
           this.enterMapNode(choice.nodeId);
           this.portalField?.destroy();
           this.portalField = null;
+          this.syncMinimapVisibility();
+          // 붙잡아 둔 전환을 여기서 놓아준다 — 이게 빠지면 보상은 반영됐는데
+          // 방이 영영 안 넘어가 런이 갇힌다
+          this.releaseRunTransition();
           resolve();
         },
       );
-      this.announceSystemMessage('갈림길 — 포탈로 들어가 다음 방을 고르세요', '#8fa4ff', 3000);
+      this.syncMinimapVisibility();
+      this.announceSystemMessage(
+        choices.length > 1
+          ? '갈림길 — 포탈로 들어가 다음 방을 고르세요'
+          : '오른쪽 포탈로 나가세요',
+        '#8fa4ff',
+        3000,
+      );
     });
   }
 
@@ -2667,13 +3136,9 @@ export class ProtoScene extends Phaser.Scene {
 
   /**
    * 지금 방이 **전투 없는 방**인가 (보물·제단). 아니면 null.
-   *
-   * 포탈에 붙은 라벨이 지켜지게 하는 단일 판정점이다. RunController는 여전히
-   * 선형 목록(RUN_ENCOUNTERS)으로 방을 세므로, **보스 방은 보스가 이긴다** —
-   * 두 축이 어긋났을 때 최종 보스를 건너뛰면 런이 끝나지 않는다.
+   * 포탈 라벨·보상·실제 방 내용이 모두 같은 MapNode를 보게 하는 판정점이다.
    */
   private rewardlessNodeKind(): 'treasure' | 'altar' | null {
-    if (this.isBossEncounter()) return null;
     const kind = this.mapGraph.current().kind;
     return kind === 'treasure' || kind === 'altar' ? kind : null;
   }
@@ -2684,7 +3149,7 @@ export class ProtoScene extends Phaser.Scene {
    * 제단은 먼저 **대가(HP)를 치른다**(altarHpCost). 대가가 보상보다 먼저여야
    * "지불하고 얻는다"가 성립하고, 카드를 보고 무를 수도 없다.
    */
-  private startRewardlessRoom(kind: 'treasure' | 'altar', roomIndex: number): void {
+  private startRewardlessRoom(kind: 'treasure' | 'altar'): void {
     // WaveManager는 빈 정의에 예외를 던진다. 적 0인 웨이브 하나를 두되 start()를 부르지
     // 않는다 — waveIndex가 -1이라 update()도 아무것도 스폰하지 않는다.
     this.waveManager = new WaveManager([{ chaserCount: 0, shooterCount: 0, splitterCount: 0 }]);
@@ -2694,31 +3159,71 @@ export class ProtoScene extends Phaser.Scene {
       // 방에 들어선 것만으로 징수하면 거절권이 사라져 선택이 아니라 함정이 된다.
       this.announceBanner({
         title: '제단',
-        lines: ['생명을 내어주고 힘을 산다 · 그냥 나갈 수도 있다'],
+        lines: ['생명을 내어주고 힘을 산다 · 거절할 수도 있다', ROOM_FIXTURE_GUIDE.altar],
         color: 0xd0a8ff,
-        holdMs: 2600,
+        holdMs: 2800,
       });
     } else {
       this.announceBanner({
         title: '보물방',
-        lines: ['싸우지 않고 얻는다'],
+        lines: ['싸우지 않고 얻는다', ROOM_FIXTURE_GUIDE.treasure],
         color: 0xffd166,
-        holdMs: 2200,
+        holdMs: 2600,
       });
     }
-    this.announceSystemMessage(`방 ${roomIndex}`, '#8fa4ff');
-    // 배너를 읽을 틈을 준 뒤 보상 — 즉시 띄우면 카드가 배너를 덮는다
+    // ⚠️ `방 N`과 설치물 안내를 따로 띄우지 않는다 (총괄 제보: "중앙에 뜨는 창이 중복으로
+    // 겹치던데"). 배너(중앙 판)와 시스템 메시지(height×0.42)는 **다른 채널**이라 서로의
+    // 스택을 모른다 — 셋이 동시에 뜨면 겹친다. 배너 한 판에 합치고, 방 번호는 이미
+    // 우상단 상태 패널이 그린다(#281).
+    // ⚠️ 여기서 보상을 띄우지 않는다 (총괄 지적: "들어가자마자 주는 것보다는 중앙까지
+    // 이동해서 상호작용했을 때 비로소 선택지가 뜨는 게 맞지 않나").
+    //
+    // 종전엔 900ms 타이머로 notifyRoomCleared를 강제 호출해 방이 아니라 **팝업**이었다.
+    // 도착(왼쪽)과 출구(오른쪽) 사이를 걸을 이유가 없어 포탈로 만든 좌→우 진행 구조가
+    // 이 방들에서만 무의미해졌다. 이제 중앙 설치물이 트리거다 — 타이머도 필요 없다.
     this.roomClearPending = true;
-    this.time.delayedCall(900, () => {
-      if (!this.scene?.isActive?.()) return;
-      this.combatRunController.notifyRoomCleared();
-    });
+    this.setRoomFixture(kind);
+  }
+
+  /**
+   * 방 중앙에 설치물을 세운다. 다가가면 보상이 열린다.
+   * 도착이 왼쪽 중앙(#245)이므로 중앙까지 걸어야 하고, 그 뒤 출구는 오른쪽이다.
+   */
+  private setRoomFixture(kind: 'treasure' | 'altar'): void {
+    this.clearRoomFixture();
+    this.roomFixture = new RoomFixture(
+      this,
+      this.worldBounds.centerX,
+      this.worldBounds.centerY,
+      kind,
+      () => this.openRewardlessRoomChoice(),
+    );
+    // 안내는 startRewardlessRoom의 배너에 합쳤다 — 중앙 채널이 겹치지 않게.
+  }
+
+  private clearRoomFixture(): void {
+    this.roomFixture?.destroy();
+    this.roomFixture = null;
+  }
+
+  /**
+   * 설치물 상호작용 — 여기서 비로소 보상표가 열린다.
+   * 설치물은 즉시 걷어낸다: 카드를 고르는 동안 남아 있으면 다시 닿아 이중 발화한다.
+   */
+  private openRewardlessRoomChoice(): void {
+    this.clearRoomFixture();
+    this.audio.playSfx('room-clear');
+    this.combatRunController.notifyRoomCleared();
   }
 
   private enterMapNode(nodeId: string): void {
     if (!this.mapGraph.canEnter(nodeId)) return;
     const from = this.mapGraph.current().id;
     const node = this.mapGraph.enter(nodeId);
+    this.mapEncounterByRoom.set(
+      this.combatRunController.state.roomIndex + 1,
+      encounterFromMapNode(node),
+    );
     this.refreshMinimap();
     // 도착은 **항상 왼쪽 중앙**이다 (#245·#246) — 방마다 진입 계약이 하나여야
     // 함정·지형·적 스폰이 여러 진입 좌표를 고려하지 않아도 된다.
@@ -2879,7 +3384,7 @@ export class ProtoScene extends Phaser.Scene {
       // 보스 돌진 중엔 통과 — 돌진은 "밀고 지나가는" 행동이다(원칙 2와 같은 결)
       if (enemy instanceof BossEnemy && enemy.charging) continue;
       // view를 직접 옮긴다 — 넉백(updateEnemyKnockback)이 쓰는 것과 같은 경로.
-      const pushed = pushOutOfBarriers(
+      const pushed = pushOutOfBlocks(
         enemy.view.x, enemy.view.y, enemy.collisionRadius, this.terrainBarriers,
       );
       enemy.view.x = pushed.x;
@@ -3864,15 +4369,12 @@ if (applied) this.playPlayerHit(
 
       // 지형 장벽도 적 투사체를 막는다 — 전장 장벽과 같은 스윕 판정을 재사용해
       // "벽 뒤에 숨는다"가 두 종류 장벽에서 똑같이 통한다.
-      let blockedByTerrain = false;
-      for (const barrier of this.terrainBarriers) {
-        if (sweepIntersectsPolyline(
-          previous,
-          { x: projectile.body.x, y: projectile.body.y },
-          5 + TERRAIN_BARRIER_CONFIG.thickness / 2,
-          barrierEndpoints(barrier),
-        )) { blockedByTerrain = true; break; }
-      }
+      const blockedByTerrain = segmentBlocked(
+        previous,
+        { x: projectile.body.x, y: projectile.body.y },
+        this.terrainBarriers,
+        5,
+      );
       if (blockedByTerrain) {
         this.destroyEnemyProjectile(projectile);
         continue;
@@ -4365,6 +4867,26 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceManaShortage(plan.manaCost);
       return;
     }
+    if (import.meta.env.DEV) {
+      void postPlayLog({
+        type: 'sequence_exec',
+        input: text,
+        source,
+        fixture: source === 'local',
+        name: plan.name,
+        sequenceCount: plan.sequences.length,
+        behaviorCount: plan.sequences.reduce(
+          (sum, sequence) => sum + sequence.behaviors.length,
+          0,
+        ),
+        durationMs: plan.sequences.reduce(
+          (sum, sequence) => sum + sequence.durationMs,
+          0,
+        ),
+        power: plan.power,
+        manaCost: plan.manaCost,
+      });
+    }
     // 융합 게이지 — 시퀀스도 수동 영창이므로 충전한다 (방출 격상은 v1에선 단일 주문만)
     if (this.fusionGauge.charge(plan.manaCost)) {
       this.announceSystemMessage('융합의 힘이 응축됐다 — 두 원소를 담아 영창하라 (마나 무소모)', '#e2b7ff', 3400);
@@ -4525,26 +5047,22 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       if (import.meta.env.DEV) {
         const base = historyEntry.basePower;
         const bossResist = this.activeBossResistances.get(spec.element_primary) ?? 1;
-        void fetch('/__log', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            t: Math.round(this.time.now / 100) / 10,
-            type: 'dmg',
-            input: text,
-            el: spec.element_primary,
-            base,
-            repeat: base > 0 ? Number((historyEntry.power / base).toFixed(2)) : 1,
-            affinity: Number(affinityBonus.toFixed(2)),
-            escalation: Number(escalationWeaken.toFixed(2)),
-            diversity: Number(diversity.toFixed(2)),
-            empower: Number(this.playerState.damageOutMultiplier.toFixed(2)),
-            degraded: Number(castPlan.ratio.toFixed(2)),
-            effective: effectiveSpec.power,
-            bossResist: Number(bossResist.toFixed(2)),
-            finalVsBoss: Math.round(effectiveSpec.power * bossResist),
-          }),
-        }).catch(() => {});
+        void postPlayLog({
+          t: Math.round(this.time.now / 100) / 10,
+          type: 'dmg',
+          input: text,
+          el: spec.element_primary,
+          base,
+          repeat: base > 0 ? Number((historyEntry.power / base).toFixed(2)) : 1,
+          affinity: Number(affinityBonus.toFixed(2)),
+          escalation: Number(escalationWeaken.toFixed(2)),
+          diversity: Number(diversity.toFixed(2)),
+          empower: Number(this.playerState.damageOutMultiplier.toFixed(2)),
+          degraded: Number(castPlan.ratio.toFixed(2)),
+          effective: effectiveSpec.power,
+          bossResist: Number(bossResist.toFixed(2)),
+          finalVsBoss: Math.round(effectiveSpec.power * bossResist),
+        });
       }
       if (castPlan.ratio < 1) {
         this.announceSystemMessage(
@@ -4617,16 +5135,24 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
    */
   private scheduleSpellEcho(spec: SpellSpec): void {
     if (!this.echoUnlocked) return;
-    const { delayMs, powerScale, extraChance } = ALTAR_OFFER_CONFIG.echo;
+    const { delayMs, powerScale, extraChance, decorScales } = ALTAR_OFFER_CONFIG.echo;
     const count = 1 + (Math.random() < extraChance ? 1 : 0);
     for (let i = 1; i <= count; i += 1) {
+      // 겹이 깊어질수록 옅어진다 — 원본 1.0 > 첫 에코 > 둘째 에코.
+      // 같은 밝기로 세 발이 나가면 "왜 세 번인지" 읽히지 않는다(총괄 지적).
+      const decorVfxScale = decorScales[i - 1] ?? decorScales[decorScales.length - 1];
       this.time.delayedCall(delayMs * i, () => {
         if (!this.scene?.isActive?.() || !this.playerState.alive) return;
         if (!this.isCombatActive()) return;
-        this.applySpellEffect({
-          ...spec,
-          power: Math.max(1, Math.round(spec.power * powerScale)),
-        });
+        this.applySpellEffect(
+          { ...spec, power: Math.max(1, Math.round(spec.power * powerScale)) },
+          undefined,
+          false,
+          // 친화 격상 연출도 함께 낮춘다 — 장식만 옅고 플러리시는 만개하면 어긋난다
+          i,
+          { decorVfxScale },
+        );
+        // 소리도 옅게 — 원본과 같은 크기로 울리면 "두 번 쐈다"로 들린다
         this.audio.playCast(spec.element_primary);
       });
     }
@@ -5049,7 +5575,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       allowCameraShake: !auto || vfxTierReduction === 0,
       // 플레이어 장식 VFX 중첩 예산 참여 (#216 P0-1) — 자동 시전은 추가 감쇠.
       // 보스 시전은 이 필드를 안 넘겨 면제된다(위험구역은 정보, 항상 최대 밝기).
-      decorVfxScale: auto ? VFX_BUDGET_CONFIG.autoCastScale : 1,
+      // options로 명시하면 그 값이 이긴다 — 에코가 원본보다 투명하게 나가는 경로.
+      decorVfxScale: options?.decorVfxScale ?? (auto ? VFX_BUDGET_CONFIG.autoCastScale : 1),
       damageScale: options?.damageScale,
       rangeScale: options?.rangeScale,
       radiusScale: options?.radiusScale,
@@ -5613,11 +6140,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         graceRemaining: this.heatwaveGraceRemaining,
         immunityRemaining: this.heatwaveImmunityRemaining,
       });
+    // 라벨(HP/MANA/SHIELD)이 왼쪽에 따로 있으므로 수치만 적는다. 우측 정렬이라
+    // 자리수가 늘어도 왼쪽으로 자라 바를 침범하지 않는다 — padStart 정렬이 필요 없다.
     this.hpText
-      .setText(`HP    ${hp.toString().padStart(3)} / ${this.playerState.maxHp}`)
+      .setText(`${hp}/${this.playerState.maxHp}`)
       .setColor(heatwaveDamaging ? '#ffad62' : '#ff91ad');
-    this.manaText.setText(`MANA  ${mana.toString().padStart(3)} / ${this.playerState.maxMana}`);
-    this.shieldText.setText(`SHIELD ${shield.toString().padStart(3)} / ${this.playerState.maxHp}`);
+    this.manaText.setText(`${mana}/${this.playerState.maxMana}`);
+    this.shieldText.setText(`${shield}/${this.playerState.maxHp}`);
     this.drawBuildChips();
     // 활성 자기 강화 — 매 프레임 남은 시간 갱신, 없으면 빈 줄
     const buffs = this.playerState.activeBuffs();
@@ -5629,12 +6158,25 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         .setColor(paletteColorToCss(selfBuffColor(buffs[0].kind)));
     }
     this.drawHudBars();
+    // ROOM은 종전에 별도 DOM 칩(runHud)이었다. 우상단이 3단(칩·패널·미니맵)이 되어
+    // 이 패널 첫 줄로 합쳤다 (총괄 지적) — 같은 정보군을 두 판에 나눌 이유가 없다.
+    const roomLine = `ROOM ${runState.roomIndex}/${runState.maxRooms}`;
+    // 위험지대 정화 — **지형이 깔린 방에서만** 한 줄 붙는다 (없으면 null).
+    // HUD 박스가 아니라 여기인 이유: HUD는 높이가 고정이고 친화 바·쿨다운 바가
+    // `HUD.y + HUD.height` 기준이라 행을 늘리면 전부 밀린다(총괄이 제보한 겹침과 같은
+    // 부류). 우측 패널은 이미 방 단위 정보를 담고 내용에 맞춰 늘어난다.
+    const cleanseLine = cleanseReadoutLine(
+      this.floorHazardPlayer,
+      this.presentFloorHazardKinds(),
+    );
+    const withCleanse = (lines: readonly string[]): string =>
+      (cleanseLine ? [...lines, cleanseLine] : [...lines]).join('\n');
     if (runState.phase === 'run-over') {
-      this.waveText.setText('RUN COMPLETE');
+      this.waveText.setText(withCleanse([roomLine, 'RUN COMPLETE']));
     } else if (runState.phase === 'reward-select') {
-      this.waveText.setText('ROOM CLEAR');
+      this.waveText.setText(withCleanse([roomLine, 'ROOM CLEAR']));
     } else if (runState.phase === 'room-transition') {
-      this.waveText.setText(`NEXT ROOM ${runState.roomIndex + 1}/${runState.maxRooms}`);
+      this.waveText.setText(withCleanse([roomLine, `NEXT ROOM ${runState.roomIndex + 1}`]));
     } else if (this.isBossEncounter()) {
       const boss = this.enemies.find((enemy) => enemy.kind === 'boss');
       // 저항을 상시 노출한다 — 보스 링 색만으로는 "무엇이 안 통하는지" 알 수 없다.
@@ -5652,19 +6194,24 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const status = boss
         ? `BOSS ${Math.ceil(boss.hp)}/${boss.maxHp}  ·  ENEMIES ${this.enemies.length}`
         : 'BOSS';
-      this.waveText.setText(bossResistanceLines(status, readout).join('\n'));
+      this.waveText.setText(withCleanse([roomLine, ...bossResistanceLines(status, readout)]));
     } else if (this.rewardlessNodeKind()) {
       // 무전투 방 — 웨이브가 없으니 "NEXT WAVE 0.0s"가 뜨면 안 된다
-      this.waveText.setText(this.rewardlessNodeKind() === 'altar' ? '제단' : '보물방');
+      this.waveText.setText(withCleanse([
+        roomLine,
+        this.rewardlessNodeKind() === 'altar' ? '제단' : '보물방',
+      ]));
     } else if (this.waveManager.phase === 'waiting') {
-      this.waveText.setText(
+      this.waveText.setText(withCleanse([
+        roomLine,
         `NEXT WAVE ${this.waveManager.delayRemaining.toFixed(1)}s`,
-      );
+      ]));
     } else {
-      this.waveText.setText(
+      this.waveText.setText(withCleanse([
+        roomLine,
         `WAVE ${this.waveManager.currentWaveNumber}/${this.waveManager.totalWaves}`
         + `  ·  ENEMIES ${this.enemies.length}`,
-      );
+      ]));
     }
   }
 
@@ -5747,7 +6294,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   /**
-   * 일시정지 메뉴 — Tab 검사 모드의 전역 신호 (총괄 피드백: "멈춘 게 티가 나야 한다").
+   * 일시정지 메뉴 — ESC 검사 모드의 전역 신호 (총괄 피드백: "멈춘 게 티가 나야 한다").
    *
    * 암막은 **깊이 97**이다: 미러캐스트 경고(96) 위, HUD(99+) 아래. 그래서 게임 월드만
    * 어두워지고 HUD·빌드 칩은 밝게 남는다 — "일시정지 메뉴 + 내 빌드 점검"이 한 화면에
@@ -5801,6 +6348,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
    * 그대로 읽힌다**. 밝기 조절이 정보 가독성을 깎으면 접근성 장치의 취지에 어긋난다.
    */
   private applyBrightness(): void {
+    // 이펙트 밝기는 **막이 아니라 배율**이다 — 렌더러가 시전 객체 알파에 곱한다.
+    // 같은 함수에서 함께 반영해 호출 지점(초기화·설정 변경·복귀)이 갈리지 않게 한다.
+    setVfxBrightness(this.settings.vfxBrightness);
+
     const { width, height } = this.scale;
     const g = this.brightnessVeil.clear();
     const b = this.settings.brightness;
@@ -5821,6 +6372,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
    * 메인 일시정지 화면에만 필요하고, 설정에 들어가면 칩을 볼 일이 없다.
    */
   private async openSettingsOverlay(): Promise<void> {
+    // ESC가 설정과 일시정지를 동시에 닫지 않게 하는 가드 (keydown-ESC 참조)
+    this.settingsOverlayOpen = true;
     const next = await showSettingsOverlay({
       onChange: (settings) => {
         this.settings = settings;
@@ -5829,6 +6382,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       },
       mute: { get: () => this.audio.muted, toggle: () => this.audio.toggleMute() },
     });
+    this.settingsOverlayOpen = false;
     this.settings = next;
     this.audio.applySettings(next);
     this.applyBrightness();
@@ -6010,7 +6564,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   /**
-   * Tab 검사 모드 토글 — 전투를 멈추고 칩에 마우스를 올려 상세를 본다 (총괄 발안).
+   * ESC 검사 모드 토글 — 전투를 멈추고 칩에 마우스를 올려 상세를 본다 (총괄 발안).
    *
    * 호버 툴팁은 원래 실시간 게임에서 주채널이 될 수 없다(조회하는 동안 적이 움직인다).
    * 정지가 그 전제를 없앤다. 다만 scene.pause()는 이 씬의 렌더·입력까지 멈춰 호버 자체가
@@ -6029,6 +6583,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
     this.quitArmed = false;
     this.renderPauseMenu();
+    this.syncMinimapVisibility();
     this.buildChipZones.forEach((zone) => {
       if (this.buildInspectOpen) zone.setInteractive({ useHandCursor: true });
       else zone.disableInteractive();
@@ -6052,7 +6607,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const chip = this.buildChips[this.hoveredChipIndex];
     const lines = chip
       ? [chip.filled ? `『${chip.name}』` : chip.name, ...chip.detail]
-      : ['빌드 검사 — 시간이 멈췄다', '칩에 커서를 올리면 상세가 나온다', 'TAB · ESC 로 돌아간다'];
+      : ['빌드 검사 — 시간이 멈췄다', '칩에 커서를 올리면 상세가 나온다', 'ESC 로 돌아간다'];
     this.buildInspectText.setText(lines.join('\n'));
 
     const boxW = BUILD_CHIP.tooltipWidth;
@@ -6102,29 +6657,33 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     g.lineStyle(1, 0x33447f, 0.72);
     g.strokeRoundedRect(HUD.x, HUD.y, HUD.width, HUD.height, 12);
 
+    // 라벨과 같은 줄에 — 텍스트 세로 중앙에 맞춰 바를 놓는다 (원점이 좌상단이므로 −3)
+    const barOffset = Math.round(HUD.barHeight / 2) + 1;
+    const rowBarY = (index: number): number => hudRowY(index) + barOffset;
     g.fillStyle(0x141a35, 1);
-    g.fillRoundedRect(HUD.barX, 73, HUD.barWidth, HUD.barHeight, 4);
-    g.fillRoundedRect(HUD.barX, 107, HUD.barWidth, HUD.barHeight, 4);
-    g.fillRoundedRect(HUD.barX, 141, HUD.barWidth, HUD.barHeight, 4);
+    for (let index = 0; index < 3; index += 1) {
+      g.fillRoundedRect(HUD.barX, rowBarY(index), HUD.barWidth, HUD.barHeight, 3);
+    }
     g.fillStyle(heatwaveDamaging ? 0xff734c : 0xff5c82, 1);
-    g.fillRoundedRect(HUD.barX, 73, HUD.barWidth * hpRatio, HUD.barHeight, 4);
+    g.fillRoundedRect(HUD.barX, rowBarY(0), HUD.barWidth * hpRatio, HUD.barHeight, 3);
     if (heatwaveDamaging && hpRatio > 0) {
       const filledWidth = HUD.barWidth * hpRatio;
+      const hpBarY = rowBarY(0);
       g.lineStyle(2, 0xffb15a, 0.52 + heatPulse * 0.38);
-      g.strokeRoundedRect(HUD.barX - 2, 71, HUD.barWidth + 4, HUD.barHeight + 4, 5);
+      g.strokeRoundedRect(HUD.barX - 2, hpBarY - 2, HUD.barWidth + 4, HUD.barHeight + 4, 4);
       // 막대 끝의 짧은 상승 입자: 전체 HUD가 아니라 열에 반응하는 HP라는 점만 알려 준다.
       for (let index = 0; index < 3; index += 1) {
         const progress = (this.time.now / 750 + index * 0.37) % 1;
         const x = HUD.barX + Math.max(8, filledWidth - 7 - index * 7);
-        const y = 71 - progress * 11;
+        const y = hpBarY - 2 - progress * 10;
         g.fillStyle(0xffc06d, (1 - progress) * 0.7);
         g.fillCircle(x, y, 1.8 - progress * 0.55);
       }
     }
     g.fillStyle(0x5b8cff, 1);
-    g.fillRoundedRect(HUD.barX, 107, HUD.barWidth * manaRatio, HUD.barHeight, 4);
+    g.fillRoundedRect(HUD.barX, rowBarY(1), HUD.barWidth * manaRatio, HUD.barHeight, 3);
     g.fillStyle(0x48c9ff, 1);
-    g.fillRoundedRect(HUD.barX, 141, HUD.barWidth * shieldRatio, HUD.barHeight, 4);
+    g.fillRoundedRect(HUD.barX, rowBarY(2), HUD.barWidth * shieldRatio, HUD.barHeight, 3);
 
     g.fillStyle(0x1d2445, 1);
     g.fillRoundedRect(HUD.x + 8, HUD.y + HUD.height - 5, HUD.width - 16, 3, 2);
@@ -6140,11 +6699,18 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.drawAffinityBar(g);
     this.drawFusionGauge(g);
 
+    // 우상단 상태 패널 — 종전엔 ROOM 칩(DOM) 아래에 따로 떠서 우상단이 3단이었다.
+    // ROOM을 이 패널 안으로 넣어(updateStatusText) 2단으로 줄였다 (총괄 지적).
     const { width } = this.scale;
     g.fillStyle(0x080b1c, 0.86);
-    g.fillRoundedRect(width - 306, 62, 288, 72, 12);
+    // 패널은 **내용에 맞춰 늘어난다** — 보스전에서 저항·관통 줄이 붙으면 3~4줄이 되어
+    // 고정 높이로는 텍스트가 패널을 넘고 미니맵과 겹쳤다. 평시(2줄)엔 그대로 조밀하다.
+    const panelHeight = rightPanelHeight(this.waveText.height);
+    g.fillRoundedRect(width - 306, RIGHT_PANEL.y, 288, panelHeight, 10);
     g.lineStyle(1, 0x2a735c, 0.62);
-    g.strokeRoundedRect(width - 306, 62, 288, 72, 12);
+    g.strokeRoundedRect(width - 306, RIGHT_PANEL.y, 288, panelHeight, 10);
+    // 미니맵을 패널 아래로 — 높이가 바뀔 때만 옮긴다 (setTop이 동일 y면 no-op)
+    this.runMinimap?.setTop(RIGHT_PANEL.y + panelHeight + RIGHT_PANEL.gap);
   }
 
   /**
@@ -6558,13 +7124,30 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ) <= impact.width / 2;
       if (!isHit) continue;
 
-      hitEnemies.add(enemy);
       const bypassDirectionalShield = spec.form === 'zone' || spec.form === 'rain';
       const impactSource = impact.kind === 'line'
         ? { x: impact.fromX, y: impact.fromY }
         : impact.kind === 'circle'
           ? { x: impact.x, y: impact.y }
           : castOrigin;
+
+      // ⚠️ **구조물이 주문도 막는다** (총괄 지시: "플레이어의 마법이 통과할 수 있으면
+      // 안 됨"). 종전엔 이동·적 투사체만 막고 주문은 통과해, 엄폐가 한쪽에만 작동하는
+      // 비대칭이 있었다 — 벽 뒤에서 일방적으로 잡는 무적 지점이 생기는 원인이었다.
+      //
+      // 판정 지점은 **적중이 확정된 뒤**다: 여기서 걸러야 "형상은 닿았지만 구조물이
+      // 가렸다"가 되고, 형상 자체를 줄이면 이펙트와 판정이 어긋난다.
+      //
+      // `zone`·`rain`은 예외다 — 위에서 떨어지거나 바닥에 깔리는 폼이라 옆의 구조물이
+      // 가릴 이유가 없다. 그 둘은 방어형 실드도 무시하는(bypassDirectionalShield)
+      // 같은 성격이라 예외 조건을 공유한다.
+      if (!bypassDirectionalShield && segmentBlocked(
+        impactSource,
+        { x: enemy.x, y: enemy.y },
+        this.terrainBarriers,
+      )) continue;
+
+      hitEnemies.add(enemy);
       applyDamage(
         enemy,
         impactSource.x,

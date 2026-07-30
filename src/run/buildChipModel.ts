@@ -34,7 +34,7 @@ export interface BuildChip {
   /** 행 안의 자리 (0-based) — 위치가 정체성이므로 비어도 유지된다 */
   slot: number;
   filled: boolean;
-  /** 표시 이름 — 칩에는 안 그리고 Tab 검사 툴팁에서만 쓴다 */
+  /** 표시 이름 — 칩에는 안 그리고 ESC 검사 툴팁에서만 쓴다 */
   name: string;
   element: SpellElement | null;
   /** 이중 원소(융합 정령·부속성) — 칩 투톤용 */

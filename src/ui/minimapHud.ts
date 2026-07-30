@@ -30,7 +30,7 @@ const STYLE = {
 export class MinimapHud {
   private readonly graphics: Phaser.GameObjects.Graphics;
   private readonly x: number;
-  private readonly y: number;
+  private y: number;
   private lastModel: MinimapModel | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
@@ -41,6 +41,16 @@ export class MinimapHud {
 
   update(model: MinimapModel): void {
     this.lastModel = model;
+    this.redraw();
+  }
+
+  /**
+   * 세로 위치 이동 — 위쪽 상태 패널이 내용에 따라 늘어나므로(보스전 저항 줄 등)
+   * 미니맵도 그만큼 내려와야 겹치지 않는다. 씬이 패널 높이 변화 시에만 호출한다.
+   */
+  setTop(y: number): void {
+    if (this.y === y) return;
+    this.y = y;
     this.redraw();
   }
 

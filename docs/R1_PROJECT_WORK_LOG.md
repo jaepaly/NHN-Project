@@ -1592,6 +1592,7 @@
 - 후보 1~62의 모든 중간 응답 원본을 그대로 싣지는 않는다. 기각 과정과 결론을 설명하는 요약 문서 및 최종 판단에 필요한 핵심 원본만 선별해 PR 크기와 리뷰 가능성을 보존한다.
 - 현재 작업 트리는 기존 staged 파일과 후속 unstaged 수정, 다수의 untracked 실험 산출물이 혼재하므로 최종 스테이징 전에 파일별 채택 여부를 다시 확인한다.
 - 최종 커밋 `199e9ae`를 `codex/experiment-sequence-fixture-alignment`에 푸시하고 PR #303을 생성했다. 후보 58 실행 코드와 선별한 최종 설계·검증 자료 56개 파일을 포함하며, 제외한 중간 실험 원본은 로컬 작업 트리에 보존한다.
+- PR #303의 최신 main 병합 충돌은 공용 AI 로그·package·Worker·Judge fallback 회귀·`geminiJudge`에 발생했다. main의 fallback 원인 관측과 최신 게임 기능을 보존하면서 후보 58의 v2.16 all-plan 계약·공통 6초 timeout·Worker 프롬프트 및 검증 스크립트를 재적용해 해소했다.
 
 ---
 

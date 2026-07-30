@@ -15,6 +15,24 @@ export interface MapGraphDefinition {
   lastBeforeBossNodeId: string;
 }
 
+/** 시작 노드부터 종착 보스까지 가능한 경로 중 가장 긴 방 수. */
+export function maximumMapPathRooms(definition: MapGraphDefinition): number {
+  validateDefinition(definition);
+  const nextIds = buildNextIds(definition.edges);
+  const memo = new Map<string, number>();
+  const countFrom = (nodeId: string): number => {
+    const cached = memo.get(nodeId);
+    if (cached !== undefined) return cached;
+    const next = nextIds.get(nodeId) ?? [];
+    const count = 1 + (next.length > 0
+      ? Math.max(...next.map((nextId) => countFrom(nextId)))
+      : 0);
+    memo.set(nodeId, count);
+    return count;
+  };
+  return countFrom(definition.startNodeId);
+}
+
 /**
  * Phaser 비의존 런 맵 상태 모델입니다.
  *
@@ -29,12 +47,15 @@ export class RunMapGraph implements MapGraph {
   private currentNodeId: string;
   private readonly lastBeforeBossNodeId: string;
 
-  constructor(definition: MapGraphDefinition) {
+  constructor(definition: MapGraphDefinition, initialNodeId = definition.startNodeId) {
     validateDefinition(definition);
+    if (!definition.nodes.some((node) => node.id === initialNodeId)) {
+      throw new Error(`MapGraph initial node does not exist: ${initialNodeId}`);
+    }
     this.nodesById = new Map(definition.nodes.map((node) => [node.id, cloneNode(node)]));
     this.edges = definition.edges.map((edge) => ({ ...edge }));
     this.nextIdsByNode = buildNextIds(this.edges);
-    this.currentNodeId = definition.startNodeId;
+    this.currentNodeId = initialNodeId;
     this.lastBeforeBossNodeId = definition.lastBeforeBossNodeId;
   }
 

@@ -1,5 +1,36 @@
 import type { SpellJudge } from './judge';
 import type { SpellJudgement } from './types';
+import { postPlayLog } from './playLog';
+
+export interface LoggingJudgeOptions {
+  promptVersion?: string;
+  sequenceJudgeEnabled?: boolean;
+  mockForced?: boolean;
+}
+
+/** 판정 결과를 JSONL 한 줄로 안정적으로 요약한다. */
+export function judgementLogFields(judgement: SpellJudgement): Record<string, unknown> {
+  if (judgement.disposition !== 'cast') {
+    return { disp: judgement.disposition };
+  }
+  const spell = judgement.spell;
+  const sequences = judgement.plan?.sequences ?? [];
+  return {
+    disp: 'cast',
+    mode: judgement.plan ? 'sequence' : 'single',
+    sequenceCount: sequences.length,
+    behaviorCount: sequences.reduce(
+      (sum, sequence) => sum + sequence.behaviors.length,
+      0,
+    ),
+    name: spell.name,
+    el: spell.element_primary + (spell.element_secondary ? `+${spell.element_secondary}` : ''),
+    form: spell.form,
+    effect: spell.effect,
+    power: spell.power,
+    cost: spell.cost,
+  };
+}
 
 /**
  * 개발 전용 판정 로거 — inner 판정기를 감싸 각 판정을 dev 서버(`/__log`)로 보낸다.
@@ -10,42 +41,44 @@ export class LoggingJudge implements SpellJudge {
   readonly name: string;
   private readonly start = Date.now();
 
-  constructor(private readonly inner: SpellJudge) {
+  constructor(
+    private readonly inner: SpellJudge,
+    options: LoggingJudgeOptions = {},
+  ) {
     this.name = inner.name;
-    void this.post({ t: 0, type: 'session_start', judge: inner.name });
+    void postPlayLog({
+      t: 0,
+      type: 'session_start',
+      judge: inner.name,
+      promptVersion: options.promptVersion,
+      sequenceJudgeEnabled: options.sequenceJudgeEnabled,
+      mockForced: options.mockForced,
+    });
   }
 
   /** ProtoScene의 디버그 출처 표기가 그대로 동작하도록 inner 값을 위임한다. */
   get lastSource(): string | undefined {
-    return (this.inner as { lastSource?: string }).lastSource;
+    return this.inner.lastSource;
+  }
+
+  get lastFallbackReason(): string | undefined {
+    return this.inner.lastFallbackReason;
   }
 
   async judge(text: string): Promise<SpellJudgement> {
+    const startedAt = Date.now();
     const j = await this.inner.judge(text);
-    const src = (this.inner as { lastSource?: string }).lastSource ?? 'mock';
+    const src = this.inner.lastSource ?? 'mock';
     const t = Math.round((Date.now() - this.start) / 100) / 10; // 0.1초 단위 상대시각
-    if (j.disposition === 'cast') {
-      const s = j.spell;
-      void this.post({
-        t, type: 'cast', input: text, disp: 'cast', name: s.name,
-        el: s.element_primary + (s.element_secondary ? '+' + s.element_secondary : ''),
-        form: s.form, effect: s.effect, power: s.power, cost: s.cost, src,
-      });
-    } else {
-      void this.post({ t, type: j.disposition, input: text, disp: j.disposition, src });
-    }
+    void postPlayLog({
+      t,
+      type: j.disposition === 'cast' ? 'cast' : j.disposition,
+      input: text,
+      src,
+      elapsedMs: Date.now() - startedAt,
+      fallbackReason: this.inner.lastFallbackReason,
+      ...judgementLogFields(j),
+    });
     return j;
-  }
-
-  private async post(ev: Record<string, unknown>): Promise<void> {
-    try {
-      await fetch('/__log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ev),
-      });
-    } catch {
-      // 개발 로깅은 best-effort — 실패해도 게임엔 영향 없음
-    }
   }
 }

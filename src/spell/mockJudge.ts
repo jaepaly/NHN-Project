@@ -233,7 +233,17 @@ function targetForEffect(effect: SpellEffect, text: string): SpellTarget {
 const FORM_KEYWORDS: Record<SpellForm, string[]> = {
   // '볼'은 "파이어볼/아이스볼"처럼 외래어 주문명의 사실상 표준 어미다.
   bolt: ['구', '화살', '탄', '창', '투사', '볼', '애로우', '샷', '스피어', 'bolt', 'arrow', 'shot', 'spear'],
-  beam: ['광선', '빔', '레이저', '줄기', 'beam', 'laser', 'ray'],
+  // 관통 어휘를 포함한다 — beam은 실제로 직선상의 적을 **모두** 타격한다
+  // (`impact.kind === 'line'`). 반면 bolt는 단발이다. 기록된 Gemini 판정에서
+  // "화염창(좁은 관통)"이 bolt 8/8로 나와 "화염구(직선 투사)"와 구분되지 않았다
+  // (SPELL_EXPRESSION_AUDIT `tacticalCollisions`).
+  //
+  // ⚠️ 한계: `findMatch`는 **텍스트 내 최초 등장 위치**로 고르므로(동일 위치면 긴
+  // 키워드) "얼음창으로 꿰뚫는다"는 '창'이 먼저 나와 여전히 bolt가 된다. 동사가
+  // 명사를 이기게 하려면 `findMatch`에 우선순위가 필요하다 — R2 판단 영역이라
+  // 여기서는 어휘만 넓힌다.
+  beam: ['광선', '빔', '레이저', '줄기', '관통', '꿰뚫', '꿰어', '뚫고',
+         'beam', 'laser', 'ray', 'pierce', 'piercing'],
   wave: ['해일', '파도', '물결', '쓰나미', '웨이브', '타이달', 'wave', 'tide', 'surge'],
   nova: ['폭발', '방출', '분출', '터', '노바', '익스플로전', '블라스트', 'nova', 'burst', 'explosion', 'blast'],
   rain: ['비', '소나기', '낙하', '유성', '우박', '레인', '메테오', '샤워', 'rain', 'meteor', 'shower'],

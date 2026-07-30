@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import type { SpellSpec } from '../spell/types';
+import { scaledAlpha, withVfxBrightness } from './vfxBrightness';
+import type { SpellElement, SpellSpec } from '../spell/types';
 import { SPELL_DAMAGE_CONFIG } from '../combat-core/combat/combatConfig';
 import { CAGE_CONFIG, CHAIN_CONFIG } from '../combat-core/combat/advancedFormConfig';
 import {
@@ -24,6 +25,40 @@ import {
   slashHitCircle,
   rotatePointsAbout,
 } from '../combat-core/combat/slashConfig';
+import {
+  ELEMENT_FLOURISH,
+  boltPolyline,
+  flourishRingScaleFor,
+  hasElementFlourish,
+  darkOuterRadius,
+  darkTendrilCount,
+  earthChunkAt,
+  earthChunkCount,
+  earthChunkSize,
+  fireRise,
+  fireSway,
+  fireTongueCount,
+  iceShardCount,
+  iceSpikeLength,
+  iceSpikeCount,
+  lightningBranchCount,
+  lightningFlickerCount,
+  lightningJitter,
+  lightningReach,
+  lightRayCount,
+  lightRayLength,
+  lightningSegmentCount,
+  spiralPolyline,
+  tendrilPolyline,
+  tonguePolyline,
+  usesImpactFlash,
+  waterFrontCount,
+  waterFrontRadius,
+  waterRadius,
+  windArmCount,
+  windRadius,
+  windTurns,
+} from './elementFlourish';
 import {
   AFFINITY_VFX_CONFIG,
   flourishEmberCount,
@@ -132,8 +167,14 @@ export function ensureParticleTexture(scene: Phaser.Scene): void {
 }
 
 export function castSpell(ctx: CastContext, spec: SpellSpec): void {
+  // VFX 밝기(설정) — 이 시전이 만드는 객체의 알파만 줄인다. 배경·적은 그대로다.
+  // 텍스처 준비는 밖에 둔다: 한 번만 만들어지는 공용 자원이라 배율 대상이 아니다.
   ensureParticleTexture(ctx.scene);
   ensureParticleTextures(ctx.scene);
+  withVfxBrightness(ctx.scene, () => castSpellForm(ctx, spec));
+}
+
+function castSpellForm(ctx: CastContext, spec: SpellSpec): void {
   requestCastCameraShake(ctx, spec);
   const impactCtx = withAffinityImpactFlourish(ctx, spec);
   switch (spec.form) {
@@ -163,7 +204,22 @@ export function castSpell(ctx: CastContext, spec: SpellSpec): void {
       break;
     case 'bolt':
     default:
-      // 미구현 폼은 bolt로 대체 렌더링 (후속 개발에서 12폼 구현)
+      /**
+       * 전용 렌더가 있는 폼은 위 9개(bolt 포함)다. 남은 넷(wall·orbit·summon·buff)은
+       * **여기 오지 않는다** — 씬의 시전 디스패치가 `effect` 우선이라 그 전에 각자
+       * 전용 경로로 빠진다:
+       *
+       *   wall   → `isBattlefieldWall` → createWall (전장 장벽)
+       *   orbit  → form + damage/control → createOrbit (회전체)
+       *   summon → effect 'summon' → createSummon (소환체)
+       *   buff   → effect 'buff' → castSelfBuff (자기 강화)
+       *
+       * 실측(기록된 Gemini 판정 48건, SPELL_EXPRESSION_AUDIT): 이 default로 떨어진
+       * 폼 **0건**. 그래도 default를 두는 이유는 `validate.ts`가 폼이 enum에 있는지만
+       * 보고 **form↔effect 정합성은 검사하지 않기** 때문이다 — 예컨대
+       * `form: 'summon', effect: 'damage'` 같은 어긋난 쌍이 오면 여기로 온다.
+       * 그때 화살로라도 나가는 게 아무것도 안 나가는 것보다 낫다.
+       */
       castBolt(impactCtx, spec);
       break;
   }
@@ -400,7 +456,8 @@ function castCage(ctx: CastContext, spec: SpellSpec): void {
   scene.tweens.add({
     targets: [ring, inner],
     scale: { from: 1.35, to: 1 },
-    alpha: { from: 1, to: 0 },
+    // 시작 알파를 명시하면 withVfxBrightness가 줄여둔 값을 덮어쓴다 — 여기서 직접 곱한다
+    alpha: { from: scaledAlpha(1), to: 0 },
     duration: 520,
     ease: 'Cubic.easeOut',
     onComplete: () => {
@@ -706,7 +763,8 @@ export function castSlash(ctx: CastContext, spec: SpellSpec): void {
     scene.tweens.add({
       targets: flash,
       scaleY: { from: 1, to: 4 },
-      alpha: { from: weight, to: 0 },
+      // 시작 알파를 명시하면 withVfxBrightness가 줄여둔 값을 덮어쓴다 — 여기서 직접 곱한다
+      alpha: { from: scaledAlpha(weight), to: 0 },
       duration: SLASH_CONFIG.flashMs,
       ease: 'Cubic.easeOut',
       onComplete: () => flash.destroy(),
@@ -864,7 +922,8 @@ function explodeNova(ctx: CastContext, spec: SpellSpec, x: number, y: number): v
   scene.tweens.add({
     targets: ring,
     radius,
-    alpha: { from: 1, to: 0 },
+    // 시작 알파를 명시하면 withVfxBrightness가 줄여둔 값을 덮어쓴다 — 여기서 직접 곱한다
+    alpha: { from: scaledAlpha(1), to: 0 },
     duration: 450,
     ease: 'Cubic.easeOut',
     onUpdate: () => ring.setStrokeStyle(4 * scale, pal.core, ring.alpha * 0.9),
@@ -983,7 +1042,8 @@ function castZone(ctx: CastContext, spec: SpellSpec): void {
     speed: { min: radius * 0.15, max: radius * 0.55 },
     angle: { min: 0, max: 360 },
     scale: { start: 0.28 * scale, end: 0 },
-    alpha: { start: 0.55, end: 0 },
+    // 시작 알파를 명시하면 withVfxBrightness가 줄여둔 값을 덮어쓴다 — 여기서 직접 곱한다
+    alpha: { start: scaledAlpha(0.55), end: 0 },
     lifespan: Math.max(500, tickIntervalMs),
     frequency: VFX_BUDGET_CONFIG.particleBaseFrequencyMs,
     quantity: 1,
@@ -1004,7 +1064,8 @@ function castZone(ctx: CastContext, spec: SpellSpec): void {
   scene.tweens.add({
     targets: pulse,
     scale: { from: 0.45, to: 1 },
-    alpha: { from: 0.9, to: 0 },
+    // 시작 알파를 명시하면 withVfxBrightness가 줄여둔 값을 덮어쓴다 — 여기서 직접 곱한다
+    alpha: { from: scaledAlpha(0.9), to: 0 },
     duration: tickIntervalMs,
     repeat: ZONE_CONFIG.tickCount - 1,
     ease: 'Cubic.easeOut',
@@ -1184,6 +1245,451 @@ function impactBurst(scene: Phaser.Scene, x: number, y: number, spec: SpellSpec)
  * 친화 격상 플러리시 — 첫 적중·전개 지점에서 원소색 링·스파크·엠버가 티어만큼 쌓인다.
  * 순수 오버레이(짧은 수명, 판정 무관). 티어 0이면 아무것도 하지 않는다.
  */
+/**
+ * 번개 친화 연출 — 갈래 방전. **이징 없이 툭, 그리고 재점멸.**
+ *
+ * 부드러운 확장(easeOut)을 쓰지 않는 것이 핵심이다 — 곡선 이징을 쓰는 순간 물처럼
+ * 읽힌다. 짧게 켜고(strikeMs) 완전히 끄고(gapMs) 다른 지그재그로 다시 켠다.
+ * 그 공백이 "찌릿"의 정체다. 강도가 오르면 갈래·꺾임·거칠기·점멸 횟수가 함께 는다.
+ */
+function playLightningFlourish(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  spec: SpellSpec,
+  intensity: number,
+): void {
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const cfg = ELEMENT_FLOURISH.lightning;
+  const branches = lightningBranchCount(intensity, spec.form);
+  const segments = lightningSegmentCount(intensity);
+  const jitter = lightningJitter(intensity);
+  const reach = lightningReach(intensity, spec.form);
+  const flickers = lightningFlickerCount(intensity);
+
+  const g = scene.add.graphics().setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
+  const strike = (): void => {
+    g.clear();
+    // 굵은 코어 + 얇은 흰 심 — 두 겹이라 선이 얇아도 또렷하다(면적은 거의 0)
+    for (const [width, color, alpha] of [[3, pal.core, 0.85], [1.2, pal.accent, 1]] as const) {
+      g.lineStyle(width, color, alpha);
+      for (let b = 0; b < branches; b += 1) {
+        const angle = (Math.PI * 2 * b) / branches + (Math.random() - 0.5) * 0.4;
+        const points = boltPolyline(angle, reach, segments, jitter, Math.random);
+        g.beginPath();
+        g.moveTo(x + points[0].x, y + points[0].y);
+        for (let i = 1; i < points.length; i += 1) g.lineTo(x + points[i].x, y + points[i].y);
+        g.strokePath();
+      }
+    }
+  };
+
+  let elapsed = 0;
+  for (let f = 0; f < flickers; f += 1) {
+    scene.time.delayedCall(elapsed, () => { if (g.active) strike(); });
+    scene.time.delayedCall(elapsed + cfg.strikeMs, () => { if (g.active) g.clear(); });
+    elapsed += cfg.strikeMs + cfg.gapMs;
+  }
+  scene.time.delayedCall(elapsed + 40, () => g.destroy());
+}
+
+/**
+ * 얼음 친화 연출 — 결정이 **계단으로** 자라고, 깊은 투자에서 파편으로 깨진다.
+ *
+ * 성장이 연속이면 물처럼 보이므로 `Stepped` 이징으로 끊는다. 발광(ADD)을 쓰지 않는다 —
+ * 얼음은 스스로 빛나는 게 아니라 빛을 꺾는 것이고, 선만 또렷하면 결정으로 읽힌다.
+ */
+function playIceFlourish(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  spec: SpellSpec,
+  intensity: number,
+): void {
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const cfg = ELEMENT_FLOURISH.ice;
+  const spikes = iceSpikeCount(intensity, spec.form);
+  const length = iceSpikeLength(intensity, spec.form);
+
+  const g = scene.add.graphics().setDepth(7);
+  const grown = { t: 0 };
+  scene.tweens.add({
+    targets: grown,
+    t: 1,
+    duration: cfg.growMs,
+    ease: `Stepped.easeNone`,
+    easeParams: [cfg.growthSteps],
+    onUpdate: () => {
+      if (!g.active) return;
+      g.clear();
+      for (const [width, color, alpha] of [[3, pal.glow, 0.7], [1.2, pal.accent, 0.95]] as const) {
+        g.lineStyle(width, color, alpha);
+        for (let i = 0; i < spikes; i += 1) {
+          const angle = (Math.PI * 2 * i) / spikes;
+          const len = length * grown.t;
+          const tipX = x + Math.cos(angle) * len;
+          const tipY = y + Math.sin(angle) * len;
+          // 좌우 어깨를 달아 침(針)이 아니라 결정으로 읽히게
+          const shoulder = len * 0.34;
+          const sx = -Math.sin(angle) * len * 0.16;
+          const sy = Math.cos(angle) * len * 0.16;
+          g.beginPath();
+          g.moveTo(x, y);
+          g.lineTo(x + Math.cos(angle) * shoulder + sx, y + Math.sin(angle) * shoulder + sy);
+          g.lineTo(tipX, tipY);
+          g.lineTo(x + Math.cos(angle) * shoulder - sx, y + Math.sin(angle) * shoulder - sy);
+          g.closePath();
+          g.strokePath();
+        }
+      }
+    },
+    onComplete: () => {
+      const shards = iceShardCount(intensity, spec.form);
+      if (shards > 0) {
+        // 깨짐 — 결정이 파편으로 흩어진다 (마스터리 표식)
+        const burst = scene.add.particles(x, y, elementParticleKey(scene, 'ice'), {
+          speed: { min: 90, max: 90 + length * 2 },
+          scale: { start: 0.42, end: 0 },
+          lifespan: 420,
+          quantity: shards,
+          tint: [pal.core, pal.accent],
+          emitting: false,
+        }).setDepth(7);
+        burst.explode(shards);
+        scene.time.delayedCall(520, () => burst.destroy());
+      }
+      // 결정은 부서지며 사라진다 — 페이드가 아니라 짧게 툭
+      scene.tweens.add({
+        targets: g, alpha: 0, duration: shards > 0 ? 90 : 220, onComplete: () => g.destroy(),
+      });
+    },
+  });
+}
+
+/**
+ * 불 친화 연출 — 난류 상승. 혀가 좌우로 휘며 위로 오른다.
+ *
+ * 기존 상승 엠버와 다른 점: 엠버는 **직선으로 뜨는 점**이었고 이건 **휘는 선**이다.
+ * 불의 정체는 "위로 간다"가 아니라 "위로 가면서 계속 흔들린다"다. 혀마다 사인 위상을
+ * 다르게 줘서 전체가 한 몸처럼 흔들리지 않게 한다.
+ */
+function playFireFlourish(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  spec: SpellSpec,
+  intensity: number,
+): void {
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const cfg = ELEMENT_FLOURISH.fire;
+  const tongues = fireTongueCount(intensity, spec.form);
+  const rise = fireRise(intensity, spec.form);
+  const sway = fireSway(intensity);
+  const phases = Array.from({ length: tongues }, () => Math.random() * Math.PI * 2);
+  const spread = Array.from({ length: tongues }, (_, i) => (
+    (i - (tongues - 1) / 2) * 11 + (Math.random() - 0.5) * 6
+  ));
+
+  const g = scene.add.graphics().setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
+  const state = { t: 0 };
+  scene.tweens.add({
+    targets: state,
+    t: 1,
+    duration: cfg.riseMs,
+    ease: 'Sine.easeOut',
+    onUpdate: () => {
+      if (!g.active) return;
+      g.clear();
+      // 위로 갈수록 옅어진다 — 불꽃 끝이 사그라드는 것
+      for (const [width, color, alpha] of [[3, pal.glow, 0.5], [1.4, pal.core, 0.9]] as const) {
+        g.lineStyle(width, color, alpha * (1 - state.t * 0.65));
+        for (let i = 0; i < tongues; i += 1) {
+          // 위상이 시간과 함께 흘러야 "타오르는" 느낌이 난다 (정지한 물결은 리본이다)
+          const pts = tonguePolyline(
+            rise * state.t, sway, phases[i] + state.t * 3.2, cfg.samples,
+          );
+          g.beginPath();
+          g.moveTo(x + spread[i] + pts[0].x, y + pts[0].y);
+          for (let k = 1; k < pts.length; k += 1) {
+            g.lineTo(x + spread[i] + pts[k].x, y + pts[k].y);
+          }
+          g.strokePath();
+        }
+      }
+    },
+    onComplete: () => g.destroy(),
+  });
+}
+
+/**
+ * 바람 친화 연출 — 나선. 중심에서 밖으로 감기며 돈다.
+ *
+ * 다른 원소는 "터진다"가 핵심이지만 바람은 계속 도는 것이다. 그래서 `usesImpactFlash`가
+ * false라 확장 섬광이 붙지 않고, 나선 팔 전체를 회전시켜 시작·끝이 뚜렷하지 않게 둔다.
+ */
+function playWindFlourish(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  spec: SpellSpec,
+  intensity: number,
+): void {
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const cfg = ELEMENT_FLOURISH.wind;
+  const arms = windArmCount(intensity, spec.form);
+  const turns = windTurns(intensity);
+  const radius = windRadius(intensity, spec.form);
+
+  const g = scene.add.graphics().setDepth(7);
+  const state = { t: 0 };
+  scene.tweens.add({
+    targets: state,
+    t: 1,
+    duration: cfg.spinMs,
+    ease: 'Sine.easeOut',
+    onUpdate: () => {
+      if (!g.active) return;
+      g.clear();
+      // 회전이 계속 돈다 — 나선이 자라면서 동시에 감긴다
+      const spin = state.t * Math.PI * 1.6;
+      for (const [width, color, alpha] of [[2.6, pal.glow, 0.45], [1.2, pal.accent, 0.85]] as const) {
+        g.lineStyle(width, color, alpha * (1 - state.t * 0.7));
+        for (let a = 0; a < arms; a += 1) {
+          const start = (Math.PI * 2 * a) / arms + spin;
+          const pts = spiralPolyline(start, radius * (0.35 + state.t * 0.65), turns, cfg.samples);
+          g.beginPath();
+          g.moveTo(x + pts[0].x, y + pts[0].y);
+          for (let k = 1; k < pts.length; k += 1) g.lineTo(x + pts[k].x, y + pts[k].y);
+          g.strokePath();
+        }
+      }
+    },
+    onComplete: () => g.destroy(),
+  });
+}
+
+/**
+ * 물 친화 연출 — 파면이 밀려나갔다 **되돌아온다**.
+ *
+ * 기존 확장 링과의 결정적 차이는 **되돌아옴**이다. 링은 퍼지고 사라졌지만 물은 질량이
+ * 있어 물러난다(waterFrontRadius가 0이 아니라 recedeRatio로 끝난다). 그리고 온전한 원이
+ * 아니라 호(arcSpan < 2π)로 그려 "파면"으로 읽히게 한다 — 완전한 원은 충격파다.
+ */
+function playWaterFlourish(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  spec: SpellSpec,
+  intensity: number,
+): void {
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const cfg = ELEMENT_FLOURISH.water;
+  const fronts = waterFrontCount(intensity, spec.form);
+  const maxRadius = waterRadius(intensity, spec.form);
+  const heads = Array.from({ length: fronts }, () => Math.random() * Math.PI * 2);
+
+  const g = scene.add.graphics().setDepth(7);
+  const state = { t: 0 };
+  scene.tweens.add({
+    targets: state,
+    t: 1,
+    duration: cfg.surgeMs,
+    ease: 'Sine.easeInOut',
+    onUpdate: () => {
+      if (!g.active) return;
+      g.clear();
+      for (const [width, color, alpha] of [[3, pal.glow, 0.5], [1.4, pal.accent, 0.9]] as const) {
+        g.lineStyle(width, color, alpha * (1 - state.t * 0.55));
+        for (let i = 0; i < fronts; i += 1) {
+          // 파면마다 다른 시점에 출발 — 동시에 밀려오면 한 겹처럼 보인다
+          const local = Math.max(0, Math.min(1, state.t - i * 0.12));
+          const r = waterFrontRadius(local, maxRadius * (1 + i * 0.3));
+          if (r <= 0.5) continue;
+          g.beginPath();
+          g.arc(x, y, r, heads[i], heads[i] + cfg.arcSpan);
+          g.strokePath();
+        }
+      }
+    },
+    onComplete: () => g.destroy(),
+  });
+}
+
+/**
+ * 빛 친화 연출 — 직선 광선 방사. **꺾이지 않고 떨리지 않는다.**
+ *
+ * 번개와의 구분이 전부 여기 있다 — 번개는 꺾이고 점멸하지만 빛은 곧고, 한 번에 켜져
+ * 서서히 사그라든다. 중심을 innerRatio만큼 비워 "뻗어나간다"로 읽히게 한다.
+ */
+function playLightFlourish(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  spec: SpellSpec,
+  intensity: number,
+): void {
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const cfg = ELEMENT_FLOURISH.light;
+  const rays = lightRayCount(intensity, spec.form);
+  const length = lightRayLength(intensity, spec.form);
+  const base = Math.random() * Math.PI * 2;
+
+  const g = scene.add.graphics().setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
+  const state = { t: 0 };
+  scene.tweens.add({
+    targets: state,
+    t: 1,
+    // 즉시 최대로 켜지고 알파로 사그라든다 — 자라나는 게 아니다
+    duration: cfg.shineMs,
+    ease: 'Expo.easeOut',
+    onUpdate: () => {
+      if (!g.active) return;
+      g.clear();
+      const reach = length * Math.min(1, state.t * 2.5);
+      for (const [width, color, alpha] of [[3.4, pal.glow, 0.42], [1.2, pal.accent, 0.9]] as const) {
+        g.lineStyle(width, color, alpha * (1 - state.t));
+        for (let i = 0; i < rays; i += 1) {
+          const a = base + (Math.PI * 2 * i) / rays;
+          const cos = Math.cos(a);
+          const sin = Math.sin(a);
+          g.beginPath();
+          g.moveTo(x + cos * reach * cfg.innerRatio, y + sin * reach * cfg.innerRatio);
+          g.lineTo(x + cos * reach, y + sin * reach);
+          g.strokePath();
+        }
+      }
+    },
+    onComplete: () => g.destroy(),
+  });
+}
+
+/**
+ * 대지 친화 연출 — 덩어리가 솟았다 **떨어진다**.
+ *
+ * 얼음과의 구분: 얼음은 결정이 바깥으로 자라 깨지지만 대지는 포물선으로 솟았다 중력에
+ * 떨어진다(earthChunkAt의 y가 −sin πt라 t=0·t=1 모두 지면). 각진 형태는 같아도 궤적이
+ * 다르다 — 대지에는 무게가 있다. 발광을 쓰지 않는다 (돌은 빛나지 않는다).
+ */
+function playEarthFlourish(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  spec: SpellSpec,
+  intensity: number,
+): void {
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const cfg = ELEMENT_FLOURISH.earth;
+  const chunks = earthChunkCount(intensity, spec.form);
+  const size = earthChunkSize(intensity);
+  const spread = cfg.spreadBase + cfg.spreadPerStack * intensity;
+  const height = cfg.heightBase + cfg.heightPerStack * intensity;
+  const angles = Array.from({ length: chunks }, (_, i) => (
+    (Math.PI * 2 * i) / chunks + (Math.random() - 0.5) * 0.5
+  ));
+  const spins = Array.from({ length: chunks }, () => (Math.random() - 0.5) * 4);
+
+  const g = scene.add.graphics().setDepth(7);
+  const state = { t: 0 };
+  scene.tweens.add({
+    targets: state,
+    t: 1,
+    duration: cfg.eruptMs,
+    ease: 'Linear',
+    onUpdate: () => {
+      if (!g.active) return;
+      g.clear();
+      g.lineStyle(1.6, pal.accent, 0.85 * (1 - state.t * 0.5));
+      g.fillStyle(pal.core, 0.5 * (1 - state.t * 0.5));
+      for (let i = 0; i < chunks; i += 1) {
+        const at = earthChunkAt(angles[i], spread, height, state.t);
+        // 회전하는 사각 덩어리 — 원이면 흙이 아니라 방울로 보인다
+        const rot = spins[i] * state.t;
+        const c = Math.cos(rot) * size;
+        const sn = Math.sin(rot) * size;
+        const cx = x + at.x;
+        const cy = y + at.y;
+        g.beginPath();
+        g.moveTo(cx + c, cy + sn);
+        g.lineTo(cx - sn, cy + c);
+        g.lineTo(cx - c, cy - sn);
+        g.lineTo(cx + sn, cy - c);
+        g.closePath();
+        g.fillPath();
+        g.strokePath();
+      }
+    },
+    onComplete: () => g.destroy(),
+  });
+}
+
+/**
+ * 암영 친화 연출 — **안으로** 수축한다.
+ *
+ * 여덟 원소 중 **유일하게 방향이 반대다.** 다른 전부가 밖으로 퍼지는데 이것만 빨려든다.
+ * 그래서 한눈에 다르다는 게 즉시 읽힌다. 발광을 쓰지 않는다 — 암영은 빛을 내는 게 아니라
+ * 가져가는 것이라, ADD를 쓰면 정체성과 정반대가 된다.
+ */
+function playDarkFlourish(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  spec: SpellSpec,
+  intensity: number,
+): void {
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const cfg = ELEMENT_FLOURISH.dark;
+  const tendrils = darkTendrilCount(intensity, spec.form);
+  const outer = darkOuterRadius(intensity, spec.form);
+  const base = Math.random() * Math.PI * 2;
+
+  const g = scene.add.graphics().setDepth(7);
+  const state = { t: 0 };
+  scene.tweens.add({
+    targets: state,
+    t: 1,
+    duration: cfg.drainMs,
+    ease: 'Quad.easeIn',
+    onUpdate: () => {
+      if (!g.active) return;
+      g.clear();
+      for (const [width, color, alpha] of [[3, pal.glow, 0.45], [1.3, pal.core, 0.85]] as const) {
+        g.lineStyle(width, color, alpha);
+        for (let i = 0; i < tendrils; i += 1) {
+          const a = base + (Math.PI * 2 * i) / tendrils;
+          // 바깥에서 중심으로 — 진행할수록 남은 촉수가 짧아진다(빨려든 만큼 사라진다)
+          const pts = tendrilPolyline(a, outer * (1 - state.t), cfg.curl, cfg.samples);
+          if (pts.length < 2) continue;
+          g.beginPath();
+          g.moveTo(x + pts[0].x, y + pts[0].y);
+          for (let k = 1; k < pts.length; k += 1) g.lineTo(x + pts[k].x, y + pts[k].y);
+          g.strokePath();
+        }
+      }
+    },
+    onComplete: () => g.destroy(),
+  });
+}
+
+type ElementFlourishRenderer = (
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  spec: SpellSpec,
+  intensity: number,
+) => void;
+
+/** 원소 → 연출. 8원소 전부 채워져 있어야 하며 타입이 그것을 강제한다. */
+const ELEMENT_FLOURISH_RENDERERS: Record<SpellElement, ElementFlourishRenderer> = {
+  lightning: playLightningFlourish,
+  ice: playIceFlourish,
+  fire: playFireFlourish,
+  wind: playWindFlourish,
+  water: playWaterFlourish,
+  light: playLightFlourish,
+  earth: playEarthFlourish,
+  dark: playDarkFlourish,
+};
+
 export function playAffinityImpactFlourish(
   scene: Phaser.Scene,
   x: number,
@@ -1198,8 +1704,13 @@ export function playAffinityImpactFlourish(
 
   // 확장 링 — 개수·반경·스파크·엠버는 순수 함수(affinityVfx.ts)가 결정한다.
   // nova는 폼배율(#216 항목7)로 축소 — 조준점 폭발이 적 무리를 덮지 않게.
-  const rings = flourishRingCount(t, spec.form);
+  // 고유 연출이 붙는 원소(번개·얼음)는 링을 줄인다 — 선이 늘어난 만큼 면을 뺀다(#220).
+  const ringScale = flourishRingScaleFor(spec.element_primary);
+  const rings = Math.max(1, Math.round(flourishRingCount(t, spec.form) * ringScale));
   const maxRadius = flourishMaxRadius(t, spec.form);
+  // 8원소 전부 고유 연출을 갖는다 (총괄 지적 2차) — 일부만 나누면 안 나눈 쪽이
+  // 화면에서 가장 요란해지고 그들끼리는 여전히 구분이 안 된다.
+  ELEMENT_FLOURISH_RENDERERS[spec.element_primary](scene, x, y, spec, t);
   for (let i = 0; i < rings; i += 1) {
     const ring = scene.add.circle(x, y, 10, 0x000000, 0)
       .setStrokeStyle(5 - i * 0.5, i === 0 ? pal.core : i === 1 ? pal.glow : pal.accent, 1)
@@ -1219,7 +1730,9 @@ export function playAffinityImpactFlourish(
 
   // 스파크 버스트 — 양·속도가 강도에 연속 비례 (매 시전의 작은 성장도 보인다)
   const sparkCount = flourishSparkCount(t, spec.form);
-  const sparks = scene.add.particles(x, y, particleKey(scene, PARTICLE_TEXTURES.spark), {
+  // 원소별 파티클 — 종전엔 PARTICLE_TEXTURES.spark 하드코딩이라 **모든 원소가 번개
+  // 파티클**을 썼다. 얼음·대지는 파편, 번개는 섬광, 나머지는 발광을 쓴다.
+  const sparks = scene.add.particles(x, y, elementParticleKey(scene, spec.element_primary), {
     speed: { min: 60, max: 150 + t * 30 },
     scale: { start: 0.5 + t * 0.05, end: 0 },
     lifespan: 500,
@@ -1231,8 +1744,13 @@ export function playAffinityImpactFlourish(
   sparks.explode(sparkCount);
   scene.time.delayedCall(620, () => sparks.destroy());
 
-  // 엠버 잔광 — 강도 3(친화 0.45)부터, 강도에 비례해 더 많이 (마스터리의 표식)
-  const embers = flourishEmberCount(t, spec.form);
+  // 엠버 잔광 — 강도 3(친화 0.45)부터, 강도에 비례해 더 많이 (마스터리의 표식).
+  // **고유 연출 원소는 제외한다**: 위로 떠오르는 불씨는 불·재의 문법이라 번개의 날카로움과
+  // 얼음의 결정감을 흐린다. 그 원소들은 성장 신호를 이미 갈래·꺾임·점멸(번개)과
+  // 스파이크·파편(얼음)이 나르므로 잃는 정보가 없다.
+  const embers = hasElementFlourish(spec.element_primary)
+    ? 0
+    : flourishEmberCount(t, spec.form);
   if (embers > 0) {
     for (let i = 0; i < embers; i += 1) {
       const angle = (Math.PI * 2 * i) / embers;
@@ -1255,7 +1773,9 @@ export function playAffinityImpactFlourish(
   }
 
   // 마스터리 섬광 — 강도 5(친화 0.75)부터, 원소색 밝은 원이 확 퍼진다 (깊은 특화의 위엄)
-  if (t >= cfg.flashFromIntensity) {
+  // 바람은 섬광을 쓰지 않는다 — 타격 순간이 없는 원소라 확 퍼지는 원이 붙으면
+  // "터졌다"로 읽혀 회전감을 죽인다 (usesImpactFlash).
+  if (t >= cfg.flashFromIntensity && usesImpactFlash(spec.element_primary)) {
     const flash = scene.add.circle(x, y, 14, pal.glow, 0.5)
       .setBlendMode(Phaser.BlendModes.ADD).setDepth(7);
     scene.tweens.add({

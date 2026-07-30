@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { MockJudge } from '../src/spell/mockJudge';
 import {
   SLASH_CONFIG,
   slashAnchor,
@@ -218,4 +219,69 @@ const origin = { x: 0, y: 0 };
     "case 'slash'가 castSlash를 부르지 않는다 (default→castBolt로 떨어짐)");
 }
 
-console.log('Slash form regression: 적위치 발현·사거리상한·위력반영·시각판정 정렬·가로베기·연참·회전·판정불변·배선 9군 통과');
+// ══════════════════════════════════════════════════════════════════════════
+// 직선 공격 세 갈래가 서로 구분되는가 — bolt / beam / slash
+// ══════════════════════════════════════════════════════════════════════════
+//
+// 기록된 Gemini 판정(docs/SPELL_EXPRESSION_AUDIT.json, 48건)이 남긴 실패다:
+//
+//   화염구(직선 투사) → bolt 8/8
+//   화염창(좁은 관통) → bolt 8/8    ← 화염구와 구분 안 됨
+//   화염검(근접 참격) → bolt 7/8 · beam 1/8   ← slash 0건
+//
+// 감사 자신이 `tacticalCollisions`로 세 쌍을 모두 기록했고 `gates.sameIntent`가
+// false였다. **화염검은 이미 해소됐다** — `castSlash` 렌더 배선 + 프롬프트 v2.14
+// (2026-07-25 23:20, #188 명시)가 들어갔고 감사 데이터는 그보다 이른 7-24 16:53
+// 생성이다. 남은 것이 **투사 ↔ 관통**이었다.
+//
+// 이 회귀는 **폴백 경로(MockJudge)** 를 고정한다. 실 Gemini의 선택률은 프록시
+// 프롬프트가 정하므로 여기서 검사할 수 없다(라이브 재측정이 필요하고 쿼터를 쓴다).
+// 폴백은 429 때 판정을 대신하므로 같은 구분을 알아야 한다 —
+// 부하가 걸리면 무너진다는 것이 이미 겪은 사고다(INCIDENT 2026-07-27).
+{
+  const judge = new MockJudge();
+  const expect = async (text: string, form: string, why: string): Promise<void> => {
+    const result = await judge.judge(text);
+    const actual = result.disposition === 'cast' ? result.spell.form : `(${result.disposition})`;
+    assert.equal(actual, form, `"${text}" → ${form} (${why}) 인데 ${actual}`);
+  };
+
+  await Promise.all([
+    // 단발 탄체 = bolt. 던진 창도 탄체다 — 명사가 아니라 **관통 여부**가 구분자다
+    expect('파이어볼', 'bolt', '구슬 = 단발'),
+    expect('파이어 스피어', 'bolt', '던진 창 = 단발'),
+    // 경로 위를 관통 = beam. beam은 실제로 직선상의 적을 **모두** 때린다
+    // (`impact.kind === 'line'`) — 관통 묘사에 bolt를 주면 플레이어가 말한 것이 사라진다
+    expect('관통하는 빛줄기', 'beam', '관통'),
+    expect('꿰뚫는 얼음 송곳', 'beam', '꿰뚫'),
+    expect('적을 뚫고 지나가는 화염', 'beam', '뚫고'),
+    expect('레이저', 'beam', '레이저'),
+    // 근접 베기 = slash (#188)
+    expect('대검으로 베어버린다', 'slash', '베기'),
+    expect('횡베기', 'slash', '베기'),
+  ]);
+
+  // ⚠️ **알려진 한계를 회귀로 고정한다.** `findMatch`는 텍스트 내 **최초 등장 위치**로
+  // 고르므로(동일 위치면 긴 키워드) 명사가 동사보다 앞에 오면 명사가 이긴다.
+  // "얼음창으로 꿰뚫는다"는 '창'(index 2)이 '꿰뚫'(index 6)보다 앞이라 bolt다.
+  //
+  // 이걸 통과로 적어두는 이유: 나중에 누가 이 케이스를 보고 "버그"로 판단해
+  // `findMatch`를 건드리기 전에, **의도된 한계이고 우선순위 도입은 R2 판단**이라는
+  // 것을 알 수 있어야 한다. 고쳐서 beam이 되면 이 단언이 깨지고 결정을 재검토하게 된다.
+  await expect('얼음창으로 꿰뚫는다', 'bolt', '명사가 동사보다 앞 — findMatch 위치 우선의 한계');
+}
+
+// 프롬프트가 그 구분을 지시하는가 — 실 판정 경로는 프록시가 정한다
+{
+  const prompt = readFileSync('proxy/worker.js', 'utf8');
+  assert.ok(
+    /form=slash/.test(prompt),
+    '프롬프트가 근접 베기에 slash를 지시해야 한다 (#188)',
+  );
+  assert.ok(
+    /관통/.test(prompt) && /beam/.test(prompt),
+    '프롬프트가 관통 → beam을 지시해야 한다 — 없으면 투사와 관통이 둘 다 bolt가 된다',
+  );
+}
+
+console.log('Slash form regression: 적위치 발현·사거리상한·위력반영·시각판정 정렬·가로베기·연참·회전·판정불변·배선·투사관통베기 구분 10군 통과');
