@@ -13,7 +13,7 @@
 - [x] 본체·경사면·테두리·룬을 흑요석 먹회색과 저채도 회보라로 조정.
 - [x] 기존 밝은 청색 팔레트와 ADD 블렌드가 되돌아오지 않도록 방 지형 회귀 보강.
 - [x] `test:roomterrain`·`test:persistent-forms`·`test:vfxbrightness`·프로덕션 빌드·diff check 통과.
-- [~] 독립 PR 생성 대기. 플레이어 주문 `activeWall`과 경로 선택 UI는 변경하지 않음.
+- [x] 독립 PR #302 생성. 플레이어 주문 `activeWall`과 경로 선택 UI는 변경하지 않음.
 
 ---
 
