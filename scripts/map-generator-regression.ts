@@ -282,7 +282,72 @@ for (const definition of generated) {
   );
 }
 
+// ── 12) **위험지대가 충분히 자주 나온다** ──────────────────────────────────
+//
+// 팀원 제보: *"1런에는 원래 독지대 같은 함정이 안 등장하나? 몇 번 플레이해봤는데
+// 못 본 거 같은데."* 실측으로 확인된 관측이었다(수정 전 1000런):
+//
+//   함정방 존재 85.0% · 그 중 독지대 28.0% · **실제로 밟는 비율 14.1%**
+//
+// 원인은 함정 프로필 5종 균등 추첨이었다 — 바닥 장판을 까는 건 `hazard` 하나뿐인데
+// 1/5 확률이라 7런에 한 번꼴이었다. 정화 안내(#293)를 볼 기회도 그만큼 없었다.
+{
+  let withHazard = 0;
+  const profiles = new Map<string, number>();
+  for (const definition of generated) {
+    const traps = definition.nodes.filter((node) => node.kind === 'trap');
+    for (const trap of traps) {
+      const kind = trap.trapProfile!.kind;
+      profiles.set(kind, (profiles.get(kind) ?? 0) + 1);
+    }
+    if (traps.some((trap) => trap.trapProfile?.kind === 'hazard')) withHazard += 1;
+  }
+  const share = withHazard / generated.length;
+  assert.ok(
+    share >= 0.4,
+    `독지대가 있는 맵이 ${(share * 100).toFixed(1)}%로 너무 적다 — 못 보고 지나가는 기믹이 된다`,
+  );
+
+  // ⚠️ 나머지 넷을 0으로 만들지 않는다 — 함정방이 늘 같은 기믹이면 그것대로 단조롭고,
+  // 넷 다 이미 구현돼 있어 안 쓰는 게 낭비다.
+  for (const kind of ['blackout', 'silence', 'heatwave', 'word-limit'] as const) {
+    assert.ok(
+      (profiles.get(kind) ?? 0) > 0,
+      `${kind} 프로필이 한 번도 안 나온다 — 구현해 두고 안 쓰는 셈이다`,
+    );
+  }
+  // hazard가 대표이되 독점은 아니다
+  const hazardShare = (profiles.get('hazard') ?? 0)
+    / [...profiles.values()].reduce((sum, n) => sum + n, 0);
+  assert.ok(
+    hazardShare > 0.3 && hazardShare < 0.7,
+    `hazard 비중 ${(hazardShare * 100).toFixed(0)}%가 범위를 벗어났다 (대표이되 독점은 아니어야 한다)`,
+  );
+}
+
+// ── 13) 프리셋 1스테이지에도 함정이 있다 ───────────────────────────────────
+//
+// 생성 맵을 고쳐도 **프리셋에는 1스테이지 함정이 0개**였다(유일한 함정이 `s2-trap`).
+// 시연 로드아웃이 쓰는 판이라 여기가 비면 그 경로에서는 영영 안 나온다.
+{
+  const s1Traps = MAP_GRAPH_PRESET_01.nodes.filter(
+    (node) => node.stage === 1 && node.kind === 'trap',
+  );
+  assert.ok(s1Traps.length > 0, '프리셋 1스테이지에 함정방이 있어야 한다');
+  assert.ok(
+    s1Traps.some((node) => node.trapProfile?.kind === 'hazard'),
+    '1스테이지 함정 중 하나는 위험지대여야 한다 — 다른 프로필은 바닥 장판을 깔지 않는다',
+  );
+  // ⚠️ 노드를 **추가**하면 경로가 9방이 되어 maxRooms(8)와 어긋난다. 위 3군이
+  // 생성 맵과 프리셋의 일치를 검사하므로 여기가 깨지면 그쪽도 같이 깨진다.
+  assert.equal(
+    maximumMapPathRooms(MAP_GRAPH_PRESET_01), presetRooms,
+    '함정을 넣느라 경로 길이를 늘리면 안 된다 — 교체여야 한다',
+  );
+}
+
 console.log(
   `map generator regression: 시드 ${generated.length}개 · `
-  + '폴백률·계약·경로길이·웨이브키·축단조·경로규칙·분기보장·전투비율·재현성·시연프리셋 10군 통과',
+  + '폴백률·계약·경로길이·웨이브키·축단조·경로규칙·분기보장·전투비율·재현성·시연프리셋'
+  + '·독지대빈도·프리셋1스테이지함정 12군 통과',
 );

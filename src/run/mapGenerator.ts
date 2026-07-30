@@ -113,9 +113,29 @@ const WAVE_SET_BY_KIND: Record<'start' | 'combat' | 'elite' | 'trap', readonly s
   trap: ['trap-hazard'],
 };
 
-const TRAP_PROFILE_KEYS = Object.keys(TRAP_ROOM_PROFILES) as ReadonlyArray<
-  keyof typeof TRAP_ROOM_PROFILES
->;
+/**
+ * 함정 프로필 가중치 — **위험지대(hazard)를 함정방의 대표 기믹으로 둔다.**
+ *
+ * 종전엔 5종 균등이었다. 그런데 바닥 장판을 까는 건 `hazard` 하나뿐이고
+ * (나머지 넷은 암전·침묵·열파·어휘제한), 결과가 이랬다(실측 1000런):
+ *
+ *   함정방이 맵에 존재       85.0%
+ *   그 중 독지대 포함        28.0%
+ *   **실제로 밟는 비율       14.1%**  (1스테이지 6.0%)
+ *
+ * 7런에 한 번꼴이라 팀원이 *"1런에는 원래 독지대 같은 함정이 안 등장하나?"*라고
+ * 물을 만했다. 정화 안내(#293)를 볼 기회도 그만큼 없었다.
+ *
+ * 나머지 넷을 0으로 만들지는 않는다 — 함정방이 늘 같은 기믹이면 그것대로 단조롭고,
+ * 넷 다 이미 구현돼 있어 안 쓰는 게 낭비다.
+ */
+const TRAP_PROFILE_WEIGHTS: ReadonlyArray<readonly [keyof typeof TRAP_ROOM_PROFILES, number]> = [
+  ['hazard', 40],
+  ['blackout', 15],
+  ['silence', 15],
+  ['heatwave', 15],
+  ['word-limit', 15],
+];
 
 /** 결정론 PRNG (mulberry32) — 같은 시드면 같은 맵이어야 재현·시연이 가능하다 */
 export function seededRandom(seed: number): () => number {
@@ -427,7 +447,7 @@ function finalizeNode(draft: DraftNode, rand: () => number): MapNode {
   };
 
   if (draft.kind === 'trap') {
-    const key = TRAP_PROFILE_KEYS[Math.floor(rand() * TRAP_PROFILE_KEYS.length)];
+    const key = pickWeighted(rand, TRAP_PROFILE_WEIGHTS);
     return { ...base, waveSetId: WAVE_SET_BY_KIND.trap[0], trapProfile: TRAP_ROOM_PROFILES[key] };
   }
   if (draft.kind === 'start' || draft.kind === 'combat' || draft.kind === 'elite') {
