@@ -243,6 +243,7 @@ import {
   tryCleanseFloorHazards,
 } from '../combat-core/combat/floorHazardState';
 import { PortalField } from '../render/portalField';
+import { cleanseReadoutLine } from '../render/floorHazardReadout';
 import { barriersFromPlacements, terrainForRoom } from '../run/roomTerrainConfig';
 import { RoomFixture } from '../render/roomFixture';
 import { ROOM_FIXTURE_GUIDE } from '../run/roomFixtureConfig';
@@ -6133,15 +6134,22 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // ROOM은 종전에 별도 DOM 칩(runHud)이었다. 우상단이 3단(칩·패널·미니맵)이 되어
     // 이 패널 첫 줄로 합쳤다 (총괄 지적) — 같은 정보군을 두 판에 나눌 이유가 없다.
     const roomLine = `ROOM ${runState.roomIndex}/${runState.maxRooms}`;
+    // 위험지대 정화 — **지형이 깔린 방에서만** 한 줄 붙는다 (없으면 null).
+    // HUD 박스가 아니라 여기인 이유: HUD는 높이가 고정이고 친화 바·쿨다운 바가
+    // `HUD.y + HUD.height` 기준이라 행을 늘리면 전부 밀린다(총괄이 제보한 겹침과 같은
+    // 부류). 우측 패널은 이미 방 단위 정보를 담고 내용에 맞춰 늘어난다.
+    const cleanseLine = cleanseReadoutLine(
+      this.floorHazardPlayer,
+      this.presentFloorHazardKinds(),
+    );
+    const withCleanse = (lines: readonly string[]): string =>
+      (cleanseLine ? [...lines, cleanseLine] : [...lines]).join('\n');
     if (runState.phase === 'run-over') {
-      this.waveText.setText(`${roomLine}
-RUN COMPLETE`);
+      this.waveText.setText(withCleanse([roomLine, 'RUN COMPLETE']));
     } else if (runState.phase === 'reward-select') {
-      this.waveText.setText(`${roomLine}
-ROOM CLEAR`);
+      this.waveText.setText(withCleanse([roomLine, 'ROOM CLEAR']));
     } else if (runState.phase === 'room-transition') {
-      this.waveText.setText(`${roomLine}
-NEXT ROOM ${runState.roomIndex + 1}`);
+      this.waveText.setText(withCleanse([roomLine, `NEXT ROOM ${runState.roomIndex + 1}`]));
     } else if (this.isBossEncounter()) {
       const boss = this.enemies.find((enemy) => enemy.kind === 'boss');
       // 저항을 상시 노출한다 — 보스 링 색만으로는 "무엇이 안 통하는지" 알 수 없다.
@@ -6159,22 +6167,24 @@ NEXT ROOM ${runState.roomIndex + 1}`);
       const status = boss
         ? `BOSS ${Math.ceil(boss.hp)}/${boss.maxHp}  ·  ENEMIES ${this.enemies.length}`
         : 'BOSS';
-      this.waveText.setText([roomLine, ...bossResistanceLines(status, readout)].join('\n'));
+      this.waveText.setText(withCleanse([roomLine, ...bossResistanceLines(status, readout)]));
     } else if (this.rewardlessNodeKind()) {
       // 무전투 방 — 웨이브가 없으니 "NEXT WAVE 0.0s"가 뜨면 안 된다
-      this.waveText.setText(`${roomLine}
-${this.rewardlessNodeKind() === 'altar' ? '제단' : '보물방'}`);
+      this.waveText.setText(withCleanse([
+        roomLine,
+        this.rewardlessNodeKind() === 'altar' ? '제단' : '보물방',
+      ]));
     } else if (this.waveManager.phase === 'waiting') {
-      this.waveText.setText(
-        `${roomLine}
-NEXT WAVE ${this.waveManager.delayRemaining.toFixed(1)}s`,
-      );
+      this.waveText.setText(withCleanse([
+        roomLine,
+        `NEXT WAVE ${this.waveManager.delayRemaining.toFixed(1)}s`,
+      ]));
     } else {
-      this.waveText.setText(
-        `${roomLine}
-WAVE ${this.waveManager.currentWaveNumber}/${this.waveManager.totalWaves}`
+      this.waveText.setText(withCleanse([
+        roomLine,
+        `WAVE ${this.waveManager.currentWaveNumber}/${this.waveManager.totalWaves}`
         + `  ·  ENEMIES ${this.enemies.length}`,
-      );
+      ]));
     }
   }
 
