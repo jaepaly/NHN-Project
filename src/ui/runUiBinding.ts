@@ -3,15 +3,18 @@ import type { SpellForm } from '../spell/types';
 import { showRewardCards } from './rewardCardOverlay';
 import { ownedLabelFor, summarizeRunRewards } from '../run/runRewardSummary';
 import { playRoomTransition } from './roomTransition';
-import { updateRunHud } from './runHud';
+// ROOM 칩(DOM)은 씬의 우상단 상태 패널로 합쳤다 (총괄 지적: 우상단 창이 너무 많다).
+// clearRunHud만 남겨 과거 세션이 남긴 칩을 지운다 — 씬 재진입에서 유령 칩 방지.
+import { clearRunHud } from './runHud';
 
 /**
  * R3 런 UI 결합 — RunController 공개 계약(이벤트·chooseReward)만 소비한다.
  * (docs/R3_RUN_UI_CONTRACT.md의 결합 코드. 전투 내부 상태에는 접근하지 않는다)
  *
- * 흐름: room-cleared → 카드 3택 표시 → 선택 → chooseReward
- *       reward-applied/room-started → HUD 즉시 갱신
+ * 흐름: room-cleared → 카드 3택 표시 → 선택 → beforeAdvance(포탈) → chooseReward
  *       room-transition → 페이드 + "ROOM n" 연출 (R1이 준 durationMs 사용)
+ *
+ * ROOM n/m 표시는 **씬의 우상단 상태 패널**이 그린다 (종전 DOM 칩에서 이관).
  *       run-completed → 완주 연출
  */
 export interface RunUiHooks {
@@ -38,8 +41,8 @@ export interface RunUiHooks {
 }
 
 export function bindRunUi(controller: RunController, hooks: RunUiHooks = {}): void {
-  // 초기 HUD (ROOM 1/n)
-  updateRunHud(controller.state);
+  // 과거 빌드가 남긴 DOM 칩 제거 — 이제 ROOM은 씬 패널이 그린다
+  clearRunHud();
 
   controller.on('room-cleared', (options) => {
     // 이미 보유 배지 — 이번 런에서 고른 스택형 보상을 카드에 표시 (게임성 ②)
@@ -64,20 +67,11 @@ export function bindRunUi(controller: RunController, hooks: RunUiHooks = {}): vo
     });
   });
 
-  controller.on('reward-applied', (_chosen, state) => {
-    updateRunHud(state);
-  });
-
   controller.on('room-transition', (state, durationMs) => {
     void playRoomTransition(`ROOM ${state.roomIndex + 1}`, durationMs);
   });
 
-  controller.on('room-started', (state) => {
-    updateRunHud(state);
-  });
-
-  controller.on('run-completed', (state) => {
-    updateRunHud(state);
+  controller.on('run-completed', () => {
     void playRoomTransition('RUN COMPLETE', 1000, '모든 방을 정화했다');
   });
 }

@@ -308,15 +308,64 @@ const NO_BOSS_RESISTANCE: BossResistanceProfile = {
   resistMultiplier: 1,
   counterStrategy: null,
 };
+/**
+ * 좌상단 전투 HUD (총괄 지적: "네모 박스 크기를 더 줄여도 될 것 같음. 최대한 컴팩트하게").
+ *
+ * 종전 360×186의 실제 내용은 **270×7 바 세 개**였다 — 라벨을 바 위에 따로 두어
+ * 스탯 하나가 34px을 먹었고, 나머지는 죽은 공간이었다.
+ *
+ * 바꾼 방식: **라벨·수치·바를 한 줄에** 놓는다. 스탯당 34 → 22px로 줄고, 바가
+ * 짧아지는 대신(270 → 196) 같은 비율 정보를 그대로 전달한다 — 바의 정보량은 길이가
+ * 아니라 채움 비율이다. 높이 186 → 130 (−30%), 폭 360 → 300 (−17%).
+ *
+ * 높이가 118이 아닌 130인 이유: 마지막 줄(attunement·버프)이 박스 밖으로 나가고
+ * 하단 쿨다운 띠(height − 5)와 겹쳤다. 실측으로 잡은 값이다.
+ *
+ * 친화 바가 이 박스 **아래**에 붙으므로(HUD.y + HUD.height 기준) 박스가 줄면
+ * 친화 바도 함께 올라와 좌상단 전체가 조여진다.
+ */
 const HUD = {
   x: 18,
   y: 18,
-  width: 360,
-  height: 186,
-  barX: 34,
-  barWidth: 270,
-  barHeight: 7,
+  width: 300,
+  height: 130,
+  /** 스탯 행 시작 y (박스 상단 기준 오프셋) */
+  rowTop: 44,
+  /** 행 간격 — 종전 34에서 축소 */
+  rowPitch: 22,
+  /** 라벨·수치가 차지하는 좌측 폭 */
+  labelWidth: 88,
+  barX: 104,
+  barWidth: 196,
+  barHeight: 6,
 } as const;
+
+/**
+ * 우상단 상태 패널 — ROOM·WAVE·BOSS를 한 판에 담는다.
+ * 종전엔 ROOM 칩(DOM)·WAVE 패널·미니맵이 **3단**으로 쌓여 있었다 (총괄 지적).
+ */
+const RIGHT_PANEL = {
+  y: 18,
+  /** 텍스트 위 여백 */
+  padTop: 10,
+  /** 텍스트 아래 여백 */
+  padBottom: 12,
+  /** 패널과 미니맵 사이 간격 */
+  gap: 10,
+  /** 평시(2줄) 텍스트 높이 — 미니맵 초기 위치 계산용 */
+  baseTextHeight: 35,
+} as const;
+
+/** 상태 텍스트 높이 → 패널 높이. 보스전(저항·관통 줄)에서 늘어난다. */
+function rightPanelHeight(textHeight: number): number {
+  const h = Number.isFinite(textHeight) ? Math.max(0, textHeight) : 0;
+  return Math.round(RIGHT_PANEL.padTop + h + RIGHT_PANEL.padBottom);
+}
+
+/** 스탯 행 i(0=HP, 1=마나, 2=보호막)의 y 중심 */
+function hudRowY(index: number): number {
+  return HUD.y + HUD.rowTop + index * HUD.rowPitch;
+}
 
 interface PauseRow {
   id: 'resume' | 'settings' | 'quit';
@@ -1997,34 +2046,34 @@ export class ProtoScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(99);
 
-    this.statusText = this.add.text(34, 29, 'READY', {
+    this.statusText = this.add.text(HUD.x + 14, HUD.y + 12, 'READY', {
       fontFamily: 'Consolas, monospace',
       fontSize: '14px',
       fontStyle: 'bold',
       color: '#72f1b8',
     }).setScrollFactor(0).setDepth(100);
-    this.hpText = this.add.text(34, 54, '', {
+    this.hpText = this.add.text(HUD.x + 14, hudRowY(0), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: '#ff91ad',
     }).setScrollFactor(0).setDepth(100);
-    this.manaText = this.add.text(34, 88, '', {
+    this.manaText = this.add.text(HUD.x + 14, hudRowY(1), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: '#91b7ff',
     }).setScrollFactor(0).setDepth(100);
-    this.shieldText = this.add.text(34, 122, '', {
+    this.shieldText = this.add.text(HUD.x + 14, hudRowY(2), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: '#72d8ff',
     }).setScrollFactor(0).setDepth(100);
-    this.attunementText = this.add.text(34, 160, 'ARCANE // UNBOUND', {
+    this.attunementText = this.add.text(HUD.x + 14, hudRowY(3) - 4, 'ARCANE // UNBOUND', {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
       color: '#8fa4ff',
     }).setScrollFactor(0).setDepth(100);
     // 활성 자기 강화 — 종류·세기·남은 시간 (버프 없으면 빈 줄)
-    this.buffStatusText = this.add.text(34, 179, '', {
+    this.buffStatusText = this.add.text(HUD.x + 152, hudRowY(3) - 4, '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
       fontStyle: 'bold',
@@ -2050,7 +2099,7 @@ export class ProtoScene extends Phaser.Scene {
       align: 'center',
     }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(100);
 
-    this.waveText = this.add.text(width - 34, 72, '', {
+    this.waveText = this.add.text(width - 34, RIGHT_PANEL.y + 10, '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '14px',
       fontStyle: 'bold',
@@ -2620,7 +2669,12 @@ export class ProtoScene extends Phaser.Scene {
   private refreshMinimap(): void {
     if (!this.runMinimap) {
       // 상단 우측 — ROOM 칩(DOM) 아래. 전투 중에도 떠 있어야 "어디까지 왔나"가 읽힌다.
-      this.runMinimap = new MinimapHud(this, this.scale.width - 306, 150);
+      this.runMinimap = new MinimapHud(
+        this,
+        this.scale.width - 306,
+        // 초기 y는 평시 2줄 기준. 이후 drawHudBars가 패널 높이에 맞춰 옮긴다.
+        RIGHT_PANEL.y + rightPanelHeight(RIGHT_PANEL.baseTextHeight) + RIGHT_PANEL.gap,
+      );
     }
     this.runMinimap.update(toMinimapModel(this.mapGraph.snapshot()));
   }
@@ -5675,12 +5729,18 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         .setColor(paletteColorToCss(selfBuffColor(buffs[0].kind)));
     }
     this.drawHudBars();
+    // ROOM은 종전에 별도 DOM 칩(runHud)이었다. 우상단이 3단(칩·패널·미니맵)이 되어
+    // 이 패널 첫 줄로 합쳤다 (총괄 지적) — 같은 정보군을 두 판에 나눌 이유가 없다.
+    const roomLine = `ROOM ${runState.roomIndex}/${runState.maxRooms}`;
     if (runState.phase === 'run-over') {
-      this.waveText.setText('RUN COMPLETE');
+      this.waveText.setText(`${roomLine}
+RUN COMPLETE`);
     } else if (runState.phase === 'reward-select') {
-      this.waveText.setText('ROOM CLEAR');
+      this.waveText.setText(`${roomLine}
+ROOM CLEAR`);
     } else if (runState.phase === 'room-transition') {
-      this.waveText.setText(`NEXT ROOM ${runState.roomIndex + 1}/${runState.maxRooms}`);
+      this.waveText.setText(`${roomLine}
+NEXT ROOM ${runState.roomIndex + 1}`);
     } else if (this.isBossEncounter()) {
       const boss = this.enemies.find((enemy) => enemy.kind === 'boss');
       // 저항을 상시 노출한다 — 보스 링 색만으로는 "무엇이 안 통하는지" 알 수 없다.
@@ -5698,17 +5758,20 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const status = boss
         ? `BOSS ${Math.ceil(boss.hp)}/${boss.maxHp}  ·  ENEMIES ${this.enemies.length}`
         : 'BOSS';
-      this.waveText.setText(bossResistanceLines(status, readout).join('\n'));
+      this.waveText.setText([roomLine, ...bossResistanceLines(status, readout)].join('\n'));
     } else if (this.rewardlessNodeKind()) {
       // 무전투 방 — 웨이브가 없으니 "NEXT WAVE 0.0s"가 뜨면 안 된다
-      this.waveText.setText(this.rewardlessNodeKind() === 'altar' ? '제단' : '보물방');
+      this.waveText.setText(`${roomLine}
+${this.rewardlessNodeKind() === 'altar' ? '제단' : '보물방'}`);
     } else if (this.waveManager.phase === 'waiting') {
       this.waveText.setText(
-        `NEXT WAVE ${this.waveManager.delayRemaining.toFixed(1)}s`,
+        `${roomLine}
+NEXT WAVE ${this.waveManager.delayRemaining.toFixed(1)}s`,
       );
     } else {
       this.waveText.setText(
-        `WAVE ${this.waveManager.currentWaveNumber}/${this.waveManager.totalWaves}`
+        `${roomLine}
+WAVE ${this.waveManager.currentWaveNumber}/${this.waveManager.totalWaves}`
         + `  ·  ENEMIES ${this.enemies.length}`,
       );
     }
@@ -6148,29 +6211,33 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     g.lineStyle(1, 0x33447f, 0.72);
     g.strokeRoundedRect(HUD.x, HUD.y, HUD.width, HUD.height, 12);
 
+    // 라벨과 같은 줄에 — 텍스트 세로 중앙에 맞춰 바를 놓는다 (원점이 좌상단이므로 −3)
+    const barOffset = Math.round(HUD.barHeight / 2) + 1;
+    const rowBarY = (index: number): number => hudRowY(index) + barOffset;
     g.fillStyle(0x141a35, 1);
-    g.fillRoundedRect(HUD.barX, 73, HUD.barWidth, HUD.barHeight, 4);
-    g.fillRoundedRect(HUD.barX, 107, HUD.barWidth, HUD.barHeight, 4);
-    g.fillRoundedRect(HUD.barX, 141, HUD.barWidth, HUD.barHeight, 4);
+    for (let index = 0; index < 3; index += 1) {
+      g.fillRoundedRect(HUD.barX, rowBarY(index), HUD.barWidth, HUD.barHeight, 3);
+    }
     g.fillStyle(heatwaveDamaging ? 0xff734c : 0xff5c82, 1);
-    g.fillRoundedRect(HUD.barX, 73, HUD.barWidth * hpRatio, HUD.barHeight, 4);
+    g.fillRoundedRect(HUD.barX, rowBarY(0), HUD.barWidth * hpRatio, HUD.barHeight, 3);
     if (heatwaveDamaging && hpRatio > 0) {
       const filledWidth = HUD.barWidth * hpRatio;
+      const hpBarY = rowBarY(0);
       g.lineStyle(2, 0xffb15a, 0.52 + heatPulse * 0.38);
-      g.strokeRoundedRect(HUD.barX - 2, 71, HUD.barWidth + 4, HUD.barHeight + 4, 5);
+      g.strokeRoundedRect(HUD.barX - 2, hpBarY - 2, HUD.barWidth + 4, HUD.barHeight + 4, 4);
       // 막대 끝의 짧은 상승 입자: 전체 HUD가 아니라 열에 반응하는 HP라는 점만 알려 준다.
       for (let index = 0; index < 3; index += 1) {
         const progress = (this.time.now / 750 + index * 0.37) % 1;
         const x = HUD.barX + Math.max(8, filledWidth - 7 - index * 7);
-        const y = 71 - progress * 11;
+        const y = hpBarY - 2 - progress * 10;
         g.fillStyle(0xffc06d, (1 - progress) * 0.7);
         g.fillCircle(x, y, 1.8 - progress * 0.55);
       }
     }
     g.fillStyle(0x5b8cff, 1);
-    g.fillRoundedRect(HUD.barX, 107, HUD.barWidth * manaRatio, HUD.barHeight, 4);
+    g.fillRoundedRect(HUD.barX, rowBarY(1), HUD.barWidth * manaRatio, HUD.barHeight, 3);
     g.fillStyle(0x48c9ff, 1);
-    g.fillRoundedRect(HUD.barX, 141, HUD.barWidth * shieldRatio, HUD.barHeight, 4);
+    g.fillRoundedRect(HUD.barX, rowBarY(2), HUD.barWidth * shieldRatio, HUD.barHeight, 3);
 
     g.fillStyle(0x1d2445, 1);
     g.fillRoundedRect(HUD.x + 8, HUD.y + HUD.height - 5, HUD.width - 16, 3, 2);
@@ -6186,11 +6253,18 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.drawAffinityBar(g);
     this.drawFusionGauge(g);
 
+    // 우상단 상태 패널 — 종전엔 ROOM 칩(DOM) 아래에 따로 떠서 우상단이 3단이었다.
+    // ROOM을 이 패널 안으로 넣어(updateStatusText) 2단으로 줄였다 (총괄 지적).
     const { width } = this.scale;
     g.fillStyle(0x080b1c, 0.86);
-    g.fillRoundedRect(width - 306, 62, 288, 72, 12);
+    // 패널은 **내용에 맞춰 늘어난다** — 보스전에서 저항·관통 줄이 붙으면 3~4줄이 되어
+    // 고정 높이로는 텍스트가 패널을 넘고 미니맵과 겹쳤다. 평시(2줄)엔 그대로 조밀하다.
+    const panelHeight = rightPanelHeight(this.waveText.height);
+    g.fillRoundedRect(width - 306, RIGHT_PANEL.y, 288, panelHeight, 10);
     g.lineStyle(1, 0x2a735c, 0.62);
-    g.strokeRoundedRect(width - 306, 62, 288, 72, 12);
+    g.strokeRoundedRect(width - 306, RIGHT_PANEL.y, 288, panelHeight, 10);
+    // 미니맵을 패널 아래로 — 높이가 바뀔 때만 옮긴다 (setTop이 동일 y면 no-op)
+    this.runMinimap?.setTop(RIGHT_PANEL.y + panelHeight + RIGHT_PANEL.gap);
   }
 
   /**
