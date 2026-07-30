@@ -50,6 +50,11 @@ export interface PortalChoice {
    */
   x?: number;
   y?: number;
+  /**
+   * 보상 크기 한 줄 (roomRewardScale.hint). 방 이름만 보이면 위험한 방을 고를 근거가
+   * 없다 — "함정방 vs 보물방"에서 아무도 함정을 안 고르는 이유가 그것이었다(총괄 지적).
+   */
+  rewardHint?: string;
 }
 
 interface PortalView {
@@ -58,6 +63,7 @@ interface PortalView {
   y: number;
   ring: Phaser.GameObjects.Graphics;
   label: Phaser.GameObjects.Text;
+  hint: Phaser.GameObjects.Text | null;
 }
 
 export class PortalField {
@@ -99,7 +105,17 @@ export class PortalField {
         strokeThickness: 3,
       }).setOrigin(0.5).setDepth(5);
 
-      this.portals.push({ choice, x, y, ring, label });
+      // 보상 힌트 — 방 이름 아래 작게. 없으면 만들지 않는다(빈 줄이 자리를 먹지 않게)
+      const hint = choice.rewardHint
+        ? scene.add.text(x, y + PORTAL_CONFIG.radius + 32, choice.rewardHint, {
+          fontFamily: 'Consolas, monospace',
+          fontSize: '11px',
+          color: '#c2cbee',
+          stroke: '#05060f',
+          strokeThickness: 3,
+        }).setOrigin(0.5).setDepth(5)
+        : null;
+      this.portals.push({ choice, x, y, ring, label, hint });
     });
   }
 
@@ -132,6 +148,7 @@ export class PortalField {
     for (const portal of this.portals) {
       portal.ring.destroy();
       portal.label.destroy();
+      portal.hint?.destroy();
     }
     this.portals.length = 0;
   }

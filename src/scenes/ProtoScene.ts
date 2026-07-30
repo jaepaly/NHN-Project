@@ -87,6 +87,7 @@ import { buildChipModel } from '../run/buildChipModel';
 import { bandAffordances, reachableBand } from '../run/incantBands';
 import { drawTreasureReward } from '../combat-core/run/treasureRewardConfig';
 import { ALTAR_OFFER_CONFIG, drawAltarOffer } from '../combat-core/run/altarOffer';
+import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomRewardScale';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { UI_COLOR } from '../ui/uiTokens';
 import type { GameSettings } from '../run/gameSettings';
@@ -466,6 +467,12 @@ interface SpellExecutionOptions {
   controlDurationScale?: number;
   controlStrengthScale?: number;
   shieldAmountScale?: number;
+  /**
+   * 장식 VFX 밝기 배율 — 에코(제단 거래)가 원본보다 **투명하게** 나가는 데 쓴다
+   * (총괄 지적: "에코라는 걸 알 수 있게, 유저가 쓴 영창보다는 좀 더 투명하게").
+   * 미지정이면 자동 시전 여부로 결정하는 기존 동작 그대로.
+   */
+  decorVfxScale?: number;
 }
 
 interface EnemyKnockbackState {
@@ -604,8 +611,13 @@ export class ProtoScene extends Phaser.Scene {
         // 대가와 보상이 한 장에 붙은 거래 카드 + 거절 카드 (#214 재설계)
         return drawAltarOffer(this.playerState.maxHp, this.altarAwakenElement());
       }
+      // 방 종류별 배율 (총괄 지적: "누가 함정방을 선택하겠어"). 종전엔 정예·함정이
+      // 일반 전투방과 **완전히 같은 보상**이라 더 위험한 방을 고를 이유가 없었다.
+      const kind = this.mapGraph.current().kind;
+      const kindScale = rewardScaleFor(kind).scale;
       const engraved = this.engraveManager.injectReward(
-        drawRewardOptions(roomIndex, this.engraveRewardRand),
+        drawRewardOptions(roomIndex, this.engraveRewardRand, kindScale)
+          .slice(0, rewardOptionCount(kind)),
         roomIndex,
         this.engraveRewardRand,
       );
@@ -1684,7 +1696,7 @@ export class ProtoScene extends Phaser.Scene {
     // 안 주고 몹만 나왔다"). 웨이브를 뿌리지 않고 바로 클리어 처리해 보상표를 띄운다.
     const roomless = this.rewardlessNodeKind();
     if (roomless) {
-      this.startRewardlessRoom(roomless, roomIndex);
+      this.startRewardlessRoom(roomless);
       return;
     }
     // ⚠️ 없는 웨이브셋에 **예외를 던지지 않는다** (총괄 제보로 드러난 사고):
@@ -1761,10 +1773,14 @@ export class ProtoScene extends Phaser.Scene {
       }
     }
 
+    // ⚠️ **방 중앙**에서 나타난다 (총괄 지적: "맵에 진입하자마자 보스가 바로 근처에서
+    // 나타나더라"). 종전엔 `player.y - 340`으로 플레이어 기준이었는데, #262에서 도착을
+    // 왼쪽 중앙(176, 640)으로 옮기면서 보스가 (176, 300) — 플레이어 옆에 붙어 나왔다.
+    // 내가 도착 지점을 바꾸며 만든 회귀다. 절대 좌표로 고정해 다시 어긋나지 않게 한다.
     const boss = new BossEnemy(
       this,
-      this.player.x,
-      this.player.y - 340,
+      this.worldBounds.centerX,
+      this.worldBounds.centerY,
       usesMemory ? 'memory' : 'stage',
       // 보스는 절반 배율 — 내성 누적(#77)과 이중 강화가 되지 않게
       enemyHpScale(this.combatRunController.state.loopIndex, true),
@@ -2818,13 +2834,19 @@ export class ProtoScene extends Phaser.Scene {
         this,
         exits[0].x,
         this.worldBounds.centerY,
-        exits.map((exit) => ({
-          nodeId: exit.targetNodeId,
-          kind: kindById.get(exit.targetNodeId) ?? 'combat',
-          // 계약값을 그대로 넘긴다 — 자체 가로 배치를 쓰면 포탈이 방 밖으로 밀려난다
-          x: exit.x,
-          y: exit.y,
-        })),
+        exits.map((exit) => {
+          const kind = kindById.get(exit.targetNodeId) ?? 'combat';
+          return {
+            nodeId: exit.targetNodeId,
+            kind,
+            // 계약값을 그대로 넘긴다 — 자체 가로 배치를 쓰면 포탈이 방 밖으로 밀려난다
+            x: exit.x,
+            y: exit.y,
+            // 보상 크기를 **고르기 전에** 보여준다. 방 이름만 보이면 위험한 방을 고를
+            // 근거가 없어 "누가 함정방을 선택하겠어"가 된다(총괄 지적).
+            rewardHint: rewardScaleFor(kind).hint,
+          };
+        }),
         (choice) => {
           this.enterMapNode(choice.nodeId);
           this.portalField?.destroy();
@@ -2869,7 +2891,7 @@ export class ProtoScene extends Phaser.Scene {
    * 제단은 먼저 **대가(HP)를 치른다**(altarHpCost). 대가가 보상보다 먼저여야
    * "지불하고 얻는다"가 성립하고, 카드를 보고 무를 수도 없다.
    */
-  private startRewardlessRoom(kind: 'treasure' | 'altar', roomIndex: number): void {
+  private startRewardlessRoom(kind: 'treasure' | 'altar'): void {
     // WaveManager는 빈 정의에 예외를 던진다. 적 0인 웨이브 하나를 두되 start()를 부르지
     // 않는다 — waveIndex가 -1이라 update()도 아무것도 스폰하지 않는다.
     this.waveManager = new WaveManager([{ chaserCount: 0, shooterCount: 0, splitterCount: 0 }]);
@@ -2879,19 +2901,22 @@ export class ProtoScene extends Phaser.Scene {
       // 방에 들어선 것만으로 징수하면 거절권이 사라져 선택이 아니라 함정이 된다.
       this.announceBanner({
         title: '제단',
-        lines: ['생명을 내어주고 힘을 산다 · 거절할 수도 있다'],
+        lines: ['생명을 내어주고 힘을 산다 · 거절할 수도 있다', ROOM_FIXTURE_GUIDE.altar],
         color: 0xd0a8ff,
-        holdMs: 2600,
+        holdMs: 2800,
       });
     } else {
       this.announceBanner({
         title: '보물방',
-        lines: ['싸우지 않고 얻는다 — 상자를 열어라'],
+        lines: ['싸우지 않고 얻는다', ROOM_FIXTURE_GUIDE.treasure],
         color: 0xffd166,
-        holdMs: 2200,
+        holdMs: 2600,
       });
     }
-    this.announceSystemMessage(`방 ${roomIndex}`, '#8fa4ff');
+    // ⚠️ `방 N`과 설치물 안내를 따로 띄우지 않는다 (총괄 제보: "중앙에 뜨는 창이 중복으로
+    // 겹치던데"). 배너(중앙 판)와 시스템 메시지(height×0.42)는 **다른 채널**이라 서로의
+    // 스택을 모른다 — 셋이 동시에 뜨면 겹친다. 배너 한 판에 합치고, 방 번호는 이미
+    // 우상단 상태 패널이 그린다(#281).
     // ⚠️ 여기서 보상을 띄우지 않는다 (총괄 지적: "들어가자마자 주는 것보다는 중앙까지
     // 이동해서 상호작용했을 때 비로소 선택지가 뜨는 게 맞지 않나").
     //
@@ -2915,7 +2940,7 @@ export class ProtoScene extends Phaser.Scene {
       kind,
       () => this.openRewardlessRoomChoice(),
     );
-    this.announceSystemMessage(ROOM_FIXTURE_GUIDE[kind], '#c2cbee', 3600);
+    // 안내는 startRewardlessRoom의 배너에 합쳤다 — 중앙 채널이 겹치지 않게.
   }
 
   private clearRoomFixture(): void {
@@ -4855,16 +4880,24 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
    */
   private scheduleSpellEcho(spec: SpellSpec): void {
     if (!this.echoUnlocked) return;
-    const { delayMs, powerScale, extraChance } = ALTAR_OFFER_CONFIG.echo;
+    const { delayMs, powerScale, extraChance, decorScales } = ALTAR_OFFER_CONFIG.echo;
     const count = 1 + (Math.random() < extraChance ? 1 : 0);
     for (let i = 1; i <= count; i += 1) {
+      // 겹이 깊어질수록 옅어진다 — 원본 1.0 > 첫 에코 > 둘째 에코.
+      // 같은 밝기로 세 발이 나가면 "왜 세 번인지" 읽히지 않는다(총괄 지적).
+      const decorVfxScale = decorScales[i - 1] ?? decorScales[decorScales.length - 1];
       this.time.delayedCall(delayMs * i, () => {
         if (!this.scene?.isActive?.() || !this.playerState.alive) return;
         if (!this.isCombatActive()) return;
-        this.applySpellEffect({
-          ...spec,
-          power: Math.max(1, Math.round(spec.power * powerScale)),
-        });
+        this.applySpellEffect(
+          { ...spec, power: Math.max(1, Math.round(spec.power * powerScale)) },
+          undefined,
+          false,
+          // 친화 격상 연출도 함께 낮춘다 — 장식만 옅고 플러리시는 만개하면 어긋난다
+          i,
+          { decorVfxScale },
+        );
+        // 소리도 옅게 — 원본과 같은 크기로 울리면 "두 번 쐈다"로 들린다
         this.audio.playCast(spec.element_primary);
       });
     }
@@ -5287,7 +5320,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       allowCameraShake: !auto || vfxTierReduction === 0,
       // 플레이어 장식 VFX 중첩 예산 참여 (#216 P0-1) — 자동 시전은 추가 감쇠.
       // 보스 시전은 이 필드를 안 넘겨 면제된다(위험구역은 정보, 항상 최대 밝기).
-      decorVfxScale: auto ? VFX_BUDGET_CONFIG.autoCastScale : 1,
+      // options로 명시하면 그 값이 이긴다 — 에코가 원본보다 투명하게 나가는 경로.
+      decorVfxScale: options?.decorVfxScale ?? (auto ? VFX_BUDGET_CONFIG.autoCastScale : 1),
       damageScale: options?.damageScale,
       rangeScale: options?.rangeScale,
       radiusScale: options?.radiusScale,
