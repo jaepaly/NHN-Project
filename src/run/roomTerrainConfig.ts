@@ -82,8 +82,12 @@ export const TERRAIN_KEEPOUTS = {
     { x: 1840, y: 538, radius: 90 },
     { x: 1840, y: 742, radius: 90 },
   ],
-  /** 중앙 설치물(보물상자·제단) — 장벽을 두는 종류엔 없지만 회귀가 함께 검사한다 */
-  fixture: { x: 960, y: 640, radius: 140 },
+  /** 중앙 오른쪽 설치물(보물상자·제단) — 장벽을 두는 종류엔 없지만 회귀가 함께 검사한다 */
+  fixture: {
+    x: ROOM_TERRAIN_BOUNDS.centerX + ROOM_FIXTURE_CONFIG.offsetX,
+    y: ROOM_TERRAIN_BOUNDS.centerY,
+    radius: 140,
+  },
 } as const;
 
 /** 플레이어 충돌 반경 (씬이 `pushOutOfBlocks(..., 16, ...)`로 쓰는 값) */
