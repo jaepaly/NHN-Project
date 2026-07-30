@@ -234,6 +234,8 @@ import {
   tryCleanseFloorHazards,
 } from '../combat-core/combat/floorHazardState';
 import { PortalField } from '../render/portalField';
+import { RoomFixture } from '../render/roomFixture';
+import { ROOM_FIXTURE_GUIDE } from '../run/roomFixtureConfig';
 import { mockMinimapModel } from '../run/mapGraphMock';
 import { RunMapGraph, maximumMapPathRooms, toMinimapModel } from '../run/mapGraph';
 import { MAP_GRAPH_PRESET_01 } from '../run/mapGraphPreset';
@@ -845,6 +847,8 @@ export class ProtoScene extends Phaser.Scene {
   private devPortalField: PortalField | null = null;
   private runMinimap: MinimapHud | null = null;
   private portalField: PortalField | null = null;
+  /** 방 중앙 설치물 (보물상자·제단) — 다가가야 보상이 열린다 (#214) */
+  private roomFixture: RoomFixture | null = null;
   /** 다음 방에서 적용할 도착 배치 — 포탈로 넘어왔을 때만 설정된다 (첫 방은 null) */
   private pendingArrival: RoomArrivalPlacement | null = null;
   /**
@@ -1226,6 +1230,8 @@ export class ProtoScene extends Phaser.Scene {
     // 포탈은 **전투가 끝난 뒤**에 서므로 isCombatActive 게이트 밖에서 돌려야 한다 —
     // 안에 두면 방을 정리한 순간 포탈이 멈춰 접촉 판정이 영영 안 걸린다.
     this.portalField?.update(this.player.x, this.player.y);
+    // 설치물도 게이트 밖에서 — 보상 카드가 뜬 뒤에도 좌표 갱신이 멈추면 안 된다
+    this.roomFixture?.update(this.player.x, this.player.y);
     this.runMinimap?.pulse();
     this.updateStatusText();
     this.updateSequenceProgress();
@@ -2047,6 +2053,7 @@ export class ProtoScene extends Phaser.Scene {
     this.clearBossArcana();
     this.clearTerrainBarriers();
     this.clearFloorHazards();
+    this.clearRoomFixture();
   }
 
   /** 예고 중인 미러 캐스트 취소 — 방 전환·사망 후 마커가 남거나 유령 발사되는 것 방지 */
@@ -2735,7 +2742,11 @@ export class ProtoScene extends Phaser.Scene {
   choosePortalDestination(): Promise<void> {
     const choices = this.mapGraph.choices();
     if (choices.length === 0) return Promise.resolve();
-    if (choices.length === 1) {
+    // 갈래가 하나면 보통 포탈을 세우지 않는다 — 선택지가 없는데 선택을 시키면 걸어가는
+    // 시간만 늘어난다. **단, 무전투 방은 예외다** (총괄 지적): 그 방의 흐름은
+    // "왼쪽 도착 → 중앙 상호작용 → 오른쪽 출구"이고, 마지막 구간을 자동으로 건너뛰면
+    // 다시 방이 아니라 팝업이 된다. 그 방에서는 걷는 것 자체가 내용이다.
+    if (choices.length === 1 && !this.rewardlessNodeKind()) {
       this.enterMapNode(choices[0].id);
       return Promise.resolve();
     }
@@ -2774,7 +2785,13 @@ export class ProtoScene extends Phaser.Scene {
           resolve();
         },
       );
-      this.announceSystemMessage('갈림길 — 포탈로 들어가 다음 방을 고르세요', '#8fa4ff', 3000);
+      this.announceSystemMessage(
+        choices.length > 1
+          ? '갈림길 — 포탈로 들어가 다음 방을 고르세요'
+          : '오른쪽 포탈로 나가세요',
+        '#8fa4ff',
+        3000,
+      );
     });
   }
 
@@ -2813,25 +2830,58 @@ export class ProtoScene extends Phaser.Scene {
       // 방에 들어선 것만으로 징수하면 거절권이 사라져 선택이 아니라 함정이 된다.
       this.announceBanner({
         title: '제단',
-        lines: ['생명을 내어주고 힘을 산다 · 그냥 나갈 수도 있다'],
+        lines: ['생명을 내어주고 힘을 산다 · 거절할 수도 있다'],
         color: 0xd0a8ff,
         holdMs: 2600,
       });
     } else {
       this.announceBanner({
         title: '보물방',
-        lines: ['싸우지 않고 얻는다'],
+        lines: ['싸우지 않고 얻는다 — 상자를 열어라'],
         color: 0xffd166,
         holdMs: 2200,
       });
     }
     this.announceSystemMessage(`방 ${roomIndex}`, '#8fa4ff');
-    // 배너를 읽을 틈을 준 뒤 보상 — 즉시 띄우면 카드가 배너를 덮는다
+    // ⚠️ 여기서 보상을 띄우지 않는다 (총괄 지적: "들어가자마자 주는 것보다는 중앙까지
+    // 이동해서 상호작용했을 때 비로소 선택지가 뜨는 게 맞지 않나").
+    //
+    // 종전엔 900ms 타이머로 notifyRoomCleared를 강제 호출해 방이 아니라 **팝업**이었다.
+    // 도착(왼쪽)과 출구(오른쪽) 사이를 걸을 이유가 없어 포탈로 만든 좌→우 진행 구조가
+    // 이 방들에서만 무의미해졌다. 이제 중앙 설치물이 트리거다 — 타이머도 필요 없다.
     this.roomClearPending = true;
-    this.time.delayedCall(900, () => {
-      if (!this.scene?.isActive?.()) return;
-      this.combatRunController.notifyRoomCleared();
-    });
+    this.setRoomFixture(kind);
+  }
+
+  /**
+   * 방 중앙에 설치물을 세운다. 다가가면 보상이 열린다.
+   * 도착이 왼쪽 중앙(#245)이므로 중앙까지 걸어야 하고, 그 뒤 출구는 오른쪽이다.
+   */
+  private setRoomFixture(kind: 'treasure' | 'altar'): void {
+    this.clearRoomFixture();
+    this.roomFixture = new RoomFixture(
+      this,
+      this.worldBounds.centerX,
+      this.worldBounds.centerY,
+      kind,
+      () => this.openRewardlessRoomChoice(),
+    );
+    this.announceSystemMessage(ROOM_FIXTURE_GUIDE[kind], '#c2cbee', 3600);
+  }
+
+  private clearRoomFixture(): void {
+    this.roomFixture?.destroy();
+    this.roomFixture = null;
+  }
+
+  /**
+   * 설치물 상호작용 — 여기서 비로소 보상표가 열린다.
+   * 설치물은 즉시 걷어낸다: 카드를 고르는 동안 남아 있으면 다시 닿아 이중 발화한다.
+   */
+  private openRewardlessRoomChoice(): void {
+    this.clearRoomFixture();
+    this.audio.playSfx('room-clear');
+    this.combatRunController.notifyRoomCleared();
   }
 
   private enterMapNode(nodeId: string): void {
