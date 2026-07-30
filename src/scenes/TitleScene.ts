@@ -5,6 +5,7 @@ import { showCodexOverlay } from '../ui/codexOverlay';
 import { clearRunHud } from '../ui/runHud';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { loadSettings } from '../run/gameSettings';
+import { setVfxBrightness } from '../render/vfxBrightness';
 import { UI_COLOR, UI_FONT } from '../ui/uiTokens';
 import { requestDemoRun } from '../run/demoLoadout';
 
@@ -50,7 +51,11 @@ export class TitleScene extends Phaser.Scene {
     this.createDemoTab(width, height);
     // 밝기 막은 탭보다 위에 — 타이틀엔 지켜야 할 HUD가 없다
     this.brightnessVeil = this.add.graphics().setScrollFactor(0).setDepth(50).setVisible(false);
-    this.applyBrightness(loadSettings(window.localStorage).brightness);
+    // 이펙트 밝기도 여기서 반영한다 — 타이틀에서 조절하고 바로 시작하면
+    // 전투 씬이 loadSettings로 다시 읽지만, 그 사이 타이틀 연출은 이미 이 값을 쓴다
+    const saved = loadSettings(window.localStorage);
+    setVfxBrightness(saved.vfxBrightness);
+    this.applyBrightness(saved.brightness);
 
     // once가 아닌 on — 도감을 열었다 닫아도 시작 트리거가 살아 있어야 한다.
     // 화살표로 감싼다 — startGame을 직접 넘기면 Phaser가 키 이벤트를 첫 인자로 실어
@@ -96,7 +101,12 @@ export class TitleScene extends Phaser.Scene {
     try {
       await showSettingsOverlay({
         audioNote: '소리 크기는 전투에서 적용된다 · 밝기는 지금 바로',
-        onChange: (settings) => this.applyBrightness(settings.brightness),
+        onChange: (settings) => {
+          // 이펙트 밝기는 막이 아니라 렌더러 배율이라 여기서도 같이 반영해야
+          // 설정을 닫고 바로 시작했을 때 첫 시전부터 적용된다
+          setVfxBrightness(settings.vfxBrightness);
+          this.applyBrightness(settings.brightness);
+        },
       });
     } finally {
       this.time.delayedCall(50, () => { this.codexOpen = false; });
