@@ -29,10 +29,18 @@ export interface RunUiHooks {
   /**
    * 보상 선택 후 **다음 방으로 넘어가기 전에** 끼어드는 단계 — 포탈로 다음 방을 고른다 (#214).
    *
-   * 왜 여기인가: `chooseReward()`가 호출되는 **그 순간** RunController가 전환 타이머를
-   * 걸어버린다(`scheduleTransition`). 그러니 그 호출을 미루는 것이 컨트롤러를 건드리지
-   * 않고 방 전환을 멈출 수 있는 유일한 지점이다. 분기 선택은 R3 UI 책임이고
-   * RunController는 방 개수·보상만 세므로, 계약을 넘지 않는다.
+   * ⚠️ **`chooseReward()` 뒤에 실행된다.** 종전엔 앞이었다: `chooseReward`가 호출되는
+   * 순간 RunController가 전환 타이머를 걸어버리므로, 그 호출을 미루는 것이 방 전환을
+   * 멈추는 유일한 방법이라고 봤다.
+   *
+   * 그런데 `chooseReward`는 **보상 적용도 같이 한다**(`applyReward`). 그래서 카드를
+   * 골라도 포탈에 진입할 때까지 최대 체력·마나·친화가 반영되지 않았다 — 총괄 제보:
+   * *"보상 선택시 그 즉시 체력 등이 변하지 않고 다음 방으로 가야 변하던데?"*
+   * 고른 것이 화면에 안 나타나면 그 선택이 무슨 의미였는지 알 수 없다.
+   *
+   * 지금은 순서를 바꿨다: 보상은 **즉시** 적용하고, 전환 타이머는 씬이 주입한
+   * `scheduleTransition`이 붙잡는다(`ProtoScene`의 `runTransitionGate`). 컨트롤러는
+   * 그대로다.
    *
    * 거부(reject)하거나 던지면 선택을 건너뛰고 그대로 진행한다 — 포탈 UI가 깨져도
    * 런이 멈추면 안 된다.
@@ -57,13 +65,14 @@ export function bindRunUi(controller: RunController, hooks: RunUiHooks = {}): vo
       formFor: hooks.formFor,
       contextLines,
     }).then(async (chosen) => {
-      // 포탈 선택이 끝날 때까지 chooseReward를 미룬다 (전환 타이머가 거기서 걸린다)
+      // **먼저 적용한다** — 고른 것이 즉시 HUD에 나타나야 선택에 의미가 생긴다.
+      // 전환 타이머는 씬이 주입한 scheduleTransition이 붙잡으므로 방은 넘어가지 않는다.
+      controller.chooseReward(chosen.id);
       try {
         await hooks.beforeAdvance?.();
       } catch {
         /* 포탈 UI가 실패해도 런은 계속된다 — 여기서 멈추면 방에 갇힌다 */
       }
-      controller.chooseReward(chosen.id);
     });
   });
 

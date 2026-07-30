@@ -88,6 +88,7 @@
     "test:roomrewardscale": "esbuild scripts/room-reward-scale-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-reward-scale-regression.mjs && node node_modules/.cache/incant-room-reward-scale-regression.mjs",
     "test:roombackdrop": "esbuild scripts/room-kind-backdrop-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-kind-backdrop-regression.mjs && node node_modules/.cache/incant-room-kind-backdrop-regression.mjs",
     "test:mapgen": "esbuild scripts/map-generator-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-map-generator-regression.mjs && node node_modules/.cache/incant-map-generator-regression.mjs",
+    "test:rewardtiming": "esbuild scripts/reward-timing-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-reward-timing-regression.mjs && node node_modules/.cache/incant-reward-timing-regression.mjs",
     "test:roomterrain": "esbuild scripts/room-terrain-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-terrain-regression.mjs && node node_modules/.cache/incant-room-terrain-regression.mjs"
   },
   "dependencies": {
