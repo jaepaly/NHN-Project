@@ -38,6 +38,7 @@
 - [~] 5-6 시각 재설계: 현재 청색 선·기하 도형·영문 표제 중심의 사이버펑크 표현을 신비로운 마법 세계관에 맞는 지도·문양·재료감으로 교체. 기능 기준점을 `codex/direct-room-select-transition`에 커밋한 뒤 별도 하위 브랜치 `codex/mystic-route-map-ui`에서 진행.
 - [ ] 최종 실제 플레이에서 선택 UI·미니맵·중앙 도착·설치물 접근·보스 첫 조우를 한 차례 확인.
 - [x] 현재 브랜치 범위를 다음 방 선택·전환·진입 배치로 한정. 프롬프트·Gemini·Worker는 범위 밖.
+- [x] 브랜치 `codex/direct-room-select-transition` 푸시 및 기능 PR #300 생성. 시각 재설계는 stacked PR #301로 분리.
 
 ---
 
