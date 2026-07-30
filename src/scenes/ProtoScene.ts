@@ -1232,7 +1232,8 @@ export class ProtoScene extends Phaser.Scene {
     this.portalField?.update(this.player.x, this.player.y);
     // 설치물도 게이트 밖에서 — 보상 카드가 뜬 뒤에도 좌표 갱신이 멈추면 안 된다
     this.roomFixture?.update(this.player.x, this.player.y);
-    this.runMinimap?.pulse();
+    // 숨겨져 있으면 다시 그리지 않는다 — 펄스는 보일 때만 의미가 있다
+    if (this.shouldShowMinimap()) this.runMinimap?.pulse();
     this.updateStatusText();
     this.updateSequenceProgress();
   }
@@ -2723,6 +2724,27 @@ export class ProtoScene extends Phaser.Scene {
       );
     }
     this.runMinimap.update(toMinimapModel(this.mapGraph.snapshot()));
+    this.syncMinimapVisibility();
+  }
+
+  /**
+   * 미니맵을 지금 보여야 하나 (총괄 결정: "탭을 눌렀을 때만 띄우는 건 어떻게 생각함?").
+   *
+   * 상시 노출을 접은 이유: 미니맵은 초당 정보가 아니라 **가끔 확인하는 정보**다.
+   * 전투 중엔 우상단 자리만 먹고, Tab이 이미 "내 상태를 들여다본다"는 제스처라
+   * (빌드 검사·일시정지·툴팁) 거기 얹으면 의미가 일관된다.
+   *
+   * ⚠️ **포탈 선택 중에는 예외로 자동 표시한다.** 갈림길에서 걸어가는 그 순간이 맵이
+   * 가장 필요한 시점인데 거기서 Tab을 눌러야 한다면 상시 노출보다 오히려 나쁘다.
+   * 두 조건 모두 "맵이 결정에 쓰이는 순간"이라는 하나의 원칙이다.
+   */
+  private shouldShowMinimap(): boolean {
+    return this.buildInspectOpen || this.portalField !== null;
+  }
+
+  /** 가시성 동기화 — update와 상태 전환 지점에서 호출 (setVisible은 동일 값이면 무해) */
+  private syncMinimapVisibility(): void {
+    this.runMinimap?.setVisible(this.shouldShowMinimap());
   }
 
   private destroyRunMapUi(): void {
@@ -2782,9 +2804,11 @@ export class ProtoScene extends Phaser.Scene {
           this.enterMapNode(choice.nodeId);
           this.portalField?.destroy();
           this.portalField = null;
+          this.syncMinimapVisibility();
           resolve();
         },
       );
+      this.syncMinimapVisibility();
       this.announceSystemMessage(
         choices.length > 1
           ? '갈림길 — 포탈로 들어가 다음 방을 고르세요'
@@ -6229,6 +6253,7 @@ WAVE ${this.waveManager.currentWaveNumber}/${this.waveManager.totalWaves}`
     }
     this.quitArmed = false;
     this.renderPauseMenu();
+    this.syncMinimapVisibility();
     this.buildChipZones.forEach((zone) => {
       if (this.buildInspectOpen) zone.setInteractive({ useHandCursor: true });
       else zone.disableInteractive();
