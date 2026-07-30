@@ -22,6 +22,12 @@
 - [x] `sequence_exec`에 실제 실행 계획의 `power`·`manaCost`를 기록한다.
 - [x] 관련 회귀·전체 68종 테스트·프로덕션 빌드를 통과하고 AI 활용 로그를 갱신한다.
 
+**PR #268 최신 main 리베이스 (2026-07-30)**
+- [x] PR #274 이후 최신 `origin/main` 위로 rebase하고 팀원 문서·테스트 스크립트를 모두 보존.
+- [x] `ProtoScene` 충돌은 main의 `EncounterDefinition`과 #268의 `RunStateSnapshot` import를 합집합으로 해소.
+- [x] 플레이 로그·fallback·맵 배선 회귀와 전체 74종 회귀·프로덕션 빌드·`git diff --check` 통과.
+- [~] 원격 브랜치 동기화 후 GitHub CI·총괄 재검토·머지 대기.
+
 > **완료 조건**: 사용자는 fixture가 아닌 문장을 로컬 게임에서 플레이하기만 하고, R2는 JSONL만으로 `gemini/cache/fallback/mock`, single/sequence, 단계 수, 판정 지연, 실제 sequence 실행 여부와 fallback 원인을 재구성할 수 있어야 한다.
 >
 > **구현 결과**: `session_start`가 판정기·프롬프트 버전·기능 플래그를 스냅샷으로 남기고, 각 이벤트는 동일 `sessionId`와 ISO 절대시각 `at`을 공유한다. `cast`는 `src`·`elapsedMs`·`mode`·단계 수·`fallbackReason`을, 실제 시퀀스 진입은 `sequence_exec`와 `fixture` 여부를 별도로 남긴다. 판정 정책·프롬프트·Worker 배포는 변경하지 않았다.
