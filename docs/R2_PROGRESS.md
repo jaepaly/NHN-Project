@@ -19,7 +19,8 @@
 - [x] Mock·원격 성공·원격 fallback과 씬 배선 회귀 추가.
 - [x] `test:bossline`·`test:playlog`, 전체 회귀 74종, 프로덕션 빌드, `git diff --check` 통과.
 - [x] 프로덕션 번들에서 DEV 전용 `boss_line` 로그 토큰 제거 확인.
-- [~] 사용자 확인 완료. 최신 main 리베이스·재검증 후 커밋·푸시·PR 생성 진행.
+- [x] 최신 main `c128f44`로 리베이스한 뒤 동일 검증을 다시 통과.
+- [x] 브랜치 `codex/boss-line-quota-safety-276` 푸시 및 PR #292 생성.
 
 ---
 
