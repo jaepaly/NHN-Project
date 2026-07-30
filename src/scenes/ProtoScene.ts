@@ -740,7 +740,9 @@ export class ProtoScene extends Phaser.Scene {
 
   private buildChips: BuildChip[] = [];
 
-  /** Tab 검사 모드 — 전투를 멈추고 칩에 마우스를 올려 상세를 본다 */
+  /** DOM 설정 오버레이가 떠 있나 — ESC가 두 겹을 한 번에 닫는 걸 막는다 */
+  private settingsOverlayOpen = false;
+  /** ESC 검사 모드 — 전투를 멈추고 칩에 마우스를 올려 상세를 본다 */
   private buildInspectOpen = false;
 
   /** 일시정지 암막 — 게임 월드만 덮는다(깊이 97). HUD·칩은 위에 남아 밝게 읽힌다. */
@@ -1215,14 +1217,27 @@ export class ProtoScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-DOWN', () => {
       if (this.buildInspectOpen) this.movePauseMenu(+1);
     });
-    // Tab 빌드 검사 — 브라우저 기본 포커스 이동을 반드시 막아야 한다.
-    // 안 막으면 포커스가 영창 입력창이나 브라우저 UI로 튀어 이후 키 입력이 엉킨다.
+    /**
+     * 일시정지·빌드 검사 = **ESC** (총괄 지시: "화면 멈추는 거 tab 대신 esc키로 바꿔").
+     *
+     * 이 화면은 빌드 칩 검사이자 일시정지 메뉴(재개·설정·나가기)라 ESC가 관례에 맞다.
+     * TAB은 더 이상 열지 않는다.
+     *
+     * ⚠️ TAB 캡처는 **남긴다.** 토글을 뗐다고 캡처까지 풀면 브라우저 기본 포커스
+     * 이동이 살아나 포커스가 영창 입력창이나 브라우저 UI로 튀고, 그 뒤 키 입력이
+     * 통째로 엉킨다. 아무 동작도 안 하는 게 포커스가 튀는 것보다 낫다.
+     */
     this.input.keyboard!.addCapture('TAB');
     this.input.keyboard!.on('keydown-TAB', (event: KeyboardEvent) => {
       event.preventDefault();
+    });
+    this.input.keyboard!.on('keydown-ESC', () => {
+      // ⚠️ DOM 설정 오버레이가 열려 있으면 건드리지 않는다. 그쪽도 Escape로 닫히는데
+      // Phaser 키보드는 window에서 듣기 때문에 **둘 다 발화한다** — 설정이 닫히면서
+      // 일시정지까지 같이 풀려 한 번에 두 겹이 사라진다. 설정만 닫고 메뉴에 남아야 한다.
+      if (this.settingsOverlayOpen) return;
       this.toggleBuildInspect();
     });
-    this.input.keyboard!.on('keydown-ESC', () => this.closeBuildInspect());
 
     // 시연 런은 유산 선택을 건너뛴다 — 이미 후반 상태라 카드가 겹치고,
     // 심사위원을 시작하자마자 선택 UI로 막는 게 이 모드의 취지에 어긋난다.
@@ -2309,7 +2324,7 @@ export class ProtoScene extends Phaser.Scene {
     // 우하단은 비어 있어 전투 시야를 가리지 않는다. 우상단은 ROOM/WAVE 전용으로 남긴다.
     this.createBuildChips(width, height);
 
-    this.add.text(20, height - 28, 'WASD 이동  ·  ENTER 영창  ·  TAB 빌드', {
+    this.add.text(20, height - 28, 'WASD 이동  ·  ENTER 영창  ·  ESC 일시정지', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: '#59679d',
@@ -2967,6 +2982,9 @@ export class ProtoScene extends Phaser.Scene {
 
   /**
    * 미니맵을 지금 보여야 하나 (총괄 결정: "탭을 눌렀을 때만 띄우는 건 어떻게 생각함?").
+   * ⚠️ 그 뒤 일시정지 키가 TAB → ESC로 바뀌었다(총괄 지시). 미니맵은 검사 모드에
+   * 묶여 있으므로 **함께 ESC로 옮겨간다** — 판단 근거("상시 노출은 시야를 좁힌다")는
+   * 그대로고 여는 키만 달라졌다.
    *
    * 상시 노출을 접은 이유: 미니맵은 초당 정보가 아니라 **가끔 확인하는 정보**다.
    * 전투 중엔 우상단 자리만 먹고, Tab이 이미 "내 상태를 들여다본다"는 제스처라
@@ -6267,7 +6285,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   /**
-   * 일시정지 메뉴 — Tab 검사 모드의 전역 신호 (총괄 피드백: "멈춘 게 티가 나야 한다").
+   * 일시정지 메뉴 — ESC 검사 모드의 전역 신호 (총괄 피드백: "멈춘 게 티가 나야 한다").
    *
    * 암막은 **깊이 97**이다: 미러캐스트 경고(96) 위, HUD(99+) 아래. 그래서 게임 월드만
    * 어두워지고 HUD·빌드 칩은 밝게 남는다 — "일시정지 메뉴 + 내 빌드 점검"이 한 화면에
@@ -6341,6 +6359,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
    * 메인 일시정지 화면에만 필요하고, 설정에 들어가면 칩을 볼 일이 없다.
    */
   private async openSettingsOverlay(): Promise<void> {
+    // ESC가 설정과 일시정지를 동시에 닫지 않게 하는 가드 (keydown-ESC 참조)
+    this.settingsOverlayOpen = true;
     const next = await showSettingsOverlay({
       onChange: (settings) => {
         this.settings = settings;
@@ -6349,6 +6369,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       },
       mute: { get: () => this.audio.muted, toggle: () => this.audio.toggleMute() },
     });
+    this.settingsOverlayOpen = false;
     this.settings = next;
     this.audio.applySettings(next);
     this.applyBrightness();
@@ -6530,7 +6551,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   /**
-   * Tab 검사 모드 토글 — 전투를 멈추고 칩에 마우스를 올려 상세를 본다 (총괄 발안).
+   * ESC 검사 모드 토글 — 전투를 멈추고 칩에 마우스를 올려 상세를 본다 (총괄 발안).
    *
    * 호버 툴팁은 원래 실시간 게임에서 주채널이 될 수 없다(조회하는 동안 적이 움직인다).
    * 정지가 그 전제를 없앤다. 다만 scene.pause()는 이 씬의 렌더·입력까지 멈춰 호버 자체가
@@ -6573,7 +6594,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const chip = this.buildChips[this.hoveredChipIndex];
     const lines = chip
       ? [chip.filled ? `『${chip.name}』` : chip.name, ...chip.detail]
-      : ['빌드 검사 — 시간이 멈췄다', '칩에 커서를 올리면 상세가 나온다', 'TAB · ESC 로 돌아간다'];
+      : ['빌드 검사 — 시간이 멈췄다', '칩에 커서를 올리면 상세가 나온다', 'ESC 로 돌아간다'];
     this.buildInspectText.setText(lines.join('\n'));
 
     const boxW = BUILD_CHIP.tooltipWidth;
