@@ -222,12 +222,8 @@ import { EMPTY_RUN_MEMORY } from '../spell/runMemory';
 import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { showRewardCards } from '../ui/rewardCardOverlay';
 import { MinimapHud } from '../ui/minimapHud';
-import {
-  TERRAIN_BARRIER_CONFIG,
-  barrierEndpoints,
-  pushOutOfBarriers,
-} from '../combat-core/combat/terrainBarrier';
-import type { TerrainBarrier } from '../combat-core/combat/terrainBarrier';
+import { pushOutOfBlocks, segmentBlocked } from '../combat-core/combat/terrainBlock';
+import type { TerrainBlock } from '../combat-core/combat/terrainBlock';
 import {
   FLOOR_HAZARD_CONFIG,
   floorHazardTickDamage,
@@ -244,7 +240,7 @@ import {
 } from '../combat-core/combat/floorHazardState';
 import { PortalField } from '../render/portalField';
 import { cleanseReadoutLine } from '../render/floorHazardReadout';
-import { barriersFromPlacements, terrainForRoom } from '../run/roomTerrainConfig';
+import { blocksFromPlacements, terrainForRoom } from '../run/roomTerrainConfig';
 import { RoomFixture } from '../render/roomFixture';
 import { ROOM_FIXTURE_GUIDE } from '../run/roomFixtureConfig';
 import { mockMinimapModel } from '../run/mapGraphMock';
@@ -916,7 +912,8 @@ export class ProtoScene extends Phaser.Scene {
    * 정적 지형 장벽 (#214 지형 Tier 2). 배치 데이터는 R1 소유이고 여기는 기전만 —
    * 방 진입 시 채우고 방 전환 시 비운다. 비어 있으면 전 경로가 무비용으로 통과한다.
    */
-  private terrainBarriers: TerrainBarrier[] = [];
+  /** 방 구조물 (정사각 블록) — 이동·투사체·**플레이어 주문**을 모두 막는다 */
+  private terrainBarriers: TerrainBlock[] = [];
   private terrainBarrierView: Phaser.GameObjects.Graphics | null = null;
   /**
    * 바닥형 지형 (#214 지형 Tier 1 R2) — 용암·독지대. 배치는 R1 소유, 여기는 렌더·판정만.
@@ -1129,9 +1126,9 @@ export class ProtoScene extends Phaser.Scene {
         const cx = this.worldBounds.centerX;
         const cy = this.worldBounds.centerY;
         this.setTerrainBarriers([
-          { x: cx, y: cy, halfLength: 150, angleDeg: 0 },
-          { x: cx - 420, y: cy - 260, halfLength: 110, angleDeg: 90 },
-          { x: cx + 420, y: cy + 260, halfLength: 110, angleDeg: 90 },
+          { x: cx, y: cy, half: 68 },
+          { x: cx - 420, y: cy - 260, half: 56 },
+          { x: cx + 420, y: cy + 260, half: 56 },
         ]);
         // 바닥지형 프리뷰 — 용암·독지대 (배치는 R1 프리셋, 여기선 눈으로 확인용)
         this.setFloorHazards([
@@ -2360,7 +2357,7 @@ export class ProtoScene extends Phaser.Scene {
       // 지형 장벽 — 이동 후 파고든 만큼 밀어낸다. 이동을 막는 게 아니라 밀어내는
       // 방식이라 모서리에 끼지 않고, 벽을 따라 미끄러진다.
       if (this.terrainBarriers.length > 0) {
-        const pushed = pushOutOfBarriers(this.player.x, this.player.y, 16, this.terrainBarriers);
+        const pushed = pushOutOfBlocks(this.player.x, this.player.y, 16, this.terrainBarriers);
         this.player.setPosition(pushed.x, pushed.y);
       }
 
@@ -2824,21 +2821,52 @@ export class ProtoScene extends Phaser.Scene {
    * 방 장벽 배치 — R1 프리셋이 준 데이터를 그대로 세운다.
    * 빈 배열이면 장벽 없는 방(기존 동작과 동일).
    */
-  private setTerrainBarriers(barriers: readonly TerrainBarrier[]): void {
+  /**
+   * 방 구조물을 세운다 — 정사각 석재 블록 (총괄 지시: "정사각형 형태의 지형지물로,
+   * 구조물답게 너무 허접하게 생기면 안 된다").
+   *
+   * 종전엔 두께 14px 선분 3겹이었다. 얇은 막대는 구조물이 아니라 울타리로 읽힌다.
+   *
+   * ⚠️ **ADD 블렌드를 쓰지 않는다.** 구조물은 발광체가 아니라 돌이고, 광과민성
+   * 예산(#220)은 장식 VFX가 아닌 것도 화면을 밝히면 안 된다고 본다. 정지 상태로
+   * 계속 떠 있는 물체라 미세한 깜빡임도 누적 피로가 된다 — 애니메이션도 없다.
+   *
+   * 다섯 겹으로 부피를 만든다: 바닥 그림자 → 본체 → 상단 경사면(빛) →
+   * 하단 경사면(그늘) → 테두리. 여기에 룬 균열을 얹어 "마력 구조물"임을 드러낸다.
+   */
+  private setTerrainBarriers(blocks: readonly TerrainBlock[]): void {
     this.clearTerrainBarriers();
-    if (barriers.length === 0) return;
-    this.terrainBarriers = barriers.map((barrier) => ({ ...barrier }));
+    if (blocks.length === 0) return;
+    this.terrainBarriers = blocks.map((block) => ({ ...block }));
 
-    // 전장 장벽(wall 폼)과 같은 3겹 문법 — 플레이어가 "저건 못 지나간다"를 이미 안다.
     const view = this.add.graphics().setDepth(4);
-    for (const barrier of this.terrainBarriers) {
-      const [a, b] = barrierEndpoints(barrier);
-      view.lineStyle(TERRAIN_BARRIER_CONFIG.thickness + 8, 0x2c3a6e, 0.34);
-      view.lineBetween(a.x, a.y, b.x, b.y);
-      view.lineStyle(TERRAIN_BARRIER_CONFIG.thickness, 0x536dff, 0.5);
-      view.lineBetween(a.x, a.y, b.x, b.y);
-      view.lineStyle(2, 0xaebdff, 0.85);
-      view.lineBetween(a.x, a.y, b.x, b.y);
+    for (const block of this.terrainBarriers) {
+      const { x, y, half } = block;
+      const size = half * 2;
+      const bevel = Math.max(6, half * 0.22);
+
+      // ① 바닥 그림자 — 아래로 살짝 밀어 부피감을 만든다
+      view.fillStyle(0x05070f, 0.5);
+      view.fillRoundedRect(x - half + 3, y - half + 8, size, size, 6);
+      // ② 본체
+      view.fillStyle(0x232c4e, 1);
+      view.fillRoundedRect(x - half, y - half, size, size, 6);
+      // ③ 상단 경사면 — 위에서 빛이 온다
+      view.fillStyle(0x3b4878, 1);
+      view.fillRect(x - half + bevel * 0.5, y - half + 3, size - bevel, bevel);
+      // ④ 하단 경사면 — 그늘
+      view.fillStyle(0x161d36, 1);
+      view.fillRect(x - half + bevel * 0.5, y + half - bevel - 3, size - bevel, bevel);
+      // ⑤ 테두리 — 안쪽 밝은 선 + 바깥 어두운 선으로 각을 세운다
+      view.lineStyle(2, 0x6d7fc4, 0.9);
+      view.strokeRoundedRect(x - half + 2, y - half + 2, size - 4, size - 4, 5);
+      view.lineStyle(2, 0x0b0f1e, 0.85);
+      view.strokeRoundedRect(x - half, y - half, size, size, 6);
+
+      // 룬 균열 — 대각 한 줄 + 짧은 가지. 마력 구조물임을 드러내되 정지 상태다
+      view.lineStyle(2, 0x8fa4ff, 0.42);
+      view.lineBetween(x - half * 0.45, y - half * 0.5, x + half * 0.2, y + half * 0.45);
+      view.lineBetween(x - half * 0.1, y - half * 0.05, x + half * 0.4, y - half * 0.35);
     }
     this.terrainBarrierView = view;
   }
@@ -2881,7 +2909,7 @@ export class ProtoScene extends Phaser.Scene {
    */
   private applyRoomTerrain(): void {
     const node = this.mapGraph.current();
-    const fromNode = barriersFromPlacements(node.terrain);
+    const fromNode = blocksFromPlacements(node.terrain);
     if (fromNode.length > 0) {
       this.setTerrainBarriers(fromNode);
       return;
@@ -3338,7 +3366,7 @@ export class ProtoScene extends Phaser.Scene {
       // 보스 돌진 중엔 통과 — 돌진은 "밀고 지나가는" 행동이다(원칙 2와 같은 결)
       if (enemy instanceof BossEnemy && enemy.charging) continue;
       // view를 직접 옮긴다 — 넉백(updateEnemyKnockback)이 쓰는 것과 같은 경로.
-      const pushed = pushOutOfBarriers(
+      const pushed = pushOutOfBlocks(
         enemy.view.x, enemy.view.y, enemy.collisionRadius, this.terrainBarriers,
       );
       enemy.view.x = pushed.x;
@@ -4323,15 +4351,12 @@ if (applied) this.playPlayerHit(
 
       // 지형 장벽도 적 투사체를 막는다 — 전장 장벽과 같은 스윕 판정을 재사용해
       // "벽 뒤에 숨는다"가 두 종류 장벽에서 똑같이 통한다.
-      let blockedByTerrain = false;
-      for (const barrier of this.terrainBarriers) {
-        if (sweepIntersectsPolyline(
-          previous,
-          { x: projectile.body.x, y: projectile.body.y },
-          5 + TERRAIN_BARRIER_CONFIG.thickness / 2,
-          barrierEndpoints(barrier),
-        )) { blockedByTerrain = true; break; }
-      }
+      const blockedByTerrain = segmentBlocked(
+        previous,
+        { x: projectile.body.x, y: projectile.body.y },
+        this.terrainBarriers,
+        5,
+      );
       if (blockedByTerrain) {
         this.destroyEnemyProjectile(projectile);
         continue;
@@ -7090,13 +7115,30 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ) <= impact.width / 2;
       if (!isHit) continue;
 
-      hitEnemies.add(enemy);
       const bypassDirectionalShield = spec.form === 'zone' || spec.form === 'rain';
       const impactSource = impact.kind === 'line'
         ? { x: impact.fromX, y: impact.fromY }
         : impact.kind === 'circle'
           ? { x: impact.x, y: impact.y }
           : castOrigin;
+
+      // ⚠️ **구조물이 주문도 막는다** (총괄 지시: "플레이어의 마법이 통과할 수 있으면
+      // 안 됨"). 종전엔 이동·적 투사체만 막고 주문은 통과해, 엄폐가 한쪽에만 작동하는
+      // 비대칭이 있었다 — 벽 뒤에서 일방적으로 잡는 무적 지점이 생기는 원인이었다.
+      //
+      // 판정 지점은 **적중이 확정된 뒤**다: 여기서 걸러야 "형상은 닿았지만 구조물이
+      // 가렸다"가 되고, 형상 자체를 줄이면 이펙트와 판정이 어긋난다.
+      //
+      // `zone`·`rain`은 예외다 — 위에서 떨어지거나 바닥에 깔리는 폼이라 옆의 구조물이
+      // 가릴 이유가 없다. 그 둘은 방어형 실드도 무시하는(bypassDirectionalShield)
+      // 같은 성격이라 예외 조건을 공유한다.
+      if (!bypassDirectionalShield && segmentBlocked(
+        impactSource,
+        { x: enemy.x, y: enemy.y },
+        this.terrainBarriers,
+      )) continue;
+
+      hitEnemies.add(enemy);
       applyDamage(
         enemy,
         impactSource.x,
