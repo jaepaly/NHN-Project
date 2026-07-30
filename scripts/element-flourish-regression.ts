@@ -3,6 +3,9 @@ import { AFFINITY_VFX_CONFIG, flourishRingCount } from '../src/render/affinityVf
 import {
   ELEMENT_FLOURISH,
   boltPolyline,
+  fireRise,
+  fireSway,
+  fireTongueCount,
   flourishRingScaleFor,
   hasElementFlourish,
   iceShardCount,
@@ -13,26 +16,33 @@ import {
   lightningJitter,
   lightningReach,
   lightningSegmentCount,
+  spiralPolyline,
+  tonguePolyline,
+  usesImpactFlash,
+  windArmCount,
+  windRadius,
+  windTurns,
 } from '../src/render/elementFlourish';
 
 const CAP = AFFINITY_VFX_CONFIG.intensityCap;
 
 // 1) 어느 원소가 고유 연출을 갖나 — 나머지는 기존 링 문법 유지
-assert.equal(hasElementFlourish('lightning'), true);
-assert.equal(hasElementFlourish('ice'), true);
-for (const other of ['fire', 'water', 'earth', 'wind', 'light', 'dark'] as const) {
+for (const el of ['lightning', 'ice', 'fire', 'wind'] as const) {
+  assert.equal(hasElementFlourish(el), true, `${el} 고유 연출`);
+}
+for (const other of ['water', 'earth', 'light', 'dark'] as const) {
   assert.equal(hasElementFlourish(other), false, `${other}는 아직 기존 문법`);
   assert.equal(flourishRingScaleFor(other), 1, `${other}는 링 개수 불변`);
 }
 
 // 2) **#220 예산**: 고유 연출이 붙은 원소는 링을 줄여 총광량을 상쇄한다.
 //    선을 추가하면서 면까지 그대로 두면 광과민성 예산이 깨진다.
-for (const el of ['lightning', 'ice'] as const) {
+for (const el of ['lightning', 'ice', 'fire', 'wind'] as const) {
   assert.ok(flourishRingScaleFor(el) < 1, `${el} 링 상쇄 배율 < 1`);
   assert.equal(flourishRingScaleFor(el), ELEMENT_FLOURISH[el].ringScale);
 }
 // 상쇄 후에도 링이 0이 되지는 않는다 (렌더러가 max(1,…)로 보장 — 여기선 배율만 확인)
-for (const el of ['lightning', 'ice'] as const) {
+for (const el of ['lightning', 'ice', 'fire', 'wind'] as const) {
   const scaled = flourishRingCount(CAP, 'bolt') * flourishRingScaleFor(el);
   assert.ok(scaled >= 1, `${el} 최대 강도에서 링이 최소 1은 남는다`);
 }
@@ -126,4 +136,94 @@ assert.ok(boltPolyline(0, Number.NaN, 3, Number.NaN, () => 0.5).every(
   (p) => Number.isFinite(p.x) && Number.isFinite(p.y),
 ), 'NaN 입력에도 유한한 좌표');
 
-console.log('element flourish regression: 대상원소·링상쇄·번개단조·찌릿·얼음단조·깨짐임계·폴리라인 6군 통과');
+// 7) 불 — 혀·높이·흔들림이 강도에 단조, 상한 도달
+const fireMetrics = [
+  ['혀', (t: number) => fireTongueCount(t, 'bolt')],
+  ['높이', (t: number) => fireRise(t, 'bolt')],
+  ['흔들림', (t: number) => fireSway(t)],
+] as const;
+for (const [label, fn] of fireMetrics) {
+  let prev = -Infinity;
+  for (let t = 0; t <= CAP + 2; t += 0.25) {
+    const v = fn(t);
+    assert.ok(v >= prev, `불 ${label} 단조 위반 at ${t}`);
+    prev = v;
+  }
+  assert.equal(fn(CAP), fn(CAP + 10), `불 ${label} 상한 고정`);
+  assert.ok(Number.isFinite(fn(Number.NaN)), `불 ${label} NaN 방어`);
+}
+assert.equal(fireTongueCount(CAP, 'bolt'), ELEMENT_FLOURISH.fire.maxTongues, '혀 상한 도달');
+assert.ok(fireTongueCount(CAP, 'bolt') > fireTongueCount(0, 'bolt'), '혀가 는다');
+
+// 불 혀 — 뿌리는 붙어 있고 끝이 날린다 (흔들림이 위로 갈수록 커진다)
+const tongue = tonguePolyline(60, 12, 0.7, 8);
+assert.equal(tongue.length, 9, '표본 8 → 점 9개');
+assert.deepEqual(tongue[0], { x: 0, y: -0 }, '뿌리는 원점');
+assert.ok(Math.abs(tongue[8].y + 60) < 1e-9, '끝은 높이만큼 위로 (y 음수)');
+assert.ok(tongue.every((p) => p.y <= 1e-9), '항상 위로만 간다 (아래로 내려가지 않는다)');
+// 흔들림 폭이 위로 갈수록 커진다 — 진폭은 t에 비례
+const amp = tongue.map((p) => Math.abs(p.x));
+assert.ok(amp[8] >= amp[1], '끝이 뿌리보다 더 흔들린다');
+assert.ok(tongue.every((p) => Math.abs(p.x) <= 12 + 1e-9), '흔들림이 상한 안');
+// 위상이 다르면 형태가 다르다 — 같으면 모든 혀가 한 몸처럼 흔들린다
+const t1 = tonguePolyline(60, 12, 0, 8);
+const t2 = tonguePolyline(60, 12, Math.PI, 8);
+assert.ok(t1.some((p, i) => Math.abs(p.x - t2[i].x) > 1e-6), '위상이 형태를 바꾼다');
+assert.ok(tonguePolyline(Number.NaN, Number.NaN, Number.NaN, 4)
+  .every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)), '불 NaN 방어');
+
+// 8) 바람 — 팔·회전·반경 단조 + **섬광 없음**
+const windMetrics = [
+  ['팔', (t: number) => windArmCount(t, 'bolt')],
+  ['회전', (t: number) => windTurns(t)],
+  ['반경', (t: number) => windRadius(t, 'bolt')],
+] as const;
+for (const [label, fn] of windMetrics) {
+  let prev = -Infinity;
+  for (let t = 0; t <= CAP + 2; t += 0.25) {
+    const v = fn(t);
+    assert.ok(v >= prev, `바람 ${label} 단조 위반 at ${t}`);
+    prev = v;
+  }
+  assert.equal(fn(CAP), fn(CAP + 10), `바람 ${label} 상한 고정`);
+  assert.ok(Number.isFinite(fn(Number.NaN)), `바람 ${label} NaN 방어`);
+}
+assert.equal(windArmCount(CAP, 'bolt'), ELEMENT_FLOURISH.wind.maxArms, '팔 상한 도달');
+assert.equal(windTurns(CAP), ELEMENT_FLOURISH.wind.maxTurns, '회전 상한 도달');
+// **바람만 타격 섬광을 쓰지 않는다** — 확 퍼지는 원이 붙으면 회전감이 죽는다
+assert.equal(usesImpactFlash('wind'), false, '바람은 섬광 없음');
+for (const el of ['lightning', 'ice', 'fire', 'water', 'earth', 'light', 'dark'] as const) {
+  assert.equal(usesImpactFlash(el), true, `${el}는 섬광 유지`);
+}
+// 나선 — 중심에서 시작해 반경까지 감긴다
+const spiral = spiralPolyline(0, 50, 1.5, 12);
+assert.equal(spiral.length, 13);
+assert.deepEqual(spiral[0], { x: 0, y: 0 }, '중심에서 시작');
+assert.ok(Math.abs(Math.hypot(spiral[12].x, spiral[12].y) - 50) < 1e-9, '끝은 반경만큼');
+// 반경이 단조 증가 — 안팎으로 오가면 나선이 아니다
+let prevR = -1;
+for (const p of spiral) {
+  const r = Math.hypot(p.x, p.y);
+  assert.ok(r >= prevR - 1e-9, '나선 반경 단조 증가');
+  prevR = r;
+}
+// 회전수가 크면 실제로 더 감긴다 (각도 총량 비교)
+const oneTurn = spiralPolyline(0, 50, 1, 40);
+const twoTurn = spiralPolyline(0, 50, 2, 40);
+const sweep = (pts: Array<{ x: number; y: number }>) => {
+  let total = 0;
+  for (let i = 1; i < pts.length; i += 1) {
+    const a0 = Math.atan2(pts[i - 1].y, pts[i - 1].x);
+    const a1 = Math.atan2(pts[i].y, pts[i].x);
+    let d = a1 - a0;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    total += Math.abs(d);
+  }
+  return total;
+};
+assert.ok(sweep(twoTurn) > sweep(oneTurn) * 1.5, '회전수가 크면 더 감긴다');
+assert.ok(spiralPolyline(Number.NaN, Number.NaN, Number.NaN, 4)
+  .every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)), '바람 NaN 방어');
+
+console.log('element flourish regression: 대상원소·링상쇄·번개·찌릿·얼음·깨짐임계·폴리라인·불난류·바람나선 9군 통과');

@@ -29,6 +29,9 @@ import {
   boltPolyline,
   flourishRingScaleFor,
   hasElementFlourish,
+  fireRise,
+  fireSway,
+  fireTongueCount,
   iceShardCount,
   iceSpikeLength,
   iceSpikeCount,
@@ -37,6 +40,12 @@ import {
   lightningJitter,
   lightningReach,
   lightningSegmentCount,
+  spiralPolyline,
+  tonguePolyline,
+  usesImpactFlash,
+  windArmCount,
+  windRadius,
+  windTurns,
 } from './elementFlourish';
 import {
   AFFINITY_VFX_CONFIG,
@@ -1319,6 +1328,108 @@ function playIceFlourish(
   });
 }
 
+/**
+ * 불 친화 연출 — 난류 상승. 혀가 좌우로 휘며 위로 오른다.
+ *
+ * 기존 상승 엠버와 다른 점: 엠버는 **직선으로 뜨는 점**이었고 이건 **휘는 선**이다.
+ * 불의 정체는 "위로 간다"가 아니라 "위로 가면서 계속 흔들린다"다. 혀마다 사인 위상을
+ * 다르게 줘서 전체가 한 몸처럼 흔들리지 않게 한다.
+ */
+function playFireFlourish(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  spec: SpellSpec,
+  intensity: number,
+): void {
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const cfg = ELEMENT_FLOURISH.fire;
+  const tongues = fireTongueCount(intensity, spec.form);
+  const rise = fireRise(intensity, spec.form);
+  const sway = fireSway(intensity);
+  const phases = Array.from({ length: tongues }, () => Math.random() * Math.PI * 2);
+  const spread = Array.from({ length: tongues }, (_, i) => (
+    (i - (tongues - 1) / 2) * 11 + (Math.random() - 0.5) * 6
+  ));
+
+  const g = scene.add.graphics().setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
+  const state = { t: 0 };
+  scene.tweens.add({
+    targets: state,
+    t: 1,
+    duration: cfg.riseMs,
+    ease: 'Sine.easeOut',
+    onUpdate: () => {
+      if (!g.active) return;
+      g.clear();
+      // 위로 갈수록 옅어진다 — 불꽃 끝이 사그라드는 것
+      for (const [width, color, alpha] of [[3, pal.glow, 0.5], [1.4, pal.core, 0.9]] as const) {
+        g.lineStyle(width, color, alpha * (1 - state.t * 0.65));
+        for (let i = 0; i < tongues; i += 1) {
+          // 위상이 시간과 함께 흘러야 "타오르는" 느낌이 난다 (정지한 물결은 리본이다)
+          const pts = tonguePolyline(
+            rise * state.t, sway, phases[i] + state.t * 3.2, cfg.samples,
+          );
+          g.beginPath();
+          g.moveTo(x + spread[i] + pts[0].x, y + pts[0].y);
+          for (let k = 1; k < pts.length; k += 1) {
+            g.lineTo(x + spread[i] + pts[k].x, y + pts[k].y);
+          }
+          g.strokePath();
+        }
+      }
+    },
+    onComplete: () => g.destroy(),
+  });
+}
+
+/**
+ * 바람 친화 연출 — 나선. 중심에서 밖으로 감기며 돈다.
+ *
+ * 다른 원소는 "터진다"가 핵심이지만 바람은 계속 도는 것이다. 그래서 `usesImpactFlash`가
+ * false라 확장 섬광이 붙지 않고, 나선 팔 전체를 회전시켜 시작·끝이 뚜렷하지 않게 둔다.
+ */
+function playWindFlourish(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  spec: SpellSpec,
+  intensity: number,
+): void {
+  const pal = ELEMENT_PALETTES[spec.element_primary];
+  const cfg = ELEMENT_FLOURISH.wind;
+  const arms = windArmCount(intensity, spec.form);
+  const turns = windTurns(intensity);
+  const radius = windRadius(intensity, spec.form);
+
+  const g = scene.add.graphics().setDepth(7);
+  const state = { t: 0 };
+  scene.tweens.add({
+    targets: state,
+    t: 1,
+    duration: cfg.spinMs,
+    ease: 'Sine.easeOut',
+    onUpdate: () => {
+      if (!g.active) return;
+      g.clear();
+      // 회전이 계속 돈다 — 나선이 자라면서 동시에 감긴다
+      const spin = state.t * Math.PI * 1.6;
+      for (const [width, color, alpha] of [[2.6, pal.glow, 0.45], [1.2, pal.accent, 0.85]] as const) {
+        g.lineStyle(width, color, alpha * (1 - state.t * 0.7));
+        for (let a = 0; a < arms; a += 1) {
+          const start = (Math.PI * 2 * a) / arms + spin;
+          const pts = spiralPolyline(start, radius * (0.35 + state.t * 0.65), turns, cfg.samples);
+          g.beginPath();
+          g.moveTo(x + pts[0].x, y + pts[0].y);
+          for (let k = 1; k < pts.length; k += 1) g.lineTo(x + pts[k].x, y + pts[k].y);
+          g.strokePath();
+        }
+      }
+    },
+    onComplete: () => g.destroy(),
+  });
+}
+
 export function playAffinityImpactFlourish(
   scene: Phaser.Scene,
   x: number,
@@ -1339,7 +1450,9 @@ export function playAffinityImpactFlourish(
   const maxRadius = flourishMaxRadius(t, spec.form);
   if (hasElementFlourish(spec.element_primary)) {
     if (spec.element_primary === 'lightning') playLightningFlourish(scene, x, y, spec, t);
-    else playIceFlourish(scene, x, y, spec, t);
+    else if (spec.element_primary === 'ice') playIceFlourish(scene, x, y, spec, t);
+    else if (spec.element_primary === 'fire') playFireFlourish(scene, x, y, spec, t);
+    else playWindFlourish(scene, x, y, spec, t);
   }
   for (let i = 0; i < rings; i += 1) {
     const ring = scene.add.circle(x, y, 10, 0x000000, 0)
@@ -1403,7 +1516,9 @@ export function playAffinityImpactFlourish(
   }
 
   // 마스터리 섬광 — 강도 5(친화 0.75)부터, 원소색 밝은 원이 확 퍼진다 (깊은 특화의 위엄)
-  if (t >= cfg.flashFromIntensity) {
+  // 바람은 섬광을 쓰지 않는다 — 타격 순간이 없는 원소라 확 퍼지는 원이 붙으면
+  // "터졌다"로 읽혀 회전감을 죽인다 (usesImpactFlash).
+  if (t >= cfg.flashFromIntensity && usesImpactFlash(spec.element_primary)) {
     const flash = scene.add.circle(x, y, 14, pal.glow, 0.5)
       .setBlendMode(Phaser.BlendModes.ADD).setDepth(7);
     scene.tweens.add({
