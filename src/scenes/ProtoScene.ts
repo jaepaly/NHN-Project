@@ -3,6 +3,7 @@ import { createSpriteLayers } from '../render/spriteLayers';
 import { playHitReact, playImpactSquash } from '../combat-core/enemies/enemyJuice';
 import type { SpellJudge } from '../spell/judge';
 import { createJudge } from '../spell/createJudge';
+import { postPlayLog } from '../spell/playLog';
 import type { SpellElement, SpellForm, SpellSpec } from '../spell/types';
 import { ELEMENTS } from '../spell/types';
 import { SpellHistory } from '../spell/spellHistory';
@@ -14,7 +15,12 @@ import {
 } from '../render/spellRenderer';
 import type { SpellImpact } from '../render/spellRenderer';
 import type {
-  EliteModifier, EncounterDefinition, EvolveRewardData, RewardOption, RunController,
+  EliteModifier,
+  EncounterDefinition,
+  EvolveRewardData,
+  RewardOption,
+  RunController,
+  RunStateSnapshot,
 } from '../run/runContract';
 import {
   ELEMENT_LABELS,
@@ -969,6 +975,8 @@ export class ProtoScene extends Phaser.Scene {
   private bossEliteSummonIndex = 0;
   private bossHazardWarnings: Phaser.GameObjects.Container[] = [];
   private deathHandled = false;
+  /** 다음 room-started가 새 런의 첫 방이면, 방 로그보다 먼저 남길 시작 사유. */
+  private pendingRunStartReason: 'continue' | 'death-restart' | null = null;
   private audio!: GameAudio;
   private backdropBase!: Phaser.GameObjects.Rectangle;
   private backdropGrid!: Phaser.GameObjects.Graphics;
@@ -1162,7 +1170,10 @@ export class ProtoScene extends Phaser.Scene {
     const demo = consumeDemoRunRequest();
     if (demo) this.seedDemoRun();
     this.prepareRunEscalation();
-    this.startRoom(this.combatRunController.state.roomIndex);
+    const initialRunState = this.combatRunController.state;
+    this.logRunStarted('new', initialRunState);
+    this.logRoomStarted(initialRunState);
+    this.startRoom(initialRunState.roomIndex);
     this.updateStatusText();
 
     this.setupIncantBar();
@@ -1396,6 +1407,11 @@ export class ProtoScene extends Phaser.Scene {
       devInfo('[Run] room-transition', { state, durationMs });
     });
     this.combatRunController.on('room-started', (state) => {
+      if (this.pendingRunStartReason) {
+        this.logRunStarted(this.pendingRunStartReason, state);
+        this.pendingRunStartReason = null;
+      }
+      this.logRoomStarted(state);
       this.startRoom(state.roomIndex);
       devInfo('[Run] room-started', state);
       this.reportAutoShare(`방 ${state.roomIndex} 진입 누적`);
@@ -1407,6 +1423,12 @@ export class ProtoScene extends Phaser.Scene {
       // 플레이어 사망이 먼저 확정된 동시 확정 레이스(사망 후 장판 틱이 보스 처치 등)
       // — 패배가 선점: 기억 저장·승리 연출 모두 생략해 한 런에 lose/win 이중 기록을 막는다
       if (this.deathHandled) return;
+      if (import.meta.env.DEV) {
+        void postPlayLog({
+          type: 'run_completed',
+          loopIndex: state.loopIndex,
+        });
+      }
       this.announceSystemMessage('런 완료', '#72f1b8');
       this.reportAutoShare('런 완주');
       if (import.meta.env.DEV) {
@@ -1592,6 +1614,7 @@ export class ProtoScene extends Phaser.Scene {
     // 새 루프 = 새 맵. 그래프는 cleared/current가 인스턴스에 쌓이므로 재사용하면
     // 지난 루프의 방들이 계속 '클리어됨'으로 남는다 (#241 리뷰 지적).
     this.resetMapGraph();
+    this.pendingRunStartReason = 'continue';
     this.combatRunController.continueRun();
     const loop = this.combatRunController.state.loopIndex;
     this.announceSystemMessage(
@@ -1608,6 +1631,7 @@ export class ProtoScene extends Phaser.Scene {
    */
   private resetForNewRun(): void {
     this.deathHandled = false;
+    this.pendingRunStartReason = null;
     this.fusionGauge.reset();
     this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
@@ -1653,9 +1677,32 @@ export class ProtoScene extends Phaser.Scene {
     this.runMovementDistance = 0;
     this.resetMapGraph();
     this.prepareRunEscalation();
+    this.pendingRunStartReason = 'death-restart';
     this.combatRunController.reset();
     // 새 런에도 유산 선택 — 직전 런에서 기록된 주문이 곧바로 후보가 된다
     void this.offerLegacyEngrave();
+  }
+
+  private logRunStarted(
+    reason: 'new' | 'continue' | 'death-restart',
+    state: Readonly<RunStateSnapshot>,
+  ): void {
+    if (!import.meta.env.DEV) return;
+    void postPlayLog({
+      type: 'run_started',
+      reason,
+      loopIndex: state.loopIndex,
+    });
+  }
+
+  private logRoomStarted(state: Readonly<RunStateSnapshot>): void {
+    if (!import.meta.env.DEV) return;
+    void postPlayLog({
+      type: 'room_started',
+      roomIndex: state.roomIndex,
+      encounterId: state.encounterId,
+      loopIndex: state.loopIndex,
+    });
   }
 
   /** 런 시작 시 한 번만 격상과 저주방 계획을 확정한다. */
@@ -4656,6 +4703,26 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceManaShortage(plan.manaCost);
       return;
     }
+    if (import.meta.env.DEV) {
+      void postPlayLog({
+        type: 'sequence_exec',
+        input: text,
+        source,
+        fixture: source === 'local',
+        name: plan.name,
+        sequenceCount: plan.sequences.length,
+        behaviorCount: plan.sequences.reduce(
+          (sum, sequence) => sum + sequence.behaviors.length,
+          0,
+        ),
+        durationMs: plan.sequences.reduce(
+          (sum, sequence) => sum + sequence.durationMs,
+          0,
+        ),
+        power: plan.power,
+        manaCost: plan.manaCost,
+      });
+    }
     // 융합 게이지 — 시퀀스도 수동 영창이므로 충전한다 (방출 격상은 v1에선 단일 주문만)
     if (this.fusionGauge.charge(plan.manaCost)) {
       this.announceSystemMessage('융합의 힘이 응축됐다 — 두 원소를 담아 영창하라 (마나 무소모)', '#e2b7ff', 3400);
@@ -4832,26 +4899,22 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       if (import.meta.env.DEV) {
         const base = historyEntry.basePower;
         const bossResist = this.activeBossResistances.get(spec.element_primary) ?? 1;
-        void fetch('/__log', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            t: Math.round(this.time.now / 100) / 10,
-            type: 'dmg',
-            input: text,
-            el: spec.element_primary,
-            base,
-            repeat: base > 0 ? Number((historyEntry.power / base).toFixed(2)) : 1,
-            affinity: Number(affinityBonus.toFixed(2)),
-            escalation: Number(escalationWeaken.toFixed(2)),
-            diversity: Number(diversity.toFixed(2)),
-            empower: Number(this.playerState.damageOutMultiplier.toFixed(2)),
-            degraded: Number(castPlan.ratio.toFixed(2)),
-            effective: effectiveSpec.power,
-            bossResist: Number(bossResist.toFixed(2)),
-            finalVsBoss: Math.round(effectiveSpec.power * bossResist),
-          }),
-        }).catch(() => {});
+        void postPlayLog({
+          t: Math.round(this.time.now / 100) / 10,
+          type: 'dmg',
+          input: text,
+          el: spec.element_primary,
+          base,
+          repeat: base > 0 ? Number((historyEntry.power / base).toFixed(2)) : 1,
+          affinity: Number(affinityBonus.toFixed(2)),
+          escalation: Number(escalationWeaken.toFixed(2)),
+          diversity: Number(diversity.toFixed(2)),
+          empower: Number(this.playerState.damageOutMultiplier.toFixed(2)),
+          degraded: Number(castPlan.ratio.toFixed(2)),
+          effective: effectiveSpec.power,
+          bossResist: Number(bossResist.toFixed(2)),
+          finalVsBoss: Math.round(effectiveSpec.power * bossResist),
+        });
       }
       if (castPlan.ratio < 1) {
         this.announceSystemMessage(
