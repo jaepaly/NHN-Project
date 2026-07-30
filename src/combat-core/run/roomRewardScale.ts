@@ -105,3 +105,57 @@ export const RISK_ORDER: readonly MapNodeKind[] = ['combat', 'trap', 'elite'];
  * `totalReturn` 기준으로 보물 < 일반전투를 고정한다.
  */
 export const SAFE_BELOW_COMBAT: readonly MapNodeKind[] = ['treasure'];
+
+/**
+ * 방 종류별 **위험도** — 맵 생성기(#240)의 경로 비교축.
+ *
+ * R1 설계 §2의 값을 기준으로 하되 **제단을 1 → 2로 올렸다.** 제단은 최대 체력을
+ * 영구히 10/25/50 깎는다. 그 값을 1로 두면 `제단(위험1·보상2.0)`이
+ * `정예(위험2·보상1.5)`를 **지배**해서 — 위험이 낮은데 보상이 높다 — 생성기의
+ * 지배 금지 규칙(§5.3)에 걸려 "정예 vs 제단" 분기가 아예 생성 불가가 된다.
+ *
+ * 보스는 경로 비교에서 제외한다(R1 설계 §2). 시작 방도 분기 이전이라 제외 대상이나
+ * 값이 없으면 합산이 깨지므로 일반 전투와 같게 둔다.
+ */
+export const ROOM_RISK_SCORES = {
+  start: 1,
+  combat: 1,
+  elite: 2,
+  trap: 2,
+  treasure: 0,
+  altar: 2,
+  'stage-boss': 0,
+  'memory-boss': 0,
+} as const satisfies Record<MapNodeKind, number>;
+
+export function roomRisk(kind: MapNodeKind): number {
+  return ROOM_RISK_SCORES[kind];
+}
+
+/**
+ * 맵 생성기가 쓰는 **보상도** — `totalReturn`을 그대로 쓴다.
+ *
+ * ⚠️ #240 프로토타입은 `roomReward`가 보물·제단만 1을 주고 **전투·정예·함정에
+ * 0을 줬다.** 즉 "싸우는 방은 보상이 없다"는 모델이다. 그러면 생성기 자신의 지배
+ * 금지 규칙에 의해 `전투(위험1·보상0)` vs `보물(위험0·보상1)` — 가장 자연스러운
+ * 로그라이크 분기가 **불법**이 된다. 프로토타입에 재조정 후처리가 6개나 붙어 있는
+ * 이유가 이것이다: 과제약을 후처리로 떠받치고 있었다.
+ *
+ * 실제 값은 보물 0.767 < 전투 1.000 < 함정 1.400 < 정예 1.500 < 제단 2.000이다.
+ * 부정확한 게 아니라 전투방과 보물방 사이가 **역전**돼 있었다.
+ */
+export function roomRewardValue(kind: MapNodeKind): number {
+  return totalReturn(kind);
+}
+
+/**
+ * 지배 관계 — A가 B보다 위험한데 보상이 낮으면 A를 고를 이유가 없다 (R1 설계 §5.3).
+ * 위험이 높고 보상이 같은 경우, 위험이 같고 보상이 다른 경우는 **허용**한다:
+ * 모든 선택지를 하나의 정답으로 수렴시키지 않기 위한 의도적 규칙이다.
+ */
+export function dominates(
+  a: { risk: number; reward: number },
+  b: { risk: number; reward: number },
+): boolean {
+  return a.risk > b.risk && a.reward < b.reward;
+}

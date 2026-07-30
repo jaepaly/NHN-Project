@@ -241,6 +241,8 @@ import { ROOM_FIXTURE_GUIDE } from '../run/roomFixtureConfig';
 import { mockMinimapModel } from '../run/mapGraphMock';
 import { RunMapGraph, maximumMapPathRooms, toMinimapModel } from '../run/mapGraph';
 import { MAP_GRAPH_PRESET_01 } from '../run/mapGraphPreset';
+import { generateRunMap } from '../run/mapGenerator';
+import type { MapGraphDefinition } from '../run/mapGraph';
 import { encounterFromMapNode } from '../run/mapEncounter';
 import { layoutRoomArrival, layoutRoomExits } from '../run/roomPortalLayout';
 import type { RoomArrivalPlacement, RoomBounds } from '../run/roomPortalContract';
@@ -592,6 +594,18 @@ export class ProtoScene extends Phaser.Scene {
   private readonly combatRunController: CombatRunController = new CombatRunController({
     playerState: this.playerState,
     initialRoomIndex: DEBUG_START_ROOM,
+    /**
+     * ⚠️ 컨트롤러의 `maxRooms`는 `readonly`라 런 중에 바꿀 수 없다. 그래서 생성 맵도
+     * **프리셋과 같은 8방이어야** `ROOM x/8` 표시와 보스 판정(`roomIndex >= maxRooms`)이
+     * 맞는다. #272에서 미니맵·포탈 라벨이 상수 2칸 어긋난 것과 같은 종류의 결합이다.
+     *
+     * 생성기는 파티션 예산이 `1 + 2 + 1 + 3 + 1`로 고정이고 한 파티션의 모든 분기가
+     * 같은 길이를 갖기 때문에 **모든 경로가 정확히 8방**이다. 실측 500시드에서 나타난
+     * 경로 길이는 8 하나뿐이었고 한 맵 안에서 길이가 갈린 경우도 0이었다.
+     *
+     * 우연이 아니라 구조적 성질이지만, 예산을 건드리면 조용히 깨진다 —
+     * `map-generator-regression`이 이 일치를 못박는다.
+     */
     maxRooms: maximumMapPathRooms(MAP_GRAPH_PRESET_01),
     encounterProvider: (roomIndex) => this.mapEncounterForRoom(roomIndex),
     rewardDraw: (roomIndex) => {
@@ -2715,15 +2729,45 @@ export class ProtoScene extends Phaser.Scene {
 
   // ── 맵 그래프 · 포탈 · 미니맵 (#214 본배선) ──────────────────────────
 
-  /** 런 시작·이어가기마다 그래프와 방별 조우를 같이 새로 만든다. */
+  /**
+   * 런의 맵 정의를 고른다 (#240 배선).
+   *
+   * 기본은 **생성기**다 — 런마다 분기 구조와 방 구성이 달라진다. 두 경우에 프리셋으로
+   * 돌아간다:
+   *
+   *  1. `useGenerator === false` — **시연 로드아웃**. 심사자가 하는 판은 고정 판이어야
+   *     한다. 매번 다른 맵을 뽑으면 시연 중에만 드러나는 조합을 만날 수 있고, 그건
+   *     생성기를 붙여서 얻는 것보다 잃는 게 크다. 시드 재현이 되더라도 심사 자리에서
+   *     "다시 뽑아보자"를 할 수는 없다.
+   *  2. 생성 실패 — 상한(160회)까지 규칙을 만족하는 후보를 못 찾은 경우. 실측
+   *     600시드에서 0%였지만 **폴백이 없으면 런이 시작되지 않는다**. 안전망은 남긴다.
+   */
+  private runMapDefinition(useGenerator: boolean): MapGraphDefinition {
+    if (!useGenerator) return MAP_GRAPH_PRESET_01;
+    const generated = generateRunMap((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
+    if (!generated) {
+      // 조용히 넘어가면 "왜 항상 같은 맵이지"를 아무도 모른다
+      console.warn('[map] 생성 상한 초과 — 고정 프리셋으로 폴백');
+      return MAP_GRAPH_PRESET_01;
+    }
+    return generated.definition;
+  }
+
+  /**
+   * 런 시작·이어가기마다 그래프와 방별 조우를 같이 새로 만든다.
+   *
+   * @param initialNodeId 시작 노드. 시연 로드아웃이 중간 방부터 시작할 때 쓴다.
+   *   **생성 맵에는 프리셋 노드 id가 없으므로**, 이 값이 주어지면 프리셋을 쓴다.
+   */
   private resetMapGraph(
-    initialNodeId = MAP_GRAPH_PRESET_01.startNodeId,
+    initialNodeId: string | null = null,
     roomIndex = DEBUG_START_ROOM,
   ): void {
     // **먼저 걷어낸다** — Phaser는 씬 인스턴스를 재사용하므로(타이틀→새 런) 필드는
     // 남아 있는데 가리키는 GameObject는 이미 파괴돼 있다. 그대로 update하면 죽는다.
     this.destroyRunMapUi();
-    this.mapGraph = new RunMapGraph(MAP_GRAPH_PRESET_01, initialNodeId);
+    const definition = this.runMapDefinition(initialNodeId === null);
+    this.mapGraph = new RunMapGraph(definition, initialNodeId ?? definition.startNodeId);
     this.mapEncounterByRoom.clear();
     this.mapEncounterByRoom.set(roomIndex, encounterFromMapNode(this.mapGraph.current()));
     this.pendingArrival = null;
