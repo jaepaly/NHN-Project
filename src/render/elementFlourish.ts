@@ -25,7 +25,7 @@ import { AFFINITY_VFX_CONFIG, flourishFormScale } from './affinityVfx';
  */
 
 /** 고유 연출을 가진 원소 — 나머지는 기존 링 문법을 그대로 쓴다 (그것도 각자 어울린다) */
-export type FlourishElement = 'lightning' | 'ice' | 'fire' | 'wind';
+export type FlourishElement = SpellElement;
 
 /**
  * ⚠️ 모든 `max*`는 **강도 상한(intensityCap 8 = 친화 1.2)에서 실제로 도달**해야 한다.
@@ -128,11 +128,97 @@ export const ELEMENT_FLOURISH = {
     samples: 14,
     spinMs: 520,
   },
+  /**
+   * 물 — 파면이 밀려나갔다 **되돌아온다**.
+   *
+   * 기존 확장 링과 결정적으로 다른 점: 링은 퍼지고 사라졌지만 물은 **질량이 있어 돌아온다**.
+   * 밀려나간 뒤 되돌아오는 왕복이 물의 정체다. 그리고 온전한 원이 아니라 호(arc)로 그려
+   * "파면"으로 읽히게 한다 — 완전한 원은 파동이 아니라 충격파다.
+   */
+  water: {
+    ringScale: 0.5,
+    frontsBase: 2,
+    frontsPerStack: 0.5,
+    maxFronts: 6,
+    radiusBase: 30,
+    radiusPerStack: 8,
+    /** 되돌아오는 비율 — 최대 반경의 이만큼까지 물러난다 */
+    recedeRatio: 0.45,
+    /** 호가 덮는 각도(라디안) — 2π면 온전한 원이라 파면이 안 된다 */
+    arcSpan: Math.PI * 1.15,
+    surgeMs: 460,
+  },
+  /**
+   * 빛 — 직선 광선 방사(sunburst). **꺾이지 않고 떨리지 않는다.**
+   *
+   * 번개와의 구분이 전부 여기 있다: 번개는 꺾이고 점멸하지만 빛은 **곧고 한 번에 켜져
+   * 서서히 사그라든다.** 같은 "방사되는 선"인데 성격이 정반대다.
+   */
+  light: {
+    ringScale: 0.5,
+    raysBase: 4,
+    raysPerStack: 1,
+    maxRays: 12,
+    /** 광선 길이 — 다른 원소보다 길다 (빛은 멀리 간다) */
+    lengthBase: 70,
+    lengthPerStack: 15,
+    /** 광선 안쪽 시작 반경 — 중심을 비워 "뻗어나간다"로 읽히게 */
+    innerRatio: 0.18,
+    shineMs: 400,
+  },
+  /**
+   * 대지 — 덩어리가 솟았다 **떨어진다**.
+   *
+   * 얼음과의 구분: 얼음은 결정이 바깥으로 자라 깨지지만, 대지는 덩어리가 **포물선으로
+   * 솟았다 중력에 떨어진다.** 각진 형태는 같아도 궤적이 다르다 — 대지에는 무게가 있다.
+   */
+  earth: {
+    ringScale: 0.45,
+    chunksBase: 3,
+    chunksPerStack: 0.7,
+    maxChunks: 9,
+    /** 수평 이동 거리 */
+    spreadBase: 26,
+    spreadPerStack: 6,
+    /** 솟는 높이 */
+    heightBase: 30,
+    heightPerStack: 6,
+    /** 덩어리 크기(px) */
+    sizeBase: 4,
+    sizePerStack: 0.5,
+    eruptMs: 480,
+  },
+  /**
+   * 암영 — **안으로** 수축한다.
+   *
+   * 여덟 원소 중 유일하게 방향이 반대다. 다른 모든 원소가 밖으로 퍼지는데 이것만
+   * 빨려든다 — 그래서 한눈에 다르다는 게 즉시 읽힌다. 값싸고 강한 정체성이다.
+   */
+  dark: {
+    ringScale: 0.35,
+    tendrilsBase: 3,
+    tendrilsPerStack: 0.7,
+    maxTendrils: 9,
+    /** 빨려들기 시작하는 바깥 반경 */
+    outerBase: 46,
+    outerPerStack: 9,
+    /** 휘어짐 — 직선으로 빨려들면 그냥 축소다 */
+    curl: 0.55,
+    samples: 8,
+    drainMs: 480,
+  },
 } as const;
 
+/**
+ * 이제 **8원소 전부** 고유 연출을 갖는다 (총괄 지적 2026-07-30 2차).
+ *
+ * 4종만 나눴을 때의 문제: 손댄 원소는 링을 줄이고 엠버를 뺐는데 안 손댄 4종은 Arc 20개를
+ * 그대로 써서, **안 손댄 쪽이 화면에서 가장 요란해졌고** 그 넷끼리는 여전히 구분이 안 됐다.
+ * "원소는 심사에서 안 나온다"는 예측도 근거가 못 된다 — 원소는 플레이어가 친 문장에서
+ * 심판이 정하므로 통제할 수 없다.
+ */
 export function hasElementFlourish(element: SpellElement): element is FlourishElement {
-  return element === 'lightning' || element === 'ice'
-    || element === 'fire' || element === 'wind';
+  return element in ELEMENT_FLOURISH;
 }
 
 /**
@@ -288,6 +374,116 @@ export function spiralPolyline(
     const angle = safeStart + t * Math.PI * 2 * safeTurns;
     const r = safeRadius * t;
     points.push({ x: Math.cos(angle) * r, y: Math.sin(angle) * r });
+  }
+  return points;
+}
+
+// ── 물 ─────────────────────────────────────────────────────────────────
+
+export function waterFrontCount(intensity: number, form: SpellForm): number {
+  const c = ELEMENT_FLOURISH.water;
+  return scaled(c.frontsBase, c.frontsPerStack, clampIntensity(intensity), c.maxFronts, form);
+}
+
+export function waterRadius(intensity: number, form: SpellForm): number {
+  const c = ELEMENT_FLOURISH.water;
+  return (c.radiusBase + c.radiusPerStack * clampIntensity(intensity)) * flourishFormScale(form);
+}
+
+/**
+ * 파면 반경의 시간 곡선 (순수) — 밀려나갔다 **되돌아온다**.
+ *
+ * t=0 → 0, 중간에 최대, t=1 → 최대 × recedeRatio. 마지막이 0이 아닌 게 핵심이다:
+ * 물은 사라지는 게 아니라 물러난다. 0으로 끝나면 그냥 사라지는 링과 같아진다.
+ */
+export function waterFrontRadius(t: number, maxRadius: number): number {
+  const p = Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : 0;
+  const r = Number.isFinite(maxRadius) ? Math.max(0, maxRadius) : 0;
+  const { recedeRatio } = ELEMENT_FLOURISH.water;
+  // 앞의 60%에서 밀려나가고 뒤 40%에서 물러난다
+  if (p <= 0.6) return r * (p / 0.6);
+  const back = (p - 0.6) / 0.4;
+  return r * (1 - (1 - recedeRatio) * back);
+}
+
+// ── 빛 ─────────────────────────────────────────────────────────────────
+
+export function lightRayCount(intensity: number, form: SpellForm): number {
+  const c = ELEMENT_FLOURISH.light;
+  return scaled(c.raysBase, c.raysPerStack, clampIntensity(intensity), c.maxRays, form);
+}
+
+export function lightRayLength(intensity: number, form: SpellForm): number {
+  const c = ELEMENT_FLOURISH.light;
+  return (c.lengthBase + c.lengthPerStack * clampIntensity(intensity)) * flourishFormScale(form);
+}
+
+// ── 대지 ───────────────────────────────────────────────────────────────
+
+export function earthChunkCount(intensity: number, form: SpellForm): number {
+  const c = ELEMENT_FLOURISH.earth;
+  return scaled(c.chunksBase, c.chunksPerStack, clampIntensity(intensity), c.maxChunks, form);
+}
+
+export function earthChunkSize(intensity: number): number {
+  const c = ELEMENT_FLOURISH.earth;
+  return c.sizeBase + c.sizePerStack * clampIntensity(intensity);
+}
+
+/**
+ * 덩어리 하나의 포물선 위치 (순수) — 솟았다 **떨어진다**.
+ *
+ * y가 `-sin(πt)`라 t=0과 t=1에서 모두 지면 높이다. 이 왕복이 대지의 무게를 만든다 —
+ * 단조 상승이면 불꽃처럼 떠오르는 것이 된다.
+ */
+export function earthChunkAt(
+  angle: number,
+  spread: number,
+  height: number,
+  t: number,
+): { x: number; y: number } {
+  const p = Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : 0;
+  const s = Number.isFinite(spread) ? Math.max(0, spread) : 0;
+  const h = Number.isFinite(height) ? Math.max(0, height) : 0;
+  const a = Number.isFinite(angle) ? angle : 0;
+  return { x: Math.cos(a) * s * p, y: Math.sin(a) * s * p * 0.35 - h * Math.sin(Math.PI * p) };
+}
+
+// ── 암영 ───────────────────────────────────────────────────────────────
+
+export function darkTendrilCount(intensity: number, form: SpellForm): number {
+  const c = ELEMENT_FLOURISH.dark;
+  return scaled(c.tendrilsBase, c.tendrilsPerStack, clampIntensity(intensity), c.maxTendrils, form);
+}
+
+export function darkOuterRadius(intensity: number, form: SpellForm): number {
+  const c = ELEMENT_FLOURISH.dark;
+  return (c.outerBase + c.outerPerStack * clampIntensity(intensity)) * flourishFormScale(form);
+}
+
+/**
+ * 촉수 하나의 점열 (순수) — 바깥에서 중심으로 **빨려든다**.
+ *
+ * 다른 모든 원소가 원점에서 시작하는데 이것만 **바깥에서 시작해 원점으로 끝난다.**
+ * 방향이 반대라는 것 자체가 암영의 정체성이다. 휘어짐(curl)이 없으면 그냥 축소로 보인다.
+ */
+export function tendrilPolyline(
+  angle: number,
+  outer: number,
+  curl: number,
+  samples: number,
+): Array<{ x: number; y: number }> {
+  const count = Math.max(2, Math.floor(samples));
+  const r0 = Number.isFinite(outer) ? Math.max(0, outer) : 0;
+  const c = Number.isFinite(curl) ? curl : 0;
+  const a0 = Number.isFinite(angle) ? angle : 0;
+  const points: Array<{ x: number; y: number }> = [];
+  for (let i = 0; i <= count; i += 1) {
+    const t = i / count;
+    // 반경은 바깥(t=0)에서 중심(t=1)으로 줄고, 각도는 감기며 들어간다
+    const r = r0 * (1 - t);
+    const a = a0 + c * t * Math.PI;
+    points.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
   }
   return points;
 }

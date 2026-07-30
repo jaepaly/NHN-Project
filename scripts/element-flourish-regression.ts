@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
 import { AFFINITY_VFX_CONFIG, flourishRingCount } from '../src/render/affinityVfx';
+import { ELEMENTS } from '../src/spell/types';
 import {
   ELEMENT_FLOURISH,
   boltPolyline,
+  darkOuterRadius,
+  darkTendrilCount,
+  earthChunkAt,
+  earthChunkCount,
+  earthChunkSize,
   fireRise,
   fireSway,
   fireTongueCount,
@@ -16,8 +22,14 @@ import {
   lightningJitter,
   lightningReach,
   lightningSegmentCount,
+  lightRayCount,
+  lightRayLength,
   spiralPolyline,
+  tendrilPolyline,
   tonguePolyline,
+  waterFrontCount,
+  waterFrontRadius,
+  waterRadius,
   usesImpactFlash,
   windArmCount,
   windRadius,
@@ -26,23 +38,22 @@ import {
 
 const CAP = AFFINITY_VFX_CONFIG.intensityCap;
 
-// 1) 어느 원소가 고유 연출을 갖나 — 나머지는 기존 링 문법 유지
-for (const el of ['lightning', 'ice', 'fire', 'wind'] as const) {
-  assert.equal(hasElementFlourish(el), true, `${el} 고유 연출`);
-}
-for (const other of ['water', 'earth', 'light', 'dark'] as const) {
-  assert.equal(hasElementFlourish(other), false, `${other}는 아직 기존 문법`);
-  assert.equal(flourishRingScaleFor(other), 1, `${other}는 링 개수 불변`);
+// 1) **8원소 전부** 고유 연출을 갖는다 (총괄 지적 2차).
+//    일부만 나누면 안 나눈 쪽이 링 20개를 그대로 써서 화면에서 가장 요란해지고,
+//    그들끼리는 여전히 구분이 안 된다. 하나라도 빠지면 여기서 깨진다.
+assert.equal(ELEMENTS.length, 8, '원소는 8종');
+for (const el of ELEMENTS) {
+  assert.equal(hasElementFlourish(el), true, `${el} 고유 연출이 없다`);
+  assert.ok(flourishRingScaleFor(el) < 1, `${el} 링 상쇄 배율 < 1`);
 }
 
 // 2) **#220 예산**: 고유 연출이 붙은 원소는 링을 줄여 총광량을 상쇄한다.
 //    선을 추가하면서 면까지 그대로 두면 광과민성 예산이 깨진다.
-for (const el of ['lightning', 'ice', 'fire', 'wind'] as const) {
-  assert.ok(flourishRingScaleFor(el) < 1, `${el} 링 상쇄 배율 < 1`);
+for (const el of ELEMENTS) {
   assert.equal(flourishRingScaleFor(el), ELEMENT_FLOURISH[el].ringScale);
 }
 // 상쇄 후에도 링이 0이 되지는 않는다 (렌더러가 max(1,…)로 보장 — 여기선 배율만 확인)
-for (const el of ['lightning', 'ice', 'fire', 'wind'] as const) {
+for (const el of ELEMENTS) {
   const scaled = flourishRingCount(CAP, 'bolt') * flourishRingScaleFor(el);
   assert.ok(scaled >= 1, `${el} 최대 강도에서 링이 최소 1은 남는다`);
 }
@@ -158,7 +169,7 @@ assert.ok(fireTongueCount(CAP, 'bolt') > fireTongueCount(0, 'bolt'), '혀가 는
 // 불 혀 — 뿌리는 붙어 있고 끝이 날린다 (흔들림이 위로 갈수록 커진다)
 const tongue = tonguePolyline(60, 12, 0.7, 8);
 assert.equal(tongue.length, 9, '표본 8 → 점 9개');
-assert.deepEqual(tongue[0], { x: 0, y: -0 }, '뿌리는 원점');
+assert.ok(Math.abs(tongue[0].x) < 1e-9 && Math.abs(tongue[0].y) < 1e-9, '뿌리는 원점');
 assert.ok(Math.abs(tongue[8].y + 60) < 1e-9, '끝은 높이만큼 위로 (y 음수)');
 assert.ok(tongue.every((p) => p.y <= 1e-9), '항상 위로만 간다 (아래로 내려가지 않는다)');
 // 흔들림 폭이 위로 갈수록 커진다 — 진폭은 t에 비례
@@ -192,7 +203,7 @@ assert.equal(windArmCount(CAP, 'bolt'), ELEMENT_FLOURISH.wind.maxArms, '팔 상�
 assert.equal(windTurns(CAP), ELEMENT_FLOURISH.wind.maxTurns, '회전 상한 도달');
 // **바람만 타격 섬광을 쓰지 않는다** — 확 퍼지는 원이 붙으면 회전감이 죽는다
 assert.equal(usesImpactFlash('wind'), false, '바람은 섬광 없음');
-for (const el of ['lightning', 'ice', 'fire', 'water', 'earth', 'light', 'dark'] as const) {
+for (const el of ELEMENTS.filter((e) => e !== 'wind')) {
   assert.equal(usesImpactFlash(el), true, `${el}는 섬광 유지`);
 }
 // 나선 — 중심에서 시작해 반경까지 감긴다
@@ -226,4 +237,144 @@ assert.ok(sweep(twoTurn) > sweep(oneTurn) * 1.5, '회전수가 크면 더 감긴
 assert.ok(spiralPolyline(Number.NaN, Number.NaN, Number.NaN, 4)
   .every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)), '바람 NaN 방어');
 
-console.log('element flourish regression: 대상원소·링상쇄·번개·찌릿·얼음·깨짐임계·폴리라인·불난류·바람나선 9군 통과');
+// 9) 물 — 파면이 밀려나갔다 **되돌아온다**. 이 왕복이 링과의 결정적 차이다.
+for (const [label, fn] of [
+  ['파면', (t: number) => waterFrontCount(t, 'bolt')],
+  ['반경', (t: number) => waterRadius(t, 'bolt')],
+] as const) {
+  let prev = -Infinity;
+  for (let t = 0; t <= CAP + 2; t += 0.25) {
+    const v = fn(t);
+    assert.ok(v >= prev, `물 ${label} 단조 위반 at ${t}`);
+    prev = v;
+  }
+  assert.equal(fn(CAP), fn(CAP + 10), `물 ${label} 상한 고정`);
+  assert.ok(Number.isFinite(fn(Number.NaN)), `물 ${label} NaN 방어`);
+}
+assert.equal(waterFrontCount(CAP, 'bolt'), ELEMENT_FLOURISH.water.maxFronts, '파면 상한 도달');
+// 반경 곡선 — 0에서 시작, 중간에 최대, 끝은 **0이 아니라 물러난 위치**
+assert.equal(waterFrontRadius(0, 100), 0, '시작은 0');
+assert.ok(Math.abs(waterFrontRadius(0.6, 100) - 100) < 1e-9, '60%에서 최대');
+const receded = waterFrontRadius(1, 100);
+assert.ok(receded > 0, '끝이 0이면 그냥 사라지는 링과 같다 — 물은 물러난다');
+assert.ok(receded < 100, '물러났으니 최대보다 작다');
+assert.ok(Math.abs(receded - 100 * ELEMENT_FLOURISH.water.recedeRatio) < 1e-9, 'recedeRatio 일치');
+// 앞구간은 증가, 뒷구간은 감소 (왕복)
+let up = waterFrontRadius(0, 100);
+for (let t = 0; t <= 0.6; t += 0.05) {
+  const v = waterFrontRadius(t, 100);
+  assert.ok(v >= up - 1e-9, '밀려나가는 구간은 증가');
+  up = v;
+}
+let down = waterFrontRadius(0.6, 100);
+for (let t = 0.6; t <= 1; t += 0.05) {
+  const v = waterFrontRadius(t, 100);
+  assert.ok(v <= down + 1e-9, '물러나는 구간은 감소');
+  down = v;
+}
+assert.equal(waterFrontRadius(Number.NaN, 100), 0, '물 NaN 방어');
+// 호는 온전한 원이 아니다 — 2π면 파면이 아니라 충격파가 된다
+assert.ok(ELEMENT_FLOURISH.water.arcSpan < Math.PI * 2, '호가 원을 다 덮지 않는다');
+
+// 10) 빛 — 곧고 떨리지 않는다. 번개와의 구분이 여기 전부 있다.
+for (const [label, fn] of [
+  ['광선', (t: number) => lightRayCount(t, 'bolt')],
+  ['길이', (t: number) => lightRayLength(t, 'bolt')],
+] as const) {
+  let prev = -Infinity;
+  for (let t = 0; t <= CAP + 2; t += 0.25) {
+    const v = fn(t);
+    assert.ok(v >= prev, `빛 ${label} 단조 위반 at ${t}`);
+    prev = v;
+  }
+  assert.equal(fn(CAP), fn(CAP + 10), `빛 ${label} 상한 고정`);
+  assert.ok(Number.isFinite(fn(Number.NaN)), `빛 ${label} NaN 방어`);
+}
+assert.equal(lightRayCount(CAP, 'bolt'), ELEMENT_FLOURISH.light.maxRays, '광선 상한 도달');
+// 빛은 번개보다 길다 — 같은 "방사되는 선"이라 길이로도 갈라야 한다
+assert.ok(
+  lightRayLength(CAP, 'bolt') > lightningReach(CAP, 'bolt'),
+  '빛이 번개보다 멀리 간다',
+);
+// 중심을 비운다 — 0이면 중심에서 바로 시작해 "뻗어나감"이 안 읽힌다
+assert.ok(ELEMENT_FLOURISH.light.innerRatio > 0, '중심을 비운다');
+assert.ok(ELEMENT_FLOURISH.light.innerRatio < 0.5, '너무 비우면 광선이 짧아 보인다');
+
+// 11) 대지 — 솟았다 **떨어진다**. 얼음(자라서 깨짐)과 궤적이 다르다.
+for (const [label, fn] of [
+  ['덩어리', (t: number) => earthChunkCount(t, 'bolt')],
+  ['크기', (t: number) => earthChunkSize(t)],
+] as const) {
+  let prev = -Infinity;
+  for (let t = 0; t <= CAP + 2; t += 0.25) {
+    const v = fn(t);
+    assert.ok(v >= prev, `대지 ${label} 단조 위반 at ${t}`);
+    prev = v;
+  }
+  assert.equal(fn(CAP), fn(CAP + 10), `대지 ${label} 상한 고정`);
+  assert.ok(Number.isFinite(fn(Number.NaN)), `대지 ${label} NaN 방어`);
+}
+assert.equal(earthChunkCount(CAP, 'bolt'), ELEMENT_FLOURISH.earth.maxChunks, '덩어리 상한 도달');
+// **포물선** — 시작과 끝이 모두 지면 높이여야 "떨어졌다"가 된다
+assert.ok(Math.abs(earthChunkAt(0, 40, 30, 0).y) < 1e-9, '시작은 지면');
+assert.ok(Math.abs(earthChunkAt(0, 40, 30, 1).y) < 1e-9, '끝도 지면 — 떨어진다');
+assert.ok(earthChunkAt(0, 40, 30, 0.5).y < -20, '중간엔 솟아 있다 (y 음수 = 위)');
+// 수평은 단조 전진 — 되돌아오면 부메랑이다
+let prevX = -Infinity;
+for (let t = 0; t <= 1; t += 0.05) {
+  const at = earthChunkAt(0, 40, 30, t);
+  assert.ok(at.x >= prevX - 1e-9, '수평은 계속 전진');
+  prevX = at.x;
+}
+assert.ok(Math.abs(earthChunkAt(0, 40, 30, 1).x - 40) < 1e-9, '끝은 spread만큼');
+const bad = earthChunkAt(Number.NaN, Number.NaN, Number.NaN, Number.NaN);
+assert.ok(Number.isFinite(bad.x) && Number.isFinite(bad.y), '대지 NaN 방어');
+
+// 12) 암영 — **유일하게 방향이 반대다.** 이게 정체성 전부다.
+for (const [label, fn] of [
+  ['촉수', (t: number) => darkTendrilCount(t, 'bolt')],
+  ['외곽', (t: number) => darkOuterRadius(t, 'bolt')],
+] as const) {
+  let prev = -Infinity;
+  for (let t = 0; t <= CAP + 2; t += 0.25) {
+    const v = fn(t);
+    assert.ok(v >= prev, `암영 ${label} 단조 위반 at ${t}`);
+    prev = v;
+  }
+  assert.equal(fn(CAP), fn(CAP + 10), `암영 ${label} 상한 고정`);
+  assert.ok(Number.isFinite(fn(Number.NaN)), `암영 ${label} NaN 방어`);
+}
+assert.equal(darkTendrilCount(CAP, 'bolt'), ELEMENT_FLOURISH.dark.maxTendrils, '촉수 상한 도달');
+// 촉수는 **바깥에서 시작해 중심으로 끝난다** — 다른 원소와 정반대
+const tendril = tendrilPolyline(0, 50, 0.55, 8);
+assert.equal(tendril.length, 9);
+assert.ok(Math.hypot(tendril[0].x, tendril[0].y) > 49, '바깥에서 시작');
+assert.ok(Math.hypot(tendril[8].x, tendril[8].y) < 1e-9, '중심에서 끝난다');
+// 반경이 단조 **감소** — 다른 모든 원소는 증가한다
+let prevR2 = Infinity;
+for (const pt of tendril) {
+  const r = Math.hypot(pt.x, pt.y);
+  assert.ok(r <= prevR2 + 1e-9, '암영은 반경이 줄어든다 (빨려든다)');
+  prevR2 = r;
+}
+// 나선(바람)과 방향이 정반대임을 명시적으로 확인
+const windSpiral = spiralPolyline(0, 50, 1, 8);
+assert.ok(
+  Math.hypot(windSpiral[0].x, windSpiral[0].y) < Math.hypot(windSpiral[8].x, windSpiral[8].y),
+  '바람은 밖으로',
+);
+assert.ok(
+  Math.hypot(tendril[0].x, tendril[0].y) > Math.hypot(tendril[8].x, tendril[8].y),
+  '암영은 안으로 — 방향이 정반대',
+);
+// 휘어짐이 없으면 그냥 축소다
+assert.ok(ELEMENT_FLOURISH.dark.curl > 0, '촉수가 휘어야 축소가 아니라 빨려듦으로 읽힌다');
+const straight = tendrilPolyline(0, 50, 0, 8);
+assert.ok(
+  straight.some((pt, i) => Math.abs(pt.y - tendril[i].y) > 1e-6),
+  'curl이 형태를 바꾼다',
+);
+assert.ok(tendrilPolyline(Number.NaN, Number.NaN, Number.NaN, 4)
+  .every((pt) => Number.isFinite(pt.x) && Number.isFinite(pt.y)), '암영 NaN 방어');
+
+console.log('element flourish regression: 8원소전부·링상쇄·번개·찌릿·얼음·불·바람·물왕복·빛직선·대지포물선·암영역방향 12군 통과');
