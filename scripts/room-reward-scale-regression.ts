@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   RISK_ORDER,
   ROOM_REWARD_SCALES,
+  SAFE_BELOW_COMBAT,
+  rewardOptionCount,
   rewardScaleFor,
+  totalReturn,
 } from '../src/combat-core/run/roomRewardScale';
 import { drawRewardOptions } from '../src/combat-core/run/rewardConfig';
 import { MAP_GRAPH_PRESET_01 } from '../src/run/mapGraphPreset';
@@ -42,7 +46,12 @@ for (const kind of ['trap', 'elite'] as const) {
   );
 }
 
-// 3) 무전투 방은 배율 대신 **선택 폭**으로 대가를 치른다
+// 3) 무전투 방은 **선택 폭**으로 대가를 치른다
+//
+// ⚠️ 이 군은 처음에 `optionCount === 2`만 봤고 **곱을 본 적이 없었다.** 그래서
+// 배율 ×1.3(리스크 0인데 함정 근처)에서도 그대로 통과했다 — 총괄이 지적한
+// "다들 보상방을 가고 싶을 거 아냐"가 회귀를 통과하고 있었던 것이다.
+// 총합 비교는 아래 SAFE_BELOW_COMBAT 군이 한다. 여기는 폭만 본다.
 assert.equal(rewardScaleFor('treasure').optionCount, 2, '보물은 2택 — 안전한 대가');
 assert.ok(
   (rewardScaleFor('treasure').optionCount ?? 3) < 3,
@@ -96,4 +105,76 @@ const risky = MAP_GRAPH_PRESET_01.nodes.filter(
 );
 assert.ok(risky.length > 0, '프리셋에 위험–보상 방이 없다');
 
-console.log('room reward scale regression: 전종류·위험보상·무전투대가·힌트·카드반영·프리셋 6군 통과');
+// ── 리스크 0인 방이 싸운 방을 이기면 안 된다 ────────────────────────────────
+//
+// 총괄 지적 2026-07-30: *"일반전투방과 보상방이 있으면 다들 보상방을 가고 싶을 거 아냐."*
+// 위 RISK_ORDER는 **전투방들 사이의** 순서만 봤다. 무전투 방이 그 축을 우회해
+// 제일 좋은 노드가 되는 경우를 잡지 못했다 — 실제로 그랬다(2택 ×1.3, 리스크 0).
+//
+// 배율만 비교하면 안 된다: 2택 ×1.3은 배율만 보면 전투방(3택 ×1.0)보다 크다. 카드가
+// 한 장 적으면 원하는 걸 못 볼 확률이 커지므로 **폭도 리턴**이다. totalReturn이 둘을
+// 함께 본다.
+for (const safe of SAFE_BELOW_COMBAT) {
+  assert.ok(
+    totalReturn(safe) < totalReturn('combat'),
+    `${safe}(총리턴 ${totalReturn(safe).toFixed(3)})는 일반전투(${totalReturn('combat').toFixed(3)})보다 낮아야 한다 — 리스크 0인 방이 이기면 분기가 정답이 된다`,
+  );
+  // 그리고 싸우는 방 전부보다 낮아야 한다 — 정예·함정을 무전투로 넘으면 더 심각하다
+  for (const risky of RISK_ORDER) {
+    assert.ok(
+      totalReturn(safe) < totalReturn(risky),
+      `${safe}가 ${risky}보다 낮아야 한다`,
+    );
+  }
+  // 폭이 좁은 것이 무전투의 대가다 — 3택을 주면 안전이 무료가 된다
+  assert.ok(
+    rewardOptionCount(safe) < 3,
+    `${safe}는 선택지가 3택 미만이어야 한다 (현재 ${rewardOptionCount(safe)})`,
+  );
+}
+
+// ── 보물 수치의 유일한 출처는 이 표다 ──────────────────────────────────────
+//
+// 종전엔 treasureRewardConfig가 깊이별 2~3택 · 1.3~1.6배를 **자체 결정**했고 포탈
+// 힌트만 이 표를 읽었다. 표가 둘로 갈려 서로 다른 값을 말하는 상태였다 — 힌트는
+// "2택"인데 깊이 0.5 이상이면 3택 ×1.6이 나오는 구조. #266에서 고친 "포탈이
+// 거짓말한다"가 데이터 중복으로 재발할 준비를 하고 있었다.
+{
+  const treasureSrc = readFileSync('src/combat-core/run/treasureRewardConfig.ts', 'utf8');
+  // 선언을 잡는다 — 왜 걷어냈는지 설명하는 주석의 언급까지 막으면 기록이 사라진다
+  assert.ok(
+    !/(?:export\s+)?const\s+TREASURE_CONFIG/.test(treasureSrc),
+    'treasureRewardConfig는 자체 수치표를 선언하지 않는다 (roomRewardScale이 유일한 출처)',
+  );
+  assert.ok(
+    /rewardScaleFor\('treasure'\)/.test(treasureSrc)
+      && /rewardOptionCount\('treasure'\)/.test(treasureSrc),
+    'treasureRewardConfig는 배율·선택지 수를 roomRewardScale에서 읽어야 한다',
+  );
+  // 깊이 분기가 남아 있으면 힌트가 다시 어긋난다 (그리고 그 등급은 현재 프리셋에서
+  // 도달 불가였다 — 보물 노드는 s1-treasure 하나, 방 2 = 깊이 0.25)
+  assert.ok(
+    !/(?:high|low)Floor\s*[:.]/.test(treasureSrc),
+    '보물방 깊이별 등급은 걷어냈다 — 필요하면 roomRewardScale에서 하고 힌트가 따라오게',
+  );
+}
+
+// ── 힌트가 총 리턴을 말해야 한다 ───────────────────────────────────────────
+//
+// 배율만 적으면 "2택 ×1.3"과 "3택 ×1.0" 중 뭐가 나은지 알 수 없다. 선택지 수를
+// 함께 적어 포탈 앞에서 비교가 되게 한다. 전투방은 배율이 기준값(×1.0)이라 적을
+// 게 없으니 **친화 성장**을 적는다 — 캐스트 0회인 보물방이 못 얻는 실재 리턴이다.
+for (const kind of [...RISK_ORDER, ...SAFE_BELOW_COMBAT]) {
+  const { hint } = ROOM_REWARD_SCALES[kind];
+  assert.ok(hint.includes('택'), `${kind} 힌트는 선택지 수를 말해야 한다: "${hint}"`);
+}
+assert.ok(
+  ROOM_REWARD_SCALES.combat.hint.includes('성장'),
+  '전투방 힌트는 친화 성장을 말해야 한다 — 무전투 방이 못 얻는 리턴이다',
+);
+assert.ok(
+  ROOM_REWARD_SCALES.treasure.hint.includes('성장 없음'),
+  '보물방 힌트는 성장이 없다는 걸 말해야 한다 (캐스트 0회 = 사용 친화도·인그레이브 후보 0)',
+);
+
+console.log('room reward scale regression: 전종류·위험보상·무전투대가·힌트·카드반영·프리셋·무전투열위·단일출처·힌트총합 9군 통과');

@@ -85,7 +85,7 @@ import { buildChipModel } from '../run/buildChipModel';
 import { bandAffordances, reachableBand } from '../run/incantBands';
 import { drawTreasureReward } from '../combat-core/run/treasureRewardConfig';
 import { ALTAR_OFFER_CONFIG, drawAltarOffer } from '../combat-core/run/altarOffer';
-import { rewardScaleFor } from '../combat-core/run/roomRewardScale';
+import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomRewardScale';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { UI_COLOR } from '../ui/uiTokens';
 import type { GameSettings } from '../run/gameSettings';
@@ -611,9 +611,11 @@ export class ProtoScene extends Phaser.Scene {
       }
       // 방 종류별 배율 (총괄 지적: "누가 함정방을 선택하겠어"). 종전엔 정예·함정이
       // 일반 전투방과 **완전히 같은 보상**이라 더 위험한 방을 고를 이유가 없었다.
-      const kindScale = rewardScaleFor(this.mapGraph.current().kind).scale;
+      const kind = this.mapGraph.current().kind;
+      const kindScale = rewardScaleFor(kind).scale;
       const engraved = this.engraveManager.injectReward(
-        drawRewardOptions(roomIndex, this.engraveRewardRand, kindScale),
+        drawRewardOptions(roomIndex, this.engraveRewardRand, kindScale)
+          .slice(0, rewardOptionCount(kind)),
         roomIndex,
         this.engraveRewardRand,
       );

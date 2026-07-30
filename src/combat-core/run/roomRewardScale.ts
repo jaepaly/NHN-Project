@@ -32,23 +32,39 @@ export interface RoomRewardScale {
 export const ROOM_REWARD_SCALES = {
   /** 시작 방 — 기준값 */
   start: { scale: 1, hint: '' },
-  /** 일반 전투 — 기준값. 다른 방들이 이보다 나을지 못할지로 읽힌다 */
-  combat: { scale: 1, hint: '보상 표준' },
+  /**
+   * 일반 전투 — 기준값. 다른 방들이 이보다 나을지 못할지로 읽힌다.
+   * 힌트에 **친화 성장**을 적는다: 전투방의 리턴은 카드 3장만이 아니다. 방 하나에서
+   * 약 4회 영창하면 `useAffinity.perCast 0.02` × 4 = **+0.08 사용 친화도**가 붙고
+   * 인그레이브 후보도 쌓인다(캐스트한 주문만 새길 수 있다). 친화 카드가 +0.15이니
+   * 반 장 값이다 — 실재하는 리턴인데 지금까지 화면 어디에도 안 적혀 있었다.
+   */
+  combat: { scale: 1, hint: '3택 · 친화 성장' },
   /**
    * 정예 — 실드 파수꾼·엘리트 특성으로 실질 생존시간이 길다(#258 기준 60초).
    * 함정보다 위험하므로 함정보다 많이 준다.
    */
-  elite: { scale: 1.5, hint: '위험 · 보상 ×1.5' },
+  elite: { scale: 1.5, hint: '위험 · 3택 ×1.5' },
   /**
    * 함정 — 기믹 판단·공간 제약이 붙는다(#258 기준 54초). 일반보다 위험하지만
    * 정예처럼 적의 생존시간을 직접 늘리지는 않아 정예보다 낮다.
    */
-  trap: { scale: 1.4, hint: '기믹 · 보상 ×1.4' },
+  trap: { scale: 1.4, hint: '기믹 · 3택 ×1.4' },
   /**
-   * 보물 — 무전투. 배율은 있지만 **선택지가 2장**이라 폭이 좁다(treasureRewardConfig가
-   * 깊이별로 2~3장·1.3~1.6배를 낸다). "안전하지만 고를 게 적다"가 대가다.
+   * 보물 — 무전투. **일반 전투방보다 총 리턴이 낮아야 한다** (총괄 지적 2026-07-30:
+   * *"일반전투방과 보상방이 있으면 다들 보상방을 가고 싶을 거 아냐"*).
+   *
+   * 종전 2택 ×1.3은 **리스크 0인데 배율은 함정 근처**여서 방 선택이 아니라 정답이었다.
+   * 게다가 실제 추첨은 `treasureRewardConfig`가 따로 했고 거기엔 깊이 0.5 이상에서
+   * **3택 ×1.6** 등급까지 있었다 — 정예(×1.5)를 무전투로 넘는 값이다. 표가 둘로
+   * 갈려 있었으니 밸런스 논의가 굴러가지도 않는 숫자를 놓고 벌어질 상황이었다.
+   *
+   * 이제 여기가 유일한 출처다. ×1.15 · 2택 — **숫자로 이기지 않는다.**
+   * 보물방의 존재 이유는 배율이 아니라 *"지금 체력이 아깝다"*다. 안전이 값이고,
+   * 그 대가로 고르는 폭(2택)과 배율 모두 전투방 아래에 둔다. 캐스트 0회라
+   * 친화 성장·인그레이브 후보도 못 얻는다 — 그게 진짜 비용이고 힌트에 적는다.
    */
-  treasure: { scale: 1.3, optionCount: 2, hint: '무전투 · 2택' },
+  treasure: { scale: 1.15, optionCount: 2, hint: '무전투 · 2택 · 성장 없음' },
   /** 제단 — 최대 체력을 내고 산다. 배율은 altarOffer가 등급별로 정한다 */
   altar: { scale: 2, hint: '생명 대가 · 상급' },
   'stage-boss': { scale: 1, hint: '수문장' },
@@ -56,7 +72,25 @@ export const ROOM_REWARD_SCALES = {
 } as const satisfies Record<MapNodeKind, RoomRewardScale>;
 
 export function rewardScaleFor(kind: MapNodeKind): RoomRewardScale {
-  return ROOM_REWARD_SCALES[kind];
+  // `as const satisfies`가 리터럴로 좁히므로 optionCount를 선언하지 않은 항목에는
+  // 그 키가 아예 없다. 인터페이스 타입으로 넓혀 읽는 지점을 여기 하나로 모은다.
+  return ROOM_REWARD_SCALES[kind] as RoomRewardScale;
+}
+
+/** 그 방이 낼 카드 수. 미지정이면 기본 3택 */
+export function rewardOptionCount(kind: MapNodeKind): number {
+  return rewardScaleFor(kind).optionCount ?? 3;
+}
+
+/**
+ * 선택지 수까지 반영한 **총 리턴 근사** — 배율만 비교하면 "2택 ×1.3이 3택 ×1.0보다
+ * 크다"는 잘못된 결론이 나온다. 카드가 한 장 적으면 원하는 걸 못 볼 확률이 커지므로
+ * 폭도 리턴의 일부다. 회귀가 이 값으로 방들의 순서를 고정한다.
+ *
+ * 정확한 기대값이 아니라 **순서를 못박는 대리지표**다 (풀 분산은 R1 밸런스 몫).
+ */
+export function totalReturn(kind: MapNodeKind): number {
+  return rewardScaleFor(kind).scale * (rewardOptionCount(kind) / 3);
 }
 
 /**
@@ -64,3 +98,10 @@ export function rewardScaleFor(kind: MapNodeKind): RoomRewardScale {
  * 이 부등식이 깨지면 그 방을 고를 이유가 사라진다.
  */
 export const RISK_ORDER: readonly MapNodeKind[] = ['combat', 'trap', 'elite'];
+
+/**
+ * **리스크 0인 방이 싸운 방을 이기면 안 된다.** 위 RISK_ORDER는 전투방들 사이의
+ * 순서만 봤고, 총괄이 지적한 "무전투 방이 제일 좋다"는 그 축에 안 걸렸다.
+ * `totalReturn` 기준으로 보물 < 일반전투를 고정한다.
+ */
+export const SAFE_BELOW_COMBAT: readonly MapNodeKind[] = ['treasure'];
