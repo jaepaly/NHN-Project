@@ -26,7 +26,7 @@
 - [x] PR #274 이후 최신 `origin/main` 위로 rebase하고 팀원 문서·테스트 스크립트를 모두 보존.
 - [x] `ProtoScene` 충돌은 main의 `EncounterDefinition`과 #268의 `RunStateSnapshot` import를 합집합으로 해소.
 - [x] 플레이 로그·fallback·맵 배선 회귀와 전체 74종 회귀·프로덕션 빌드·`git diff --check` 통과.
-- [~] 원격 브랜치 동기화 후 GitHub CI·총괄 재검토·머지 대기.
+- [~] 원격 브랜치 동기화와 GitHub CI test/build 통과. 총괄 최종 확인·머지 대기.
 
 > **완료 조건**: 사용자는 fixture가 아닌 문장을 로컬 게임에서 플레이하기만 하고, R2는 JSONL만으로 `gemini/cache/fallback/mock`, single/sequence, 단계 수, 판정 지연, 실제 sequence 실행 여부와 fallback 원인을 재구성할 수 있어야 한다.
 >
