@@ -2862,25 +2862,25 @@ export class ProtoScene extends Phaser.Scene {
       const bevel = Math.max(6, half * 0.22);
 
       // ① 바닥 그림자 — 아래로 살짝 밀어 부피감을 만든다
-      view.fillStyle(0x05070f, 0.5);
+      view.fillStyle(0x030304, 0.62);
       view.fillRoundedRect(x - half + 3, y - half + 8, size, size, 6);
-      // ② 본체
-      view.fillStyle(0x232c4e, 1);
+      // ② 본체 — 원소광이 아닌 흑요석 먹회색
+      view.fillStyle(0x211d23, 1);
       view.fillRoundedRect(x - half, y - half, size, size, 6);
-      // ③ 상단 경사면 — 위에서 빛이 온다
-      view.fillStyle(0x3b4878, 1);
+      // ③ 상단 경사면 — 배경에서 구조물 윤곽을 잃지 않을 정도의 명암만 남긴다
+      view.fillStyle(0x3b343e, 1);
       view.fillRect(x - half + bevel * 0.5, y - half + 3, size - bevel, bevel);
       // ④ 하단 경사면 — 그늘
-      view.fillStyle(0x161d36, 1);
+      view.fillStyle(0x120f14, 1);
       view.fillRect(x - half + bevel * 0.5, y + half - bevel - 3, size - bevel, bevel);
-      // ⑤ 테두리 — 안쪽 밝은 선 + 바깥 어두운 선으로 각을 세운다
-      view.lineStyle(2, 0x6d7fc4, 0.9);
+      // ⑤ 테두리 — 저채도 회보라 안쪽 선 + 먹색 바깥 선
+      view.lineStyle(2, 0x716476, 0.72);
       view.strokeRoundedRect(x - half + 2, y - half + 2, size - 4, size - 4, 5);
-      view.lineStyle(2, 0x0b0f1e, 0.85);
+      view.lineStyle(2, 0x070609, 0.95);
       view.strokeRoundedRect(x - half, y - half, size, size, 6);
 
       // 룬 균열 — 대각 한 줄 + 짧은 가지. 마력 구조물임을 드러내되 정지 상태다
-      view.lineStyle(2, 0x8fa4ff, 0.42);
+      view.lineStyle(2, 0x8b748f, 0.32);
       view.lineBetween(x - half * 0.45, y - half * 0.5, x + half * 0.2, y + half * 0.45);
       view.lineBetween(x - half * 0.1, y - half * 0.05, x + half * 0.4, y - half * 0.35);
     }
