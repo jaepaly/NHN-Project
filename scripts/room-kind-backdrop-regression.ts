@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {
   ROOM_KIND_BACKDROPS,
+  ROOM_KIND_TEXTURE,
+  roomKindTexture,
   backdropBrightness,
   backdropPaletteForNode,
 } from '../src/render/roomBackdropConfig';
@@ -102,4 +104,37 @@ for (const node of MAP_GRAPH_PRESET_01.nodes) {
 const usedKinds = new Set(MAP_GRAPH_PRESET_01.nodes.map((n) => n.kind));
 assert.ok(usedKinds.size >= 6, `프리셋이 쓰는 방 종류가 적다 (${usedKinds.size}종)`);
 
-console.log('room kind backdrop regression: 전종류·시각구분·안전밝기·격자성격·스테이지분기·프리셋 6군 통과');
+// 7) 전용 아트 배선 — 종류별 텍스처 키와 틴트 규약
+const ART_KINDS = ['elite', 'trap', 'treasure', 'altar'] as const;
+for (const kind of ART_KINDS) {
+  assert.equal(roomKindTexture(kind), `bg-${kind}`, `${kind} 텍스처 키`);
+}
+// 전용 아트가 없는 종류는 null — 스테이지·보스 배경으로 폴백한다
+for (const kind of ['start', 'combat', 'stage-boss', 'memory-boss'] as const) {
+  assert.equal(roomKindTexture(kind), null, `${kind}는 전용 아트 없음 (폴백)`);
+}
+assert.equal(Object.keys(ROOM_KIND_TEXTURE).length, ART_KINDS.length, '아트가 있는 종류만 등재');
+
+// ⚠️ **전용 아트가 붙은 종류는 틴트를 흰색으로 되돌린다.** setTint는 곱셈이라 색을
+// 얹으면 아트의 재질감이 죽는다(스프라이트에서 이미 겪었다 — AI_USAGE_LOG 2026-07-21).
+// 예외는 함정 하나뿐이다: 실측 평균휘도 0.193으로 네 장 중 가장 밝아 눌러야 한다.
+for (const kind of ART_KINDS) {
+  const { bgTint } = ROOM_KIND_BACKDROPS[kind];
+  if (kind === 'trap') {
+    assert.notEqual(bgTint, 0xffffff, '함정은 밝아서 틴트로 누른다');
+    // 밝게가 아니라 **어둡게** — 각 채널이 255 미만이어야 곱셈이 어두워진다
+    for (const shift of [16, 8, 0]) {
+      assert.ok(
+        ((bgTint >> shift) & 0xff) < 0xff,
+        `함정 틴트가 채널을 밝히면 안 된다 (0x${bgTint.toString(16)})`,
+      );
+    }
+  } else {
+    assert.equal(
+      bgTint, 0xffffff,
+      `${kind}는 전용 아트가 있으니 틴트 중립 (0x${bgTint.toString(16)})`,
+    );
+  }
+}
+
+console.log('room kind backdrop regression: 전종류·시각구분·안전밝기·격자성격·스테이지분기·프리셋·전용아트 7군 통과');
