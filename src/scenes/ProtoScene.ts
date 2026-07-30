@@ -28,6 +28,7 @@ import { TRAIL_CONFIG, spawnTrailGhost } from '../render/trailEffect';
 import {
   backdropPaletteForEncounter,
   backdropPaletteForNode,
+  roomKindTexture,
   ROOM_BACKDROP_PALETTES,
 } from '../render/roomBackdropConfig';
 import type { RoomBackdropPalette } from '../render/roomBackdropConfig';
@@ -987,6 +988,17 @@ export class ProtoScene extends Phaser.Scene {
       'bg-boss',
       `${import.meta.env.BASE_URL}assets/backgrounds/arena-boss.jpg`,
     );
+    // 방 종류별 전용 배경 (총괄 생성, 2026-07-30) — 정예·함정·보물·제단.
+    // 종전엔 이 넷이 스테이지 배경 + 색 틴트로만 구분됐다(#285). 검수 실측:
+    // 워터마크 제거 확인(0.7 초과 화소 0개) · 2528×1696 → 1920×1280 리샘플.
+    for (const [key, file] of [
+      ['bg-elite', 'arena-elite.jpg'],
+      ['bg-trap', 'arena-trap.jpg'],
+      ['bg-treasure', 'arena-treasure.jpg'],
+      ['bg-altar', 'arena-altar.jpg'],
+    ] as const) {
+      this.load.image(key, `${import.meta.env.BASE_URL}assets/backgrounds/${file}`);
+    }
     // 적 스프라이트 — 무채색으로 저장해두고 타입 색은 인게임 틴트로 입힌다
     // 파수꾼·보스는 코어만 잘라낸 버전 — 방패 링/저항 링은 정보를 담고 있어 절차적으로 남긴다.
     // 각 스프라이트는 재질(<key>)과 발광(<key>-glow) 두 장이다. 통째로 틴트하면 재질감이
@@ -2290,11 +2302,17 @@ export class ProtoScene extends Phaser.Scene {
     this.redrawBackdropDetails(palette);
     // 방 종류·스테이지별 전용 배경으로 교체한다. setTexture가 표시 크기를 리셋하므로 월드 크기를 다시 준다.
     // 스테이지2는 부패한 보라 아케인 배경(#72) — 없으면(로드 실패) stage1로 폴백.
+    // 방 종류 전용 배경이 있으면 그것을 쓰고, 없거나 **로드 실패면 스테이지 배경으로
+    // 폴백**한다. 배경 한 장이 없다고 방이 안 뜨면 안 된다(#283 교훈).
+    const kindKey = this.isBossEncounter() ? null : roomKindTexture(this.mapGraph.current().kind);
+    const stageKey = state.stage === 2 && this.textures.exists('bg-stage2')
+      ? 'bg-stage2'
+      : 'bg-stage1';
     const bgKey = this.isBossEncounter()
       ? 'bg-boss'
-      : state.stage === 2 && this.textures.exists('bg-stage2')
-        ? 'bg-stage2'
-        : 'bg-stage1';
+      : kindKey && this.textures.exists(kindKey)
+        ? kindKey
+        : stageKey;
     if (
       this.backdropImage
       && this.textures.exists(bgKey)
