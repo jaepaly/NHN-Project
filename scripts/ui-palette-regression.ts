@@ -356,6 +356,15 @@ import { UI_COLOR, UI_HEX, UI_MATERIAL, UI_SEMANTIC, hex } from '../src/ui/uiTok
     /titleSigil\(\)/.test(reward),
     '표제 자리에는 글자가 아니라 표식을 놓는다 (한국어·일본어 책 디자인의 어두 장식)',
   );
+  // 앞뒤 한 쌍 — 한쪽만 있으면 장식이 아니라 아이콘으로 읽힌다 (총괄 제안)
+  assert.ok(
+    (reward.match(/titleSigil\(\)/g) ?? []).length >= 2,
+    '표제 인장은 제목 앞뒤에 한 쌍으로 둔다',
+  );
+  assert.ok(
+    /orn-sigil mirrored/.test(reward),
+    '뒤쪽 인장은 좌우 반전해 마주 보는 한 쌍이 되게 한다',
+  );
 
   // 알약 배지(border-radius: 999px)는 웹 UI의 문법이다 — 봉랍으로 대체했는지 본다
   assert.ok(

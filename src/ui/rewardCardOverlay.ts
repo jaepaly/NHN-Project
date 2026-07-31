@@ -67,10 +67,13 @@ ${ornamentCss(WRAP_ID)}
   display: flex; align-items: center; justify-content: center; gap: 14px;
 }
 /* 표제 표식 — 글자를 떼지 않는다. 한글은 음절 블록이 단어의 일부라 첫 글자만
-   상자에 넣으면 단어가 쪼개진다(총괄 지적). 대신 인장을 놓는다. */
+   상자에 넣으면 단어가 쪼개진다(총괄 지적). 대신 인장을 놓는다.
+   앞뒤 한 쌍으로 두어 제목을 감싼다 — 한쪽만 있으면 장식이 아니라 아이콘으로 읽힌다
+   (총괄 제안). 뒤쪽은 좌우 반전해 책 끝에 마주 보는 한 쌍이 되게 한다. */
 #${WRAP_ID} .reward-title .orn-sigil {
   flex: 0 0 46px; filter: ${UI_MATERIAL.gildEdge};
 }
+#${WRAP_ID} .reward-title .orn-sigil.mirrored { transform: scaleX(-1); }
 #${WRAP_ID} .reward-cards { display: flex; gap: 20px; justify-content: center; }
 #${WRAP_ID} .reward-card {
   --card-core: ${UI_COLOR.accent}; --card-glow: ${UI_COLOR.borderStrong};
@@ -286,7 +289,9 @@ export function showRewardCards(
       ${cornerFlourish().replace('orn-corner', 'orn-corner bl')}
       ${cornerFlourish().replace('orn-corner', 'orn-corner br')}
       <div class="reward-kicker">${escapeText(framing.kicker ?? 'ROOM CLEAR')}</div>
-      <h2 class="reward-title">${titleSigil()}<span>${escapeText(titleText)}</span></h2>
+      <h2 class="reward-title">
+        ${titleSigil()}<span>${escapeText(titleText)}</span>${titleSigil().replace('orn-sigil', 'orn-sigil mirrored')}
+      </h2>
       ${divider()}
       <div class="reward-cards"></div>
       <div class="reward-hint"><b>1·2·3</b> 또는 <b>←→ + Enter</b> · 마우스 클릭</div>
