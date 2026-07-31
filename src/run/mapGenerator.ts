@@ -260,6 +260,22 @@ export function generatedDiagonalRouteTarget(capacity: number): number {
   return Math.min(4, Math.max(1, Math.floor(capacity)));
 }
 
+/**
+ * 같은 맵에서 4→3→2를 전부 훑지 않고, 바깥 맵 재시도 진행도에 따라 목표를 하나만 고른다.
+ * 큰 방 풀은 `4·2·2·2`처럼 순환해 높은 다양성을 남기되 성립하기 쉬운 2개를 우선한다.
+ */
+export function generatedDiagonalRouteTargetForAttempt(
+  preferredTarget: number,
+  attempt: number,
+): number {
+  const preferred = generatedDiagonalRouteTarget(preferredTarget);
+  if (preferred === 0) return 0;
+  const minimum = Math.min(2, preferred);
+  const cycle = (Math.max(1, Math.floor(attempt)) - 1) % 4;
+  const scheduled = cycle === 0 ? preferred : minimum;
+  return Math.min(preferred, Math.max(minimum, scheduled));
+}
+
 function addGeneratedDiagonalRoutes(
   draft: Draft,
   rand: () => number,
@@ -300,7 +316,7 @@ function addGeneratedDiagonalRoutes(
   return added;
 }
 
-const MAX_DIAGONAL_LAYOUT_ATTEMPTS = 32;
+const MAX_DIAGONAL_LAYOUT_ATTEMPTS = 4;
 
 /**
  * 한 스테이지를 파티션으로 이어 붙인다.
@@ -606,31 +622,27 @@ export function generateRunMap(
       0,
     );
     const preferredDiagonalCount = generatedDiagonalRouteTarget(diagonalCapacity);
-    // 같은 방 풀에서도 대각선 방향·부분집합에 따라 중복/지배 경로 여부가 달라진다.
-    // 방 종류를 전부 다시 뽑기 전에 배치만 바꿔 기존 균형 규칙을 통과하는 조합을 찾고,
-    // 큰 방 풀의 4개가 성립하지 않을 때 3→2개로 낮춘다. 2개도 성립하지 않으면
-    // 아래에서 1개 구성을 후보로만 저장하고, 다음 방 배치를 계속 시도한다.
+    const requestedDiagonalCount = generatedDiagonalRouteTargetForAttempt(
+      preferredDiagonalCount,
+      attempt,
+    );
+    // 같은 방 풀에서는 목표 개수를 낮추지 않고 배치만 소수 재시도한다. 더 넓은
+    // 탐색은 바깥 맵 생성 루프가 담당하므로, 한 맵에서 전 경로 검사를 반복하지 않는다.
     for (
-      let requestedCount = preferredDiagonalCount;
-      requestedCount >= Math.min(2, preferredDiagonalCount) && !diagonalEdges;
-      requestedCount -= 1
+      let layoutAttempt = 0;
+      layoutAttempt < MAX_DIAGONAL_LAYOUT_ATTEMPTS;
+      layoutAttempt += 1
     ) {
-      for (
-        let layoutAttempt = 0;
-        layoutAttempt < MAX_DIAGONAL_LAYOUT_ATTEMPTS;
-        layoutAttempt += 1
-      ) {
-        draft.edges = baseEdges.map((edge) => ({ ...edge }));
-        const candidateEdges = addGeneratedDiagonalRoutes(
-          draft,
-          rand,
-          diagonalCandidates,
-          requestedCount,
-        );
-        if (ruleViolation(draft, start.id, finalBoss.id, config.nonCombatShare) === null) {
-          diagonalEdges = candidateEdges;
-          break;
-        }
+      draft.edges = baseEdges.map((edge) => ({ ...edge }));
+      const candidateEdges = addGeneratedDiagonalRoutes(
+        draft,
+        rand,
+        diagonalCandidates,
+        requestedDiagonalCount,
+      );
+      if (ruleViolation(draft, start.id, finalBoss.id, config.nonCombatShare) === null) {
+        diagonalEdges = candidateEdges;
+        break;
       }
     }
 
@@ -648,26 +660,19 @@ export function generateRunMap(
     });
 
     if (diagonalEdges) return toGeneratedMap(diagonalEdges);
-    // 전체 생성 시도를 모두 썼는데도 2개가 불가능할 때를 대비해, 균형 규칙을
-    // 통과하는 1개 구성을 보관한다. 여기서 즉시 반환하지 않아 2~4개를 우선한다.
-    for (
-      let layoutAttempt = 0;
-      layoutAttempt < MAX_DIAGONAL_LAYOUT_ATTEMPTS && !diagonalEdges;
-      layoutAttempt += 1
-    ) {
+    // 전체 바깥 재시도를 소진했을 때만 쓸 1개 구성을 한 번만 검사해 보관한다.
+    // 여기서 즉시 반환하지 않으므로 이후 시도에서 2~4개 구성이 나오면 그것을 우선한다.
+    if (!singleDiagonalFallback) {
       draft.edges = baseEdges.map((edge) => ({ ...edge }));
-      const candidateEdges = addGeneratedDiagonalRoutes(
+      const singleCandidate = addGeneratedDiagonalRoutes(
         draft,
         rand,
         diagonalCandidates,
         1,
       );
       if (ruleViolation(draft, start.id, finalBoss.id, config.nonCombatShare) === null) {
-        diagonalEdges = candidateEdges;
+        singleDiagonalFallback = toGeneratedMap(singleCandidate);
       }
-    }
-    if (diagonalEdges && !singleDiagonalFallback) {
-      singleDiagonalFallback = toGeneratedMap(diagonalEdges);
     }
   }
   return singleDiagonalFallback;

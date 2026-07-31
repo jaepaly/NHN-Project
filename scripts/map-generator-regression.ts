@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { performance } from 'node:perf_hooks';
 import {
   MAP_GENERATOR_CONFIG,
   generateRunMap,
   generatedDiagonalRouteTarget,
+  generatedDiagonalRouteTargetForAttempt,
   seededRandom,
 } from '../src/run/mapGenerator';
 import type { GeneratedMap } from '../src/run/mapGenerator';
@@ -30,10 +32,21 @@ import type { MapNodeKind } from '../src/run/mapGraphContract';
  * 그 실수를 하면 **모든 런에서** 일어난다.
  */
 
-const SEEDS = 500;
+const SEEDS = 2000;
+const MAX_GENERATION_MS = 50;
 const generatedResults: GeneratedMap[] = [];
+let totalGenerationMs = 0;
+let worstGenerationMs = 0;
+let worstGenerationSeed = 0;
 for (let seed = 1; seed <= SEEDS; seed += 1) {
+  const startedAt = performance.now();
   const result = generateRunMap(seed);
+  const elapsedMs = performance.now() - startedAt;
+  totalGenerationMs += elapsedMs;
+  if (elapsedMs > worstGenerationMs) {
+    worstGenerationMs = elapsedMs;
+    worstGenerationSeed = seed;
+  }
   if (result) generatedResults.push(result);
 }
 const generated: MapGraphDefinition[] = generatedResults.map((result) => result.definition);
@@ -48,6 +61,11 @@ assert.ok(
   `시드 ${SEEDS}개 전부 생성돼야 한다 (실패 ${SEEDS - generated.length}개)`,
 );
 assert.ok(MAP_GENERATOR_CONFIG.maxAttempts >= 160, '재시도 상한이 폴백률 0% 지점 이상');
+assert.ok(
+  worstGenerationMs < MAX_GENERATION_MS,
+  `동기 맵 생성은 ${MAX_GENERATION_MS}ms 안에 끝나야 한다 `
+    + `(최악 ${worstGenerationMs.toFixed(2)}ms, seed ${worstGenerationSeed})`,
+);
 
 // ── 2) 일반 생성 맵에 규모별 비대칭 대각선 2~4개 ───────────────────────────
 assert.equal(generatedDiagonalRouteTarget(0), 0, '후보가 없으면 대각선 없음');
@@ -55,6 +73,26 @@ assert.equal(generatedDiagonalRouteTarget(1), 1, '후보보다 많이 요구하�
 assert.equal(generatedDiagonalRouteTarget(2), 2, '작은 방 풀은 2개');
 assert.equal(generatedDiagonalRouteTarget(3), 3, '중간 방 풀은 3개');
 assert.equal(generatedDiagonalRouteTarget(8), 4, '큰 방 풀도 최대 4개');
+assert.equal(
+  generatedDiagonalRouteTargetForAttempt(4, 1),
+  4,
+  '큰 방 풀 순환 첫 시도는 4개',
+);
+assert.equal(
+  generatedDiagonalRouteTargetForAttempt(4, 2),
+  2,
+  '큰 방 풀 순환 둘째 시도는 성립하기 쉬운 2개',
+);
+assert.equal(
+  generatedDiagonalRouteTargetForAttempt(4, 3),
+  2,
+  '큰 방 풀 순환 셋째 시도도 성립하기 쉬운 2개',
+);
+assert.equal(
+  generatedDiagonalRouteTargetForAttempt(3, 4),
+  2,
+  '3개 목표도 순환 넷째 시도는 2개',
+);
 
 const observedDiagonalCounts = new Set<number>();
 let singleDiagonalFallbacks = 0;
@@ -425,6 +463,9 @@ for (const definition of generated) {
 
 console.log(
   `map generator regression: 시드 ${generated.length}개 · `
+  + `평균 ${(totalGenerationMs / SEEDS).toFixed(2)}ms · `
+  + `최악 ${worstGenerationMs.toFixed(2)}ms(seed ${worstGenerationSeed}) · `
+  + `대각선1개 ${singleDiagonalFallbacks}/${SEEDS} · `
   + '폴백률·계약·경로길이·웨이브키·축단조·경로규칙·분기보장·전투비율·재현성·시연프리셋'
   + '·독지대빈도·프리셋1스테이지함정 12군 통과',
 );
