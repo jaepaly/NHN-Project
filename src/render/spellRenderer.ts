@@ -15,6 +15,7 @@ import {
   zoneDurationSeconds,
 } from '../combat-core/combat/areaSpellConfig';
 import { ELEMENT_PALETTES, SIZE_SCALE } from './palette';
+import { fusionFlourishPlan, fusionRingScale } from './fusionFlourishConfig';
 import {
   SLASH_CONFIG,
   slashAnchor,
@@ -129,6 +130,11 @@ export interface CastContext {
    */
   vfxIntensity?: number;
   /**
+   * 필살기(융합 방출)인가 — 참이면 친화 연출이 **보조 원소까지 순차로** 그린다
+   * (`fusionFlourishConfig.ts`). 평범한 이중 원소 주문은 여기 해당하지 않는다.
+   */
+  fusionRelease?: boolean;
+  /**
    * 지속형 장식 VFX 알파 배율 (#216 P0-1 광과민성 예산) — **명시한 시전만**
    * 중첩 예산에 참여한다(플레이어 수동=1, 자동=autoCastScale). 생략(undefined)은
    * 예산 면제 — 보스 위험구역처럼 "장식이 아니라 정보"인 필드는 항상 최대 밝기.
@@ -242,7 +248,9 @@ function withAffinityImpactFlourish(ctx: CastContext, spec: SpellSpec): CastCont
         const point = impact.kind === 'line'
           ? { x: impact.toX, y: impact.toY }
           : { x: impact.x, y: impact.y };
-        playAffinityImpactFlourish(ctx.scene, point.x, point.y, spec, intensity);
+        playAffinityImpactFlourish(
+          ctx.scene, point.x, point.y, spec, intensity, ctx.fusionRelease === true,
+        );
       }
       onHit(impact, spec);
     },
@@ -1696,21 +1704,48 @@ export function playAffinityImpactFlourish(
   y: number,
   spec: SpellSpec,
   intensity: number,
+  /**
+   * 필살기(융합 방출)인가 — 참이면 **보조 원소 연출도 순차로** 나간다.
+   *
+   * 평범한 이중 원소 주문까지 켜면 화면 대부분의 시전이 연출 2개가 되어 예산이
+   * 무너진다. 필살기는 게이지를 채워야 나오는 드문 시전이라 여기만 특별하게 둔다.
+   */
+  fusionRelease = false,
 ): void {
   const cfg = AFFINITY_VFX_CONFIG;
   const t = Math.max(0, Math.min(cfg.intensityCap, intensity));
   if (t < cfg.minIntensity) return;
   const pal = ELEMENT_PALETTES[spec.element_primary];
 
+  // 필살기는 두 원소를 **순차로** 터뜨린다 (총괄 지시: 얼음+전기면 파쇄와 스파크가
+  // 둘 다 보이게). 동시에 뿌리면 광량이 2배라 #220을 넘으므로 시점을 벌리고,
+  // 그래도 잔상은 겹치니 아래에서 공용 링을 함께 줄인다.
+  const steps = fusionRelease
+    ? fusionFlourishPlan(spec.element_primary, spec.element_secondary, t)
+    : fusionFlourishPlan(spec.element_primary, null, t);
+
   // 확장 링 — 개수·반경·스파크·엠버는 순수 함수(affinityVfx.ts)가 결정한다.
   // nova는 폼배율(#216 항목7)로 축소 — 조준점 폭발이 적 무리를 덮지 않게.
   // 고유 연출이 붙는 원소(번개·얼음)는 링을 줄인다 — 선이 늘어난 만큼 면을 뺀다(#220).
-  const ringScale = flourishRingScaleFor(spec.element_primary);
+  const ringScale = flourishRingScaleFor(spec.element_primary)
+    * fusionRingScale(steps.length);
   const rings = Math.max(1, Math.round(flourishRingCount(t, spec.form) * ringScale));
   const maxRadius = flourishMaxRadius(t, spec.form);
   // 8원소 전부 고유 연출을 갖는다 (총괄 지적 2차) — 일부만 나누면 안 나눈 쪽이
   // 화면에서 가장 요란해지고 그들끼리는 여전히 구분이 안 된다.
-  ELEMENT_FLOURISH_RENDERERS[spec.element_primary](scene, x, y, spec, t);
+  for (const step of steps) {
+    // ⚠️ 렌더러는 `spec.element_primary`로 팔레트를 고른다. 보조 원소 단계는 주 원소를
+    // 갈아끼운 사본을 넘겨야 실제로 그 원소로 그려진다 — 원본을 그대로 주면 색만
+    // 같은 연출이 한 번 더 나올 뿐이다.
+    const stepSpec = step.element === spec.element_primary
+      ? spec
+      : { ...spec, element_primary: step.element };
+    const draw = (): void => {
+      ELEMENT_FLOURISH_RENDERERS[step.element](scene, x, y, stepSpec, step.intensity);
+    };
+    if (step.delayMs === 0) draw();
+    else scene.time.delayedCall(step.delayMs, draw);
+  }
   for (let i = 0; i < rings; i += 1) {
     const ring = scene.add.circle(x, y, 10, 0x000000, 0)
       .setStrokeStyle(5 - i * 0.5, i === 0 ? pal.core : i === 1 ? pal.glow : pal.accent, 1)

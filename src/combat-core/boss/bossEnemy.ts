@@ -174,6 +174,21 @@ export class BossEnemy implements CombatEnemy {
     this.flareGlow();
   }
 
+  /**
+   * 돌진을 중단시킨다 — 장벽에 막혔을 때 (#296).
+   *
+   * `startCharge`는 남은 시간을 미리 계산해 두고 `update`가 그만큼 밀어붙이는 구조라,
+   * 밖에서 위치만 되돌리면 **다음 프레임에 다시 밀고 들어온다.** 남은 시간 자체를
+   * 0으로 만들어야 실제로 멈춘다.
+   *
+   * 속도 벡터도 비운다. 남겨두면 이후 `startCharge` 없이 어딘가에서 재개될 여지가
+   * 생기는데, 그건 "막았는데 뚫렸다"로 보인다.
+   */
+  cancelCharge(): void {
+    this.chargeRemaining = 0;
+    this.chargeVelocity.set(0, 0);
+  }
+
   /** 기억 기반 내성 원소를 시각화 (링 색 = 내성 원소 팔레트) — GDD §4.1 "명시적 표시" */
   showResistance(element: SpellElement | null): void {
     this.showResistances(element ? [element] : []);
