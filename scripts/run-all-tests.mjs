@@ -18,6 +18,9 @@ import { dirname, join } from 'node:path';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const suites = Object.keys(pkg.scripts ?? {}).filter((k) => k.startsWith('test:')).sort();
+const exclusiveSuiteNames = new Set(['test:mapgen']);
+const concurrentSuites = suites.filter((name) => !exclusiveSuiteNames.has(name));
+const exclusiveSuites = suites.filter((name) => exclusiveSuiteNames.has(name));
 
 if (suites.length === 0) {
   console.error('실행할 test:* 스크립트가 없다 — package.json을 확인하라');
@@ -58,8 +61,8 @@ async function main() {
   let next = 0;
 
   const worker = async () => {
-    while (next < suites.length) {
-      const name = suites[next];
+    while (next < concurrentSuites.length) {
+      const name = concurrentSuites[next];
       next += 1;
       const r = await runSuite(name);
       results.push(r);
@@ -69,7 +72,18 @@ async function main() {
     }
   };
 
-  await Promise.all(Array.from({ length: Math.min(LIMIT, suites.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(LIMIT, concurrentSuites.length) }, worker));
+
+  // Wall-clock performance regressions must run without competition from the
+  // other child test processes, otherwise CI scheduler pauses look like map
+  // generation regressions.
+  for (const name of exclusiveSuites) {
+    const r = await runSuite(name);
+    results.push(r);
+    const mark = r.ok ? '✓' : '✗';
+    const detail = r.ok ? lastLine(r.stdout) : '실패';
+    console.log(`${mark} ${name.padEnd(22)} ${String(r.ms).padStart(6)}ms  ${detail}`);
+  }
 
   const failed = results.filter((r) => !r.ok).sort((a, b) => a.name.localeCompare(b.name));
   console.log(`\n${'─'.repeat(60)}`);
