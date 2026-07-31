@@ -1,5 +1,5 @@
 import type { RewardOption } from '../run/runContract';
-import { UI_COLOR, UI_FONT, UI_LAYER, UI_SEMANTIC } from './uiTokens';
+import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL, UI_SEMANTIC } from './uiTokens';
 import type { SpellForm } from '../spell/types';
 import { ELEMENT_LABELS, ELEMENT_PALETTES, paletteColorToCss } from '../render/palette';
 import { glyphSvg } from '../render/formGlyphs';
@@ -30,53 +30,72 @@ const CSS = `
               rgba(6, 5, 10, 0.72);
   backdrop-filter: blur(2px) saturate(0.9);
   opacity: 0; visibility: hidden; transition: opacity 180ms ease;
-  font-family: ${UI_FONT.sans};
+  font-family: ${UI_FONT.serif};
 }
 #${WRAP_ID}.active { opacity: 1; visibility: visible; }
 #${WRAP_ID} .reward-panel { text-align: center; max-width: min(700px, calc(100vw - 32px)); }
 #${WRAP_ID} .reward-kicker {
   font-size: 12px; font-weight: 700; letter-spacing: 0.24em;
-  color: ${UI_COLOR.accent}; text-shadow: 0 0 12px rgba(216, 187, 114, 0.8);
+  color: ${UI_COLOR.accent}; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 }
-#${WRAP_ID} .reward-title { margin: 6px 0 22px; font-size: 24px; font-weight: 700; color: ${UI_COLOR.textBright}; }
+#${WRAP_ID} .reward-title {
+  margin: 6px 0 22px; font-size: 25px; font-weight: 700;
+  font-family: ${UI_FONT.serif}; letter-spacing: 0.05em;
+  color: ${UI_COLOR.textBright};
+  /* 필사본 표제 아래 괘선 — 제목과 본문을 가르는 것은 여백이 아니라 선이다 */
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(216, 187, 114, 0.22);
+}
 #${WRAP_ID} .reward-cards { display: flex; gap: 20px; justify-content: center; }
 #${WRAP_ID} .reward-card {
   --card-core: ${UI_COLOR.accent}; --card-glow: ${UI_COLOR.borderStrong};
   position: relative; width: clamp(150px, 21vw, 200px); min-height: 218px;
   padding: 18px 14px 46px; box-sizing: border-box; text-align: center;
-  border: 1px solid color-mix(in srgb, var(--card-core) 55%, #26305b);
-  border-radius: 14px; cursor: pointer;
-  background: linear-gradient(160deg, rgba(10, 14, 34, 0.97), rgba(15, 21, 52, 0.93));
-  color: ${UI_COLOR.text}; font: inherit;
+  border: 1px solid color-mix(in srgb, var(--card-core) 42%, ${UI_COLOR.border});
+  border-radius: ${UI_MATERIAL.deckle}; cursor: pointer;
+  /* 재질 → 얼룩 → 바탕 순으로 얹는다. 대각 그라데이션 하나만 두면 "UI 카드"로 읽힌다 */
+  background:
+    ${UI_MATERIAL.grain},
+    ${UI_MATERIAL.stain},
+    linear-gradient(163deg, rgba(26, 19, 30, 0.97), rgba(14, 10, 18, 0.95));
+  /* ⚠️ 종이는 스스로 빛나지 않는다 — 아래로 그림자를 떨어뜨린다 */
+  box-shadow: ${UI_MATERIAL.paperShadow}, ${UI_MATERIAL.rule};
+  color: ${UI_COLOR.text}; font-family: ${UI_FONT.serif}; font-size: inherit;
+  filter: ${UI_MATERIAL.aged};
   transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 #${WRAP_ID} .reward-card:hover, #${WRAP_ID} .reward-card.focused {
   transform: translateY(-8px) scale(1.03);
   border-color: var(--card-core);
-  box-shadow: 0 0 28px color-mix(in srgb, var(--card-glow) 45%, transparent),
-              0 18px 50px rgba(0, 0, 0, 0.5);
+  /* 글로우가 아니라 **더 높이 들린 종이**. 금박 윤곽만 얇게 남긴다 */
+  box-shadow: ${UI_MATERIAL.paperShadowLift},
+              inset 0 0 0 1px color-mix(in srgb, var(--card-core) 30%, transparent);
 }
 #${WRAP_ID} .reward-card:focus-visible { outline: 2px solid var(--card-core); outline-offset: 3px; }
 /* 상위 선택지(진화·융합) — 반짝이는 금빛 테두리로 한눈에 티가 난다 */
 #${WRAP_ID} .reward-card--rare {
   border-color: transparent;
   background:
-    linear-gradient(160deg, rgba(14, 12, 30, 0.97), rgba(24, 17, 28, 0.95)) padding-box,
+    ${UI_MATERIAL.grain} padding-box,
+    linear-gradient(163deg, rgba(30, 22, 34, 0.97), rgba(16, 12, 20, 0.95)) padding-box,
     linear-gradient(120deg, ${UI_COLOR.accentGlow}, ${UI_COLOR.warm}, var(--card-core), ${UI_COLOR.accentGlow}, ${UI_COLOR.accentGlow}) border-box;
   border: 2px solid transparent;
   background-size: 100% 100%, 300% 100%;
   animation: r3-rare-shimmer 2.6s linear infinite;
-  box-shadow: 0 0 20px rgba(216, 187, 114, 0.28);
+  box-shadow: ${UI_MATERIAL.paperShadow}, ${UI_MATERIAL.rule};
 }
 #${WRAP_ID} .reward-card--rare:hover, #${WRAP_ID} .reward-card--rare.focused {
-  box-shadow: 0 0 34px rgba(216, 187, 114, 0.5), 0 18px 50px rgba(0, 0, 0, 0.5);
+  box-shadow: ${UI_MATERIAL.paperShadowLift},
+              inset 0 0 0 1px rgba(216, 187, 114, 0.3);
 }
 #${WRAP_ID} .card-rare-ribbon {
   position: absolute; top: 9px; right: 10px;
   font-size: 10px; font-weight: 800; letter-spacing: 0.12em;
   color: #1a1204; background: linear-gradient(120deg, ${UI_COLOR.accentGlow}, ${UI_COLOR.warm});
-  padding: 2px 8px; border-radius: 999px;
-  box-shadow: 0 0 10px rgba(216, 187, 114, 0.6);
+  padding: 3px 9px; border-radius: 3px 8px 3px 8px;
+  font-family: ${UI_FONT.serif};
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+  filter: ${UI_MATERIAL.gildEdge};
 }
 @keyframes r3-rare-shimmer {
   from { background-position: 0 0, 0 0; }
@@ -90,7 +109,8 @@ const CSS = `
   font: 700 12px/1.6 'Consolas', monospace;
   width: 20px; height: 20px; border-radius: 5px;
   color: ${UI_COLOR.ink}; background: var(--card-core);
-  box-shadow: 0 0 10px var(--card-glow);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  filter: ${UI_MATERIAL.gildEdge};
 }
 #${WRAP_ID} .card-glyph {
   width: 52px; height: 52px; margin: 14px auto 12px; border-radius: 50%;
@@ -100,7 +120,10 @@ const CSS = `
 }
 /* 폼이 있는 카드는 원형 위에 형태 글리프를 얹는다 — 빌드 HUD 칩과 같은 어휘 */
 #${WRAP_ID} .card-glyph svg { width: 30px; height: 30px; color: ${UI_COLOR.textBright}; }
-#${WRAP_ID} .card-title { font-size: 17px; font-weight: 700; color: ${UI_COLOR.textBright}; }
+#${WRAP_ID} .card-title {
+  font-size: 17px; font-weight: 700; font-family: ${UI_FONT.serif};
+  letter-spacing: 0.03em; color: ${UI_COLOR.textBright};
+}
 #${WRAP_ID} .card-desc { margin-top: 8px; font-size: 13px; line-height: 1.5; color: #a9b4e6; }
 #${WRAP_ID} .card-kind {
   position: absolute; left: 0; right: 0; bottom: 14px;

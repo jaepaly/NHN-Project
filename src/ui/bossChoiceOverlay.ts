@@ -1,5 +1,5 @@
 
-import { UI_COLOR, UI_FONT, UI_LAYER } from './uiTokens';/**
+import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL } from './uiTokens';/**
  * 보스 후 선택 오버레이 — "이대로 마칠까 vs 이어갈까" (게임성: 절정 + 성장하는 맛).
  * R3 자립형 DOM 오버레이 (runSummary/codex 패턴). 씬은 현재 루프·다음 난이도만 넘기고,
  * 선택('end' | 'continue')을 Promise로 돌려받는다.
@@ -19,7 +19,7 @@ const CSS = `
 #${WRAP_ID}.active { opacity: 1; visibility: visible; }
 #${WRAP_ID} .bc-kicker {
   font-size: 13px; letter-spacing: 0.34em; color: ${UI_COLOR.positive};
-  text-shadow: 0 0 20px rgba(127, 183, 154, 0.7);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
 }
 #${WRAP_ID} .bc-title {
   margin-top: 8px; font-size: clamp(26px, 4.5vw, 38px); font-weight: 800;
@@ -34,7 +34,8 @@ const CSS = `
   box-shadow: 0 0 0 rgba(0,0,0,0); transition: box-shadow 160ms ease, transform 160ms ease;
 }
 #${WRAP_ID} .bc-card:hover, #${WRAP_ID} .bc-card.focused {
-  box-shadow: 0 0 26px color-mix(in srgb, var(--bc-glow) 55%, transparent);
+  box-shadow: ${UI_MATERIAL.paperShadowLift},
+              inset 0 0 0 1px color-mix(in srgb, var(--bc-glow) 30%, transparent);
   transform: translateY(-3px);
 }
 #${WRAP_ID} .bc-card-title { font-size: 18px; font-weight: 700; color: var(--bc-core); }

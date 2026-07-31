@@ -20,8 +20,8 @@ const CSS = `
 #${WRAP_ID} .summary-title {
   font-size: clamp(34px, 6vw, 52px); font-weight: 800; letter-spacing: 0.22em;
 }
-#${WRAP_ID}.victory .summary-title { color: ${UI_COLOR.positive}; text-shadow: 0 0 28px rgba(127, 183, 154, 0.8); }
-#${WRAP_ID}.defeat .summary-title { color: UI_COLOR.danger; text-shadow: 0 0 28px rgba(185, 95, 114, 0.8); }
+#${WRAP_ID}.victory .summary-title { color: ${UI_COLOR.positive}; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6); }
+#${WRAP_ID}.defeat .summary-title { color: ${UI_COLOR.danger}; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6); }
 #${WRAP_ID} .summary-sub { margin-top: 6px; font-size: 13px; letter-spacing: 0.14em; color: ${UI_COLOR.textMuted}; }
 #${WRAP_ID} .summary-book {
   margin: 22px auto 0; padding: 14px 22px; min-width: 260px; max-width: min(420px, 84vw);

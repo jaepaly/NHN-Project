@@ -179,6 +179,52 @@ export const UI_FONT = {
  * 오버레이 공통 CSS — 각 오버레이가 자기 스타일 앞에 깐다.
  * 스크림·패널·전환을 한 곳에서 정의해 "도감은 둥근데 요약은 각진" 류를 없앤다.
  */
+/**
+ * 마도서 재질 — **색이 아니라 이것이 "마도서답다"를 만든다.**
+ *
+ * 총괄 지적: *"임재윤은 마도서처럼 만들려고 했는데, 사실상 현재 상태는 그냥 평범한
+ * 박스에다가 테두리 색만 칠한 느낌"*. 맞는 진단이었다. 색을 금색으로 바꿔도
+ * 구조가 그대로면 "빛나는 UI 컴포넌트"로 읽힌다.
+ *
+ * 경로 지도(#301)와 나머지를 실측 비교해 빠진 것을 뽑았다:
+ *
+ *   양피지 결      repeating-linear-gradient   지도 O / 나머지 X
+ *   비대칭 얼룩    radial 4겹, 위치가 제각각    지도 O / 나머지 대각 1개
+ *   잉크 번짐      drop-shadow filter          지도 O / 나머지 X
+ *   낡은 채도      saturate(0.48)              지도 O / 나머지 0.9
+ *   서체          serif 전면                   지도 O / 나머지 sans
+ *   그림자        —                            **양쪽 다 `0 0 Npx` 네온 글로우**
+ *
+ * ⚠️ 마지막이 제일 크다. `box-shadow: 0 0 28px`는 **네온·SF 문법**이다. 종이는
+ * 스스로 빛나지 않고 **아래로 그림자를 떨어뜨린다.** 색을 아무리 바꿔도 균일 글로우가
+ * 남으면 홀로그램 카드로 읽힌다.
+ */
+export const UI_MATERIAL = {
+  /** 양피지 결 — 비스듬한 미세 줄무늬. 각도를 90의 배수에서 어긋나게 해야 인쇄물이 아니라 종이가 된다 */
+  grain: 'repeating-linear-gradient(102deg, transparent 0 54px, rgba(218, 193, 149, 0.014) 55px 56px)',
+  /** 얼룩·번짐 — 위치가 대칭이면 그라데이션으로 읽힌다. 서로 다른 구석에 흩는다 */
+  stain: [
+    'radial-gradient(circle at 12% 22%, rgba(137, 102, 69, 0.10), transparent 31%)',
+    'radial-gradient(circle at 88% 74%, rgba(95, 65, 114, 0.12), transparent 36%)',
+    'radial-gradient(ellipse at 63% 12%, rgba(155, 112, 65, 0.06), transparent 28%)',
+  ].join(', '),
+  /** 종이 그림자 — **아래로** 떨어진다. 네온 글로우(0 0)를 이것으로 대체한다 */
+  paperShadow: '0 14px 34px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4)',
+  /** 들어올린 종이 (호버·선택) */
+  paperShadowLift: '0 22px 52px rgba(0, 0, 0, 0.62), 0 3px 10px rgba(0, 0, 0, 0.45)',
+  /** 금박 각인 — 발광이 아니라 **얇은 윤곽**. 잉크가 번진 정도로만 */
+  gildEdge: 'drop-shadow(0 0 2px rgba(216, 187, 114, 0.5))',
+  /** 낡음 — 채도를 깎아야 새 UI로 안 보인다 */
+  aged: 'saturate(0.55)',
+  /**
+   * 모서리 — **네 귀퉁이를 다르게** 준다. 균일한 border-radius는 UI 컴포넌트의 문법이고
+   * 손으로 자른 종이는 균일하지 않다. 값 차이는 작게(2~4px) — 크면 만화가 된다.
+   */
+  deckle: '13px 16px 12px 15px',
+  /** 안쪽 장식 괘선 — 필사본 여백선. inset box-shadow로 테두리 없이 선을 넣는다 */
+  rule: 'inset 0 0 0 1px rgba(216, 187, 114, 0.14)',
+} as const;
+
 export function overlayBaseCss(wrapId: string): string {
   return `
 #${wrapId} {
@@ -191,9 +237,14 @@ export function overlayBaseCss(wrapId: string): string {
 }
 #${wrapId}.active { opacity: 1; visibility: visible; }
 #${wrapId} .ui-panel {
-  background: ${UI_COLOR.panel};
+  /* 재질 먼저, 바탕 나중 — 얼룩·결이 바탕 위에 얹힌다 */
+  background:
+    ${UI_MATERIAL.grain},
+    ${UI_MATERIAL.stain},
+    ${UI_COLOR.panel};
   border: 1px solid ${UI_COLOR.border};
-  border-radius: ${UI_RADIUS.md};
+  border-radius: ${UI_MATERIAL.deckle};
+  box-shadow: ${UI_MATERIAL.paperShadow}, ${UI_MATERIAL.rule};
 }
 @media (prefers-reduced-motion: reduce) { #${wrapId} { transition: none; } }
 `;

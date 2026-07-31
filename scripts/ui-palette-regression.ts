@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { UI_COLOR, UI_HEX, UI_SEMANTIC, hex } from '../src/ui/uiTokens';
+import { UI_COLOR, UI_HEX, UI_MATERIAL, UI_SEMANTIC, hex } from '../src/ui/uiTokens';
 
 /**
  * UI 팔레트 통일 회귀 (총괄 지시: "이 스타일에 맞게 다른 UI도 다 통일시켜야 하지 않을까?").
@@ -230,4 +230,79 @@ import { UI_COLOR, UI_HEX, UI_SEMANTIC, hex } from '../src/ui/uiTokens';
   assert.notEqual(limit, over, '어휘제한과 초과가 같은 색이면 구분이 안 된다');
 }
 
-console.log('ui palette regression: 마도서정본·의미색구분·숫자토큰파생·주요화면이행·HUD·하드코딩상한·영창바대조 7군 통과');
+// ── 8) **색이 아니라 재질이 마도서를 만든다** ──────────────────────────────
+//
+// 총괄 지적: *"임재윤은 마도서처럼 만들려고 했는데, 사실상 현재 상태는 그냥 평범한
+// 박스에다가 테두리 색만 칠한 느낌"*. 맞는 진단이었다 — 처음 통일은 색 교체였고,
+// 구조가 그대로면 "빛나는 UI 컴포넌트"로 읽힌다.
+//
+// 실측으로 뽑은 차이(경로 지도 vs 나머지): 양피지 결 · 비대칭 얼룩 · 잉크 번짐 ·
+// 낡은 채도 · serif 서체. 그리고 **양쪽 다 갖고 있던 문제**가 네온 글로우다.
+{
+  const overlays = ['rewardCardOverlay', 'bossChoiceOverlay', 'runSummaryOverlay'];
+
+  // ⚠️ `box-shadow: 0 0 Npx`는 **네온·SF 문법**이다. 종이는 스스로 빛나지 않고
+  // 아래로 그림자를 떨어뜨린다. 색을 아무리 금색으로 바꿔도 균일 글로우가 남으면
+  // 홀로그램 카드로 읽힌다. (`inset 0 0 0 1px`은 테두리라 예외)
+  for (const name of overlays) {
+    const src = readFileSync(`src/ui/${name}.ts`, 'utf8');
+    // ⚠️ 그림자 선언은 **여러 줄에 걸친다** — `box-shadow: A,` 다음 줄에 `inset B`가
+    // 오는 식이다. 줄 단위로 보면 두 번째 줄의 inset을 놓쳐 오탐한다(실제로 그렇게
+    // 걸렸다). `;`까지를 한 덩어리로 잡고 그 안을 쉼표로 나눠 본다.
+    const shadows = src.match(/(?:box|text|drop)-shadow:[^;]+/g) ?? [];
+    const neon = shadows.flatMap((decl) => decl.split(','))
+      .filter((part) => !/inset/.test(part))
+      .filter((part) => /(?:^|[^0-9])0 0 [0-9]+px/.test(part));
+    assert.ok(
+      neon.length <= 1,
+      `${name}: 네온 글로우가 ${neon.length}건 남았다 — 종이는 스스로 빛나지 않는다`
+      + ` (${neon.slice(0, 2).join(' / ')})`,
+    );
+  }
+
+  // 재질 토큰이 실제로 쓰이는가 — 정의만 하고 안 쓰면 아무 소용이 없다
+  const reward = readFileSync('src/ui/rewardCardOverlay.ts', 'utf8');
+  for (const token of ['UI_MATERIAL.grain', 'UI_MATERIAL.stain', 'UI_MATERIAL.paperShadow', 'UI_MATERIAL.deckle']) {
+    assert.ok(reward.includes(token), `보상 카드가 ${token}을 써야 한다 — 매 방마다 보는 화면이다`);
+  }
+
+  // 서체 — 마도서에 고딕이면 재질을 얹어도 "앱 UI"로 읽힌다.
+  // 경로 지도는 전부 serif인데 보상 카드만 sans였다(실측).
+  assert.ok(
+    !/font-family: [$]\{UI_FONT\.sans\}/.test(reward),
+    '보상 카드가 sans를 쓰면 안 된다 — 마도서 서체는 serif다',
+  );
+  assert.ok(
+    (reward.match(/UI_FONT\.serif/g) ?? []).length >= 3,
+    '카드·제목·배지가 serif여야 한다',
+  );
+
+  // 균일 border-radius는 UI 컴포넌트의 문법이다. 손으로 자른 종이는 균일하지 않다.
+  assert.ok(
+    /border-radius: [$]\{UI_MATERIAL\.deckle\}/.test(reward),
+    '카드 모서리가 균일하면 "UI 카드"로 읽힌다 — 네 귀퉁이를 다르게',
+  );
+
+  // 재질 토큰 자체의 성질
+  assert.ok(/repeating-linear-gradient/.test(UI_MATERIAL.grain), '결은 반복 줄무늬여야 한다');
+  const angle = UI_MATERIAL.grain.match(/(\d+)deg/);
+  assert.ok(angle, '결에 각도가 있어야 한다');
+  assert.ok(
+    Number(angle![1]) % 90 !== 0,
+    `결 각도 ${angle![1]}도가 직각이다 — 90의 배수면 종이가 아니라 인쇄 격자로 보인다`,
+  );
+  assert.ok(
+    (UI_MATERIAL.stain.match(/radial-gradient/g) ?? []).length >= 3,
+    '얼룩이 하나뿐이면 그라데이션으로 읽힌다 — 여러 곳에 흩어야 한다',
+  );
+  assert.ok(
+    !/^0 0 /.test(UI_MATERIAL.paperShadow),
+    '종이 그림자는 방향이 있어야 한다 (0 0 은 네온 글로우)',
+  );
+  // 모서리 네 값이 전부 같으면 균일한 것과 다르지 않다
+  const corners = UI_MATERIAL.deckle.split(/\s+/);
+  assert.equal(corners.length, 4, '모서리는 네 값을 따로 준다');
+  assert.ok(new Set(corners).size >= 3, '네 귀퉁이 중 최소 셋은 달라야 한다');
+}
+
+console.log('ui palette regression: 마도서정본·의미색구분·숫자토큰파생·주요화면이행·HUD·하드코딩상한·영창바대조·마도서재질 8군 통과');
