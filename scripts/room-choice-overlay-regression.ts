@@ -54,13 +54,16 @@ assert.ok(!source.includes("event.key === 'Escape'"), 'Escape로 필수 선택�
 // 4) 전체 지도와 실제 선택지를 분리해서 받는다.
 assert.ok(source.includes('nodeId: string'), 'MapGraph 노드 ID 계약');
 assert.ok(source.includes('kind: MapNodeKind'), 'MapNode 종류 계약');
-assert.ok(source.includes('rewardHint?: string'), '위험·보상 판단 힌트');
+assert.ok(!source.includes('rewardHint'), '내부 밸런스 요약은 경로 UI에 노출하지 않는다');
+assert.ok(!source.includes('route-detail-reward'), '상세에는 자연어 방 설명만 표시');
 assert.ok(source.includes('map: MinimapModel'), '전체 경로 지도 계약');
 assert.ok(source.includes('options: readonly RoomChoiceOption[]'), '현재 선택 가능 노드 계약');
 
 // 5) 기존 미니맵 좌표와 연결선을 큰 중앙 지도에 재사용한다.
 assert.ok(source.includes('minimapLayout(model)'), '기존 미니맵 레이아웃 재사용');
-assert.ok(source.includes("createElementNS('http://www.w3.org/2000/svg', 'line')"), '지도 연결선');
+assert.ok(source.includes("createElementNS('http://www.w3.org/2000/svg', 'path')"), '곡선 지도 연결선');
+assert.ok(source.includes("path.setAttribute("), 'SVG 마력선 속성');
+assert.ok(source.includes(' C ${from.x + deltaX * 0.38}'), '직선 대신 유기적인 베지어 곡선');
 assert.ok(source.includes('route-map'), '중앙 전체 지도');
 
 // 6) 전체 노드는 설명 가능하되 실제 다음 방만 선택할 수 있다.
