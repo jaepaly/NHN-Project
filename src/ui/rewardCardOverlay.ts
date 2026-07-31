@@ -1,5 +1,8 @@
 import type { RewardOption } from '../run/runContract';
 import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL, UI_SEMANTIC } from './uiTokens';
+import {
+  cornerFlourish, deckleMask, divider, initialFrame, ornamentCss, waxSeal,
+} from './grimoireOrnament';
 import type { SpellForm } from '../spell/types';
 import { ELEMENT_LABELS, ELEMENT_PALETTES, paletteColorToCss } from '../render/palette';
 import { glyphSvg } from '../render/formGlyphs';
@@ -33,18 +36,44 @@ const CSS = `
   font-family: ${UI_FONT.serif};
 }
 #${WRAP_ID}.active { opacity: 1; visibility: visible; }
-#${WRAP_ID} .reward-panel { text-align: center; max-width: min(700px, calc(100vw - 32px)); }
+${ornamentCss(WRAP_ID)}
+#${WRAP_ID} .reward-panel {
+  position: relative; text-align: center;
+  max-width: min(720px, calc(100vw - 32px));
+  /* 장식은 currentColor를 쓴다 — 색을 여기서 한 번만 정해 팔레트와 갈리지 않게 */
+  --orn: ${UI_COLOR.accent}; --seal: ${UI_COLOR.accent};
+  /* 모서리 당초무늬가 놓일 자리 */
+  padding: 40px 34px 28px;
+  /* 손질린 종이 가장자리 — border-radius로는 못 만든다(항상 매끈한 호를 그린다).
+     SVG 마스크로 변을 미세하게 흔들어야 종이가 된다. */
+  -webkit-mask-image: ${deckleMask()};
+  mask-image: ${deckleMask()};
+  -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+  background:
+    ${UI_MATERIAL.grain},
+    ${UI_MATERIAL.stain},
+    linear-gradient(163deg, rgba(26, 19, 30, 0.985), rgba(13, 10, 17, 0.975));
+  box-shadow: ${UI_MATERIAL.paperShadow}, ${UI_MATERIAL.rule};
+}
 #${WRAP_ID} .reward-kicker {
   font-size: 12px; font-weight: 700; letter-spacing: 0.24em;
   color: ${UI_COLOR.accent}; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 }
 #${WRAP_ID} .reward-title {
-  margin: 6px 0 22px; font-size: 25px; font-weight: 700;
+  margin: 4px 0 2px; font-size: 27px; font-weight: 700;
   font-family: ${UI_FONT.serif}; letter-spacing: 0.05em;
   color: ${UI_COLOR.textBright};
-  /* 필사본 표제 아래 괘선 — 제목과 본문을 가르는 것은 여백이 아니라 선이다 */
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(216, 187, 114, 0.22);
+  /* 머리글자와 나란히 — block flow로는 정렬이 안 맞는다 */
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+}
+/* 머리글자 (illuminated initial) — 첫 글자만 장식 틀에 넣어 "장(章)"으로 읽히게 */
+#${WRAP_ID} .reward-initial {
+  position: relative; display: inline-grid; place-items: center;
+  width: 52px; height: 52px; flex: 0 0 52px;
+}
+#${WRAP_ID} .reward-initial em {
+  font-style: normal; font-size: 29px; line-height: 1;
+  color: ${UI_COLOR.accent}; filter: ${UI_MATERIAL.gildEdge};
 }
 #${WRAP_ID} .reward-cards { display: flex; gap: 20px; justify-content: center; }
 #${WRAP_ID} .reward-card {
@@ -62,10 +91,12 @@ const CSS = `
   box-shadow: ${UI_MATERIAL.paperShadow}, ${UI_MATERIAL.rule};
   color: ${UI_COLOR.text}; font-family: ${UI_FONT.serif}; font-size: inherit;
   filter: ${UI_MATERIAL.aged};
+  /* 손으로 끼워 넣은 듯 미세하게 어긋나게. 균일한 3열은 그 자체가 UI 컴포넌트의 문법이다 */
+  transform: rotate(var(--card-tilt, 0deg)) translateY(var(--card-lift, 0px));
   transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 #${WRAP_ID} .reward-card:hover, #${WRAP_ID} .reward-card.focused {
-  transform: translateY(-8px) scale(1.03);
+  transform: rotate(var(--card-tilt, 0deg)) translateY(calc(var(--card-lift, 0px) - 10px)) scale(1.035);
   border-color: var(--card-core);
   /* 글로우가 아니라 **더 높이 들린 종이**. 금박 윤곽만 얇게 남긴다 */
   box-shadow: ${UI_MATERIAL.paperShadowLift},
@@ -88,14 +119,13 @@ const CSS = `
   box-shadow: ${UI_MATERIAL.paperShadowLift},
               inset 0 0 0 1px rgba(216, 187, 114, 0.3);
 }
-#${WRAP_ID} .card-rare-ribbon {
-  position: absolute; top: 9px; right: 10px;
-  font-size: 10px; font-weight: 800; letter-spacing: 0.12em;
-  color: #1a1204; background: linear-gradient(120deg, ${UI_COLOR.accentGlow}, ${UI_COLOR.warm});
-  padding: 3px 9px; border-radius: 3px 8px 3px 8px;
-  font-family: ${UI_FONT.serif};
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
-  filter: ${UI_MATERIAL.gildEdge};
+/* 봉랍 — 알약 배지(border-radius: 999px)를 대체한다. 알약은 웹 UI의 문법이고,
+   마도서에서 "이것이 특별하다"를 말하는 물건은 밀랍 도장이다.
+   카드 위에 **눌러 찍힌** 것이라 살짝 삐져나간다 — 안에 얌전히 들어가면 그냥 배지다 */
+#${WRAP_ID} .card-rare-seal {
+  position: absolute; top: -12px; right: -10px;
+  transform: rotate(-9deg);
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.55));
 }
 @keyframes r3-rare-shimmer {
   from { background-position: 0 0, 0 0; }
@@ -252,10 +282,19 @@ export function showRewardCards(
   const shown = options.slice(0, 3);
   const wrap = ensureDom();
 
+  const titleText = framing.title ?? '공명의 대가를 선택하라';
+  // 머리글자 — 첫 글자만 떼어 장식 틀에 넣는다
+  const initialChar = titleText.slice(0, 1);
+  const restTitle = titleText.slice(1);
   wrap.innerHTML = `
     <div class="reward-panel">
+      ${cornerFlourish().replace('orn-corner', 'orn-corner tl')}
+      ${cornerFlourish().replace('orn-corner', 'orn-corner tr')}
+      ${cornerFlourish().replace('orn-corner', 'orn-corner bl')}
+      ${cornerFlourish().replace('orn-corner', 'orn-corner br')}
       <div class="reward-kicker">${escapeText(framing.kicker ?? 'ROOM CLEAR')}</div>
-      <div class="reward-title">${escapeText(framing.title ?? '공명의 대가를 선택하라')}</div>
+      <h2 class="reward-title"><span class="reward-initial">${initialFrame()}<em>${escapeText(initialChar)}</em></span>${escapeText(restTitle)}</h2>
+      ${divider()}
       <div class="reward-cards"></div>
       <div class="reward-hint"><b>1·2·3</b> 또는 <b>←→ + Enter</b> · 마우스 클릭</div>
       ${(framing.contextLines ?? []).filter(Boolean).length > 0
@@ -288,9 +327,12 @@ export function showRewardCards(
       btn.className = rare ? 'reward-card reward-card--rare' : 'reward-card';
       btn.style.setProperty('--card-core', core);
       btn.style.setProperty('--card-glow', glow);
+      // 각도는 아주 작게(0.6도 안쪽) — 크면 장난스러워진다
+      btn.style.setProperty('--card-tilt', `${[-0.55, 0.35, -0.25, 0.5][i % 4]}deg`);
+      btn.style.setProperty('--card-lift', `${[0, 5, 2, 6][i % 4]}px`);
       btn.innerHTML = `
         <span class="card-hotkey">${i + 1}</span>
-        ${rare ? '<div class="card-rare-ribbon">격상</div>' : ''}
+        ${rare ? `<div class="card-rare-seal" title="격상">${waxSeal('격')}</div>` : ''}
         <div class="card-glyph"></div>
         <div class="card-title"></div>
         <div class="card-desc"></div>

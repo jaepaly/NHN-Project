@@ -305,4 +305,64 @@ import { UI_COLOR, UI_HEX, UI_MATERIAL, UI_SEMANTIC, hex } from '../src/ui/uiTok
   assert.ok(new Set(corners).size >= 3, '네 귀퉁이 중 최소 셋은 달라야 한다');
 }
 
-console.log('ui palette regression: 마도서정본·의미색구분·숫자토큰파생·주요화면이행·HUD·하드코딩상한·영창바대조·마도서재질 8군 통과');
+// ── 9) **장식이 있는가** — 색·재질로는 부족하다 ────────────────────────────
+//
+// 총괄 지적: *"그냥 상자 하나 띄우고 색만 칠한 거잖아. 디자인이 없어."*
+//
+// 앞선 두 단계(색 교체 → 재질 추가)는 전부 **표면 처리**였다. 표면을 아무리 손봐도
+// 형태가 `둥근 사각형 + 테두리 + 가운데 정렬`이면 기본값으로 보인다. 필사본이
+// 필사본으로 보이는 이유는 종이 질감이 아니라 **그려 넣은 것들**이다.
+{
+  const orn = readFileSync('src/ui/grimoireOrnament.ts', 'utf8');
+  const reward = readFileSync('src/ui/rewardCardOverlay.ts', 'utf8');
+
+  // 장식은 SVG여야 한다 — CSS로는 곡선을 못 그린다. border-radius·box-shadow로
+  // 흉내내면 결국 "둥근 사각형"이라 지금 문제가 반복된다.
+  for (const fn of ['cornerFlourish', 'divider', 'waxSeal', 'initialFrame', 'deckleMask']) {
+    assert.ok(orn.includes(`export function ${fn}`), `${fn} 장식이 있어야 한다`);
+  }
+  assert.ok((orn.match(/<path /g) ?? []).length >= 8, '실제로 선을 그어야 한다 (path 8개 이상)');
+
+  // ⚠️ 장식에 색을 박으면 팔레트를 바꿀 때 장식만 옛 색으로 남는다 — 이번 통일에서
+  // 실제로 겪은 실패다(text-shadow가 옛 청록으로 남았다). currentColor를 쓴다.
+  const hardCoded = (orn.match(/(?:stroke|fill)="#[0-9a-fA-F]{3,6}"/g) ?? [])
+    // 예외 둘:
+    //  - `#1a1206` 봉랍 각인 — 밀랍 **위에 눌린 음각**이라 밀랍색을 따라가면 안 보인다
+    //  - `#fff` deckle 마스크 — 색이 아니라 **알파**다. 마스크에서 흰색은 "보인다"는 뜻
+    .filter((m) => !m.includes('#1a1206') && !m.includes('#fff'));
+  assert.equal(
+    hardCoded.length, 0,
+    `장식에 색이 박혀 있다: ${hardCoded.join(' ')} — currentColor를 쓸 것`,
+  );
+
+  // 보상 카드가 실제로 장식을 **쓰는가**. 만들어만 두면 아무 소용이 없다.
+  for (const use of ['cornerFlourish()', 'divider()', 'initialFrame()', 'waxSeal(', 'deckleMask()']) {
+    assert.ok(reward.includes(use), `보상 카드가 ${use}을 써야 한다`);
+  }
+  // 모서리는 네 귀퉁이 전부 — 하나만 두면 장식이 아니라 얼룩으로 보인다
+  assert.equal(
+    (reward.match(/orn-corner (?:tl|tr|bl|br)/g) ?? []).length, 4,
+    '모서리 장식은 네 귀퉁이 전부에 놓는다',
+  );
+
+  // 알약 배지(border-radius: 999px)는 웹 UI의 문법이다 — 봉랍으로 대체했는지 본다
+  assert.ok(
+    !/card-rare-ribbon/.test(reward),
+    '알약 배지가 남아 있다 — 마도서에서 "특별하다"를 말하는 물건은 밀랍 도장이다',
+  );
+
+  // 균일한 3열은 그 자체가 컴포넌트의 문법이다. 손으로 놓은 듯 어긋나야 한다.
+  assert.ok(
+    /--card-tilt/.test(reward) && /rotate\(var\(--card-tilt/.test(reward),
+    '카드가 미세하게 기울어야 한다',
+  );
+  const tilts = reward.match(/\[-?[\d.]+, -?[\d.]+, -?[\d.]+, -?[\d.]+\]\[i % 4\]/g) ?? [];
+  assert.ok(tilts.length >= 2, '기울기·높이가 카드마다 달라야 한다');
+  // 각도가 크면 장난스러워진다
+  const angles = (reward.match(/\[(-?[\d.]+(?:, -?[\d.]+){3})\]\[i % 4\]`\}deg/g) ?? []).join();
+  for (const raw of angles.match(/-?[\d.]+/g) ?? []) {
+    assert.ok(Math.abs(Number(raw)) <= 1, `기울기 ${raw}도가 과하다 — 1도 안쪽이어야 한다`);
+  }
+}
+
+console.log('ui palette regression: 마도서정본·의미색구분·숫자토큰파생·주요화면이행·HUD·하드코딩상한·영창바대조·마도서재질·장식 9군 통과');
