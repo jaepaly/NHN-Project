@@ -185,6 +185,134 @@ export function blocksFromPlacements(
     }));
 }
 
+/** 바닥형 지형이 침범하면 안 되는 여유 — 밟고 시작하면 도착하자마자 피가 깎인다 */
+export const FLOOR_HAZARD_MARGIN = TERRAIN_PLAYER_RADIUS;
+
+/**
+ * 방 종류·스테이지별 **기본** 바닥지형 — 장벽과 같은 방식이다.
+ * R1이 노드 `terrain`에 채우면 그것이 이기고, 비어 있으면 이 값을 쓴다.
+ *
+ * ## 왜 기본값을 두는가
+ *
+ * 배선만 붙이고 기본값을 안 두면 **화면은 그대로다**. 생성기는 `terrain: []`을 주고
+ * 노드 데이터를 채우는 건 R1 몫이라, 그 설계가 나올 때까지 용암·독지대는 계속 안
+ * 나온다. 그게 정확히 #304 이전 상태다.
+ *
+ * ## 배치 근거
+ *
+ *  - **전투·정예방에만.** 장벽을 두는 종류와 같다. 무전투 방(보물·제단)은 설치물
+ *    접근만 방해하고, 보스방은 패턴이 넓은 공간을 전제한다. 함정방은 자기 기믹이 이미
+ *    바닥을 쓴다(씬이 중첩을 막는다)
+ *  - **1스테이지는 독지대, 2스테이지는 용암.** 용암이 더 아프고 잔류가 없다
+ *    (`floorHazardTickDamage`). 깊이가 깊어질수록 즉발 위험이 커지는 쪽이 읽기 쉽다
+ *  - **방 하나에 하나씩**(정예만 둘). 원칙 1(소수·개방형)은 바닥지형에도 적용된다.
+ *    바닥을 여러 개 깔면 "피할 곳"이 아니라 "밟을 수밖에 없는 곳"이 된다
+ *  - **기본 장벽과 안 겹친다.** 블록 아래 깔린 장판은 보이지도 밟히지도 않는다.
+ *    회귀가 좌표를 직접 검사한다
+ */
+const FLOOR_HAZARD_COMBAT_STAGE1: readonly MapTerrainCircle[] = [
+  { kind: 'poison', x: 960, y: 640, radius: 110 },
+];
+
+const FLOOR_HAZARD_COMBAT_STAGE2: readonly MapTerrainCircle[] = [
+  { kind: 'lava', x: 960, y: 640, radius: 110 },
+];
+
+const FLOOR_HAZARD_ELITE: readonly MapTerrainCircle[] = [
+  { kind: 'poison', x: 960, y: 640, radius: 100 },
+  { kind: 'lava', x: 620, y: 900, radius: 90 },
+];
+
+export interface MapTerrainCircle {
+  kind: 'lava' | 'poison';
+  x: number;
+  y: number;
+  radius: number;
+}
+
+/** 방 종류·스테이지 → 기본 바닥지형. 비어 있는 종류는 **의도적으로** 비어 있다. */
+export function floorHazardsForRoom(
+  kind: MapNodeKind,
+  stage: 1 | 2,
+): readonly MapTerrainCircle[] {
+  if (kind === 'combat') {
+    return stage === 2 ? FLOOR_HAZARD_COMBAT_STAGE2 : FLOOR_HAZARD_COMBAT_STAGE1;
+  }
+  if (kind === 'elite') return FLOOR_HAZARD_ELITE;
+  return [];
+}
+
+/** 바닥지형을 두는 종류 — 회귀가 "의도적으로 비었다"와 "빠뜨렸다"를 구분한다 */
+export const FLOOR_HAZARD_KINDS_WITH_DEFAULT: readonly MapNodeKind[] = ['combat', 'elite'];
+
+/** 바닥형 지형 반경 상한 — 방 하나를 통째로 덮으면 회피가 불가능해진다 */
+export const FLOOR_HAZARD_MAX_RADIUS = 220;
+
+/**
+ * `MapTerrainPlacement`(계약) → `FloorHazardZone`(기전) — **용암·독지대 실런 배선**.
+ *
+ * ## 왜 이게 없었나 (#304)
+ *
+ * `blocksFromPlacements`가 `kind === 'barrier'`만 통과시켜서, 노드에 원형 바닥지형을
+ * 넣어도 **전부 버려졌다.** 실제로 `setFloorHazards`를 부르는 곳은 DEV 프리뷰 하나뿐이라
+ * 실런에서는 용암·독지대가 한 번도 생기지 않았다.
+ *
+ * 그래서 "1스테이지에 독 장판이 없다"는 관측이 나왔고, 나는 그것을 **위험지대 함정방**
+ * 빈도 문제로 잘못 진단했다(#298 → #304 시정). 둘은 다른 체계다:
+ *
+ * | | 위험지대 함정방 | 용암·독지대 |
+ * |---|---|---|
+ * | 출처 | `trapProfile: 'hazard'` | `MapNode.terrain` |
+ * | 산출 | 붉은 원 `HazardZone` | `FloorHazardZone` |
+ * | 원소·정화 | 없음 | 있음 (#293) |
+ *
+ * 함정방 빈도를 아무리 올려도 정화를 볼 기회는 **0%**였다. 배선이 없었으니까.
+ *
+ * ## 방어적으로 거르는 이유
+ *
+ * 배치 설계(출현 비율·중첩 금지 규칙)는 R1 몫이지만, **배선 층에서 방을 못 쓰게 만드는
+ * 배치는 막는다.** 노드 데이터는 사람이 손으로 쓰는 것이라 오타 하나로 도착 지점이
+ * 용암에 잠기면 도착하자마자 피가 깎이고 원인을 찾기 어렵다.
+ *
+ * ⚠️ 여기서 거르는 건 **안전**뿐이다. "몇 개가 적당한가"는 거르지 않는다 — 그건 설계고,
+ * 배선이 설계를 대신 결정하면 R1이 노드를 고쳐도 화면이 안 바뀐다.
+ */
+export function floorHazardsFromPlacements(
+  placements: readonly { kind: string; x: number; y: number; radius?: number }[],
+): readonly { kind: 'lava' | 'poison'; x: number; y: number; radius: number }[] {
+  const out: { kind: 'lava' | 'poison'; x: number; y: number; radius: number }[] = [];
+  for (const placement of placements) {
+    const kind: 'lava' | 'poison' | null = placement.kind === 'lava' ? 'lava'
+      : placement.kind === 'poison' ? 'poison' : null;
+    if (!kind) continue;
+    if (typeof placement.radius !== 'number' || !Number.isFinite(placement.radius)) continue;
+    const radius = Math.min(FLOOR_HAZARD_MAX_RADIUS, Math.max(1, placement.radius));
+    const zone = { kind, x: placement.x, y: placement.y, radius };
+    if (floorHazardBlocksEntry(zone)) continue;
+    out.push(zone);
+  }
+  return out;
+}
+
+/**
+ * 이 바닥지형이 **도착 지점이나 출구를 덮는가** — 덮으면 배선이 버린다.
+ *
+ * 도착을 덮으면 방에 들어서자마자 피가 깎이고(회피 불가), 출구를 덮으면 방을 나가려면
+ * 반드시 밟아야 한다. 둘 다 플레이어가 대응할 수 없는 형태라 기믹이 아니라 사고다.
+ */
+export function floorHazardBlocksEntry(
+  zone: { x: number; y: number; radius: number },
+): boolean {
+  const hits = (spot: { x: number; y: number; radius: number }): boolean => {
+    const dx = zone.x - spot.x;
+    const dy = zone.y - spot.y;
+    const reach = zone.radius + spot.radius + FLOOR_HAZARD_MARGIN;
+    return dx * dx + dy * dy < reach * reach;
+  };
+  if (hits(TERRAIN_KEEPOUTS.arrival)) return true;
+  return TERRAIN_KEEPOUTS.exits.some(hits);
+}
+
 /** 점이 블록에 닿는가 — keep-out·통행 판정이 공유한다 (순수) */
 export function pointBlocked(
   x: number,
