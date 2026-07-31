@@ -886,6 +886,14 @@ export class ProtoScene extends Phaser.Scene {
   private incantOpenCount = 0;
   /** 첫 영창 안내를 이미 띄웠는지 (localStorage로 재플레이엔 생략) */
   private onboardingHintShown = false;
+  /**
+   * 슬로모션 배율 (영창 0.1 · 판정 0.15 · 평시 1).
+   *
+   * ⚠️ **읽기 전용이다. 바꿀 때는 `setTimeScale()`을 쓴다.**
+   * 이 값은 씬이 수동으로 굴리는 것들(적 이동·웨이브·마나 재생·쿨다운·장판)에만
+   * 곱해진다. 주문 연출·각인·보스 패턴은 **Phaser 트윈과 타이머**로 도는데 그건
+   * 실시간이라 영창 중에도 원래 속도로 날아갔다(총괄 제보).
+   */
   private timeScale = 1;
   private readonly enemyHitStop = new EnemyHitStopController<CombatEnemy>();
   private readonly enemyKnockbacks = new Map<CombatEnemy, EnemyKnockbackState>();
@@ -4659,7 +4667,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private openIncant(): void {
     this.audio.playSfx('incant-enter');
     this.incanting = true;
-    this.timeScale = 0.1; // 슬로모션
+    this.setTimeScale(0.1); // 슬로모션
     this.input.keyboard!.disableGlobalCapture();
     this.incantWrap.classList.add('active');
     this.incantWrap.classList.remove('judging');
@@ -4694,7 +4702,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
   private closeIncant(): void {
     this.incanting = false;
-    this.timeScale = 1;
+    this.setTimeScale(1);
     this.input.keyboard!.enableGlobalCapture();
     this.incantWrap.classList.remove(
       'active',
@@ -4834,7 +4842,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private beginJudging(): void {
     this.incanting = false;
     this.casting = true;
-    this.timeScale = 0.15;
+    this.setTimeScale(0.15);
     this.input.keyboard!.enableGlobalCapture();
     this.incantWrap.classList.add('active', 'judging');
     this.incantBar.disabled = true;
@@ -4847,7 +4855,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private finishCastingUx(): void {
     this.casting = false;
     this.clearSequenceProgress();
-    this.timeScale = 1;
+    this.setTimeScale(1);
     this.input.keyboard!.enableGlobalCapture();
     this.incantWrap.classList.remove(
       'active',
@@ -5215,7 +5223,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private beginSequenceExecutionUx(plan: ResolvedSpellPlan): void {
-    this.timeScale = 1;
+    this.setTimeScale(1);
     this.input.keyboard!.enableGlobalCapture();
     this.incantWrap.classList.remove('active', 'judging');
     this.incantWrap.setAttribute('aria-hidden', 'true');
@@ -7163,11 +7171,17 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           const chainSource = impact.chainIndex === 0
             ? castOrigin
             : chainOrigins[impact.chainIndex - 1] ?? castOrigin;
-          applyDamage(chainTarget, chainSource.x, chainSource.y);
+          // ⚠️ **연쇄도 구조물에 막힌다.** 이 분기가 아래 차단 가드보다 먼저 반환해
+          // 종전엔 연쇄가 벽을 통과했다(총괄 제보: "아직 유저의 공격이 벽을 뚫더라").
+          // 연쇄는 도약마다 출발점이 다르므로 **그 구간마다** 따로 본다.
+          if (!this.terrainBlocksCast(spec, chainSource, chainTarget)) {
+            applyDamage(chainTarget, chainSource.x, chainSource.y);
+          }
         }
         return;
       }
-      if (lockedTarget?.alive) {
+      if (lockedTarget?.alive && !this.terrainBlocksCast(spec, castOrigin, lockedTarget)) {
+        // 시퀀스가 잠근 대상도 예외가 아니다 — 잠갔다고 벽을 뚫으면 엄폐가 무의미하다
         applyDamage(lockedTarget, castOrigin.x, castOrigin.y);
       }
       return;
@@ -7196,21 +7210,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           ? { x: impact.x, y: impact.y }
           : castOrigin;
 
-      // ⚠️ **구조물이 주문도 막는다** (총괄 지시: "플레이어의 마법이 통과할 수 있으면
-      // 안 됨"). 종전엔 이동·적 투사체만 막고 주문은 통과해, 엄폐가 한쪽에만 작동하는
-      // 비대칭이 있었다 — 벽 뒤에서 일방적으로 잡는 무적 지점이 생기는 원인이었다.
-      //
-      // 판정 지점은 **적중이 확정된 뒤**다: 여기서 걸러야 "형상은 닿았지만 구조물이
-      // 가렸다"가 되고, 형상 자체를 줄이면 이펙트와 판정이 어긋난다.
-      //
-      // `zone`·`rain`은 예외다 — 위에서 떨어지거나 바닥에 깔리는 폼이라 옆의 구조물이
-      // 가릴 이유가 없다. 그 둘은 방어형 실드도 무시하는(bypassDirectionalShield)
-      // 같은 성격이라 예외 조건을 공유한다.
-      if (!bypassDirectionalShield && segmentBlocked(
-        impactSource,
-        { x: enemy.x, y: enemy.y },
-        this.terrainBarriers,
-      )) continue;
+      if (this.terrainBlocksCast(spec, impactSource, enemy)) continue;
 
       hitEnemies.add(enemy);
       applyDamage(
@@ -7949,6 +7949,49 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         source.x, source.y, false, 'standard', 0, 'status',
       );
     }
+  }
+
+  /**
+   * 이 시전이 구조물에 막히는가 (총괄 지시: "플레이어의 마법이 통과할 수 있으면 안 됨").
+   *
+   * ⚠️ **모든 피해 경로가 이걸 거쳐야 한다.** 처음엔 일반 적중 루프에만 걸었는데,
+   * `impact.kind === 'point'`(연쇄·시퀀스 고정 대상)가 그 앞에서 조기 반환해
+   * 여전히 벽을 뚫었다(총괄 재제보). 한 곳에 모아 빠뜨릴 자리를 없앤다.
+   *
+   * `zone`·`rain`은 예외다 — 위에서 떨어지거나 바닥에 깔리는 폼이라 옆의 구조물이
+   * 가릴 이유가 없다. 방어형 실드도 무시하는 폼이라 같은 성격이다.
+   */
+  private terrainBlocksCast(
+    spec: SpellSpec,
+    from: { x: number; y: number },
+    target: { x: number; y: number },
+  ): boolean {
+    if (this.terrainBarriers.length === 0) return false;
+    if (spec.form === 'zone' || spec.form === 'rain') return false;
+    return segmentBlocked(from, { x: target.x, y: target.y }, this.terrainBarriers);
+  }
+
+  /**
+   * 슬로모션 배율을 **씬과 Phaser 양쪽에** 건다.
+   *
+   * 종전엔 필드에만 넣어서 씬이 수동으로 굴리는 것(적·웨이브·마나·쿨다운·장판)만
+   * 느려지고, **트윈·타이머로 도는 것은 원래 속도**였다 — 주문 투사체, 각인 자동
+   * 시전, 보스 패턴, 파문·에코 지연. 영창 중에 내 화면만 멈추고 상대는 그대로
+   * 움직이는 셈이라 "느려진 게 아니라 내가 멈춘 것"으로 읽혔다(총괄 제보).
+   *
+   * `tweens.timeScale`과 `time.timeScale`은 Phaser가 제공하는 전역 배율이라
+   * 진행 중인 트윈·예약된 타이머에 즉시 반영된다.
+   *
+   * ⚠️ **`physics`는 건드리지 않는다** — 이 게임은 물리 바디를 수동 델타로 움직이고,
+   * 그건 이미 `timeScale`을 곱해 쓰고 있다. 여기서 또 곱하면 이중 적용된다.
+   */
+  private setTimeScale(scale: number): void {
+    const safe = Number.isFinite(scale) ? Math.max(0.01, scale) : 1;
+    this.timeScale = safe;
+    // Phaser 배율은 **역수**다 — timeScale이 크면 빨라지는 우리 규약과 방향이 같으므로
+    // 그대로 넣는다(tweens.timeScale 0.1 = 10배 느림).
+    this.tweens.timeScale = safe;
+    this.time.timeScale = safe;
   }
 
   private damageEnemy(

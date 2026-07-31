@@ -363,21 +363,33 @@ for (const kind of TERRAIN_KINDS) {
   }
 
   // 씬이 실제로 그 판정을 거치는가
+  //
+  // ⚠️ 처음엔 일반 적중 루프 안에 `segmentBlocked(impactSource, …)`를 직접 박았다.
+  // 그랬더니 총괄 제보 *"아직 유저의 공격이 벽을 뚫더라"* — 연쇄 도약과 시퀀스 고정
+  // 대상은 그 앞에서 조기 반환해 판정을 아예 안 거쳤다. 판정을 `terrainBlocksCast`로
+  // 모아 **빠뜨릴 자리를 없앴다.** 호출부별 세부 검사는 `slowmo-scope-regression.ts`.
   const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   assert.ok(
-    /segmentBlocked\(\s*impactSource,/.test(scene),
-    '주문 적중 판정이 구조물 차단을 거쳐야 한다',
+    /private terrainBlocksCast\(/.test(scene),
+    '주문 적중 판정이 구조물 차단을 거쳐야 한다 (공통 함수 terrainBlocksCast)',
   );
-  // zone·rain은 예외 — 위에서 떨어지거나 바닥에 깔리는 폼이라 옆 구조물이 가릴 이유가 없다
   assert.ok(
-    /if \(!bypassDirectionalShield && segmentBlocked\(/.test(scene),
+    /if \(this\.terrainBlocksCast\(spec, impactSource, enemy\)\) continue;/.test(scene),
+    '일반 적중 경로가 공통 차단 판정을 거쳐야 한다 (시전점 → 적)',
+  );
+  // zone·rain은 예외 — 위에서 떨어지거나 바닥에 깔리는 폼이라 옆 구조물이 가릴 이유가 없다.
+  // 예외를 호출부마다 쓰면 또 빠뜨리므로 공통 함수 안에 한 번만 둔다.
+  const fnAt = scene.indexOf('private terrainBlocksCast(');
+  assert.ok(
+    /spec\.form === 'zone' \|\| spec\.form === 'rain'/.test(scene.slice(fnAt, fnAt + 700)),
     'zone·rain은 구조물 차단에서 제외되어야 한다 (낙하·장판 폼)',
   );
-  // 적 투사체도 같은 판정을 쓴다 — 두 경로가 갈리면 "적 탄은 통과하는데 내 건 막힌다"가 된다
-  const projectileBlocked = scene.match(/segmentBlocked\(/g) ?? [];
+  // 적 투사체도 같은 기하를 쓴다 — 두 경로가 갈리면 "적 탄은 통과하는데 내 건 막힌다"가 된다
+  const shared = (scene.match(/segmentBlocked\(/g) ?? []).length
+    + (scene.match(/this\.terrainBlocksCast\(/g) ?? []).length;
   assert.ok(
-    projectileBlocked.length >= 2,
-    `적 투사체와 플레이어 주문이 같은 차단 판정을 써야 한다 (현재 ${projectileBlocked.length}건)`,
+    shared >= 2,
+    `적 투사체와 플레이어 주문이 같은 차단 판정을 써야 한다 (현재 ${shared}건)`,
   );
 }
 
