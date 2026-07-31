@@ -271,6 +271,23 @@ export function isRewardOverlayOpen(): boolean {
 }
 
 /**
+ * 카드 이동 입력 — **게임 이동키와 같은 A/D** (R2, #306).
+ *
+ * ⚠️ `event.key`가 아니라 `event.code`를 본다. 이 게임은 한글로 영창하므로 IME가
+ * 켜진 채 보상 화면이 뜨고, 그러면 `key`는 `'ㅁ'`·`'ㅇ'`으로 온다. 물리 키 위치를
+ * 보는 `code`만 IME와 무관하게 동작한다.
+ *
+ * 방향키는 받지 않는다 — 조작을 이동키 하나로 모으자는 결정이다.
+ */
+export function rewardCardFocusDirection(
+  input: Pick<KeyboardEvent, 'code'>,
+): -1 | 0 | 1 {
+  if (input.code === 'KeyA') return -1;
+  if (input.code === 'KeyD') return 1;
+  return 0;
+}
+
+/**
  * 보상 카드를 표시하고 플레이어의 선택을 기다린다.
  * 반드시 하나를 고르게 한다 — 닫기/취소 없음 (선택 전 다음 방 진행 금지 계약).
  */
@@ -295,7 +312,7 @@ export function showRewardCards(
       </h2>
       ${divider()}
       <div class="reward-cards"></div>
-      <div class="reward-hint"><b>1·2·3</b> 또는 <b>←→ + Enter</b> · 마우스 클릭</div>
+      <div class="reward-hint"><b>A/D + Enter</b> · 숫자키 또는 카드 클릭</div>
       ${(framing.contextLines ?? []).filter(Boolean).length > 0
     ? `<div class="reward-context">${(framing.contextLines ?? [])
       .filter(Boolean).map((line) => escapeText(line)).join('<br>')}</div>`
@@ -365,9 +382,10 @@ export function showRewardCards(
         finish(hotkey);
         return;
       }
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      const focusDirection = rewardCardFocusDirection(e);
+      if (focusDirection !== 0) {
         e.preventDefault(); e.stopImmediatePropagation();
-        setFocus(focusIdx + (e.key === 'ArrowRight' ? 1 : -1));
+        setFocus(focusIdx + focusDirection);
         return;
       }
       if (e.key === 'Enter') {
