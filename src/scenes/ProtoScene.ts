@@ -6207,7 +6207,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.buildInspectText = this.add.text(0, 0, '', {
       fontFamily: '"Noto Serif KR", Consolas, monospace',
       fontSize: '12px',
-      color: '#dfe6ff',
+      color: UI_COLOR.text,
       align: 'left',
       lineSpacing: 4,
       wordWrap: { width: BUILD_CHIP.tooltipWidth - 20, useAdvancedWrap: true },
@@ -6225,7 +6225,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 밝기 막 — 깊이 98(월드·암막 위, HUD 아래)이라 어둡게 해도 HUD·칩은 읽힌다
     this.brightnessVeil = this.add.graphics().setScrollFactor(0).setDepth(98).setVisible(false);
     this.pauseDim = this.add.graphics().setScrollFactor(0).setDepth(97).setVisible(false);
-    this.pauseDim.fillStyle(0x03050f, 0.62);
+    this.pauseDim.fillStyle(hex('#06050a'), 0.62);
     this.pauseDim.fillRect(0, 0, width, height);
 
     this.pauseMenuPlate = this.add.graphics().setScrollFactor(0).setDepth(105).setVisible(false);
@@ -6233,7 +6233,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       fontFamily: '"Noto Serif KR", Georgia, serif',
       fontSize: '30px',
       fontStyle: 'bold',
-      color: '#eef1ff',
+      color: UI_COLOR.textBright,
       letterSpacing: 6,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(106).setVisible(false);
 
@@ -6246,7 +6246,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         fontFamily: '"Noto Serif KR", Consolas, monospace',
         fontSize: '16px',
         fontStyle: 'bold',
-        color: '#aeb9e8',
+        color: UI_COLOR.textSoft,
       },
     ).setOrigin(0.5).setScrollFactor(0).setDepth(107).setVisible(false)
       .setInteractive({ useHandCursor: true })
@@ -6337,7 +6337,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const g = this.pauseMenuPlate.clear();
     g.fillStyle(UI_HEX.panel, 0.94);
     g.fillRoundedRect((width - plateW) / 2, top, plateW, bottom - top, 14);
-    g.lineStyle(1, 0x2f3d76, 0.9);
+    g.lineStyle(1, UI_HEX.border, 0.9);
     g.strokeRoundedRect((width - plateW) / 2, top, plateW, bottom - top, 14);
     this.pauseMenuTitle.setPosition(width / 2, PAUSE_LAYOUT.titleY);
   }

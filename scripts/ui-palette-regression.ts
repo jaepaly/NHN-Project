@@ -175,4 +175,59 @@ import { UI_COLOR, UI_HEX, UI_SEMANTIC, hex } from '../src/ui/uiTokens';
   );
 }
 
-console.log('ui palette regression: 마도서정본·의미색구분·숫자토큰파생·주요화면이행·HUD·하드코딩상한 6군 통과');
+// ── 7) **index.html이 토큰과 갈리지 않는가** ───────────────────────────────
+//
+// 영창 바는 정적 HTML이라 TS 토큰을 가져올 수 없어 CSS 변수로 **사본**을 둔다.
+// 사본은 조용히 갈리는 게 문제라, 여기서 두 파일을 대조한다.
+//
+// 영창 화면은 플레이어가 **캐스팅할 때마다** 본다 — 이 게임에서 가장 자주 보는
+// 화면이므로 여기가 청색으로 남으면 통일이 무의미하다.
+{
+  const html = readFileSync('index.html', 'utf8');
+  const cssVar = (name: string): string | null => {
+    const found = html.match(new RegExp(`--${name}:\s*([^;]+);`));
+    return found ? found[1].trim() : null;
+  };
+
+  const PAIRS: [string, string][] = [
+    ['ui-accent', UI_COLOR.accent],
+    ['ui-accent-glow', UI_COLOR.accentGlow],
+    ['ui-border', UI_COLOR.border],
+    ['ui-border-strong', UI_COLOR.borderStrong],
+    ['ui-text-bright', UI_COLOR.textBright],
+    ['ui-text', UI_COLOR.text],
+    ['ui-text-soft', UI_COLOR.textSoft],
+    ['ui-text-muted', UI_COLOR.textMuted],
+    ['ui-panel', UI_COLOR.panel],
+    ['ui-danger', UI_COLOR.danger],
+  ];
+  for (const [name, expected] of PAIRS) {
+    const actual = cssVar(name);
+    assert.ok(actual, `index.html에 --${name} 변수가 있어야 한다`);
+    assert.equal(
+      actual, expected,
+      `--${name}이 토큰과 다르다 (HTML ${actual} vs 토큰 ${expected})`
+      + ' — 사본이 갈리면 영창 바만 옛 톤으로 남는다',
+    );
+  }
+
+  // 옛 청색이 남아 있으면 통일이 덜 된 것이다
+  for (const stale of ['#8fa4ff', '#4c66ff', '#e8edff', '#dce3ff', '#7f8aba', '#05060f']) {
+    assert.ok(
+      !html.includes(stale),
+      `index.html에 옛 청색 ${stale}이 남아 있다`,
+    );
+  }
+
+  // 상태 색은 **정보**다 — 마도서 톤으로 밀면 마나 부족·어휘제한·초과가 구분 안 된다
+  for (const name of ['incant-dry', 'incant-limit', 'incant-over']) {
+    assert.ok(cssVar(name), `상태 색 --${name}이 있어야 한다`);
+  }
+  const dry = cssVar('incant-dry')!;
+  const limit = cssVar('incant-limit')!;
+  const over = cssVar('incant-over')!;
+  assert.notEqual(dry, limit, '마나 부족과 어휘제한이 같은 색이면 구분이 안 된다');
+  assert.notEqual(limit, over, '어휘제한과 초과가 같은 색이면 구분이 안 된다');
+}
+
+console.log('ui palette regression: 마도서정본·의미색구분·숫자토큰파생·주요화면이행·HUD·하드코딩상한·영창바대조 7군 통과');

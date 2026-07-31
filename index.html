@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#05060f" />
+    <meta name="theme-color" content="#06050a" />
     <meta name="description" content="정해진 스킬은 없다. 당신의 문장이 주문이 되는 로그라이크 액션 게임 INCANT." />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="INCANT — 말이 곧 마법이 되는 로그라이크" />
@@ -17,14 +17,47 @@
     <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
     <title>INCANT — 말이 곧 마법이 되는 로그라이크</title>
     <style>
+      /*
+       * 영창 바 팔레트 — **`src/ui/uiTokens.ts`의 사본이다.**
+       *
+       * index.html은 정적 파일이라 TS 토큰을 가져올 수 없다. 그래서 여기 CSS 변수로
+       * 두고, `ui-palette-regression`이 두 파일을 대조해 어긋나면 실패시킨다.
+       * 사본을 두는 것 자체가 위험하지만, 대조 회귀가 있으면 조용히 갈리지는 않는다.
+       *
+       * ⚠️ 상태 색(--incant-dry·--incant-limit·--incant-over)은 마도서 톤으로 밀지
+       * 않는다. 마나 부족·어휘제한·초과를 **색으로 구분**하는 정보이기 때문이다.
+       * 색조는 지키고 채도만 낮춰 금색·양피지 화면에서 형광으로 튀지 않게 했다.
+       */
+      :root {
+        --ui-bg: #06050a;
+        --ui-panel: rgba(24, 17, 28, 0.985);
+        --ui-panel-inset: rgba(14, 10, 18, 0.94);
+        --ui-border: #4b3850;
+        --ui-border-strong: #d8bb72;
+        --ui-text-bright: #eadfc8;
+        --ui-text: #d8cdb8;
+        --ui-text-soft: #aaa1c8;
+        --ui-text-muted: #8a7f96;
+        --ui-accent: #d8bb72;
+        --ui-accent-glow: #f0d79a;
+        --ui-danger: #b95f72;
+        /* 상태 색 — 정보다. 색조 유지 + 채도 하향 */
+        --incant-dry: #b95f72;
+        --incant-limit: #a888c4;
+        --incant-limit-glow: #5f4a86;
+        --incant-limit-accent: #ddd0e8;
+        --incant-over: #c47690;
+        --incant-over-glow: #8a4a68;
+        --incant-over-accent: #e8d4dc;
+      }
       html, body {
         margin: 0;
         padding: 0;
-        background: #05060f;
+        background: var(--ui-bg);
         height: 100%;
         overflow: hidden;
         font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
-        color: #e8edff;
+        color: var(--ui-text);
       }
       #game-root {
         width: 100%;
@@ -32,8 +65,8 @@
       }
       /* 영창 차징 UX — 캔버스 위 DOM 오버레이 */
       #incant-wrap {
-        --spell-core: #8fa4ff;
-        --spell-glow: #4c66ff;
+        --spell-core: var(--ui-accent);
+        --spell-glow: var(--ui-accent-glow);
         --spell-accent: #ffffff;
         --charge: 0%;
         position: fixed;
@@ -53,7 +86,7 @@
         inset: 0;
         background:
           radial-gradient(circle at 50% 66%, color-mix(in srgb, var(--spell-glow) 22%, transparent), transparent 34%),
-          linear-gradient(to bottom, transparent 35%, rgba(3, 5, 16, 0.7));
+          linear-gradient(to bottom, transparent 35%, rgba(6, 5, 10, 0.7));
         backdrop-filter: blur(1.5px) saturate(0.85);
       }
       #incant-wrap.active {
@@ -68,7 +101,7 @@
         box-sizing: border-box;
         border: 1px solid color-mix(in srgb, var(--spell-core) 64%, transparent);
         border-radius: 16px;
-        background: linear-gradient(145deg, rgba(8, 11, 28, 0.97), rgba(13, 18, 45, 0.92));
+        background: linear-gradient(145deg, var(--ui-panel), rgba(14, 10, 18, 0.96));
         box-shadow:
           0 0 0 1px rgba(255, 255, 255, 0.035) inset,
           0 0 32px color-mix(in srgb, var(--spell-glow) 36%, transparent),
@@ -112,8 +145,8 @@
         white-space: nowrap;
       }
       #incant-wrap.mana-dry #incant-state {
-        color: #ff8fa3;
-        text-shadow: 0 0 14px rgba(255, 107, 157, 0.5);
+        color: var(--incant-dry);
+        text-shadow: 0 0 14px rgba(196, 118, 144, 0.5);
       }
       /*
        * 대역 칩 — "얼마나 큰 말을 쓸까"라는 이 창의 유일한 결정을 세 선택지로 세운다.
@@ -133,16 +166,16 @@
         justify-content: center;
         gap: 7px;
         padding: 8px 6px;
-        border: 1px solid color-mix(in srgb, var(--spell-core) 34%, #222a4e);
+        border: 1px solid color-mix(in srgb, var(--spell-core) 34%, var(--ui-border));
         border-radius: 8px;
-        background: rgba(4, 7, 20, 0.55);
+        background: rgba(14, 10, 18, 0.55);
         transition: opacity 140ms ease, border-color 140ms ease;
       }
       .incant-band-name {
         font-size: 13px;
         font-weight: 700;
         letter-spacing: 0.04em;
-        color: #dce3ff;
+        color: var(--ui-text);
       }
       .incant-band-cost {
         font: 600 11px/1 'Consolas', monospace;
@@ -151,14 +184,14 @@
       .incant-band-hint {
         font-size: 10px;
         letter-spacing: 0.02em;
-        color: #7f8aba;
+        color: var(--ui-text-muted);
       }
       /* 감당 못 하는 대역은 죽인다 — 고를 수 없는 선택지가 밝으면 결정이 흐려진다 */
       .incant-band.locked {
         opacity: 0.3;
-        border-color: #202742;
+        border-color: var(--ui-border);
       }
-      .incant-band.locked .incant-band-cost { color: #6f7bac; }
+      .incant-band.locked .incant-band-cost { color: var(--ui-text-muted); }
       /* 지금 닿는 가장 큰 대역 — 하나만 테두리를 세워 "여기까지"를 표시한다 */
       .incant-band.reach {
         border-color: var(--spell-core);
@@ -195,7 +228,7 @@
         margin-top: 4px;
         font-size: 12.5px;
         line-height: 1.45;
-        color: #c2cbee;
+        color: var(--ui-text-soft);
       }
       .incant-input-shell {
         position: relative;
@@ -208,9 +241,9 @@
         font-size: clamp(17px, 2.2vw, 21px);
         font-weight: 600;
         letter-spacing: 0.02em;
-        color: #f4f6ff;
-        background: rgba(2, 4, 15, 0.72);
-        border: 1px solid color-mix(in srgb, var(--spell-core) 55%, #26305b);
+        color: var(--ui-text-bright);
+        background: rgba(10, 8, 15, 0.72);
+        border: 1px solid color-mix(in srgb, var(--spell-core) 55%, var(--ui-border));
         border-radius: 9px;
         outline: none;
         box-shadow: inset 0 0 18px color-mix(in srgb, var(--spell-glow) 12%, transparent);
@@ -229,14 +262,14 @@
         top: 50%;
         transform: translateY(-50%);
         font: 600 11px/1 'Consolas', monospace;
-        color: #6f7bac;
+        color: var(--ui-text-muted);
       }
       .incant-charge-track {
         position: relative;
         height: 6px;
         margin: 13px 1px 10px;
         border-radius: 999px;
-        background: #151b38;
+        background: var(--ui-panel-inset);
         overflow: hidden;
       }
       #incant-charge {
@@ -256,7 +289,7 @@
       #incant-charge-label {
         font-size: 11px;
         letter-spacing: 0.02em;
-        color: #68729c;
+        color: var(--ui-text-muted);
       }
       /*
        * 일반 방은 대역 칩을, 금언 저주 방은 게이지를 쓴다.
@@ -294,9 +327,9 @@
         animation: judging-panel 1.1s ease-in-out infinite alternate;
       }
       #incant-wrap.word-limit {
-        --spell-core: #c084fc;
-        --spell-glow: #6d28d9;
-        --spell-accent: #f3e8ff;
+        --spell-core: var(--incant-limit);
+        --spell-glow: var(--incant-limit-glow);
+        --spell-accent: var(--incant-limit-accent);
       }
       #incant-wrap.word-limit #incant-bar {
         padding-right: 132px;
@@ -304,24 +337,24 @@
       #incant-wrap.word-limit::before {
         background:
           repeating-linear-gradient(90deg, transparent 0 9%, rgba(192, 132, 252, 0.025) 9.2% 9.35%, transparent 9.6% 18%),
-          radial-gradient(circle at 50% 66%, rgba(109, 40, 217, 0.24), transparent 34%),
-          linear-gradient(to bottom, transparent 35%, rgba(3, 2, 12, 0.78));
+          radial-gradient(circle at 50% 66%, rgba(95, 74, 134, 0.24), transparent 34%),
+          linear-gradient(to bottom, transparent 35%, rgba(8, 6, 12, 0.78));
       }
       #incant-wrap.word-limit-over {
-        --spell-core: #ff6b9d;
-        --spell-glow: #a21caf;
-        --spell-accent: #ffe4f1;
+        --spell-core: var(--incant-over);
+        --spell-glow: var(--incant-over-glow);
+        --spell-accent: var(--incant-over-accent);
       }
       #incant-wrap.word-limit-over #incant-bar {
-        border-color: #ff6b9d;
+        border-color: var(--incant-over);
         box-shadow:
           inset 0 0 20px rgba(162, 28, 175, 0.3),
           0 0 22px rgba(255, 107, 157, 0.24);
       }
       #incant-wrap.word-limit-over #incant-count,
       #incant-wrap.word-limit-over #incant-charge-label {
-        color: #ff9abe;
-        text-shadow: 0 0 10px rgba(255, 107, 157, 0.55);
+        color: var(--incant-over-accent);
+        text-shadow: 0 0 10px rgba(196, 118, 144, 0.55);
       }
       #incant-wrap.word-limit-blocked .incant-panel {
         animation: word-limit-block 260ms ease-out;
