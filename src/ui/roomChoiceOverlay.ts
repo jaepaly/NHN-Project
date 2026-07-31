@@ -89,8 +89,8 @@ export function nextRoomChoiceFocusIndex(
 export function roomChoiceFocusDirection(
   input: Pick<KeyboardEvent, 'code' | 'key'>,
 ): -1 | 0 | 1 {
-  if (input.code === 'KeyW' || input.key === 'ArrowUp') return -1;
-  if (input.code === 'KeyS' || input.key === 'ArrowDown') return 1;
+  if (input.code === 'KeyW') return -1;
+  if (input.code === 'KeyS') return 1;
   return 0;
 }
 

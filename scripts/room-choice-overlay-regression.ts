@@ -37,20 +37,21 @@ await assert.rejects(showRoomChoices({
   options: [{ nodeId: 'missing', kind: 'combat' }],
 }), /must match a map node/);
 
-// 3) 플레이 이동과 같은 W/S로 선택하고 방향키도 호환하며, 양 끝에서 순환하지 않는다.
+// 3) 플레이 이동과 같은 W/S로만 포커스를 옮기며, 양 끝에서 순환하지 않는다.
 const source = readFileSync('src/ui/roomChoiceOverlay.ts', 'utf8');
-for (const key of ['ArrowUp', 'ArrowDown', 'KeyW', 'KeyS', 'Enter']) {
+for (const key of ['KeyW', 'KeyS', 'Enter']) {
   assert.ok(source.includes(`'${key}'`), `${key} 입력`);
 }
 assert.equal(roomChoiceFocusDirection({ code: 'KeyW', key: 'w' }), -1, 'W는 위 후보');
 assert.equal(roomChoiceFocusDirection({ code: 'KeyS', key: 's' }), 1, 'S는 아래 후보');
 assert.equal(roomChoiceFocusDirection({ code: 'KeyW', key: 'ㅈ' }), -1, '한글 IME에서도 물리 W 키');
 assert.equal(roomChoiceFocusDirection({ code: 'KeyS', key: 'ㄴ' }), 1, '한글 IME에서도 물리 S 키');
-assert.equal(roomChoiceFocusDirection({ code: 'ArrowUp', key: 'ArrowUp' }), -1, '위 방향키 호환');
-assert.equal(roomChoiceFocusDirection({ code: 'ArrowDown', key: 'ArrowDown' }), 1, '아래 방향키 호환');
+assert.equal(roomChoiceFocusDirection({ code: 'ArrowUp', key: 'ArrowUp' }), 0, '방향키는 사용하지 않는다');
+assert.equal(roomChoiceFocusDirection({ code: 'ArrowDown', key: 'ArrowDown' }), 0, '방향키는 사용하지 않는다');
 assert.equal(roomChoiceFocusDirection({ code: 'KeyA', key: 'a' }), 0, '좌우 이동 키는 무시');
-assert.ok(!source.includes("event.key === 'ArrowLeft'"), '좌우키로 세로 후보를 바꾸지 않는다');
-assert.ok(!source.includes("event.key === 'ArrowRight'"), '좌우키로 세로 후보를 바꾸지 않는다');
+for (const key of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
+  assert.ok(!source.includes(`'${key}'`), `${key} 입력을 사용하지 않는다`);
+}
 assert.equal(nextRoomChoiceFocusIndex(0, -1, 2), 0, '첫 후보에서 위 입력은 유지');
 assert.equal(nextRoomChoiceFocusIndex(0, 1, 2), 1, '첫 후보에서 아래 입력은 둘째 후보');
 assert.equal(nextRoomChoiceFocusIndex(1, 1, 2), 1, '마지막 후보에서 아래 입력은 유지');
