@@ -97,6 +97,35 @@ export function drawSectionRule(
   g.fillPoints(toPointObjects([mid, y - 3.5, mid + 3.5, y, mid, y + 3.5, mid - 3.5, y]), true);
 }
 
+/**
+ * 표제 인장 — 일시정지 제목 양옆에 놓는 육각 인장 (DOM `titleSigil()`과 같은 도형).
+ *
+ * 판이 클수록 제목만 덩그러니 있으면 비어 보인다. DOM 오버레이는 SVG로 같은 것을
+ * 그리는데, 두 축이 다른 도형을 쓰면 같은 게임의 UI로 안 읽힌다.
+ *
+ * @param size 인장 한 변. 일시정지 판(340px)에서는 22 정도가 맞다
+ */
+export function drawTitleSigil(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  size = 22,
+): void {
+  const r = size / 2;
+  // 육각 별 — 마법진의 축약형
+  const hex: number[] = [];
+  for (let i = 0; i < 6; i += 1) {
+    const a = (Math.PI / 3) * i - Math.PI / 2;
+    hex.push(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+  }
+  g.lineStyle(1.2, UI_HEX.accent, 0.8);
+  g.strokePoints(toPointObjects(hex), true);
+  g.lineStyle(0.8, UI_HEX.accent, 0.45);
+  g.strokeCircle(cx, cy, r * 0.5);
+  g.fillStyle(UI_HEX.accent, 0.85);
+  g.fillCircle(cx, cy, 1.6);
+}
+
 function toPointObjects(flat: readonly number[]): Phaser.Geom.Point[] {
   const out: Phaser.Geom.Point[] = [];
   for (let i = 0; i < flat.length; i += 2) {

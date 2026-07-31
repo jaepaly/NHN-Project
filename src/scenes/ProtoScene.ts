@@ -97,7 +97,7 @@ import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomReward
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { showRoomChoices } from '../ui/roomChoiceOverlay';
 import { UI_COLOR, UI_HEX, UI_SEMANTIC, hex } from '../ui/uiTokens';
-import { drawGrimoirePanel, drawSectionRule } from '../render/grimoireFrame';
+import { drawGrimoirePanel, drawSectionRule, drawTitleSigil } from '../render/grimoireFrame';
 import type { GameSettings } from '../run/gameSettings';
 import { DEFAULT_SETTINGS, loadSettings } from '../run/gameSettings';
 import { setVfxBrightness } from '../render/vfxBrightness';
@@ -5231,14 +5231,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const x = this.scale.width / 2 - width / 2;
     const y = this.scale.height - 70;
     const g = this.sequenceProgressGraphics.clear();
-    g.fillStyle(0x06091a, 0.92).fillRoundedRect(x - 4, y - 4, width + 8, height + 8, 8);
-    g.lineStyle(1, 0x596ba8, 0.8).strokeRoundedRect(x - 4, y - 4, width + 8, height + 8, 8);
-    g.fillStyle(0x20294f, 1).fillRoundedRect(x, y, width, height, 5);
+    // 시퀀스 진행 바 — 영창 중 화면 하단. 자주 보이므로 같은 판 문법을 쓴다
+    drawGrimoirePanel(g, x - 5, y - 5, width + 10, height + 10, 0.92);
+    g.fillStyle(UI_HEX.track, 1).fillRoundedRect(x, y, width, height, 5);
     if (remainingRatio > 0) {
-      const fillColor = remainingRatio <= 0.2 ? 0xf7d774 : 0x8fa4ff;
+      // 남은 시간이 적으면 경고색 — 정보라 색조를 지키고 채도만 낮춘다
+      const fillColor = remainingRatio <= 0.2 ? hex(UI_COLOR.warm) : UI_HEX.accent;
       g.fillStyle(fillColor, 1).fillRoundedRect(x, y, width * remainingRatio, height, 5);
     }
-    g.lineStyle(1, 0xdce4ff, 0.5);
+    g.lineStyle(1, UI_HEX.textSoft, 0.5);
     for (const boundary of this.sequenceProgressBoundaries) {
       const boundaryX = x + width * boundary;
       g.lineBetween(boundaryX, y - 2, boundaryX, y + height + 2);
@@ -6336,10 +6337,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const top = PAUSE_LAYOUT.titleY - 34;
     const bottom = PAUSE_LAYOUT.firstY + (PAUSE_MAIN.length - 1) * PAUSE_LAYOUT.rowGap + 24;
     const g = this.pauseMenuPlate.clear();
-    g.fillStyle(UI_HEX.panel, 0.94);
-    g.fillRoundedRect((width - plateW) / 2, top, plateW, bottom - top, 14);
-    g.lineStyle(1, UI_HEX.border, 0.9);
-    g.strokeRoundedRect((width - plateW) / 2, top, plateW, bottom - top, 14);
+    const plateX = (width - plateW) / 2;
+    // 마도서 판 — HUD·우측 패널·미니맵과 같은 문법으로 한 화면이 되게
+    drawGrimoirePanel(g, plateX, top, plateW, bottom - top, 0.94);
+    // 표제 인장 한 쌍 + 제목 아래 구획 괘선. 판이 크면 제목만으로는 비어 보인다
+    drawTitleSigil(g, plateX + 44, PAUSE_LAYOUT.titleY, 22);
+    drawTitleSigil(g, plateX + plateW - 44, PAUSE_LAYOUT.titleY, 22);
+    drawSectionRule(g, plateX, PAUSE_LAYOUT.titleY + 24, plateW);
     this.pauseMenuTitle.setPosition(width / 2, PAUSE_LAYOUT.titleY);
   }
 
@@ -6539,10 +6543,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 내려가 하단 중앙 밴드(시퀀스 바 x266~694 · 필살기 라벨 ~x670)와 겹친다.
     const x = width - 20 - boxW;
     const y = height - 26 - span - 10;
-    g.fillStyle(UI_HEX.panel, 0.92);
-    g.fillRoundedRect(x, y - boxH, boxW, boxH, 8);
-    g.lineStyle(1, chip?.element ? ELEMENT_PALETTES[chip.element].core : UI_HEX.border, 0.7);
-    g.strokeRoundedRect(x, y - boxH, boxW, boxH, 8);
+    // 툴팁도 같은 판 문법 — 일시정지 화면 안에서 혼자 둥근 사각형이면 튄다.
+    // 다만 원소 칩을 가리키면 그 원소색으로 테두리를 덧그린다(어느 칩인지가 정보다)
+    drawGrimoirePanel(g, x, y - boxH, boxW, boxH, 0.92);
+    if (chip?.element) {
+      g.lineStyle(1.4, ELEMENT_PALETTES[chip.element].core, 0.75);
+      g.strokeRect(x + 2, y - boxH + 2, boxW - 4, boxH - 4);
+    }
     this.buildInspectPlate.setVisible(true);
     this.buildInspectText.setPosition(x + 10, y - 9).setVisible(true);
   }

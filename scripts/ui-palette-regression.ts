@@ -147,8 +147,16 @@ import { FRAME_CONFIG, deckledPoints } from '../src/render/grimoireFrameGeometry
 // HUD는 가끔 보는 도감보다 통일감에 중요하다 — 늘 화면에 있기 때문이다.
 {
   const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
-  for (const token of ['UI_HEX.panel', 'UI_HEX.border', 'UI_HEX.track', 'UI_SEMANTIC.hp', 'UI_SEMANTIC.mana', 'UI_SEMANTIC.shield']) {
+  // ⚠️ 판 색(panel·border)은 이제 `drawGrimoirePanel` **안**에 있다. 씬에서 직접
+  // 참조가 사라진 게 정상이라, 씬에는 **의미 색**과 트랙만 남는다.
+  // (이 단언이 낡아 한 번 오탐했다 — 구조가 바뀌면 검사도 따라가야 한다)
+  for (const token of ['UI_HEX.track', 'UI_SEMANTIC.hp', 'UI_SEMANTIC.mana', 'UI_SEMANTIC.shield']) {
     assert.ok(scene.includes(token), `HUD가 ${token}을 써야 한다`);
+  }
+  // 판 색은 그리기 모듈이 쓴다
+  const frameSrc = readFileSync('src/render/grimoireFrame.ts', 'utf8');
+  for (const token of ['UI_HEX.panel', 'UI_HEX.border', 'UI_HEX.accent']) {
+    assert.ok(frameSrc.includes(token), `판 그리기가 ${token}을 써야 한다`);
   }
   // 옛 청색 HUD 값이 남아 있으면 통일이 덜 된 것이다
   for (const stale of ['0x080b1c', '0x33447f', '0x141a35', "'#ff91ad'", "'#91b7ff'", "'#72d8ff'"]) {
@@ -397,10 +405,40 @@ import { FRAME_CONFIG, deckledPoints } from '../src/render/grimoireFrameGeometry
 {
   const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
 
-  // 두 판(HUD·우측 상태)이 모두 장식 판을 쓰는가
+  // 씬의 모든 UI 판이 장식 판을 쓰는가 — HUD · 우측 상태 · 일시정지 · 빌드 검사 툴팁
+  // · 시퀀스 진행 바. 하나라도 빠지면 그 판만 둥근 사각형으로 튄다.
+  assert.ok(
+    (scene.match(/drawGrimoirePanel\(g/g) ?? []).length >= 5,
+    `씬의 UI 판이 모두 장식 판을 써야 한다 (현재 ${(scene.match(/drawGrimoirePanel\(g/g) ?? []).length}건)`,
+  );
+  // 일시정지는 판이 커서 제목만 두면 비어 보인다 — 표제 인장 한 쌍 + 구획 괘선
+  assert.ok(
+    (scene.match(/drawTitleSigil\(g/g) ?? []).length >= 2,
+    '일시정지 제목 양옆에 인장 한 쌍을 둔다',
+  );
+
+  // 미니맵 — 일시정지를 열면 나온다. 통일에서 빠져 청색이 남아 있었다.
+  const minimap = readFileSync('src/ui/minimapHud.ts', 'utf8');
+  assert.ok(
+    /drawGrimoirePanel\(g/.test(minimap),
+    '미니맵도 같은 판 문법이어야 한다 — 일시정지 화면 안에서 혼자 튀면 안 된다',
+  );
+  // ⚠️ **산문이 아니라 선언을 잡는다.** 주석에 "종전엔 0x8fa4ff였다"고 적어두면
+  // `includes`로는 구분이 안 된다(실제로 오탐했다 — #303 프롬프트 회귀와 같은 실수).
+  // 값이 실제로 쓰이는 자리(`: 0x…` 또는 `(0x…`)만 본다.
+  for (const stale of ['0x8fa4ff', '0x2c3a6e', '0x2a735c', '0x080b1c']) {
+    assert.ok(
+      !new RegExp(`[:(,]\s*${stale}\b`).test(minimap),
+      `미니맵이 옛 청색 ${stale}을 아직 쓴다`,
+    );
+  }
+  // ⚠️ 노드 상태 색은 **정보**다(지나온 곳·현재·갈 수 있는 곳). 전부 금색으로 밀면
+  // 어디를 지나왔는지 알 수 없다 — HUD의 HP·마나와 같은 원칙.
+  const nodeColors = minimap.match(/cleared: (\S+),[\s\S]*?current: (\S+),[\s\S]*?reachable: (\S+),[\s\S]*?unvisited: (\S+),/);
+  assert.ok(nodeColors, '노드 상태 색 네 가지가 있어야 한다');
   assert.equal(
-    (scene.match(/drawGrimoirePanel\(g/g) ?? []).length, 2,
-    'HUD와 우측 패널 둘 다 장식 판을 써야 한다',
+    new Set(nodeColors!.slice(1, 5)).size, 4,
+    '노드 상태 네 색이 서로 달라야 한다 — 같으면 진행 상황을 못 읽는다',
   );
   // 옛 둥근 사각형이 남아 있으면 그 판만 기본값으로 보인다
   assert.ok(
@@ -439,7 +477,13 @@ import { FRAME_CONFIG, deckledPoints } from '../src/render/grimoireFrameGeometry
   // 늘 떠 있는 판에 애니메이션·발광을 넣지 않았는가 (#220 광과민성 예산)
   const frame = readFileSync('src/render/grimoireFrame.ts', 'utf8');
   assert.ok(!/BlendModes\.ADD/.test(frame), 'HUD 판에 ADD 블렌드를 쓰지 않는다');
-  assert.ok(!/tweens\.add|time\.now|Math\.sin/.test(frame), 'HUD 판은 정지해 있어야 한다');
+  // ⚠️ 검사 대상은 **시간 의존**이다. `Math.sin`만 보고 잡으면 안 된다 —
+  // 육각 인장 꼭짓점 계산에도 쓰인다(실제로 오탐했다). 프레임마다 값이 달라지는
+  // 것(`time.now`·`tweens`·`Date.now`)만 금지한다.
+  assert.ok(
+    !/tweens\.add|time\.now|Date\.now|performance\.now/.test(frame),
+    'HUD 판은 정지해 있어야 한다 — 늘 떠 있는 물체의 깜빡임은 누적 피로가 된다(#220)',
+  );
 }
 
 console.log('ui palette regression: 마도서정본·의미색구분·숫자토큰파생·주요화면이행·HUD·하드코딩상한·영창바대조·마도서재질·장식·HUD장식 10군 통과');
