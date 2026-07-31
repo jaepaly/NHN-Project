@@ -318,7 +318,7 @@ import { UI_COLOR, UI_HEX, UI_MATERIAL, UI_SEMANTIC, hex } from '../src/ui/uiTok
 
   // 장식은 SVG여야 한다 — CSS로는 곡선을 못 그린다. border-radius·box-shadow로
   // 흉내내면 결국 "둥근 사각형"이라 지금 문제가 반복된다.
-  for (const fn of ['cornerFlourish', 'divider', 'waxSeal', 'initialFrame', 'deckleMask']) {
+  for (const fn of ['cornerFlourish', 'divider', 'waxSeal', 'titleSigil', 'deckleMask']) {
     assert.ok(orn.includes(`export function ${fn}`), `${fn} 장식이 있어야 한다`);
   }
   assert.ok((orn.match(/<path /g) ?? []).length >= 8, '실제로 선을 그어야 한다 (path 8개 이상)');
@@ -336,13 +336,25 @@ import { UI_COLOR, UI_HEX, UI_MATERIAL, UI_SEMANTIC, hex } from '../src/ui/uiTok
   );
 
   // 보상 카드가 실제로 장식을 **쓰는가**. 만들어만 두면 아무 소용이 없다.
-  for (const use of ['cornerFlourish()', 'divider()', 'initialFrame()', 'waxSeal(', 'deckleMask()']) {
+  for (const use of ['cornerFlourish()', 'divider()', 'titleSigil()', 'waxSeal(', 'deckleMask()']) {
     assert.ok(reward.includes(use), `보상 카드가 ${use}을 써야 한다`);
   }
   // 모서리는 네 귀퉁이 전부 — 하나만 두면 장식이 아니라 얼룩으로 보인다
   assert.equal(
     (reward.match(/orn-corner (?:tl|tr|bl|br)/g) ?? []).length, 4,
     '모서리 장식은 네 귀퉁이 전부에 놓는다',
+  );
+
+  // ⚠️ **머리글자(drop cap)를 쓰면 안 된다.** 라틴 문자 전제의 관습이라 한글에
+  // 적용하면 단어가 쪼개진다 — "공명의 대가를…"에서 「공」만 떼어 상자에 넣었다가
+  // 총괄이 바로 잡았다("왜 '공'만 상자에 들어있는 거임?").
+  assert.ok(
+    !/reward-initial/.test(reward) && !/titleText\.slice\(0, 1\)/.test(reward),
+    '제목 첫 글자를 떼면 안 된다 — 한글은 음절 블록이 단어의 일부다',
+  );
+  assert.ok(
+    /titleSigil\(\)/.test(reward),
+    '표제 자리에는 글자가 아니라 표식을 놓는다 (한국어·일본어 책 디자인의 어두 장식)',
   );
 
   // 알약 배지(border-radius: 999px)는 웹 UI의 문법이다 — 봉랍으로 대체했는지 본다

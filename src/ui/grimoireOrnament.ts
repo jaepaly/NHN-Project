@@ -81,19 +81,35 @@ export function waxSeal(glyph = '✦'): string {
 }
 
 /**
- * 머리글자 틀 — 제목 첫 글자를 감싸는 장식 상자 (illuminated initial).
+ * 표제 표식 — 제목 앞에 놓는 장식 인장 (head ornament).
  *
- * 필사본의 가장 알아보기 쉬운 특징이다. 첫 글자만 크게 키우고 테두리를 두르면
- * "본문"이 아니라 "장(章)"으로 읽힌다.
+ * ⚠️ **머리글자(drop cap)를 쓰면 안 된다.** 처음엔 제목 첫 글자를 떼어 틀에
+ * 넣었는데(라틴 필사본의 illuminated initial), 총괄이 바로 지적했다:
+ * *"왜 '공'만 상자에 들어있는 거임?"*
+ *
+ * 그 관습은 **라틴 문자 전제**다. 알파벳은 낱자가 단위라 첫 글자를 떼도 나머지가
+ * 읽히지만, 한글은 음절 블록이 단어의 일부다. "공명의 대가를 선택하라"에서 「공」을
+ * 떼면 단어가 쪼개지고, 「공」 홀로는 뜻까지 달라진다.
+ *
+ * 한국어·일본어 책 디자인은 같은 자리에 **글자가 아니라 표식**을 놓는다. 그래서
+ * 틀 안에 문자를 넣지 않고 인장을 그린다 — 장식 효과는 같고 제목은 온전히 남는다.
  */
-export function initialFrame(): string {
-  return `<svg class="orn-initial" viewBox="0 0 52 52" fill="none" aria-hidden="true">
+export function titleSigil(): string {
+  return `<svg class="orn-sigil" viewBox="0 0 52 52" fill="none" aria-hidden="true">
     <rect x="1.5" y="1.5" width="49" height="49" stroke="currentColor"
-          stroke-width="1.2" opacity="0.6"/>
+          stroke-width="1.2" opacity="0.55"/>
     <rect x="5" y="5" width="42" height="42" stroke="currentColor"
-          stroke-width="0.6" opacity="0.32"/>
+          stroke-width="0.6" opacity="0.3"/>
     <path d="M1.5 12 L1.5 1.5 L12 1.5" stroke="currentColor" stroke-width="2.2" opacity="0.85"/>
     <path d="M50.5 40 L50.5 50.5 L40 50.5" stroke="currentColor" stroke-width="2.2" opacity="0.85"/>
+    <!-- 인장 — 육각 별과 내접원. 마법진의 축약형으로 읽힌다 -->
+    <path d="M26 13 L34.5 18 L34.5 28 L26 33 L17.5 28 L17.5 18 Z"
+          stroke="currentColor" stroke-width="1.3" opacity="0.8"/>
+    <circle cx="26" cy="23" r="4.4" stroke="currentColor" stroke-width="0.9" opacity="0.55"/>
+    <path d="M26 13 L26 33 M17.5 18 L34.5 28 M34.5 18 L17.5 28"
+          stroke="currentColor" stroke-width="0.55" opacity="0.32"/>
+    <circle cx="26" cy="23" r="1.5" fill="currentColor" opacity="0.85"/>
+    <path d="M20 40 L32 40" stroke="currentColor" stroke-width="0.8" opacity="0.4"/>
   </svg>`;
 }
 
@@ -129,6 +145,6 @@ export function ornamentCss(wrapId: string): string {
   color: var(--orn, currentColor);
 }
 #${wrapId} .orn-seal { width: 30px; height: 30px; color: var(--seal, currentColor); }
-#${wrapId} .orn-initial { position: absolute; inset: 0; color: var(--orn, currentColor); }
+#${wrapId} .orn-sigil { width: 46px; height: 46px; color: var(--orn, currentColor); }
 `;
 }

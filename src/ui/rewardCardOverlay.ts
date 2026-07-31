@@ -1,7 +1,7 @@
 import type { RewardOption } from '../run/runContract';
 import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL, UI_SEMANTIC } from './uiTokens';
 import {
-  cornerFlourish, deckleMask, divider, initialFrame, ornamentCss, waxSeal,
+  cornerFlourish, deckleMask, divider, ornamentCss, titleSigil, waxSeal,
 } from './grimoireOrnament';
 import type { SpellForm } from '../spell/types';
 import { ELEMENT_LABELS, ELEMENT_PALETTES, paletteColorToCss } from '../render/palette';
@@ -66,14 +66,10 @@ ${ornamentCss(WRAP_ID)}
   /* 머리글자와 나란히 — block flow로는 정렬이 안 맞는다 */
   display: flex; align-items: center; justify-content: center; gap: 14px;
 }
-/* 머리글자 (illuminated initial) — 첫 글자만 장식 틀에 넣어 "장(章)"으로 읽히게 */
-#${WRAP_ID} .reward-initial {
-  position: relative; display: inline-grid; place-items: center;
-  width: 52px; height: 52px; flex: 0 0 52px;
-}
-#${WRAP_ID} .reward-initial em {
-  font-style: normal; font-size: 29px; line-height: 1;
-  color: ${UI_COLOR.accent}; filter: ${UI_MATERIAL.gildEdge};
+/* 표제 표식 — 글자를 떼지 않는다. 한글은 음절 블록이 단어의 일부라 첫 글자만
+   상자에 넣으면 단어가 쪼개진다(총괄 지적). 대신 인장을 놓는다. */
+#${WRAP_ID} .reward-title .orn-sigil {
+  flex: 0 0 46px; filter: ${UI_MATERIAL.gildEdge};
 }
 #${WRAP_ID} .reward-cards { display: flex; gap: 20px; justify-content: center; }
 #${WRAP_ID} .reward-card {
@@ -283,9 +279,6 @@ export function showRewardCards(
   const wrap = ensureDom();
 
   const titleText = framing.title ?? '공명의 대가를 선택하라';
-  // 머리글자 — 첫 글자만 떼어 장식 틀에 넣는다
-  const initialChar = titleText.slice(0, 1);
-  const restTitle = titleText.slice(1);
   wrap.innerHTML = `
     <div class="reward-panel">
       ${cornerFlourish().replace('orn-corner', 'orn-corner tl')}
@@ -293,7 +286,7 @@ export function showRewardCards(
       ${cornerFlourish().replace('orn-corner', 'orn-corner bl')}
       ${cornerFlourish().replace('orn-corner', 'orn-corner br')}
       <div class="reward-kicker">${escapeText(framing.kicker ?? 'ROOM CLEAR')}</div>
-      <h2 class="reward-title"><span class="reward-initial">${initialFrame()}<em>${escapeText(initialChar)}</em></span>${escapeText(restTitle)}</h2>
+      <h2 class="reward-title">${titleSigil()}<span>${escapeText(titleText)}</span></h2>
       ${divider()}
       <div class="reward-cards"></div>
       <div class="reward-hint"><b>1·2·3</b> 또는 <b>←→ + Enter</b> · 마우스 클릭</div>
