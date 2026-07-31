@@ -278,9 +278,23 @@ const origin = { x: 0, y: 0 };
     /form=slash/.test(prompt),
     '프롬프트가 근접 베기에 slash를 지시해야 한다 (#188)',
   );
+  // ⚠️ 종전엔 `/관통/.test(prompt) && /beam/.test(prompt)`였다. **너무 느슨했다** —
+  // 두 단어가 각각 어딘가 있기만 하면 통과한다. 실제로 #303이 프롬프트를 후보 58로
+  // 재작성하면서 이 지시를 통째로 덮어썼는데, effect 판정 문구의 "절단·관통·충돌"이
+  // `/관통/`에 걸려 **회귀가 통과했다.** 병합 충돌도 안 났으므로 아무도 몰랐을 것이다.
+  //
+  // 이제 **한 문장 안에서** bolt와 beam을 대비시키는지 본다.
+  const boltBeamRule = prompt
+    .split('\n')
+    .find((line) => /bolt/.test(line) && /beam/.test(line) && /관통/.test(line));
   assert.ok(
-    /관통/.test(prompt) && /beam/.test(prompt),
-    '프롬프트가 관통 → beam을 지시해야 한다 — 없으면 투사와 관통이 둘 다 bolt가 된다',
+    boltBeamRule,
+    '프롬프트에 "관통이면 beam, 단발이면 bolt"를 한 줄에서 대비시키는 지시가 있어야 한다'
+    + ' — 없으면 직선 투사와 좁은 관통이 둘 다 bolt가 된다(감사 실측: 화염창 bolt 8/8)',
+  );
+  assert.ok(
+    /단발/.test(boltBeamRule!),
+    'bolt 쪽 기준(단발 탄체)이 명시되어야 한다 — beam만 설명하면 나머지를 판정기가 짐작한다',
   );
 }
 

@@ -21,6 +21,11 @@ import type { EncounterDefinition } from '../src/run/runContract';
 
 const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
 
+assert.ok(
+  !scene.includes('private portalField:') && !scene.includes('this.portalField'),
+  '제품 씬에 폐기된 물리 포탈 상태·업데이트가 남아 있다',
+);
+
 /** 메서드 본문만 잘라낸다 — 파일 전체 검색은 다른 곳의 우연한 일치를 잡아준다. */
 function bodyOf(startMarker: string, endMarker: string): string {
   const start = scene.indexOf(startMarker);
@@ -56,8 +61,8 @@ function bodyOf(startMarker: string, endMarker: string): string {
     '이동해도 미니맵이 그대로다 — 현재 위치가 영영 첫 칸에 머문다',
   );
   assert.ok(
-    body.includes('layoutRoomArrival('),
-    '도착 지점 계약(#245·#246)이 빠졌다 — 진입 좌표가 방마다 달라진다',
+    !body.includes('layoutRoomArrival('),
+    '직접 방 선택 흐름에 폐기된 좌측 포탈 도착 좌표가 남아 있다',
   );
   assert.ok(
     body.includes('this.mapEncounterByRoom.set(')
@@ -79,6 +84,16 @@ function bodyOf(startMarker: string, endMarker: string): string {
 
   const roomBody = bodyOf('private startRoom(', 'private isBossEncounter()');
   assert.ok(
+    roomBody.includes(
+      'this.player.setPosition(this.worldBounds.centerX, this.worldBounds.centerY)',
+    ),
+    '선택한 다음 방에서 플레이어가 중앙에 배치되지 않는다',
+  );
+  assert.ok(
+    !roomBody.includes('pendingArrival'),
+    '방 시작이 폐기된 포탈 도착 상태에 따라 달라진다',
+  );
+  assert.ok(
     roomBody.includes("this.activeTrapProfile?.kind === 'hazard'"),
     '함정 프로필이 실제 방 시작에 연결되지 않았다',
   );
@@ -98,36 +113,60 @@ function bodyOf(startMarker: string, endMarker: string): string {
     !rewardlessBody.includes('if (this.isBossEncounter()) return null'),
     '선형 보스 가드가 보물·제단 MapNode를 다시 덮는다',
   );
+
+  const bossBody = bodyOf('private startBossRoom(', 'private clearCombatRoom()');
+  assert.ok(
+    bossBody.includes('this.worldBounds.centerY - BOSS_INITIAL_OFFSET_Y'),
+    '중앙 진입 플레이어와 보스의 초기 위치가 겹친다',
+  );
+
+  const fixtureBody = bodyOf('private setRoomFixture(', 'private clearRoomFixture()');
+  assert.ok(
+    fixtureBody.includes('this.worldBounds.centerX + ROOM_FIXTURE_CONFIG.offsetX'),
+    '중앙 진입 플레이어와 보물상자·제단 설치물의 초기 위치가 겹친다',
+  );
 }
 
 // ── 갈림길: 모든 경로가 그래프를 전진시키는가 ────────────────────────
 {
-  const body = bodyOf('choosePortalDestination()', 'private roomBoundsForPortals()');
+  const body = bodyOf('chooseRoomDestination()', 'private rewardlessNodeKind()');
 
   assert.ok(
     body.includes('this.mapGraph.choices()'),
     '선택지를 그래프에서 받지 않는다',
   );
   assert.ok(
-    body.includes('layoutRoomExits('),
-    '포탈 배치 계약(#245)이 빠졌다',
+    body.includes('showRoomChoices('),
+    '다음 방 선택 UI를 열지 않는다',
+  );
+  assert.ok(
+    body.includes('map: toMinimapModel(this.mapGraph.snapshot())')
+      && body.includes('options: choices.map('),
+    '전체 맵과 실제 다음 방 선택지를 분리해 전달하지 않는다',
+  );
+  assert.ok(
+    body.includes('this.mapGraph.canEnter(selected.nodeId)'),
+    'UI가 돌려준 도달 불가 노드를 다시 검증하지 않는다',
+  );
+  assert.ok(
+    !body.includes('choices.length === 1'),
+    '갈래가 하나면 전체 경로 전환 화면을 건너뛴다',
   );
 
-  // ⚠️ 여기가 핵심이다. 이 메서드에는 그래프를 전진시켜야 하는 경로가 **셋**이다:
-  //   ① 갈래가 하나뿐이라 조용히 넘어갈 때
-  //   ② 배치가 실패해 첫 갈래로 폴백할 때
-  //   ③ 플레이어가 포탈을 골랐을 때
+  // ⚠️ 이 메서드에는 그래프를 전진시켜야 하는 경로가 **둘**이다:
+  //   ① 플레이어가 지도에서 골랐을 때
+  //   ② UI 실패로 첫 갈래에 폴백할 때
   // 하나라도 빠지면 그 경로에서만 두 축이 어긋나고, 증상이 간헐적이라 잡기 어렵다.
   const advanceCalls = body.split('this.enterMapNode(').length - 1;
   assert.ok(
-    advanceCalls >= 3,
+    advanceCalls >= 2,
     `갈림길에서 그래프를 전진시키는 경로가 ${advanceCalls}개뿐이다 — `
-    + '단일갈래·배치실패폴백·포탈선택 셋 다 enterMapNode를 불러야 한다',
+    + '지도선택·UI실패폴백 둘 다 enterMapNode를 불러야 한다',
   );
 
   assert.ok(
-    body.includes('this.portalField = null'),
-    '포탈 선택 후 참조가 남는다 — 파괴된 GameObject를 update해 죽는다',
+    !body.includes('new PortalField('),
+    '제품 다음 방 선택 경로가 다시 물리 포탈을 만든다',
   );
 }
 
@@ -149,11 +188,12 @@ function bodyOf(startMarker: string, endMarker: string): string {
   );
 }
 
-// ── 포탈이 매 프레임 갱신되는가 (근접 판정) ──────────────────────────
+// ── 방 선택 중 작은 미니맵이 중복 표시되지 않는가 ───────────────────
 {
+  const body = bodyOf('private shouldShowMinimap()', 'private syncMinimapVisibility()');
   assert.ok(
-    scene.includes('this.portalField?.update(this.player.x, this.player.y)'),
-    '포탈이 플레이어 접근을 감지하지 못한다 — 갈림길에서 런이 영구히 멈춘다',
+    body.includes('this.buildInspectOpen') && !body.includes('roomChoiceOpen'),
+    '중앙 전체 지도 위에 우상단 작은 미니맵이 중복 표시된다',
   );
 }
 

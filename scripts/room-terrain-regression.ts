@@ -83,6 +83,24 @@ const STAGES: readonly (1 | 2)[] = [1, 2];
     /blocksFromPlacements\(node\.terrain\)/.test(scene),
     'R1이 노드에 채운 구조물이 기본값을 이겨야 한다',
   );
+  const renderBody = scene.slice(
+    scene.indexOf('private setTerrainBarriers'),
+    scene.indexOf('private applyRoomTerrain'),
+  );
+  assert.ok(renderBody.length > 1_000, 'setTerrainBarriers 렌더 본문을 찾을 수 있어야 한다');
+  assert.ok(
+    renderBody.includes('fillStyle(0x211d23, 1)')
+      && renderBody.includes('lineStyle(2, 0x716476, 0.72)'),
+    '고정 지형 블록은 어두운 흑요석 본체와 저채도 회보라 윤곽을 써야 한다',
+  );
+  assert.ok(
+    !renderBody.includes('0x6d7fc4') && !renderBody.includes('0x8fa4ff'),
+    '고정 지형 블록에 기존의 밝은 청색 팔레트가 남아서는 안 된다',
+  );
+  assert.ok(
+    !renderBody.includes('setBlendMode'),
+    '고정 지형 블록은 발광체가 아니므로 ADD 블렌드를 쓰면 안 된다',
+  );
 }
 
 // ── 3) keep-out — 도착·출구·설치물을 침범하지 않는다 ────────────────────────

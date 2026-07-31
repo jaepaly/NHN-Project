@@ -46,8 +46,8 @@ const game = new Phaser.Game({
 const hooksFor = (scene: ProtoScene) => ({
   formFor: (option: Parameters<ProtoScene['rewardFormFor']>[0]) => scene.rewardFormFor(option),
   contextLines: () => scene.rewardContextLines(),
-  // 보상 선택 후 포탈로 다음 방을 고른다 — 씬이 맵 그래프를 진행시킨다 (#214)
-  beforeAdvance: () => scene.choosePortalDestination(),
+  // 보상 선택 후 UI에서 다음 방을 고른다 — 씬이 맵 그래프를 진행시킨다 (#214)
+  chooseNextRoom: () => scene.chooseRoomDestination(),
 });
 
 const bindRunUiWhenSceneReady = (): void => {

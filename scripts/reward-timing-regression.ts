@@ -92,20 +92,18 @@ function makeRewards(): RewardOption[] {
 
 // ── 3) **씬의 모든 종료 경로가 전환을 놓아준다** ────────────────────────────
 //
-// ⚠️ 이게 이 파일의 핵심이다. `choosePortalDestination`은 네 갈래로 끝난다:
-//   ① 선택지 0개 → 즉시 resolve
-//   ② 선택지 1개 + 무전투 방 아님 → 자동 진입
-//   ③ 출구 배치 실패 → 첫 갈래로 폴백
-//   ④ 실제 포탈 진입 (onEnter)
+// ⚠️ 이게 이 파일의 핵심이다. `chooseRoomDestination`은 두 갈래로 끝난다:
+//   ① 선택지 0개 → 즉시 해제
+//   ② 선택지 1개 이상 → 전체 지도 UI 선택/폴백 뒤 finally에서 해제
 // 하나라도 `releaseRunTransition()`을 빠뜨리면 그 경로로 끝난 방에서 런이 갇힌다.
 // 소스를 읽어 호출 수를 센다 — 새 종료 경로가 생기면 개수가 어긋나 잡힌다.
 {
   const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   const releases = scene.match(/this\.releaseRunTransition\(\)/g) ?? [];
   assert.equal(
-    releases.length, 4,
-    `releaseRunTransition 호출이 4건이어야 한다 (현재 ${releases.length}) —`
-    + ' choosePortalDestination의 종료 경로가 넷이다. 경로를 추가했다면 해제도 추가하고'
+    releases.length, 2,
+    `releaseRunTransition 호출이 2건이어야 한다 (현재 ${releases.length}) —`
+    + ' chooseRoomDestination의 종료 경로가 둘이다. 경로를 추가했다면 해제도 추가하고'
     + ' 이 숫자를 갱신할 것. 빠뜨리면 그 경로에서 런이 갇힌다.',
   );
   // 게이트와 해제가 짝으로 존재한다
@@ -130,43 +128,46 @@ function makeRewards(): RewardOption[] {
 {
   const binding = readFileSync('src/ui/runUiBinding.ts', 'utf8');
   const chooseAt = binding.indexOf('controller.chooseReward(chosen.id)');
-  const advanceAt = binding.indexOf('await hooks.beforeAdvance?.()');
+  const advanceAt = binding.indexOf('await hooks.chooseNextRoom?.()');
   assert.ok(chooseAt > 0 && advanceAt > 0, '두 호출이 모두 있어야 한다');
   assert.ok(
     chooseAt < advanceAt,
-    'chooseReward가 beforeAdvance보다 **먼저** 와야 한다 —'
-    + ' 뒤에 두면 보상 적용이 포탈 진입까지 미뤄진다(총괄 제보 증상)',
+    'chooseReward가 chooseNextRoom보다 **먼저** 와야 한다 —'
+    + ' 뒤에 두면 보상 적용이 방 선택 완료까지 미뤄진다(총괄 제보 증상)',
+  );
+  assert.ok(
+    binding.includes('if (choosingNextRoom)') && binding.includes('queuedTransition = transition'),
+    '방 선택 UI 위로 전환 암막이 먼저 시작된다',
   );
 }
 
-// ── 5) 포탈 단계에서도 따라다니는 것들이 갱신된다 ───────────────────────────
+// ── 5) 설치물 단계에서도 따라다니는 것들이 갱신된다 ─────────────────────────
 //
 // 제보: *"보상 선택시, 정령이 갑자기 거기에 멈추는 버그가 있음."*
 //
-// `update()`가 `isCombatActive()`로 갈리고, 포탈 단계 분기는 종전에
-// `updatePlayerMovement` 하나뿐이었다. #262로 "보상 선택 후 포탈까지 걸어가는" 단계가
-// 생기자, 그 몇 초 동안 플레이어는 움직이는데 정령은 마지막 궤도 좌표에 박혀 있었다.
+// `update()`가 `isCombatActive()`로 갈리고, 설치물 단계에서 플레이어만 움직이면
+// 그 동안 정령은 마지막 궤도 좌표에 박혀 있게 된다.
 {
   const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   const branch = scene.match(
-    /\} else if \(this\.portalField \|\| this\.roomFixture\) \{[\s\S]*?\n {4}\}/,
+    /\} else if \(this\.roomFixture\) \{[\s\S]*?\n {4}\}/,
   );
-  assert.ok(branch, '포탈·설치물 단계 분기를 찾아야 한다');
+  assert.ok(branch, '설치물 단계 분기를 찾아야 한다');
   const body = branch[0];
   for (const call of ['updatePlayerMovement', 'updateSpirits', 'updateSummon', 'updateFriendlyMissiles']) {
-    assert.ok(body.includes(call), `포탈 단계에서 ${call}가 돌아야 한다`);
+    assert.ok(body.includes(call), `설치물 단계에서 ${call}가 돌아야 한다`);
   }
   // 전투 요소는 멈춘 채로 둔다 — 걸어가는 동안 맞으면 안 된다
   for (const call of ['updateEnemies', 'updateEnemyProjectiles', 'updateWaveFlow']) {
-    assert.ok(!body.includes(call), `포탈 단계에서 ${call}는 멈춰 있어야 한다`);
+    assert.ok(!body.includes(call), `설치물 단계에서 ${call}는 멈춰 있어야 한다`);
   }
   // timeScale을 곱한 델타를 쓴다 — 전투 분기와 같은 시간 축이어야 궤도 속도가 일관된다
   assert.ok(
     /const d = \(delta \/ 1000\) \* this\.timeScale;/.test(body),
-    '포탈 단계도 timeScale을 반영한 델타를 써야 한다',
+    '설치물 단계도 timeScale을 반영한 델타를 써야 한다',
   );
 }
 
 console.log(
-  'reward timing regression: 즉시적용·붙잡힘·해제경로4건·바인딩순서·포탈단계갱신 5군 통과',
+  'reward timing regression: 즉시적용·붙잡힘·해제경로2건·UI순서·비전투추적 5군 통과',
 );

@@ -48,6 +48,7 @@
     "test:bossarcana": "esbuild scripts/boss-arcana-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-boss-arcana-regression.mjs && node node_modules/.cache/incant-boss-arcana-regression.mjs",
     "test:minimap": "esbuild scripts/minimap-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-minimap-regression.mjs && node node_modules/.cache/incant-minimap-regression.mjs",
     "test:room-portal-layout": "esbuild scripts/room-portal-layout-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-portal-layout-regression.mjs && node node_modules/.cache/incant-room-portal-layout-regression.mjs",
+    "test:roomchoice": "esbuild scripts/room-choice-overlay-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-choice-overlay-regression.mjs && node node_modules/.cache/incant-room-choice-overlay-regression.mjs",
     "test:mapgraph": "esbuild scripts/map-graph-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-map-graph-regression.mjs && node node_modules/.cache/incant-map-graph-regression.mjs",
     "test:mapwiring": "esbuild scripts/map-wiring-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-map-wiring-regression.mjs && node node_modules/.cache/incant-map-wiring-regression.mjs",
     "test:traproom": "esbuild scripts/trap-room-profile-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-trap-room-profile-regression.mjs && node node_modules/.cache/incant-trap-room-profile-regression.mjs",
@@ -77,12 +78,6 @@
     "test:loop": "esbuild scripts/loop-continue-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-loop-continue-regression.mjs && node node_modules/.cache/incant-loop-continue-regression.mjs",
     "test:debufffloor": "esbuild scripts/debuff-floor-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-debuff-floor-regression.mjs && node node_modules/.cache/incant-debuff-floor-regression.mjs",
     "audit:judge": "esbuild scripts/judge-fidelity-audit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-judge-fidelity-audit.mjs && node node_modules/.cache/incant-judge-fidelity-audit.mjs",
-    "audit:sequence-intent": "esbuild scripts/sequence-intent-score.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-sequence-intent-score.mjs && node node_modules/.cache/incant-sequence-intent-score.mjs",
-    "audit:sequence-heldout": "esbuild scripts/sequence-heldout-audit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-sequence-heldout-audit.mjs && node node_modules/.cache/incant-sequence-heldout-audit.mjs",
-    "audit:sequence-fixture": "esbuild scripts/sequence-fixture-alignment-audit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-sequence-fixture-alignment-audit.mjs && node node_modules/.cache/incant-sequence-fixture-alignment-audit.mjs",
-    "test:sequence-fewshot": "esbuild scripts/sequence-fewshot-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-sequence-fewshot-regression.mjs && node node_modules/.cache/incant-sequence-fewshot-regression.mjs",
-    "test:judge-output": "node scripts/judge-output-regression.mjs",
-    "audit:sequence-stability": "esbuild scripts/sequence-judge-stability-audit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-sequence-stability-audit.mjs && node node_modules/.cache/incant-sequence-stability-audit.mjs",
     "test:slash": "esbuild scripts/slash-form-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-slash-form-regression.mjs && node node_modules/.cache/incant-slash-form-regression.mjs",
     "test:incant-bands": "esbuild scripts/incant-bands-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-incant-bands-regression.mjs && node node_modules/.cache/incant-incant-bands-regression.mjs",
     "test:floorhazardstate": "esbuild scripts/floor-hazard-state-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-floor-hazard-state-regression.mjs && node node_modules/.cache/incant-floor-hazard-state-regression.mjs",
@@ -97,7 +92,13 @@
     "test:roomterrain": "esbuild scripts/room-terrain-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-room-terrain-regression.mjs && node node_modules/.cache/incant-room-terrain-regression.mjs",
     "test:cleansereadout": "esbuild scripts/cleanse-readout-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-cleanse-readout-regression.mjs && node node_modules/.cache/incant-cleanse-readout-regression.mjs",
     "test:pausekey": "esbuild scripts/pause-key-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-pause-key-regression.mjs && node node_modules/.cache/incant-pause-key-regression.mjs",
-    "test:vfxbrightness": "esbuild scripts/vfx-brightness-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-vfx-brightness-regression.mjs && node node_modules/.cache/incant-vfx-brightness-regression.mjs"
+    "test:vfxbrightness": "esbuild scripts/vfx-brightness-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-vfx-brightness-regression.mjs && node node_modules/.cache/incant-vfx-brightness-regression.mjs",
+    "audit:sequence-intent": "esbuild scripts/sequence-intent-score.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-sequence-intent-score.mjs && node node_modules/.cache/incant-sequence-intent-score.mjs",
+    "audit:sequence-heldout": "esbuild scripts/sequence-heldout-audit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-sequence-heldout-audit.mjs && node node_modules/.cache/incant-sequence-heldout-audit.mjs",
+    "audit:sequence-fixture": "esbuild scripts/sequence-fixture-alignment-audit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-sequence-fixture-alignment-audit.mjs && node node_modules/.cache/incant-sequence-fixture-alignment-audit.mjs",
+    "test:sequence-fewshot": "esbuild scripts/sequence-fewshot-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-sequence-fewshot-regression.mjs && node node_modules/.cache/incant-sequence-fewshot-regression.mjs",
+    "test:judge-output": "node scripts/judge-output-regression.mjs",
+    "audit:sequence-stability": "esbuild scripts/sequence-judge-stability-audit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-sequence-stability-audit.mjs && node node_modules/.cache/incant-sequence-stability-audit.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

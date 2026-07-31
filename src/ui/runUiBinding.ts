@@ -11,7 +11,7 @@ import { clearRunHud } from './runHud';
  * R3 런 UI 결합 — RunController 공개 계약(이벤트·chooseReward)만 소비한다.
  * (docs/R3_RUN_UI_CONTRACT.md의 결합 코드. 전투 내부 상태에는 접근하지 않는다)
  *
- * 흐름: room-cleared → 카드 3택 표시 → 선택 → beforeAdvance(포탈) → chooseReward
+ * 흐름: room-cleared → 카드 3택 표시 → 선택·즉시 적용 → 다음 방 UI → 전환 연출
  *       room-transition → 페이드 + "ROOM n" 연출 (R1이 준 durationMs 사용)
  *
  * ROOM n/m 표시는 **씬의 우상단 상태 패널**이 그린다 (종전 DOM 칩에서 이관).
@@ -27,7 +27,7 @@ export interface RunUiHooks {
   /** 보상 화면에 함께 띄울 씬 쪽 맥락 (주문서 보유 등 — 컨트롤러가 모르는 것) */
   contextLines?: () => string[];
   /**
-   * 보상 선택 후 **다음 방으로 넘어가기 전에** 끼어드는 단계 — 포탈로 다음 방을 고른다 (#214).
+   * 보상 선택 후 **다음 방으로 넘어가기 전에** 끼어드는 단계 — UI로 다음 방을 고른다 (#214).
    *
    * ⚠️ **`chooseReward()` 뒤에 실행된다.** 종전엔 앞이었다: `chooseReward`가 호출되는
    * 순간 RunController가 전환 타이머를 걸어버리므로, 그 호출을 미루는 것이 방 전환을
@@ -45,12 +45,16 @@ export interface RunUiHooks {
    * 거부(reject)하거나 던지면 선택을 건너뛰고 그대로 진행한다 — 포탈 UI가 깨져도
    * 런이 멈추면 안 된다.
    */
-  beforeAdvance?: () => Promise<void>;
+  chooseNextRoom?: () => Promise<void>;
 }
 
 export function bindRunUi(controller: RunController, hooks: RunUiHooks = {}): void {
   // 과거 빌드가 남긴 DOM 칩 제거 — 이제 ROOM은 씬 패널이 그린다
   clearRunHud();
+  // chooseReward는 room-transition 이벤트도 동기 발화한다. 다음 방 UI가 열릴 때는
+  // 전환 연출만 보관했다가 선택 완료 뒤 재생한다 — 보상 적용 시점은 늦추지 않는다.
+  let choosingNextRoom = false;
+  let queuedTransition: { label: string; durationMs: number } | null = null;
 
   controller.on('room-cleared', (options) => {
     // 이미 보유 배지 — 이번 런에서 고른 스택형 보상을 카드에 표시 (게임성 ②)
@@ -67,17 +71,28 @@ export function bindRunUi(controller: RunController, hooks: RunUiHooks = {}): vo
     }).then(async (chosen) => {
       // **먼저 적용한다** — 고른 것이 즉시 HUD에 나타나야 선택에 의미가 생긴다.
       // 전환 타이머는 씬이 주입한 scheduleTransition이 붙잡으므로 방은 넘어가지 않는다.
+      choosingNextRoom = true;
       controller.chooseReward(chosen.id);
       try {
-        await hooks.beforeAdvance?.();
+        await hooks.chooseNextRoom?.();
       } catch {
-        /* 포탈 UI가 실패해도 런은 계속된다 — 여기서 멈추면 방에 갇힌다 */
+        /* 방 선택 UI가 실패해도 씬의 폴백으로 런은 계속된다 */
+      } finally {
+        choosingNextRoom = false;
+        const transition = queuedTransition;
+        queuedTransition = null;
+        if (transition) void playRoomTransition(transition.label, transition.durationMs);
       }
     });
   });
 
   controller.on('room-transition', (state, durationMs) => {
-    void playRoomTransition(`ROOM ${state.roomIndex + 1}`, durationMs);
+    const transition = { label: `ROOM ${state.roomIndex + 1}`, durationMs };
+    if (choosingNextRoom) {
+      queuedTransition = transition;
+      return;
+    }
+    void playRoomTransition(transition.label, transition.durationMs);
   });
 
   controller.on('run-completed', () => {
