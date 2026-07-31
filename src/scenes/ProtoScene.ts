@@ -256,7 +256,10 @@ import {
 } from '../combat-core/combat/floorHazardState';
 import { PortalField } from '../render/portalField';
 import { cleanseReadoutLine } from '../render/floorHazardReadout';
-import { blocksFromPlacements, terrainForRoom } from '../run/roomTerrainConfig';
+import {
+  blocksFromPlacements, floorHazardsForRoom, floorHazardsFromPlacements, terrainForRoom,
+} from '../run/roomTerrainConfig';
+import type { MapNodeKind, MapTerrainPlacement } from '../run/mapGraphContract';
 import { RoomFixture } from '../render/roomFixture';
 import { ROOM_FIXTURE_CONFIG, ROOM_FIXTURE_GUIDE } from '../run/roomFixtureConfig';
 import { mockMinimapModel } from '../run/mapGraphMock';
@@ -3031,6 +3034,7 @@ export class ProtoScene extends Phaser.Scene {
    */
   private applyRoomTerrain(): void {
     const node = this.mapGraph.current();
+    this.applyRoomFloorHazards(node);
     const fromNode = blocksFromPlacements(node.terrain);
     if (fromNode.length > 0) {
       this.setTerrainBarriers(fromNode);
@@ -3038,6 +3042,41 @@ export class ProtoScene extends Phaser.Scene {
     }
     const stage = node.stage === 2 ? 2 : 1;
     this.setTerrainBarriers(terrainForRoom(node.kind, stage));
+  }
+
+  /**
+   * 노드의 바닥형 지형(용암·독지대)을 실제 방에 깐다 — **#304 시정.**
+   *
+   * 종전엔 `setFloorHazards`를 부르는 곳이 DEV 프리뷰 하나뿐이라 실런에서 용암·독지대가
+   * 한 번도 안 생겼다. `blocksFromPlacements`가 `kind === 'barrier'`만 통과시켜서
+   * 노드에 원형 지형을 넣어도 전부 버려졌다.
+   *
+   * 그 상태에서 나온 "1스테이지에 독 장판이 없다"를 나는 **위험지대 함정방** 빈도
+   * 문제로 잘못 진단했다(#298). 둘은 다른 체계다 — 함정방은 원소도 정화도 없는 붉은
+   * 원이고, 정화(#293)는 여기 `floorHazards`에만 걸린다. 함정방을 아무리 늘려도 정화를
+   * 볼 기회는 0%였다.
+   *
+   * ⚠️ **위험지대 함정방과 겹치지 않게** 한다(#304 후속 설계). 함정방은 십자 안전통로를
+   * 전제로 붉은 원을 까는데, 그 위에 바닥지형이 겹치면 안전통로가 안전하지 않게 된다 —
+   * 안전통로는 "여기로 지나가라"는 약속이라 그게 깨지면 방을 읽을 수 없다.
+   */
+  private applyRoomFloorHazards(
+    node: { terrain: readonly MapTerrainPlacement[]; kind: MapNodeKind; stage: number },
+  ): void {
+    if (this.activeTrapProfile?.kind === 'hazard') {
+      // 함정방이 이미 자기 위험 장판을 깐다 — 겹치면 안전통로가 무의미해진다
+      this.setFloorHazards([]);
+      return;
+    }
+    const fromNode = floorHazardsFromPlacements(node.terrain);
+    if (fromNode.length > 0) {
+      this.setFloorHazards(fromNode);
+      return;
+    }
+    // 노드가 비어 있으면 방 종류별 기본 배치 — 장벽과 같은 규칙이다.
+    // 기본값이 없으면 배선만 붙이고 화면은 그대로다(그게 #304 이전 상태였다).
+    const stage = node.stage === 2 ? 2 : 1;
+    this.setFloorHazards(floorHazardsForRoom(node.kind, stage));
   }
 
   private clearTerrainBarriers(): void {

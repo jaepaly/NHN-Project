@@ -19,30 +19,19 @@ export const MAP_GRAPH_PRESET_01: MapGraphDefinition = {
   nodes: [
     { id: 's1-start', stage: 1, kind: 'start', layer: 0, lane: 0, waveSetId: 'room-a', ...emptyRoom },
     /**
-     * 1스테이지 분기의 위험한 쪽 — **위험지대 함정방**.
+     * 1스테이지 분기의 싸우는 쪽 — 일반 전투방.
      *
-     * 종전엔 일반 전투방이었다. 그래서 프리셋에는 1스테이지 함정이 하나도 없었고
-     * (유일한 함정이 `s2-trap`), 팀원이 *"1런에는 원래 독지대 같은 함정이 안
-     * 등장하나?"*라고 물을 만큼 안 보였다. 정화 안내(#293)를 볼 기회도 그만큼 없었다.
+     * ⚠️ #298이 여기를 위험지대 함정방으로 **교체**했다가 #304에서 되돌렸다.
      *
-     * ⚠️ **노드를 추가하지 않고 교체한다.** 프리셋의 가장 긴 경로가 정확히 8방이고,
-     * 컨트롤러의 `maxRooms`가 readonly라 그 값에 묶여 있다(map-generator-regression이
-     * 생성 맵과의 일치를 고정한다). 하나 늘리면 `ROOM x/8`과 보스 판정이 어긋난다.
+     * 당시 근거는 *"1런에는 원래 독지대 같은 함정이 안 등장하나?"* 였는데, 위험지대
+     * 함정방은 용암·독지대와 **다른 체계다** — 붉은 원을 깔 뿐 원소도 정화(#293)도
+     * 없다. 여기를 함정방으로 바꿔도 독지대는 한 개도 안 늘었다. 진짜 원인은
+     * 바닥지형의 실런 배선이 없던 것이었고, 그건 `roomTerrainConfig`에서 따로 고쳤다.
      *
-     * 교체가 오히려 낫다: 분기가 `안전한 보물(총리턴 0.767) vs 기믹 전투(1.4)`가 되어
-     * 총괄이 지적한 "다들 보상방을 가고 싶을 거 아냐"에 실제 답이 생긴다. 시작 방이
-     * 이미 전투(room-a)라 1스테이지에 싸울 곳이 없어지지도 않는다.
+     * 게다가 방 분포 설계는 R1 소관인데 승인 없이 일반 전투 노드를 함정으로 바꿨다.
+     * 이 프리셋은 **심사자가 하는 판**이라 더더욱 임의로 기울이면 안 된다.
      */
-    {
-      id: 's1-combat',
-      stage: 1,
-      kind: 'trap',
-      layer: 1,
-      lane: 0,
-      waveSetId: 'trap-hazard',
-      trapProfile: TRAP_ROOM_PROFILES.hazard,
-      ...emptyRoom,
-    },
+    { id: 's1-combat', stage: 1, kind: 'combat', layer: 1, lane: 0, waveSetId: 'room-b', ...emptyRoom },
     { id: 's1-treasure', stage: 1, kind: 'treasure', layer: 1, lane: 1, waveSetId: null, ...emptyRoom },
     { id: 's1-elite', stage: 1, kind: 'elite', layer: 2, lane: 0, waveSetId: 'elite', ...emptyRoom },
     { id: 's1-boss', stage: 1, kind: 'stage-boss', layer: 3, lane: 0, waveSetId: null, ...emptyRoom },
