@@ -147,6 +147,17 @@ import {
 } from '../combat-core/combat/persistentFormConfig';
 import type { FormPoint } from '../combat-core/combat/persistentFormConfig';
 import {
+  WALL_INTEGRITY,
+  absorbChargeImpact,
+  isAwakenedWall,
+  wallCrystalNodes,
+  wallMaxIntegrity,
+  wallThickness,
+  wallWear,
+  wallWearRender,
+} from '../combat-core/combat/wallIntegrity';
+import type { WallWear } from '../combat-core/combat/wallIntegrity';
+import {
   RAIN_CONFIG,
   ZONE_CONFIG,
   densestAreaTarget,
@@ -483,6 +494,15 @@ interface SpellExecutionOptions {
    * 미지정이면 자동 시전 여부로 결정하는 기존 동작 그대로.
    */
   decorVfxScale?: number;
+  /**
+   * 필살기(융합 방출)인가 — 참이면 친화 연출이 **보조 원소까지 순차로** 그린다
+   * (총괄 지시: *"얼음과 전기를 함께 쓰면 깨지는 거랑 스파크 튀는 두가지 효과가
+   * 다 보이게"*). `fusionFlourishConfig.ts` 참조.
+   *
+   * 평범한 이중 원소 주문까지 켜지 않는 이유는 예산이다 — 필살기는 게이지를 채워야
+   * 나오는 드문 시전이라 여기만 특별하게 둔다.
+   */
+  fusionRelease?: boolean;
 }
 
 interface EnemyKnockbackState {
@@ -519,6 +539,12 @@ interface ActiveWall {
   contactedEnemies: Set<CombatEnemy>;
   slowedBosses: Set<CombatEnemy>;
   options?: SpellExecutionOptions;
+  /** 세운 원소의 친화도 — 두께·마디·내구도가 전부 여기서 나온다 (#296) */
+  affinity: number;
+  integrity: number;
+  maxIntegrity: number;
+  /** 마지막으로 그린 마모 단계 — 바뀔 때만 다시 그린다 */
+  drawnWear: WallWear;
 }
 
 interface ActiveOrbit {
@@ -5128,7 +5154,16 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.audio.playCast(effectiveSpec.element_primary);
       this.applySpellPalette(effectiveSpec);
       this.announceSpell(effectiveSpec);
-      this.applySpellEffect(effectiveSpec);
+      // 필살기면 친화 연출이 보조 원소까지 순차로 그린다 (총괄 지시).
+      // 에코·파문은 넘기지 않는다 — 그 둘은 같은 시전의 **반복**이라 여기까지 두
+      // 원소를 뿌리면 한 번의 필살기로 연출이 4개가 된다.
+      this.applySpellEffect(
+        effectiveSpec,
+        undefined,
+        false,
+        0,
+        fusedSpec ? { fusionRelease: true } : undefined,
+      );
       this.scheduleSpellEcho(effectiveSpec);
       this.scheduleSpellRipple(effectiveSpec);
       this.playerState.startCastLock(); // 신속 영창 감소분 반영된 입력락
@@ -5649,6 +5684,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
         vfxTierReduction,
       ),
+      // 필살기는 두 원소를 순차로 터뜨린다 (총괄 지시). beam·wave는 실피해를 확인한 뒤
+      // 씬이 직접 연출하므로, 이 플래그는 **나머지 폼**을 위해 렌더러로 내려간다.
+      fusionRelease: options?.fusionRelease === true,
       resolveBoltCollision: (fromX, fromY, toX, toY, projectileRadius) => {
         const collision = this.findBoltCollision(
           fromX,
@@ -5680,6 +5718,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           castFeedback,
           vfxTierReduction,
           options?.onAffectEnemy,
+          options?.fusionRelease === true,
         );
       },
     }, spec);
@@ -5767,7 +5806,24 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     });
   }
 
-  /** 마나·글로벌 쿨다운·히스토리·발동음 없이 축소 주문만 자동 시전한다. */
+  /** 살아 있는 적이 하나라도 있는가 — 빈 방에서 자동 시전을 막는 조건 */
+  private hasLivingEnemy(): boolean {
+    return this.enemies.some((enemy) => enemy.alive);
+  }
+
+  /**
+   * 마나·글로벌 쿨다운·히스토리·발동음 없이 축소 주문만 자동 시전한다.
+   *
+   * ⚠️ **적이 없으면 쏘지 않는다** (총괄 제보: *"보물방처럼 몹이 없는 곳에서도 각인
+   * 마법 이펙트가 생기는 문제"*).
+   *
+   * `phase === 'combat'`은 보물방·제단에서도 참이다 — 전투가 없을 뿐 위상은 전투다.
+   * 그래서 종전 조건(생존·위상·같은 방)을 다 통과하고 허공에 주문이 터졌다.
+   *
+   * 쿨다운 자체는 그대로 돌린다(총괄 지시: *"쿨타임이 돌아도 이펙트가 생기지 않게"*).
+   * 요청을 큐에 쌓지 않고 **버리는** 것이라, 다음 방에 들어갈 때 밀린 발동이 한꺼번에
+   * 터지지 않는다.
+   */
   private updateEngravedSpells(deltaSeconds: number): void {
     const roomIndex = this.combatRunController.state.roomIndex;
     for (const request of this.engraveManager.update(deltaSeconds)) {
@@ -5776,6 +5832,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         if (!this.playerState.alive
           || state.phase !== 'combat'
           || state.roomIndex !== roomIndex) return;
+        // 지연 발(진화 각인 3발)은 예약 시점과 실제 시점이 다르다. 예약할 때 적이
+        // 있었어도 마지막 적이 그 사이에 죽으면 남은 발이 허공에 터진다 —
+        // 그래서 **클로저 안에서** 다시 본다.
+        if (!this.hasLivingEnemy()) return;
         // 진화 각인의 3발은 **서로 다른 적**을 문다. Lv3는 한 놈에게 2발을 박아
         // 잡몹이 먼저 죽으면 나머지가 오버킬로 낭비됐다. 총피해는 그대로고
         // 분배만 달라진다 — 적이 하나면 자동으로 기존 동작으로 수렴한다.
@@ -5816,15 +5876,20 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     for (const request of this.spiritManager.update(deltaSeconds)) {
       const view = this.spiritViews.get(request.spiritId);
-      view?.pulse(this);
       if (request.kind === 'attack') {
+        // 공격 정령은 **적을 확인한 뒤에** 빛난다. 펄스를 먼저 하면 빈 방에서 쿨다운마다
+        // 정령이 번쩍인다 — 각인이 허공에 터지던 것과 같은 종류의 문제다(총괄 제보).
+        // 치유·수호 정령은 적과 무관하게 일하므로 아래에서 그대로 빛난다.
         if (!this.nearestEnemy()) continue;
+        view?.pulse(this);
         const origin = view
           ? new Phaser.Math.Vector2(view.x, view.y)
           : new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
         this.applySpellEffect(request.spell, origin, true, 1);
         continue;
       }
+      // 치유·수호는 적이 없어도 실제로 일한다 — 여기서 빛나는 건 허공 연출이 아니다
+      view?.pulse(this);
       if (request.kind === 'heal') {
         const amount = this.playerState.heal(request.amount);
         if (amount > 0) this.announceSystemMessage(`치유 정령 · HP +${Math.round(amount)}`, '#72f1a8');
@@ -5878,12 +5943,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       options?.rangeScale,
       spec.shape,
     );
-    const palette = ELEMENT_PALETTES[spec.element_primary];
-    const vectors = points.map((point) => new Phaser.Math.Vector2(point.x, point.y));
+    // 세운 원소의 친화도 — 두께·마디·내구도가 전부 여기서 나온다 (#296).
+    // 제보: *"친화가 높아져도 강화된 설치물처럼 느껴지지 않습니다."* 종전엔 두께가
+    // 상수 14로 고정이라 친화가 렌더에 **아예 닿지 않았다.**
+    const affinity = this.combatRunController.state
+      .elementalAffinity[spec.element_primary] ?? 0;
     const view = this.add.graphics().setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
-    view.lineStyle(WALL_CONFIG.thickness + 10, palette.glow, 0.18).strokePoints(vectors, false);
-    view.lineStyle(WALL_CONFIG.thickness, palette.core, 0.78).strokePoints(vectors, false);
-    view.lineStyle(2, palette.accent, 0.95).strokePoints(vectors, false);
+    const maxIntegrity = wallMaxIntegrity(affinity);
     this.activeWall = {
       spec: { ...spec, status: [...spec.status] },
       points,
@@ -5893,7 +5959,62 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       contactedEnemies: new Set(),
       slowedBosses: new Set(),
       options,
+      affinity,
+      integrity: maxIntegrity,
+      maxIntegrity,
+      drawnWear: 'intact',
     };
+    this.drawWall(this.activeWall);
+  }
+
+  /**
+   * 장벽을 그린다 — 두께·마디·알파가 친화도와 마모 단계에서 나온다 (#296).
+   *
+   * 종전엔 고정된 3개 선 레이어였다. 굵기만 키우면 "굵은 선"이지 구조물이 아니라서
+   * **결정 마디**를 함께 박는다 — 총괄이 UI에서 지적한 것과 같은 종류의 문제다
+   * (표면만 키우면 형태가 안 생긴다).
+   *
+   * ⚠️ 애니메이션은 없다. 벽은 ADD 블렌드로 2~4초 떠 있는 큰 밝은 물체라 여기에
+   * 진동을 얹으면 광과민성 예산(#220)을 바로 넘긴다. 약해 보이게 하는 건 **정지한
+   * 채로** 알파와 마디 크기를 줄여서 한다.
+   */
+  private drawWall(wall: ActiveWall): void {
+    const palette = ELEMENT_PALETTES[wall.spec.element_primary];
+    const vectors = wall.points.map((point) => new Phaser.Math.Vector2(point.x, point.y));
+    const thickness = wallThickness(wall.affinity);
+    const wear = wallWear(wall.integrity, wall.maxIntegrity);
+    const { alpha, nodeScale } = wallWearRender(wear);
+    wall.drawnWear = wear;
+
+    const view = wall.view;
+    view.clear();
+    view.lineStyle(thickness + 10, palette.glow, 0.18 * alpha).strokePoints(vectors, false);
+    view.lineStyle(thickness, palette.core, 0.78 * alpha).strokePoints(vectors, false);
+    view.lineStyle(2, palette.accent, 0.95 * alpha).strokePoints(vectors, false);
+
+    // 결정 마디 — 벽을 따라 균등 배치. 친화가 높을수록 촘촘하고 크다
+    const nodes = wallCrystalNodes(wall.affinity);
+    const nodeRadius = (thickness * 0.55) * nodeScale;
+    view.fillStyle(palette.accent, 0.85 * alpha);
+    for (let i = 0; i < nodes; i += 1) {
+      const t = nodes === 1 ? 0.5 : i / (nodes - 1);
+      const at = wall.points[Math.round(t * (wall.points.length - 1))];
+      if (!at) continue;
+      view.fillCircle(at.x, at.y, nodeRadius);
+    }
+
+    // 각성 장벽만 얻는 외곽선 — 돌진을 견디고 서 있는 그 벽이라는 표시
+    if (isAwakenedWall(wall.affinity)) {
+      view.lineStyle(1.5, palette.accent, 0.6 * alpha)
+        .strokePoints(vectors, false);
+      view.fillStyle(palette.glow, 0.5 * alpha);
+      for (let i = 0; i < nodes; i += 1) {
+        const t = nodes === 1 ? 0.5 : i / (nodes - 1);
+        const at = wall.points[Math.round(t * (wall.points.length - 1))];
+        if (!at) continue;
+        view.fillCircle(at.x, at.y, nodeRadius * 0.45);
+      }
+    }
   }
 
   private createOrbit(spec: SpellSpec, options?: SpellExecutionOptions): void {
@@ -5986,10 +6107,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private resolveWallEnemyCollision(enemy: CombatEnemy, previous: FormPoint): void {
     const wall = this.activeWall;
     if (!wall || !enemy.alive) return;
+    // 두께가 친화도로 변하므로 충돌 반경도 따라간다 — 상수 14를 쓰면 굵은 벽이
+    // 눈에만 굵고 실제로는 얇은 판정을 갖는다
+    const halfThickness = wallThickness(wall.affinity) / 2;
     const crossed = sweepIntersectsPolyline(
       previous,
       { x: enemy.x, y: enemy.y },
-      enemy.collisionRadius + WALL_CONFIG.thickness / 2,
+      enemy.collisionRadius + halfThickness,
       wall.points,
     );
     if (!crossed) return;
@@ -5997,9 +6121,53 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const startedTouching = sweepIntersectsPolyline(
       previous,
       previous,
-      enemy.collisionRadius + WALL_CONFIG.thickness / 2,
+      enemy.collisionRadius + halfThickness,
       wall.points,
     );
+
+    // ── 보스 돌진 — 여기가 #296의 핵심이다 ────────────────────────────────
+    //
+    // 제보: *"보스가 돌진할 때 장벽을 그대로 통과합니다. 플레이어 입장에서는
+    // '길을 막는다'는 영창의 핵심 약속이 깨져 보입니다."*
+    //
+    // 종전엔 보스가 **항상** 예외였다. 봉쇄를 피하려던 타협인데, 하필 가장 막고 싶은
+    // 순간에 벽이 없는 것처럼 동작했다. 이제는 **막되 닳는다**: 돌진은 확실히 멈추고
+    // 그 대가로 내구도가 깎인다. 맨몸 장벽은 한 번에 부서지므로 봉쇄되지 않는다.
+    //
+    // ⚠️ `cancelCharge()`가 반드시 있어야 한다. 위치만 되돌리면 `startCharge`가 미리
+    // 계산해 둔 남은 시간이 그대로라 **다음 프레임에 다시 밀고 들어온다.**
+    if (enemy instanceof BossEnemy && enemy.charging && !startedTouching) {
+      enemy.cancelCharge();
+      enemy.view.setPosition(previous.x, previous.y);
+      // 아래 일반 둔화(1.5초 ×0.6)를 건너뛴다.
+      //
+      // `enemyControlState.applySlow`는 배수를 `min(기존, 신규)`, 지속을
+      // `max(기존, 신규)`로 합친다. 둘 다 걸면 **0.15배가 1.5초** 유지돼 사실상 정지가
+      // 되는데, 그건 이 설계가 피하려던 봉쇄다. 휘청임이 일반 둔화를 대신한다.
+      wall.slowedBosses.add(enemy);
+      // 휘청임 — 0으로 멈추면 "얼었다"로 읽혀 봉쇄처럼 보인다. 느리게 움직이게 둔다
+      this.applySlow(
+        enemy,
+        wall.spec.power,
+        WALL_INTEGRITY.staggerSeconds,
+        WALL_INTEGRITY.staggerMovementMultiplier,
+      );
+      const { remaining, broke } = absorbChargeImpact(wall.integrity);
+      wall.integrity = remaining;
+      this.announceSystemMessage(
+        broke ? '장벽이 돌진을 막고 부서졌다' : '장벽이 돌진을 버텼다',
+        paletteColorToCss(ELEMENT_PALETTES[wall.spec.element_primary].core),
+      );
+      if (broke) {
+        this.clearActiveWall();
+        return;
+      }
+      // 마모 단계가 바뀌었을 때만 다시 그린다 — 매 충돌 재작화는 낭비다
+      if (wallWear(wall.integrity, wall.maxIntegrity) !== wall.drawnWear) {
+        this.drawWall(wall);
+      }
+    }
+
     if (enemy.kind !== 'boss' && !startedTouching) {
       enemy.view.setPosition(previous.x, previous.y);
     }
@@ -7107,6 +7275,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     },
     vfxTierReduction = 0,
     onAffectEnemy?: (enemy: CombatEnemy) => void,
+    /** 필살기면 beam·wave 적중 연출이 보조 원소까지 순차로 나간다 (총괄 지시) */
+    fusionRelease = false,
   ): void {
     // Zone ticks may damage the same enemy again. Rain strikes share one cast-level
     // hit set so overlapping landing circles cannot multiply damage on one target.
@@ -7158,7 +7328,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           vfxTierReduction,
         );
         if (tier > 0) {
-          playAffinityImpactFlourish(this, enemy.x, enemy.y, spec, tier);
+          // beam·wave는 적마다 실제 피해를 확인한 뒤 여기서 연출한다. 필살기면
+          // 보조 원소까지 순차로 나간다 (총괄 지시)
+          playAffinityImpactFlourish(this, enemy.x, enemy.y, spec, tier, fusionRelease);
         }
       }
       this.applyOnHitStatuses(enemy, spec);
@@ -7584,6 +7756,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
         vfxTierReduction,
       ),
+      // 필살기는 두 원소를 순차로 터뜨린다 (총괄 지시). beam·wave는 실피해를 확인한 뒤
+      // 씬이 직접 연출하므로, 이 플래그는 **나머지 폼**을 위해 렌더러로 내려간다.
+      fusionRelease: options?.fusionRelease === true,
       resolveBoltCollision: (fromX, fromY, toX, toY, projectileRadius) => {
         const collision = this.findBoltCollision(
           fromX,
