@@ -301,65 +301,71 @@ for (const definition of generated) {
 // 배선 자체가 없었다(#304에서 배선을 붙였다). 함정방 빈도를 올려서 늘어난 정화 노출은
 // 0%였다.
 //
-// 이 단언들은 **함정방 기믹이 골고루 나오는지**를 지킨다. 그건 그것대로 유효하다.
+// #298은 여기에 "hazard가 40% 이상 나와야 한다"는 하한을 걸었다. **그 근거가
+// 사라졌으므로 하한도 함께 걷어낸다** — 근거 없는 하한을 남겨두면 다음 사람이 그것을
+// 설계 의도로 읽고 가중치를 다시 기울인다.
+//
+// 지금 지키는 것은 하나다: **다섯 기믹이 골고루 나온다.** 어느 하나를 대표로 세울
+// 근거가 없고, 방 분포·출현 비율 설계는 R1 소관이다(#304의 소유권 지적).
 {
-  let withHazard = 0;
   const profiles = new Map<string, number>();
   for (const definition of generated) {
-    const traps = definition.nodes.filter((node) => node.kind === 'trap');
-    for (const trap of traps) {
+    for (const trap of definition.nodes.filter((node) => node.kind === 'trap')) {
       const kind = trap.trapProfile!.kind;
       profiles.set(kind, (profiles.get(kind) ?? 0) + 1);
     }
-    if (traps.some((trap) => trap.trapProfile?.kind === 'hazard')) withHazard += 1;
   }
-  const share = withHazard / generated.length;
-  assert.ok(
-    share >= 0.4,
-    `위험지대 함정방이 있는 맵이 ${(share * 100).toFixed(1)}%로 너무 적다`
-    + ' — 못 보고 지나가는 기믹이 된다',
-  );
+  const ALL_PROFILES = ['hazard', 'blackout', 'silence', 'heatwave', 'word-limit'] as const;
 
-  // ⚠️ 나머지 넷을 0으로 만들지 않는다 — 함정방이 늘 같은 기믹이면 그것대로 단조롭고,
-  // 넷 다 이미 구현돼 있어 안 쓰는 게 낭비다.
-  for (const kind of ['blackout', 'silence', 'heatwave', 'word-limit'] as const) {
+  // 다섯 다 나온다 — 구현해 두고 안 쓰는 게 낭비다
+  for (const kind of ALL_PROFILES) {
     assert.ok(
       (profiles.get(kind) ?? 0) > 0,
       `${kind} 프로필이 한 번도 안 나온다 — 구현해 두고 안 쓰는 셈이다`,
     );
   }
-  // hazard가 대표이되 독점은 아니다
-  const hazardShare = (profiles.get('hazard') ?? 0)
-    / [...profiles.values()].reduce((sum, n) => sum + n, 0);
-  assert.ok(
-    hazardShare > 0.3 && hazardShare < 0.7,
-    `hazard 비중 ${(hazardShare * 100).toFixed(0)}%가 범위를 벗어났다 (대표이되 독점은 아니어야 한다)`,
-  );
+
+  // 균등에서 크게 벗어나지 않는다. 어느 하나가 절반을 넘으면 그건 "대표 기믹"을
+  // 세운 것이고, 그 판단은 R1 몫이다 — 코드가 조용히 정하면 안 된다.
+  const total = [...profiles.values()].reduce((sum, n) => sum + n, 0);
+  for (const kind of ALL_PROFILES) {
+    const share = (profiles.get(kind) ?? 0) / total;
+    assert.ok(
+      share > 0.08 && share < 0.4,
+      `${kind} 비중 ${(share * 100).toFixed(1)}%가 균등(20%)에서 너무 벗어났다`
+      + ' — 특정 기믹을 대표로 세우는 건 R1 설계 결정이다 (#304)',
+    );
+  }
 }
 
-// ── 13) 프리셋 1스테이지에도 함정이 있다 ───────────────────────────────────
+// ── 13) 프리셋 방 구성은 R1 소관이다 ───────────────────────────────────────
 //
-// 생성 맵을 고쳐도 **프리셋에는 1스테이지 함정이 0개**였다(유일한 함정이 `s2-trap`).
-// 시연 로드아웃이 쓰는 판이라 여기가 비면 그 경로에서는 영영 안 나온다.
+// ⚠️ #298이 여기에 "프리셋 1스테이지에 위험지대 함정이 있어야 한다"를 걸었다가
+// #304에서 걷어냈다. 근거(*"독지대가 안 나온다"*)가 다른 체계를 가리키고 있었고,
+// 무엇보다 **방 분포 설계를 회귀가 못박으면 R1이 프리셋을 못 고친다.**
+//
+// 이 프리셋은 **심사자가 하는 판**이다. 방 구성은 R1 승인 사항이므로 여기서는
+// 구성을 규정하지 않고, 구조적 계약만 지킨다.
 {
-  const s1Traps = MAP_GRAPH_PRESET_01.nodes.filter(
-    (node) => node.stage === 1 && node.kind === 'trap',
-  );
-  assert.ok(s1Traps.length > 0, '프리셋 1스테이지에 함정방이 있어야 한다');
-  assert.ok(
-    s1Traps.some((node) => node.trapProfile?.kind === 'hazard'),
-    '1스테이지 함정 중 하나는 위험지대여야 한다 — 다른 프로필은 바닥 장판을 깔지 않는다',
-  );
-  // ⚠️ 노드를 **추가**하면 경로가 9방이 되어 maxRooms(8)와 어긋난다. 위 3군이
-  // 생성 맵과 프리셋의 일치를 검사하므로 여기가 깨지면 그쪽도 같이 깨진다.
+  // 경로 길이는 계속 못박는다 — `maxRooms`(readonly)가 여기 묶여 있어서
+  // 노드를 추가/삭제하면 `ROOM x/8`과 보스 판정이 어긋난다(#272와 같은 결합).
   assert.equal(
     maximumMapPathRooms(MAP_GRAPH_PRESET_01), presetRooms,
-    '함정을 넣느라 경로 길이를 늘리면 안 된다 — 교체여야 한다',
+    '프리셋 경로 길이가 바뀌면 maxRooms와 어긋난다 — 방을 바꿀 땐 추가가 아니라 교체',
+  );
+  // 1스테이지에 분기가 있어야 한다 — 선택이 없으면 프리셋으로 시연할 게 없다
+  const s1 = MAP_GRAPH_PRESET_01.nodes.filter((node) => node.stage === 1);
+  const s1Lanes = new Set(s1.map((node) => `${node.layer}:${node.lane}`));
+  assert.ok(s1Lanes.size > s1.length - 2, '1스테이지 노드가 겹치지 않아야 한다');
+  assert.ok(
+    MAP_GRAPH_PRESET_01.edges.filter((edge) => edge.from === MAP_GRAPH_PRESET_01.startNodeId)
+      .length >= 2,
+    '시작 방에서 갈래가 둘 이상이어야 한다 — 없으면 시연할 선택이 없다',
   );
 }
 
 console.log(
   `map generator regression: 시드 ${generated.length}개 · `
   + '폴백률·계약·경로길이·웨이브키·축단조·경로규칙·분기보장·전투비율·재현성·시연프리셋'
-  + '·위험지대함정방빈도·프리셋1스테이지함정 12군 통과',
+  + '·함정프로필균등·프리셋구조계약 12군 통과',
 );
