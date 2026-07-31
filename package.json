@@ -99,7 +99,8 @@
     "test:sequence-fewshot": "esbuild scripts/sequence-fewshot-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-sequence-fewshot-regression.mjs && node node_modules/.cache/incant-sequence-fewshot-regression.mjs",
     "test:judge-output": "node scripts/judge-output-regression.mjs",
     "audit:sequence-stability": "esbuild scripts/sequence-judge-stability-audit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-sequence-stability-audit.mjs && node node_modules/.cache/incant-sequence-stability-audit.mjs",
-    "test:uipalette": "esbuild scripts/ui-palette-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-ui-palette-regression.mjs && node node_modules/.cache/incant-ui-palette-regression.mjs"
+    "test:uipalette": "esbuild scripts/ui-palette-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-ui-palette-regression.mjs && node node_modules/.cache/incant-ui-palette-regression.mjs",
+    "test:runinherit": "esbuild scripts/run-inheritance-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-run-inheritance-regression.mjs && node node_modules/.cache/incant-run-inheritance-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

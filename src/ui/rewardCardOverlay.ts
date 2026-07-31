@@ -194,6 +194,7 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   'altar-leave': 'DEPART',
   'all-affinity': 'ATTUNE',
   echo: 'ECHO',
+  ripple: 'RIPPLE',
 };
 
 function ensureDom(): HTMLElement {

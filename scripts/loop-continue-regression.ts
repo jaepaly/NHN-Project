@@ -32,15 +32,29 @@ const beforeAffinity = controller.state.elementalAffinity.fire ?? 0;
 const beforeRewards = controller.state.rewards.length;
 assert.ok(beforeAffinity > 0 && beforeRewards > 0, '빌드가 쌓였다');
 
+// ⚠️ **이어가기는 이제 빌드를 비운다** (총괄 결정 2026-07-31).
+//
+// 종전엔 친화·보상을 전부 유지해 2회차부터 성장이 아니라 **누적**이었다. 맵이
+// 2스테이지 구조가 되며 한 런 안에서도 성장이 체감되므로 그럴 이유가 약해졌다.
+// 계승은 **고른 친화 하나**뿐이다(runInheritance).
 controller.continueRun();
 assert.equal(controller.state.loopIndex, 1, '이어가면 loop +1');
 assert.equal(controller.state.roomIndex, 1, '방은 다시 1부터');
 assert.equal(controller.state.phase, 'combat', '전투 상태로 진입');
 assert.equal(
-  controller.state.elementalAffinity.fire ?? 0, beforeAffinity,
-  '친화(빌드)는 유지된다',
+  controller.state.elementalAffinity.fire ?? 0, 0,
+  '계승을 지정하지 않으면 친화는 비워진다',
 );
-assert.equal(controller.state.rewards.length, beforeRewards, '보상 누적도 유지');
+assert.equal(controller.state.rewards.length, 0, '보상 누적도 비워진다');
+
+// 계승을 넘기면 그 원소만 남는다
+const c1 = new CombatRunController({ playerState: new PlayerCombatState() });
+c1.notifyRoomCleared();
+c1.chooseReward('room-1-affinity-fire');
+c1.growAffinityFromUse('ice');
+c1.continueRun(Date.now(), { element: 'fire', value: 0.45 });
+assert.equal(c1.state.elementalAffinity.fire, 0.45, '고른 원소만 계승된다');
+assert.equal(c1.state.elementalAffinity.ice ?? 0, 0, '고르지 않은 원소는 흩어진다');
 
 controller.continueRun();
 assert.equal(controller.state.loopIndex, 2, '거듭 이어가면 계속 오른다');
@@ -52,14 +66,19 @@ assert.equal(controller.state.elementalAffinity.fire ?? 0, 0, 'reset은 친화�
 assert.equal(controller.state.rewards.length, 0, 'reset은 보상도 비운다');
 
 // 4) 사용 친화 소프트캡이 continue를 넘어도 유지되는지 (이어가기가 상한을 리셋하면 안 됨)
+// ⚠️ 이 검사도 뒤집혔다. 빌드를 비우므로 **사용 친화 상한 판정도 초기화된다** —
+// 그게 의도다. 안 그러면 계승으로 받은 0.45 위에 다시 0.45를 쌓지 못해, 계승이
+// 오히려 손해가 된다("들고 갔더니 더 못 큰다").
 const c2 = new CombatRunController({ playerState: new PlayerCombatState() });
 for (let i = 0; i < 100; i += 1) c2.growAffinityFromUse('ice');
 const capped = c2.state.elementalAffinity.ice ?? 0;
+assert.ok(capped > 0, '상한까지 쌓였다');
 c2.continueRun();
+assert.equal(c2.state.elementalAffinity.ice ?? 0, 0, '이어가면 비워진다');
 c2.growAffinityFromUse('ice');
 assert.ok(
-  Math.abs((c2.state.elementalAffinity.ice ?? 0) - capped) < 1e-9,
-  '이어가기가 사용 친화 상한 판정을 리셋하지 않는다 (빌드 지속)',
+  (c2.state.elementalAffinity.ice ?? 0) > 0,
+  '새 런에서는 사용 친화를 다시 쌓을 수 있어야 한다',
 );
 
 
@@ -152,4 +171,4 @@ assert.equal(
   'NaN·음수 입력 방어',
 );
 
-console.log('loop continue regression: 난이도배율·이어가기빌드유지·reset초기화·상한지속·루프체력·성장비연동·파워지표 7군 통과');
+console.log('loop continue regression: 난이도배율·이어가기빌드비움·계승·reset초기화·재성장·루프체력·성장비연동·파워지표 8군 통과');

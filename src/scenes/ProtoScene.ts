@@ -93,6 +93,8 @@ import { buildChipModel } from '../run/buildChipModel';
 import { bandAffordances, reachableBand } from '../run/incantBands';
 import { drawTreasureReward } from '../combat-core/run/treasureRewardConfig';
 import { ALTAR_OFFER_CONFIG, drawAltarOffer } from '../combat-core/run/altarOffer';
+import { inheritCandidates } from '../combat-core/run/runInheritance';
+import type { AltarTierKind } from '../combat-core/run/altarOffer';
 import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomRewardScale';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { showRoomChoices } from '../ui/roomChoiceOverlay';
@@ -588,6 +590,10 @@ export class ProtoScene extends Phaser.Scene {
   private awakenings: AwakeningState = {};
   /** 제단 최상위 거래 — 수동 단일 영창이 한 번 더 울린다 (#214). 런 리셋에서 끈다 */
   private echoUnlocked = false;
+  /** 파문 — 수동 영창이 다른 적에게 번진다 (제단 최상위, 에코와 같은 급) */
+  private rippleUnlocked = false;
+  /** 이 런에서 산 제단 등급 — 같은 것을 두 번 사면 최대 체력만 날린다 */
+  private ownedAltarKinds: AltarTierKind[] = [];
   /**
    * 런 맵 그래프가 실제 방 내용의 단일 원본이다. 포탈 선택은 보상 적용 전에 끝나므로
    * 선택된 조우를 방 번호별로 고정해 현재 방 이벤트에 다음 노드가 섞이지 않게 한다.
@@ -654,7 +660,11 @@ export class ProtoScene extends Phaser.Scene {
       }
       if (roomless === 'altar') {
         // 대가와 보상이 한 장에 붙은 거래 카드 + 거절 카드 (#214 재설계)
-        return drawAltarOffer(this.playerState.maxHp, this.altarAwakenElement());
+        return drawAltarOffer(
+          this.playerState.maxHp,
+          this.altarAwakenElement(),
+          this.ownedAltarKinds,
+        );
       }
       // 방 종류별 배율 (총괄 지적: "누가 함정방을 선택하겠어"). 종전엔 정예·함정이
       // 일반 전투방과 **완전히 같은 보상**이라 더 위험한 방을 고를 이유가 없었다.
@@ -1382,11 +1392,24 @@ export class ProtoScene extends Phaser.Scene {
               + ALTAR_OFFER_CONFIG.allAffinityBonus;
           }
           this.combatRunController.seedAffinity(raised);
+          this.ownedAltarKinds.push('all-affinity');
           this.announceSystemMessage('모든 원소가 함께 깊어졌다', '#8fe3c8', 2600);
+          return;
+        }
+        if (chosen.kind === 'ripple') {
+          this.rippleUnlocked = true;
+          this.ownedAltarKinds.push('ripple');
+          this.announceBanner({
+            title: '영창 파문 — 말이 옆으로 번진다',
+            lines: ['수동 단일 영창이 가까운 다른 적에게 · 시퀀스는 번지지 않는다'],
+            color: 0xd8bb72,
+            holdMs: 2600,
+          });
           return;
         }
         if (chosen.kind === 'echo') {
           this.echoUnlocked = true;
+          this.ownedAltarKinds.push('echo');
           this.announceBanner({
             title: '영창 에코 — 말이 두 번 울린다',
             lines: ['수동 단일 영창이 한 번 더 · 시퀀스는 울리지 않는다'],
@@ -1490,9 +1513,12 @@ export class ProtoScene extends Phaser.Scene {
       this.time.delayedCall(1400, () => {
         const completedLoops = this.combatRunController.state.loopIndex + 1;
         const nextDamagePct = Math.round(loopDamageScale(completedLoops) * 100);
-        void showBossChoice(completedLoops, nextDamagePct).then((choice) => {
+        void showBossChoice(completedLoops, nextDamagePct).then(async (choice) => {
           if (choice === 'continue') {
-            this.continueToNextLoop();
+            // 이어가면 빌드가 비워진다 — 무엇을 들고 갈지 여기서 고른다.
+            // 이미 "더 갈까"를 결정한 자리라 한 호흡으로 이어진다.
+            const inherit = await this.chooseInheritedAffinity();
+            this.continueToNextLoop(inherit);
           } else {
             void showRunSummaryOverlay(this.buildRunSummary('victory'))
               .then(() => { this.destroyRunMapUi(); this.scene.start('title'); });
@@ -1646,7 +1672,38 @@ export class ProtoScene extends Phaser.Scene {
    * 정령·융합 게이지·주문 히스토리·성장 표식·친화를 **비우지 않는다**. 컨트롤러는
    * continueRun으로 친화·보상을 지킨 채 방만 새로 뽑고 루프를 올린다 (난이도↑).
    */
-  private continueToNextLoop(): void {
+  /**
+   * 이어가기 — 빌드를 비우고 **친화 하나만** 계승한다 (총괄 결정 2026-07-31).
+   *
+   * @param inherit 플레이어가 고른 계승 원소. null이면 아무것도 안 들고 간다.
+   */
+  /**
+   * 계승할 친화 원소를 고르게 한다. 후보가 없으면(아무 원소도 안 키웠으면) 묻지 않는다.
+   *
+   * 보상 카드 UI를 재사용한다 — 새 오버레이를 만들면 같은 기능이 화면마다 다르게
+   * 생긴다(#총괄 지적 "정돈이 안 됐다"와 같은 종류).
+   */
+  private async chooseInheritedAffinity(): Promise<{ element: SpellElement; value: number } | null> {
+    const candidates = inheritCandidates(this.combatRunController.state.elementalAffinity);
+    if (candidates.length === 0) return null;
+    const options: RewardOption[] = candidates.slice(0, 3).map((c) => ({
+      id: `inherit-${c.element}`,
+      kind: 'affinity' as const,
+      element: c.element,
+      title: `${ELEMENT_LABELS[c.element]}을(를) 남긴다`,
+      description: `친화 ${c.value.toFixed(2)} → ${c.inherited.toFixed(2)}`
+        + `
+나머지 원소·각인·정령은 흩어진다`,
+    }));
+    const chosen = await showRewardCards(options, {
+      kicker: 'INHERIT',
+      title: '무엇을 남길 것인가',
+    });
+    const picked = candidates.find((c) => `inherit-${c.element}` === chosen.id);
+    return picked ? { element: picked.element, value: picked.inherited } : null;
+  }
+
+  private continueToNextLoop(inherit: { element: SpellElement; value: number } | null = null): void {
     this.deathHandled = false;
     // 전투 전용 상태만 초기화 (다음 보스가 내성 재계산, 장판·쿨다운은 방 단위)
     this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
@@ -1656,21 +1713,42 @@ export class ProtoScene extends Phaser.Scene {
     this.clearBurnEmbers();
     this.clearDamageNumbers();
     this.shockCooldowns.clear();
-    // 이어가기는 친화를 유지하므로 각성도 유지한다 — 비우면 같은 원소를
-    // 매 루프 재각성하는 무한 파밍이 된다 (친화가 이미 임계 위이므로).
+    // ⚠️ **빌드를 비운다** (총괄 결정). 종전엔 친화·각인·정령을 통째로 들고 가
+    // 2회차부터 성장이 아니라 누적이었다. 계승은 친화 하나뿐이다.
+    //
+    // 각성도 비운다 — 종전엔 "친화를 유지하니 각성도 유지"였는데, 이제 계승 친화가
+    // 상한 0.6이라 각성 임계(1.2) 아래다. 무한 재각성 파밍 우려가 사라졌다.
+    this.awakenings = {};
+    this.engraveManager.reset();
+    this.spiritManager.reset();
+    this.clearSpiritViews();
+    this.growthMarks.reset();
+    this.playerState.reset();
+    // 제단 능력도 비운다 — 그래야 다음 런 제단이 다시 의미를 갖는다
+    this.echoUnlocked = false;
+    this.rippleUnlocked = false;
+    this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.runMovementDistance = 0;
     // 새 루프 = 새 맵. 그래프는 cleared/current가 인스턴스에 쌓이므로 재사용하면
     // 지난 루프의 방들이 계속 '클리어됨'으로 남는다 (#241 리뷰 지적).
     this.resetMapGraph();
     this.pendingRunStartReason = 'continue';
-    this.combatRunController.continueRun();
+    this.combatRunController.continueRun(Date.now(), inherit ?? undefined);
     const loop = this.combatRunController.state.loopIndex;
     this.announceSystemMessage(
       `${loop}순환 진입 — 적 피해 ×${loopDamageScale(loop).toFixed(1)}`,
       '#e2b7ff',
       3200,
     );
+    if (inherit) {
+      this.announceBanner({
+        title: `${ELEMENT_LABELS[inherit.element]}만이 남았다`,
+        lines: [`친화 ${inherit.value.toFixed(2)} 계승 · 나머지는 흩어졌다`],
+        color: 0xd8bb72,
+        holdMs: 2800,
+      });
+    }
   }
 
   /**
@@ -1691,6 +1769,8 @@ export class ProtoScene extends Phaser.Scene {
     this.shockCooldowns.clear();
     this.awakenings = {};
     this.echoUnlocked = false;
+    this.rippleUnlocked = false;
+    this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
     this.engraveManager.reset();
@@ -1714,6 +1794,8 @@ export class ProtoScene extends Phaser.Scene {
     this.shockCooldowns.clear();
     this.awakenings = {};
     this.echoUnlocked = false;
+    this.rippleUnlocked = false;
+    this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
     this.engraveManager.reset();
@@ -1904,7 +1986,12 @@ export class ProtoScene extends Phaser.Scene {
     this.audio.playSfx('boss-appear');
     requestCameraShake(this, 'medium');
 
-    this.announceBanner({ title: '보스의 방', color: 0xff6b86, holdMs: 2000 });
+    // ⚠️ 수문장과 기억의 주인을 **구분한다** (총괄 지적: "스테이지 1 보스를 클리어하면
+    // 런을 끝낸 것처럼 대사와 화면이 뜬다"). 종전엔 둘 다 '보스의 방'이라, 수문장을
+    // 만나면 그게 런의 종착점으로 읽혔다.
+    this.announceBanner(usesMemory
+      ? { title: '기억의 주인', lines: ['이 런의 끝'], color: 0xff6b86, holdMs: 2200 }
+      : { title: '수문장', lines: ['두 번째 심층으로 가는 문을 막고 있다'], color: 0xffa94d, holdMs: 2200 });
     // 오프닝 대사 — Mock은 원격 호출 없이 템플릿, 라이브는 사용자 지정 프록시를 우선한다.
     if (usesMemory) {
       const mockForced = import.meta.env.VITE_JUDGE_MOCK === '1';
@@ -5035,6 +5122,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceSpell(effectiveSpec);
       this.applySpellEffect(effectiveSpec);
       this.scheduleSpellEcho(effectiveSpec);
+      this.scheduleSpellRipple(effectiveSpec);
       this.playerState.startCastLock(); // 신속 영창 감소분 반영된 입력락
       this.playCastFlare();
     } finally {
@@ -5055,6 +5143,51 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
    * 보상 추첨 난수(engraveRewardRand)를 쓰지 않는다 — 그걸 소비하면 같은 시드에서
    * 보상 3택이 달라져 재현성이 깨진다.
    */
+  /**
+   * 파문 — 수동 단일 영창이 **다른 적에게** 번진다 (제단 최상위, 에코와 같은 급).
+   *
+   * 에코가 시간축(같은 자리 반복)이면 파문은 공간축이다. 그래서 보스전에서는 대상이
+   * 하나뿐이라 **아무 일도 일어나지 않는다** — 그 상황 의존성이 에코와의 균형을 잡는다
+   * (에코는 어디서나 켜진다).
+   *
+   * 에코와 같은 규약을 지킨다: 마나를 쓰지 않고, 사용 친화도 오르지 않으며,
+   * 보상 추첨 난수를 소비하지 않는다(같은 시드에서 3택이 달라지면 재현성이 깨진다).
+   */
+  private scheduleSpellRipple(spec: SpellSpec): void {
+    if (!this.rippleUnlocked) return;
+    const { delayMs, powerScale, maxTargets, radius, decorScale } = ALTAR_OFFER_CONFIG.ripple;
+    // 원본이 노린 적을 뺀 나머지 중 가까운 순 — 같은 적에게 두 번 가면 에코와 같아진다
+    const primary = this.nearestEnemy();
+    const others = this.enemies
+      .filter((enemy) => enemy.alive && enemy !== primary)
+      .map((enemy) => ({
+        enemy,
+        d: Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y),
+      }))
+      .filter((entry) => entry.d <= radius)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, maxTargets);
+    if (others.length === 0) return;
+
+    for (const { enemy } of others) {
+      this.time.delayedCall(delayMs, () => {
+        if (!this.scene?.isActive?.() || !this.playerState.alive) return;
+        if (!this.isCombatActive() || !enemy.alive) return;
+        this.applySpellEffect(
+          { ...spec, power: Math.max(1, Math.round(spec.power * powerScale)) },
+          new Phaser.Math.Vector2(enemy.x, enemy.y),
+          false,
+          1,
+          { decorVfxScale: decorScale },
+        );
+      });
+    }
+    this.time.delayedCall(delayMs, () => {
+      if (!this.scene?.isActive?.()) return;
+      this.audio.playCast(spec.element_primary);
+    });
+  }
+
   private scheduleSpellEcho(spec: SpellSpec): void {
     if (!this.echoUnlocked) return;
     const { delayMs, powerScale, extraChance, decorScales } = ALTAR_OFFER_CONFIG.echo;
@@ -6114,9 +6247,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         RESISTANCE.masteryImmunityAffinity,
       );
       // 한 줄에 한 사실 — 적 수를 저항 목록 꼬리에 붙이면 저항 정보처럼 읽힌다
+      // 수문장인지 기억의 주인인지가 한눈에 보여야 "이게 마지막인가"를 안다
+      const bossLabel = this.mapGraph.current().kind === 'memory-boss' ? '기억의 주인' : '수문장';
       const status = boss
-        ? `BOSS ${Math.ceil(boss.hp)}/${boss.maxHp}  ·  ENEMIES ${this.enemies.length}`
-        : 'BOSS';
+        ? `${bossLabel} ${Math.ceil(boss.hp)}/${boss.maxHp}  ·  ENEMIES ${this.enemies.length}`
+        : bossLabel;
       this.waveText.setText(withCleanse([roomLine, ...bossResistanceLines(status, readout)]));
     } else if (this.rewardlessNodeKind()) {
       // 무전투 방 — 웨이브가 없으니 "NEXT WAVE 0.0s"가 뜨면 안 된다
@@ -7942,6 +8077,17 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.clearEnemyProjectiles();
     // 보스방은 웨이브 흐름 없이 전멸(보스+하수인) 즉시 방 클리어
     if (this.isBossEncounter()) {
+      // 수문장을 넘으면 **런의 절반**임을 알린다. 이게 없으면 최종 보스를 잡은 것과
+      // 구분이 안 돼 "런이 끝났나?"가 된다(총괄 지적). 기억의 주인 쪽은 run-completed가
+      // 따로 연출하므로 여기서 말하지 않는다 — 두 번 말하면 겹친다.
+      if (this.mapGraph.current().kind === 'stage-boss') {
+        this.announceBanner({
+          title: '수문장을 넘었다',
+          lines: ['심층으로 가는 문이 열린다 — 이 런의 절반'],
+          color: 0xffa94d,
+          holdMs: 2600,
+        });
+      }
       this.scheduleRoomClearAfterManaSweep();
       return true;
     }
