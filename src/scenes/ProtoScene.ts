@@ -93,10 +93,13 @@ import { buildChipModel } from '../run/buildChipModel';
 import { bandAffordances, reachableBand } from '../run/incantBands';
 import { drawTreasureReward } from '../combat-core/run/treasureRewardConfig';
 import { ALTAR_OFFER_CONFIG, drawAltarOffer } from '../combat-core/run/altarOffer';
+import { inheritCandidates } from '../combat-core/run/runInheritance';
+import type { AltarTierKind } from '../combat-core/run/altarOffer';
 import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomRewardScale';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { showRoomChoices } from '../ui/roomChoiceOverlay';
-import { UI_COLOR } from '../ui/uiTokens';
+import { UI_COLOR, UI_HEX, UI_SEMANTIC, hex } from '../ui/uiTokens';
+import { drawGrimoirePanel, drawSectionRule, drawTitleSigil } from '../render/grimoireFrame';
 import type { GameSettings } from '../run/gameSettings';
 import { DEFAULT_SETTINGS, loadSettings } from '../run/gameSettings';
 import { setVfxBrightness } from '../render/vfxBrightness';
@@ -587,6 +590,10 @@ export class ProtoScene extends Phaser.Scene {
   private awakenings: AwakeningState = {};
   /** 제단 최상위 거래 — 수동 단일 영창이 한 번 더 울린다 (#214). 런 리셋에서 끈다 */
   private echoUnlocked = false;
+  /** 파문 — 수동 영창이 다른 적에게 번진다 (제단 최상위, 에코와 같은 급) */
+  private rippleUnlocked = false;
+  /** 이 런에서 산 제단 등급 — 같은 것을 두 번 사면 최대 체력만 날린다 */
+  private ownedAltarKinds: AltarTierKind[] = [];
   /**
    * 런 맵 그래프가 실제 방 내용의 단일 원본이다. 포탈 선택은 보상 적용 전에 끝나므로
    * 선택된 조우를 방 번호별로 고정해 현재 방 이벤트에 다음 노드가 섞이지 않게 한다.
@@ -653,7 +660,11 @@ export class ProtoScene extends Phaser.Scene {
       }
       if (roomless === 'altar') {
         // 대가와 보상이 한 장에 붙은 거래 카드 + 거절 카드 (#214 재설계)
-        return drawAltarOffer(this.playerState.maxHp, this.altarAwakenElement());
+        return drawAltarOffer(
+          this.playerState.maxHp,
+          this.altarAwakenElement(),
+          this.ownedAltarKinds,
+        );
       }
       // 방 종류별 배율 (총괄 지적: "누가 함정방을 선택하겠어"). 종전엔 정예·함정이
       // 일반 전투방과 **완전히 같은 보상**이라 더 위험한 방을 고를 이유가 없었다.
@@ -875,6 +886,14 @@ export class ProtoScene extends Phaser.Scene {
   private incantOpenCount = 0;
   /** 첫 영창 안내를 이미 띄웠는지 (localStorage로 재플레이엔 생략) */
   private onboardingHintShown = false;
+  /**
+   * 슬로모션 배율 (영창 0.1 · 판정 0.15 · 평시 1).
+   *
+   * ⚠️ **읽기 전용이다. 바꿀 때는 `setTimeScale()`을 쓴다.**
+   * 이 값은 씬이 수동으로 굴리는 것들(적 이동·웨이브·마나 재생·쿨다운·장판)에만
+   * 곱해진다. 주문 연출·각인·보스 패턴은 **Phaser 트윈과 타이머**로 도는데 그건
+   * 실시간이라 영창 중에도 원래 속도로 날아갔다(총괄 제보).
+   */
   private timeScale = 1;
   private readonly enemyHitStop = new EnemyHitStopController<CombatEnemy>();
   private readonly enemyKnockbacks = new Map<CombatEnemy, EnemyKnockbackState>();
@@ -1381,11 +1400,24 @@ export class ProtoScene extends Phaser.Scene {
               + ALTAR_OFFER_CONFIG.allAffinityBonus;
           }
           this.combatRunController.seedAffinity(raised);
+          this.ownedAltarKinds.push('all-affinity');
           this.announceSystemMessage('모든 원소가 함께 깊어졌다', '#8fe3c8', 2600);
+          return;
+        }
+        if (chosen.kind === 'ripple') {
+          this.rippleUnlocked = true;
+          this.ownedAltarKinds.push('ripple');
+          this.announceBanner({
+            title: '영창 파문 — 말이 옆으로 번진다',
+            lines: ['수동 단일 영창이 가까운 다른 적에게 · 시퀀스는 번지지 않는다'],
+            color: 0xd8bb72,
+            holdMs: 2600,
+          });
           return;
         }
         if (chosen.kind === 'echo') {
           this.echoUnlocked = true;
+          this.ownedAltarKinds.push('echo');
           this.announceBanner({
             title: '영창 에코 — 말이 두 번 울린다',
             lines: ['수동 단일 영창이 한 번 더 · 시퀀스는 울리지 않는다'],
@@ -1489,9 +1521,12 @@ export class ProtoScene extends Phaser.Scene {
       this.time.delayedCall(1400, () => {
         const completedLoops = this.combatRunController.state.loopIndex + 1;
         const nextDamagePct = Math.round(loopDamageScale(completedLoops) * 100);
-        void showBossChoice(completedLoops, nextDamagePct).then((choice) => {
+        void showBossChoice(completedLoops, nextDamagePct).then(async (choice) => {
           if (choice === 'continue') {
-            this.continueToNextLoop();
+            // 이어가면 빌드가 비워진다 — 무엇을 들고 갈지 여기서 고른다.
+            // 이미 "더 갈까"를 결정한 자리라 한 호흡으로 이어진다.
+            const inherit = await this.chooseInheritedAffinity();
+            this.continueToNextLoop(inherit);
           } else {
             void showRunSummaryOverlay(this.buildRunSummary('victory'))
               .then(() => { this.destroyRunMapUi(); this.scene.start('title'); });
@@ -1645,7 +1680,38 @@ export class ProtoScene extends Phaser.Scene {
    * 정령·융합 게이지·주문 히스토리·성장 표식·친화를 **비우지 않는다**. 컨트롤러는
    * continueRun으로 친화·보상을 지킨 채 방만 새로 뽑고 루프를 올린다 (난이도↑).
    */
-  private continueToNextLoop(): void {
+  /**
+   * 이어가기 — 빌드를 비우고 **친화 하나만** 계승한다 (총괄 결정 2026-07-31).
+   *
+   * @param inherit 플레이어가 고른 계승 원소. null이면 아무것도 안 들고 간다.
+   */
+  /**
+   * 계승할 친화 원소를 고르게 한다. 후보가 없으면(아무 원소도 안 키웠으면) 묻지 않는다.
+   *
+   * 보상 카드 UI를 재사용한다 — 새 오버레이를 만들면 같은 기능이 화면마다 다르게
+   * 생긴다(#총괄 지적 "정돈이 안 됐다"와 같은 종류).
+   */
+  private async chooseInheritedAffinity(): Promise<{ element: SpellElement; value: number } | null> {
+    const candidates = inheritCandidates(this.combatRunController.state.elementalAffinity);
+    if (candidates.length === 0) return null;
+    const options: RewardOption[] = candidates.slice(0, 3).map((c) => ({
+      id: `inherit-${c.element}`,
+      kind: 'affinity' as const,
+      element: c.element,
+      title: `${ELEMENT_LABELS[c.element]}을(를) 남긴다`,
+      description: `친화 ${c.value.toFixed(2)} → ${c.inherited.toFixed(2)}`
+        + `
+나머지 원소·각인·정령은 흩어진다`,
+    }));
+    const chosen = await showRewardCards(options, {
+      kicker: 'INHERIT',
+      title: '무엇을 남길 것인가',
+    });
+    const picked = candidates.find((c) => `inherit-${c.element}` === chosen.id);
+    return picked ? { element: picked.element, value: picked.inherited } : null;
+  }
+
+  private continueToNextLoop(inherit: { element: SpellElement; value: number } | null = null): void {
     this.deathHandled = false;
     // 전투 전용 상태만 초기화 (다음 보스가 내성 재계산, 장판·쿨다운은 방 단위)
     this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
@@ -1655,21 +1721,42 @@ export class ProtoScene extends Phaser.Scene {
     this.clearBurnEmbers();
     this.clearDamageNumbers();
     this.shockCooldowns.clear();
-    // 이어가기는 친화를 유지하므로 각성도 유지한다 — 비우면 같은 원소를
-    // 매 루프 재각성하는 무한 파밍이 된다 (친화가 이미 임계 위이므로).
+    // ⚠️ **빌드를 비운다** (총괄 결정). 종전엔 친화·각인·정령을 통째로 들고 가
+    // 2회차부터 성장이 아니라 누적이었다. 계승은 친화 하나뿐이다.
+    //
+    // 각성도 비운다 — 종전엔 "친화를 유지하니 각성도 유지"였는데, 이제 계승 친화가
+    // 상한 0.6이라 각성 임계(1.2) 아래다. 무한 재각성 파밍 우려가 사라졌다.
+    this.awakenings = {};
+    this.engraveManager.reset();
+    this.spiritManager.reset();
+    this.clearSpiritViews();
+    this.growthMarks.reset();
+    this.playerState.reset();
+    // 제단 능력도 비운다 — 그래야 다음 런 제단이 다시 의미를 갖는다
+    this.echoUnlocked = false;
+    this.rippleUnlocked = false;
+    this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.runMovementDistance = 0;
     // 새 루프 = 새 맵. 그래프는 cleared/current가 인스턴스에 쌓이므로 재사용하면
     // 지난 루프의 방들이 계속 '클리어됨'으로 남는다 (#241 리뷰 지적).
     this.resetMapGraph();
     this.pendingRunStartReason = 'continue';
-    this.combatRunController.continueRun();
+    this.combatRunController.continueRun(Date.now(), inherit ?? undefined);
     const loop = this.combatRunController.state.loopIndex;
     this.announceSystemMessage(
       `${loop}순환 진입 — 적 피해 ×${loopDamageScale(loop).toFixed(1)}`,
       '#e2b7ff',
       3200,
     );
+    if (inherit) {
+      this.announceBanner({
+        title: `${ELEMENT_LABELS[inherit.element]}만이 남았다`,
+        lines: [`친화 ${inherit.value.toFixed(2)} 계승 · 나머지는 흩어졌다`],
+        color: 0xd8bb72,
+        holdMs: 2800,
+      });
+    }
   }
 
   /**
@@ -1690,6 +1777,8 @@ export class ProtoScene extends Phaser.Scene {
     this.shockCooldowns.clear();
     this.awakenings = {};
     this.echoUnlocked = false;
+    this.rippleUnlocked = false;
+    this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
     this.engraveManager.reset();
@@ -1713,6 +1802,8 @@ export class ProtoScene extends Phaser.Scene {
     this.shockCooldowns.clear();
     this.awakenings = {};
     this.echoUnlocked = false;
+    this.rippleUnlocked = false;
+    this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
     this.engraveManager.reset();
@@ -1903,7 +1994,12 @@ export class ProtoScene extends Phaser.Scene {
     this.audio.playSfx('boss-appear');
     requestCameraShake(this, 'medium');
 
-    this.announceBanner({ title: '보스의 방', color: 0xff6b86, holdMs: 2000 });
+    // ⚠️ 수문장과 기억의 주인을 **구분한다** (총괄 지적: "스테이지 1 보스를 클리어하면
+    // 런을 끝낸 것처럼 대사와 화면이 뜬다"). 종전엔 둘 다 '보스의 방'이라, 수문장을
+    // 만나면 그게 런의 종착점으로 읽혔다.
+    this.announceBanner(usesMemory
+      ? { title: '기억의 주인', lines: ['이 런의 끝'], color: 0xff6b86, holdMs: 2200 }
+      : { title: '수문장', lines: ['두 번째 심층으로 가는 문을 막고 있다'], color: 0xffa94d, holdMs: 2200 });
     // 오프닝 대사 — Mock은 원격 호출 없이 템플릿, 라이브는 사용자 지정 프록시를 우선한다.
     if (usesMemory) {
       const mockForced = import.meta.env.VITE_JUDGE_MOCK === '1';
@@ -2233,42 +2329,42 @@ export class ProtoScene extends Phaser.Scene {
       fontFamily: 'Consolas, monospace',
       fontSize: '14px',
       fontStyle: 'bold',
-      color: '#72f1b8',
+      color: UI_SEMANTIC.ok,
     }).setScrollFactor(0).setDepth(100);
     // 정적 라벨 — 값이 안 바뀌므로 한 번만 만든다
     (['HP', 'MANA', 'SHIELD'] as const).forEach((label, index) => {
       this.add.text(HUD.x + HUD.labelX, hudRowY(index), label, {
         fontFamily: 'Consolas, monospace',
         fontSize: '11px',
-        color: '#7f8aba',
+        color: UI_COLOR.textMuted,
       }).setScrollFactor(0).setDepth(100);
     });
     this.hpText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(0), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
-      color: '#ff91ad',
+      color: UI_SEMANTIC.hp,
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
     this.manaText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(1), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
-      color: '#91b7ff',
+      color: UI_SEMANTIC.mana,
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
     this.shieldText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(2), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
-      color: '#72d8ff',
+      color: UI_SEMANTIC.shield,
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
     this.attunementText = this.add.text(HUD.x + HUD.labelX, hudRowY(3) - 4, 'ARCANE // UNBOUND', {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
-      color: '#8fa4ff',
+      color: UI_COLOR.accent,
     }).setScrollFactor(0).setDepth(100);
     // 활성 자기 강화 — 종류·세기·남은 시간 (버프 없으면 빈 줄)
     this.buffStatusText = this.add.text(HUD.x + 152, hudRowY(3) - 4, '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
       fontStyle: 'bold',
-      color: '#c7f9e0',
+      color: UI_SEMANTIC.buff,
     }).setScrollFactor(0).setDepth(100);
     // 친화 경험치 바 라벨 — 메인 HUD 박스 아래. 원소별로 1행씩(주력이 맨 위) 세워
     // "다른 원소도 오르고 있다"가 보이게 한다 (사용 성장 #166 체감 · 총괄 제보)
@@ -4571,7 +4667,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private openIncant(): void {
     this.audio.playSfx('incant-enter');
     this.incanting = true;
-    this.timeScale = 0.1; // 슬로모션
+    this.setTimeScale(0.1); // 슬로모션
     this.input.keyboard!.disableGlobalCapture();
     this.incantWrap.classList.add('active');
     this.incantWrap.classList.remove('judging');
@@ -4606,7 +4702,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
   private closeIncant(): void {
     this.incanting = false;
-    this.timeScale = 1;
+    this.setTimeScale(1);
     this.input.keyboard!.enableGlobalCapture();
     this.incantWrap.classList.remove(
       'active',
@@ -4746,7 +4842,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private beginJudging(): void {
     this.incanting = false;
     this.casting = true;
-    this.timeScale = 0.15;
+    this.setTimeScale(0.15);
     this.input.keyboard!.enableGlobalCapture();
     this.incantWrap.classList.add('active', 'judging');
     this.incantBar.disabled = true;
@@ -4759,7 +4855,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private finishCastingUx(): void {
     this.casting = false;
     this.clearSequenceProgress();
-    this.timeScale = 1;
+    this.setTimeScale(1);
     this.input.keyboard!.enableGlobalCapture();
     this.incantWrap.classList.remove(
       'active',
@@ -5034,6 +5130,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceSpell(effectiveSpec);
       this.applySpellEffect(effectiveSpec);
       this.scheduleSpellEcho(effectiveSpec);
+      this.scheduleSpellRipple(effectiveSpec);
       this.playerState.startCastLock(); // 신속 영창 감소분 반영된 입력락
       this.playCastFlare();
     } finally {
@@ -5054,6 +5151,51 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
    * 보상 추첨 난수(engraveRewardRand)를 쓰지 않는다 — 그걸 소비하면 같은 시드에서
    * 보상 3택이 달라져 재현성이 깨진다.
    */
+  /**
+   * 파문 — 수동 단일 영창이 **다른 적에게** 번진다 (제단 최상위, 에코와 같은 급).
+   *
+   * 에코가 시간축(같은 자리 반복)이면 파문은 공간축이다. 그래서 보스전에서는 대상이
+   * 하나뿐이라 **아무 일도 일어나지 않는다** — 그 상황 의존성이 에코와의 균형을 잡는다
+   * (에코는 어디서나 켜진다).
+   *
+   * 에코와 같은 규약을 지킨다: 마나를 쓰지 않고, 사용 친화도 오르지 않으며,
+   * 보상 추첨 난수를 소비하지 않는다(같은 시드에서 3택이 달라지면 재현성이 깨진다).
+   */
+  private scheduleSpellRipple(spec: SpellSpec): void {
+    if (!this.rippleUnlocked) return;
+    const { delayMs, powerScale, maxTargets, radius, decorScale } = ALTAR_OFFER_CONFIG.ripple;
+    // 원본이 노린 적을 뺀 나머지 중 가까운 순 — 같은 적에게 두 번 가면 에코와 같아진다
+    const primary = this.nearestEnemy();
+    const others = this.enemies
+      .filter((enemy) => enemy.alive && enemy !== primary)
+      .map((enemy) => ({
+        enemy,
+        d: Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y),
+      }))
+      .filter((entry) => entry.d <= radius)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, maxTargets);
+    if (others.length === 0) return;
+
+    for (const { enemy } of others) {
+      this.time.delayedCall(delayMs, () => {
+        if (!this.scene?.isActive?.() || !this.playerState.alive) return;
+        if (!this.isCombatActive() || !enemy.alive) return;
+        this.applySpellEffect(
+          { ...spec, power: Math.max(1, Math.round(spec.power * powerScale)) },
+          new Phaser.Math.Vector2(enemy.x, enemy.y),
+          false,
+          1,
+          { decorVfxScale: decorScale },
+        );
+      });
+    }
+    this.time.delayedCall(delayMs, () => {
+      if (!this.scene?.isActive?.()) return;
+      this.audio.playCast(spec.element_primary);
+    });
+  }
+
   private scheduleSpellEcho(spec: SpellSpec): void {
     if (!this.echoUnlocked) return;
     const { delayMs, powerScale, extraChance, decorScales } = ALTAR_OFFER_CONFIG.echo;
@@ -5081,7 +5223,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private beginSequenceExecutionUx(plan: ResolvedSpellPlan): void {
-    this.timeScale = 1;
+    this.setTimeScale(1);
     this.input.keyboard!.enableGlobalCapture();
     this.incantWrap.classList.remove('active', 'judging');
     this.incantWrap.setAttribute('aria-hidden', 'true');
@@ -5230,14 +5372,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const x = this.scale.width / 2 - width / 2;
     const y = this.scale.height - 70;
     const g = this.sequenceProgressGraphics.clear();
-    g.fillStyle(0x06091a, 0.92).fillRoundedRect(x - 4, y - 4, width + 8, height + 8, 8);
-    g.lineStyle(1, 0x596ba8, 0.8).strokeRoundedRect(x - 4, y - 4, width + 8, height + 8, 8);
-    g.fillStyle(0x20294f, 1).fillRoundedRect(x, y, width, height, 5);
+    // 시퀀스 진행 바 — 영창 중 화면 하단. 자주 보이므로 같은 판 문법을 쓴다
+    drawGrimoirePanel(g, x - 5, y - 5, width + 10, height + 10, 0.92);
+    g.fillStyle(UI_HEX.track, 1).fillRoundedRect(x, y, width, height, 5);
     if (remainingRatio > 0) {
-      const fillColor = remainingRatio <= 0.2 ? 0xf7d774 : 0x8fa4ff;
+      // 남은 시간이 적으면 경고색 — 정보라 색조를 지키고 채도만 낮춘다
+      const fillColor = remainingRatio <= 0.2 ? hex(UI_COLOR.warm) : UI_HEX.accent;
       g.fillStyle(fillColor, 1).fillRoundedRect(x, y, width * remainingRatio, height, 5);
     }
-    g.lineStyle(1, 0xdce4ff, 0.5);
+    g.lineStyle(1, UI_HEX.textSoft, 0.5);
     for (const boundary of this.sequenceProgressBoundaries) {
       const boundaryX = x + width * boundary;
       g.lineBetween(boundaryX, y - 2, boundaryX, y + height + 2);
@@ -5442,7 +5585,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const shielded = this.playerState.addShield(
         spellShieldFromPower(spec.power) * (options?.shieldAmountScale ?? 1),
       );
-      this.announceSystemMessage(`보호막 +${Math.round(shielded)}`, '#72d8ff');
+      this.announceSystemMessage(`보호막 +${Math.round(shielded)}`, UI_SEMANTIC.shield);
       return;
     }
     if (spec.effect === 'buff') {
@@ -5688,7 +5831,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         continue;
       }
       const amount = this.playerState.addShield(request.amount);
-      if (amount > 0) this.announceSystemMessage(`수호 정령 · 보호막 +${Math.round(amount)}`, '#72d8ff');
+      if (amount > 0) this.announceSystemMessage(`수호 정령 · 보호막 +${Math.round(amount)}`, UI_SEMANTIC.shield);
     }
   }
 
@@ -6065,7 +6208,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 자리수가 늘어도 왼쪽으로 자라 바를 침범하지 않는다 — padStart 정렬이 필요 없다.
     this.hpText
       .setText(`${hp}/${this.playerState.maxHp}`)
-      .setColor(heatwaveDamaging ? '#ffad62' : '#ff91ad');
+      .setColor(heatwaveDamaging ? '#e0a860' : UI_SEMANTIC.hp);
     this.manaText.setText(`${mana}/${this.playerState.maxMana}`);
     this.shieldText.setText(`${shield}/${this.playerState.maxHp}`);
     this.drawBuildChips();
@@ -6112,9 +6255,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         RESISTANCE.masteryImmunityAffinity,
       );
       // 한 줄에 한 사실 — 적 수를 저항 목록 꼬리에 붙이면 저항 정보처럼 읽힌다
+      // 수문장인지 기억의 주인인지가 한눈에 보여야 "이게 마지막인가"를 안다
+      const bossLabel = this.mapGraph.current().kind === 'memory-boss' ? '기억의 주인' : '수문장';
       const status = boss
-        ? `BOSS ${Math.ceil(boss.hp)}/${boss.maxHp}  ·  ENEMIES ${this.enemies.length}`
-        : 'BOSS';
+        ? `${bossLabel} ${Math.ceil(boss.hp)}/${boss.maxHp}  ·  ENEMIES ${this.enemies.length}`
+        : bossLabel;
       this.waveText.setText(withCleanse([roomLine, ...bossResistanceLines(status, readout)]));
     } else if (this.rewardlessNodeKind()) {
       // 무전투 방 — 웨이브가 없으니 "NEXT WAVE 0.0s"가 뜨면 안 된다
@@ -6207,7 +6352,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.buildInspectText = this.add.text(0, 0, '', {
       fontFamily: '"Noto Serif KR", Consolas, monospace',
       fontSize: '12px',
-      color: '#dfe6ff',
+      color: UI_COLOR.text,
       align: 'left',
       lineSpacing: 4,
       wordWrap: { width: BUILD_CHIP.tooltipWidth - 20, useAdvancedWrap: true },
@@ -6225,7 +6370,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 밝기 막 — 깊이 98(월드·암막 위, HUD 아래)이라 어둡게 해도 HUD·칩은 읽힌다
     this.brightnessVeil = this.add.graphics().setScrollFactor(0).setDepth(98).setVisible(false);
     this.pauseDim = this.add.graphics().setScrollFactor(0).setDepth(97).setVisible(false);
-    this.pauseDim.fillStyle(0x03050f, 0.62);
+    this.pauseDim.fillStyle(hex('#06050a'), 0.62);
     this.pauseDim.fillRect(0, 0, width, height);
 
     this.pauseMenuPlate = this.add.graphics().setScrollFactor(0).setDepth(105).setVisible(false);
@@ -6233,7 +6378,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       fontFamily: '"Noto Serif KR", Georgia, serif',
       fontSize: '30px',
       fontStyle: 'bold',
-      color: '#eef1ff',
+      color: UI_COLOR.textBright,
       letterSpacing: 6,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(106).setVisible(false);
 
@@ -6246,7 +6391,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         fontFamily: '"Noto Serif KR", Consolas, monospace',
         fontSize: '16px',
         fontStyle: 'bold',
-        color: '#aeb9e8',
+        color: UI_COLOR.textSoft,
       },
     ).setOrigin(0.5).setScrollFactor(0).setDepth(107).setVisible(false)
       .setInteractive({ useHandCursor: true })
@@ -6335,10 +6480,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const top = PAUSE_LAYOUT.titleY - 34;
     const bottom = PAUSE_LAYOUT.firstY + (PAUSE_MAIN.length - 1) * PAUSE_LAYOUT.rowGap + 24;
     const g = this.pauseMenuPlate.clear();
-    g.fillStyle(0x080b1c, 0.94);
-    g.fillRoundedRect((width - plateW) / 2, top, plateW, bottom - top, 14);
-    g.lineStyle(1, 0x2f3d76, 0.9);
-    g.strokeRoundedRect((width - plateW) / 2, top, plateW, bottom - top, 14);
+    const plateX = (width - plateW) / 2;
+    // 마도서 판 — HUD·우측 패널·미니맵과 같은 문법으로 한 화면이 되게
+    drawGrimoirePanel(g, plateX, top, plateW, bottom - top, 0.94);
+    // 표제 인장 한 쌍 + 제목 아래 구획 괘선. 판이 크면 제목만으로는 비어 보인다
+    drawTitleSigil(g, plateX + 44, PAUSE_LAYOUT.titleY, 22);
+    drawTitleSigil(g, plateX + plateW - 44, PAUSE_LAYOUT.titleY, 22);
+    drawSectionRule(g, plateX, PAUSE_LAYOUT.titleY + 24, plateW);
     this.pauseMenuTitle.setPosition(width / 2, PAUSE_LAYOUT.titleY);
   }
 
@@ -6538,10 +6686,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 내려가 하단 중앙 밴드(시퀀스 바 x266~694 · 필살기 라벨 ~x670)와 겹친다.
     const x = width - 20 - boxW;
     const y = height - 26 - span - 10;
-    g.fillStyle(0x080b1c, 0.92);
-    g.fillRoundedRect(x, y - boxH, boxW, boxH, 8);
-    g.lineStyle(1, chip?.element ? ELEMENT_PALETTES[chip.element].core : 0x33447f, 0.7);
-    g.strokeRoundedRect(x, y - boxH, boxW, boxH, 8);
+    // 툴팁도 같은 판 문법 — 일시정지 화면 안에서 혼자 둥근 사각형이면 튄다.
+    // 다만 원소 칩을 가리키면 그 원소색으로 테두리를 덧그린다(어느 칩인지가 정보다)
+    drawGrimoirePanel(g, x, y - boxH, boxW, boxH, 0.92);
+    if (chip?.element) {
+      g.lineStyle(1.4, ELEMENT_PALETTES[chip.element].core, 0.75);
+      g.strokeRect(x + 2, y - boxH + 2, boxW - 4, boxH - 4);
+    }
     this.buildInspectPlate.setVisible(true);
     this.buildInspectText.setPosition(x + 10, y - 9).setVisible(true);
   }
@@ -6573,19 +6724,18 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const heatPulse = 0.36 + Math.sin(this.time.now / 420) * 0.12;
     const g = this.hudGraphics.clear();
 
-    g.fillStyle(0x080b1c, 0.9);
-    g.fillRoundedRect(HUD.x, HUD.y, HUD.width, HUD.height, 12);
-    g.lineStyle(1, 0x33447f, 0.72);
-    g.strokeRoundedRect(HUD.x, HUD.y, HUD.width, HUD.height, 12);
+    // 마도서 판 — 불규칙한 변 + 이중 괘선 + 모서리 갈고리.
+    // 종전엔 `fillRoundedRect` + 1px 테두리였다(총괄 지적: "상자에 색만 칠한 느낌").
+    drawGrimoirePanel(g, HUD.x, HUD.y, HUD.width, HUD.height, 0.9);
 
     // 라벨과 같은 줄에 — 텍스트 세로 중앙에 맞춰 바를 놓는다 (원점이 좌상단이므로 −3)
     const barOffset = Math.round(HUD.barHeight / 2) + 1;
     const rowBarY = (index: number): number => hudRowY(index) + barOffset;
-    g.fillStyle(0x141a35, 1);
+    g.fillStyle(UI_HEX.track, 1);
     for (let index = 0; index < 3; index += 1) {
       g.fillRoundedRect(HUD.barX, rowBarY(index), HUD.barWidth, HUD.barHeight, 3);
     }
-    g.fillStyle(heatwaveDamaging ? 0xff734c : 0xff5c82, 1);
+    g.fillStyle(heatwaveDamaging ? 0xff734c : hex(UI_SEMANTIC.hp), 1);
     g.fillRoundedRect(HUD.barX, rowBarY(0), HUD.barWidth * hpRatio, HUD.barHeight, 3);
     if (heatwaveDamaging && hpRatio > 0) {
       const filledWidth = HUD.barWidth * hpRatio;
@@ -6601,12 +6751,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         g.fillCircle(x, y, 1.8 - progress * 0.55);
       }
     }
-    g.fillStyle(0x5b8cff, 1);
+    g.fillStyle(hex(UI_SEMANTIC.mana), 1);
     g.fillRoundedRect(HUD.barX, rowBarY(1), HUD.barWidth * manaRatio, HUD.barHeight, 3);
-    g.fillStyle(0x48c9ff, 1);
+    g.fillStyle(hex(UI_SEMANTIC.shield), 1);
     g.fillRoundedRect(HUD.barX, rowBarY(2), HUD.barWidth * shieldRatio, HUD.barHeight, 3);
 
-    g.fillStyle(0x1d2445, 1);
+    g.fillStyle(UI_HEX.track, 1);
     g.fillRoundedRect(HUD.x + 8, HUD.y + HUD.height - 5, HUD.width - 16, 3, 2);
     g.fillStyle(cooldownRatio > 0 ? 0xffb86b : 0x72f1b8, 1);
     g.fillRoundedRect(
@@ -6623,13 +6773,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 우상단 상태 패널 — 종전엔 ROOM 칩(DOM) 아래에 따로 떠서 우상단이 3단이었다.
     // ROOM을 이 패널 안으로 넣어(updateStatusText) 2단으로 줄였다 (총괄 지적).
     const { width } = this.scale;
-    g.fillStyle(0x080b1c, 0.86);
     // 패널은 **내용에 맞춰 늘어난다** — 보스전에서 저항·관통 줄이 붙으면 3~4줄이 되어
     // 고정 높이로는 텍스트가 패널을 넘고 미니맵과 겹쳤다. 평시(2줄)엔 그대로 조밀하다.
     const panelHeight = rightPanelHeight(this.waveText.height);
-    g.fillRoundedRect(width - 306, RIGHT_PANEL.y, 288, panelHeight, 10);
-    g.lineStyle(1, 0x2a735c, 0.62);
-    g.strokeRoundedRect(width - 306, RIGHT_PANEL.y, 288, panelHeight, 10);
+    drawGrimoirePanel(g, width - 306, RIGHT_PANEL.y, 288, panelHeight, 0.86);
+    // 첫 줄(ROOM n/m)과 나머지를 가르는 구획 괘선 — 여백만으로 나누면 "칸"이 아니라
+    // "간격"이다. 줄이 늘어난 방(보스전 등)에서만 그린다
+    if (this.waveText.height > RIGHT_PANEL.baseTextHeight * 0.8) {
+      drawSectionRule(g, width - 306, RIGHT_PANEL.y + RIGHT_PANEL.padTop + 18, 288);
+    }
     // 미니맵을 패널 아래로 — 높이가 바뀔 때만 옮긴다 (setTop이 동일 y면 no-op)
     this.runMinimap?.setTop(RIGHT_PANEL.y + panelHeight + RIGHT_PANEL.gap);
   }
@@ -6665,7 +6817,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const alpha = main ? 1 : 0.55;
       const barY = HUD.y + HUD.height + 22 + i * AFFINITY_ROW_HEIGHT;
 
-      g.fillStyle(0x141a35, alpha);
+      g.fillStyle(UI_HEX.track, alpha);
       g.fillRoundedRect(barX, barY, barW, barH, barH / 2);
       g.fillStyle(pal.core, alpha);
       g.fillRoundedRect(barX, barY, barW * ratio, barH, barH / 2);
@@ -6830,7 +6982,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const separator = shieldPart && hpPart ? ' · ' : '';
     this.announceSystemMessage(
       `${shieldPart}${separator}${hpPart}`,
-      hpDamage > 0 ? '#ff8fa3' : '#72d8ff',
+      hpDamage > 0 ? UI_COLOR.danger : UI_SEMANTIC.shield,
     );
   }
 
@@ -7019,11 +7171,17 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           const chainSource = impact.chainIndex === 0
             ? castOrigin
             : chainOrigins[impact.chainIndex - 1] ?? castOrigin;
-          applyDamage(chainTarget, chainSource.x, chainSource.y);
+          // ⚠️ **연쇄도 구조물에 막힌다.** 이 분기가 아래 차단 가드보다 먼저 반환해
+          // 종전엔 연쇄가 벽을 통과했다(총괄 제보: "아직 유저의 공격이 벽을 뚫더라").
+          // 연쇄는 도약마다 출발점이 다르므로 **그 구간마다** 따로 본다.
+          if (!this.terrainBlocksCast(spec, chainSource, chainTarget)) {
+            applyDamage(chainTarget, chainSource.x, chainSource.y);
+          }
         }
         return;
       }
-      if (lockedTarget?.alive) {
+      if (lockedTarget?.alive && !this.terrainBlocksCast(spec, castOrigin, lockedTarget)) {
+        // 시퀀스가 잠근 대상도 예외가 아니다 — 잠갔다고 벽을 뚫으면 엄폐가 무의미하다
         applyDamage(lockedTarget, castOrigin.x, castOrigin.y);
       }
       return;
@@ -7052,21 +7210,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           ? { x: impact.x, y: impact.y }
           : castOrigin;
 
-      // ⚠️ **구조물이 주문도 막는다** (총괄 지시: "플레이어의 마법이 통과할 수 있으면
-      // 안 됨"). 종전엔 이동·적 투사체만 막고 주문은 통과해, 엄폐가 한쪽에만 작동하는
-      // 비대칭이 있었다 — 벽 뒤에서 일방적으로 잡는 무적 지점이 생기는 원인이었다.
-      //
-      // 판정 지점은 **적중이 확정된 뒤**다: 여기서 걸러야 "형상은 닿았지만 구조물이
-      // 가렸다"가 되고, 형상 자체를 줄이면 이펙트와 판정이 어긋난다.
-      //
-      // `zone`·`rain`은 예외다 — 위에서 떨어지거나 바닥에 깔리는 폼이라 옆의 구조물이
-      // 가릴 이유가 없다. 그 둘은 방어형 실드도 무시하는(bypassDirectionalShield)
-      // 같은 성격이라 예외 조건을 공유한다.
-      if (!bypassDirectionalShield && segmentBlocked(
-        impactSource,
-        { x: enemy.x, y: enemy.y },
-        this.terrainBarriers,
-      )) continue;
+      if (this.terrainBlocksCast(spec, impactSource, enemy)) continue;
 
       hitEnemies.add(enemy);
       applyDamage(
@@ -7374,7 +7518,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const label = this.add.text(x, y - 18, `+${Math.round(amount)}`, {
       fontSize: '13px',
       fontStyle: 'bold',
-      color: '#91b7ff',
+      color: UI_SEMANTIC.mana,
       stroke: '#05060f',
       strokeThickness: 3,
     }).setOrigin(0.5).setDepth(8).setBlendMode(Phaser.BlendModes.ADD);
@@ -7807,6 +7951,49 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
   }
 
+  /**
+   * 이 시전이 구조물에 막히는가 (총괄 지시: "플레이어의 마법이 통과할 수 있으면 안 됨").
+   *
+   * ⚠️ **모든 피해 경로가 이걸 거쳐야 한다.** 처음엔 일반 적중 루프에만 걸었는데,
+   * `impact.kind === 'point'`(연쇄·시퀀스 고정 대상)가 그 앞에서 조기 반환해
+   * 여전히 벽을 뚫었다(총괄 재제보). 한 곳에 모아 빠뜨릴 자리를 없앤다.
+   *
+   * `zone`·`rain`은 예외다 — 위에서 떨어지거나 바닥에 깔리는 폼이라 옆의 구조물이
+   * 가릴 이유가 없다. 방어형 실드도 무시하는 폼이라 같은 성격이다.
+   */
+  private terrainBlocksCast(
+    spec: SpellSpec,
+    from: { x: number; y: number },
+    target: { x: number; y: number },
+  ): boolean {
+    if (this.terrainBarriers.length === 0) return false;
+    if (spec.form === 'zone' || spec.form === 'rain') return false;
+    return segmentBlocked(from, { x: target.x, y: target.y }, this.terrainBarriers);
+  }
+
+  /**
+   * 슬로모션 배율을 **씬과 Phaser 양쪽에** 건다.
+   *
+   * 종전엔 필드에만 넣어서 씬이 수동으로 굴리는 것(적·웨이브·마나·쿨다운·장판)만
+   * 느려지고, **트윈·타이머로 도는 것은 원래 속도**였다 — 주문 투사체, 각인 자동
+   * 시전, 보스 패턴, 파문·에코 지연. 영창 중에 내 화면만 멈추고 상대는 그대로
+   * 움직이는 셈이라 "느려진 게 아니라 내가 멈춘 것"으로 읽혔다(총괄 제보).
+   *
+   * `tweens.timeScale`과 `time.timeScale`은 Phaser가 제공하는 전역 배율이라
+   * 진행 중인 트윈·예약된 타이머에 즉시 반영된다.
+   *
+   * ⚠️ **`physics`는 건드리지 않는다** — 이 게임은 물리 바디를 수동 델타로 움직이고,
+   * 그건 이미 `timeScale`을 곱해 쓰고 있다. 여기서 또 곱하면 이중 적용된다.
+   */
+  private setTimeScale(scale: number): void {
+    const safe = Number.isFinite(scale) ? Math.max(0.01, scale) : 1;
+    this.timeScale = safe;
+    // Phaser 배율은 **역수**다 — timeScale이 크면 빨라지는 우리 규약과 방향이 같으므로
+    // 그대로 넣는다(tweens.timeScale 0.1 = 10배 느림).
+    this.tweens.timeScale = safe;
+    this.time.timeScale = safe;
+  }
+
   private damageEnemy(
     enemy: CombatEnemy,
     damage: number,
@@ -7933,6 +8120,17 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.clearEnemyProjectiles();
     // 보스방은 웨이브 흐름 없이 전멸(보스+하수인) 즉시 방 클리어
     if (this.isBossEncounter()) {
+      // 수문장을 넘으면 **런의 절반**임을 알린다. 이게 없으면 최종 보스를 잡은 것과
+      // 구분이 안 돼 "런이 끝났나?"가 된다(총괄 지적). 기억의 주인 쪽은 run-completed가
+      // 따로 연출하므로 여기서 말하지 않는다 — 두 번 말하면 겹친다.
+      if (this.mapGraph.current().kind === 'stage-boss') {
+        this.announceBanner({
+          title: '수문장을 넘었다',
+          lines: ['심층으로 가는 문이 열린다 — 이 런의 절반'],
+          color: 0xffa94d,
+          holdMs: 2600,
+        });
+      }
       this.scheduleRoomClearAfterManaSweep();
       return true;
     }

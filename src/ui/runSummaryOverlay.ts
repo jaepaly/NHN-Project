@@ -1,5 +1,8 @@
 
-import { UI_FONT, UI_LAYER } from './uiTokens';/**
+import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL } from './uiTokens';
+import {
+  cornerFlourish, deckleMask, divider, ornamentCss,
+} from './grimoireOrnament';/**
  * 런 요약 오버레이 — 승리(RUN COMPLETE)·패배(YOU DIED) 공용, "이번 런의 주문서" (GDD §2 사망 흐름)
  * R3 소유 자립형 DOM 오버레이 — 씬은 데이터만 넘기고 Enter/클릭으로 재도전을 resolve받는다.
  */
@@ -20,19 +23,35 @@ const CSS = `
 #${WRAP_ID} .summary-title {
   font-size: clamp(34px, 6vw, 52px); font-weight: 800; letter-spacing: 0.22em;
 }
-#${WRAP_ID}.victory .summary-title { color: #72f1b8; text-shadow: 0 0 28px rgba(114, 241, 184, 0.8); }
-#${WRAP_ID}.defeat .summary-title { color: #ff6b86; text-shadow: 0 0 28px rgba(255, 107, 134, 0.8); }
-#${WRAP_ID} .summary-sub { margin-top: 6px; font-size: 13px; letter-spacing: 0.14em; color: #7f8aba; }
+#${WRAP_ID} .summary-panel {
+  position: relative; text-align: center;
+  --orn: ${UI_COLOR.accent};
+  max-width: min(760px, calc(100vw - 32px));
+  padding: 40px 36px 30px;
+  -webkit-mask-image: ${deckleMask()};
+  mask-image: ${deckleMask()};
+  -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+  background:
+    ${UI_MATERIAL.grain},
+    ${UI_MATERIAL.stain},
+    linear-gradient(163deg, rgba(26, 19, 30, 0.985), rgba(13, 10, 17, 0.975));
+  box-shadow: ${UI_MATERIAL.paperShadow}, ${UI_MATERIAL.rule};
+  border: 1px solid ${UI_COLOR.border};
+}
+${ornamentCss(WRAP_ID)}
+#${WRAP_ID}.victory .summary-title { color: ${UI_COLOR.positive}; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6); }
+#${WRAP_ID}.defeat .summary-title { color: ${UI_COLOR.danger}; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6); }
+#${WRAP_ID} .summary-sub { margin-top: 6px; font-size: 13px; letter-spacing: 0.14em; color: ${UI_COLOR.textMuted}; }
 #${WRAP_ID} .summary-book {
   margin: 22px auto 0; padding: 14px 22px; min-width: 260px; max-width: min(420px, 84vw);
   border: 1px solid #3a4a8f; border-radius: 12px;
   background: rgba(8, 11, 28, 0.92);
 }
-#${WRAP_ID} .book-title { font-size: 12px; letter-spacing: 0.2em; color: #8fa4ff; margin-bottom: 8px; }
-#${WRAP_ID} .book-row { font-size: 13.5px; color: #aeb9e8; line-height: 1.7; }
-#${WRAP_ID} .book-row b { color: #eef1ff; font-weight: 600; }
-#${WRAP_ID} .summary-hint { margin-top: 20px; font-size: 13px; color: #7f8aba; }
-#${WRAP_ID} .summary-hint b { color: #dfe6ff; }
+#${WRAP_ID} .book-title { font-size: 12px; letter-spacing: 0.2em; color: ${UI_COLOR.accent}; margin-bottom: 8px; }
+#${WRAP_ID} .book-row { font-size: 13.5px; color: ${UI_COLOR.textSoft}; line-height: 1.7; }
+#${WRAP_ID} .book-row b { color: ${UI_COLOR.textBright}; font-weight: 600; }
+#${WRAP_ID} .summary-hint { margin-top: 20px; font-size: 13px; color: ${UI_COLOR.textMuted}; }
+#${WRAP_ID} .summary-hint b { color: ${UI_COLOR.text}; }
 `;
 
 export interface RunSummaryData {
@@ -91,8 +110,13 @@ export function showRunSummaryOverlay(data: RunSummaryData): Promise<void> {
     ? data.recentSpellNames.map((name) => `『${escapeHtml(name)}』`).join(' · ')
     : '기록 없음';
   wrap.innerHTML = `
-    <div>
+    <div class="ui-panel summary-panel">
+      ${cornerFlourish().replace('orn-corner', 'orn-corner tl')}
+      ${cornerFlourish().replace('orn-corner', 'orn-corner tr')}
+      ${cornerFlourish().replace('orn-corner', 'orn-corner bl')}
+      ${cornerFlourish().replace('orn-corner', 'orn-corner br')}
       <div class="summary-title">${victory ? 'RUN COMPLETE' : 'YOU DIED'}</div>
+      ${divider()}
       <div class="summary-sub">${victory
         ? '모든 방을 정화했다'
         : `ROOM ${data.roomIndex}/${data.maxRooms} 에서 쓰러졌다`}</div>

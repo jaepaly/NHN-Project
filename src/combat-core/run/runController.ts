@@ -210,12 +210,34 @@ export class CombatRunController implements RunController {
    * 뽑고 루프를 올린다. reset()과 달리 성장을 비우지 않는다. 씬은 여기 더해 플레이어
    * HP·각인·정령·융합 게이지를 유지하고 난이도(loopDamageScale)를 올린다.
    */
-  continueRun(seed = Date.now()): void {
+  /**
+   * 이어가기 — 보스를 넘고 "더 갈까"를 고른 경우.
+   *
+   * ⚠️ **빌드를 통째로 들고 가지 않는다** (총괄 결정 2026-07-31). 종전엔 친화·각인·
+   * 정령·보상을 전부 유지해 2회차부터 성장이 아니라 누적이었다. 맵이 2스테이지가 되며
+   * 한 런 안에서도 성장이 체감되므로 그럴 이유가 약해졌다.
+   *
+   * 계승은 **친화도 하나**뿐이다(`runInheritance` 참조). 각인·정령은 슬롯을 차지해
+   * 다음 런의 보상 선택을 막지만, 친화도는 방향만 주고 자리를 안 먹는다.
+   *
+   * @param inherit 계승할 원소와 값. 생략하면 아무것도 안 들고 간다.
+   */
+  continueRun(
+    seed = Date.now(),
+    inherit?: { element: SpellElement; value: number },
+  ): void {
     this.loopIndex += 1;
     this.roomIndex = this.initialRoomIndex;
     this.phase = 'combat';
     this.rewardOptions = [];
-    // elementalAffinity·useAffinityAdded·rewards·wardOnRoomStart 는 유지 (빌드 지속)
+    // 빌드를 비운다 — 각인·정령은 씬 소유라 씬이 따로 비운다
+    this.rewards = [];
+    this.elementalAffinity = {};
+    this.useAffinityAdded = {};
+    this.wardOnRoomStart = 0;
+    if (inherit && inherit.value > 0) {
+      this.elementalAffinity[inherit.element] = inherit.value;
+    }
     this.rand = mulberry32(seed);
     this.encounters = resolveEncounters(this.encounterDefinitions, mulberry32(seed ^ 0x9e3779b9));
     this.emit('room-started', this.snapshot());

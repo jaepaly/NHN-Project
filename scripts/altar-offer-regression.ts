@@ -9,11 +9,19 @@ import {
 
 const MIN = ALTAR_OFFER_CONFIG.minMaxHp;
 
-// 1) 등급 구성 — 대가가 오름차순이고 종류가 겹치지 않는다
-assert.deepEqual(ALTAR_TIERS.map((t) => t.cost), [10, 25, 50], '10 / 25 / 50');
-assert.equal(new Set(ALTAR_TIERS.map((t) => t.kind)).size, 3, '보상 종류가 서로 다르다');
+// 1) 등급 구성 — 대가가 비내림차순이고 종류가 겹치지 않는다
+//
+// ⚠️ 최상위(50)가 **둘**이다 (총괄 지적 2026-07-31: 한 런에서 제단을 2회 이상 만나는
+// 플레이어). 에코(시간축)와 파문(공간축)이 같은 값·같은 급이되 결이 다르다.
+// 그래서 "오름차순"이 아니라 "비내림차순"이다.
+assert.deepEqual(ALTAR_TIERS.map((t) => t.cost), [10, 25, 50, 50], '10 / 25 / 50 / 50');
+assert.equal(
+  new Set(ALTAR_TIERS.map((t) => t.kind)).size, ALTAR_TIERS.length,
+  '보상 종류가 서로 다르다 — 같은 종류가 둘이면 하나는 죽은 등급이다',
+);
+// 대가가 줄어들면 상위 등급이 더 싸지는 셈이라 아래 등급이 죽는다
 for (let i = 1; i < ALTAR_TIERS.length; i += 1) {
-  assert.ok(ALTAR_TIERS[i].cost > ALTAR_TIERS[i - 1].cost, '대가 오름차순');
+  assert.ok(ALTAR_TIERS[i].cost >= ALTAR_TIERS[i - 1].cost, '대가 비내림차순 (최상위 둘은 같은 값)');
 }
 
 // 2) 대가는 **최대 체력**을 깎는다 — 회복으로 되돌릴 수 없어야 진짜 대가다
@@ -56,16 +64,31 @@ for (const cost of [10, 25, 50]) {
   }
 }
 
-// 4) 카드 구성 — 3등급 + **거절 카드**
+// 4) 카드 구성 — 전 등급 + **거절 카드**
+//
+// 등급 수를 리터럴로 박지 않는다 — 등급이 늘 때마다 이 줄만 고치게 되고, 그러면
+// "왜 이 숫자인지"가 사라진다. ALTAR_TIERS에서 파생시킨다.
 const full = drawAltarOffer(100, 'fire');
-assert.equal(full.length, 4, '3등급 + 그냥 나간다');
-assert.equal(full[3].kind, 'altar-leave', '마지막은 거절');
-assert.equal(full[3].altar?.cost, 0, '거절은 대가 없음');
-assert.deepEqual(full.slice(0, 3).map((o) => o.altar?.cost), [10, 25, 50]);
-assert.deepEqual(full.slice(0, 3).map((o) => o.kind), ['all-affinity', 'awaken', 'echo']);
+assert.equal(
+  full.length, ALTAR_TIERS.length + 1,
+  `${ALTAR_TIERS.length}등급 + 그냥 나간다`,
+);
+const leave = full[full.length - 1];
+assert.equal(leave.kind, 'altar-leave', '마지막은 거절');
+assert.equal(leave.altar?.cost, 0, '거절은 대가 없음');
+// 등급 카드는 ALTAR_TIERS 순서·값을 그대로 따른다
+assert.deepEqual(
+  full.slice(0, ALTAR_TIERS.length).map((o) => o.altar?.cost),
+  ALTAR_TIERS.map((t) => t.cost),
+);
+assert.deepEqual(
+  full.slice(0, ALTAR_TIERS.length).map((o) => o.kind),
+  ALTAR_TIERS.map((t) => t.kind),
+);
 assert.equal(full[1].element, 'fire', '각성 카드는 대상 원소를 싣는다');
-// id는 서로 달라야 chooseReward가 구분한다
-assert.equal(new Set(full.map((o) => o.id)).size, 4, 'id 중복 없음');
+// id는 서로 달라야 chooseReward가 구분한다.
+// ⚠️ 최상위가 둘이고 **대가가 같으므로** id에 종류가 들어가야 구분된다
+assert.equal(new Set(full.map((o) => o.id)).size, full.length, 'id 중복 없음');
 // 모든 카드에 제목·설명이 있다 (빈 카드가 뜨면 안 된다)
 for (const option of full) {
   assert.ok(option.title.length > 0 && option.description.length > 0, `${option.id} 문구`);
@@ -73,10 +96,14 @@ for (const option of full) {
 
 // 5) 감당 못 하는 등급은 **빼지 않고 잠근다** — 사라지면 아낄 이유가 안 보인다
 const poor = drawAltarOffer(60, 'fire');
-assert.equal(poor.length, 4, '잠겨도 카드 수는 같다');
-assert.equal(poor[2].altar?.locked, true, '−50은 잠김 (60 − 50 < 30)');
-assert.equal(poor[2].altar?.cost, 0, '잠긴 카드는 대가를 걷지 않는다');
-assert.equal(poor[2].kind, 'altar-leave', '잠긴 카드는 아무 효과도 없는 종류로');
+assert.equal(poor.length, ALTAR_TIERS.length + 1, '잠겨도 카드 수는 같다');
+// 최상위(50)는 **둘 다** 잠긴다 — 60 − 50 < 30
+for (const [i, tier] of ALTAR_TIERS.entries()) {
+  if (tier.cost !== 50) continue;
+  assert.equal(poor[i].altar?.locked, true, `−${tier.cost}(${tier.kind})은 잠김`);
+  assert.equal(poor[i].altar?.cost, 0, '잠긴 카드는 대가를 걷지 않는다');
+  assert.equal(poor[i].kind, 'altar-leave', '잠긴 카드는 아무 효과도 없는 종류로');
+}
 assert.equal(poor[0].altar?.locked, false, '−10은 아직 가능 (60 − 10 ≥ 30)');
 // 잠금 여부가 canAfford와 일치한다
 for (const maxHp of [30, 35, 40, 60, 75, 100, 200]) {

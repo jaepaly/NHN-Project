@@ -1,5 +1,5 @@
 
-import { UI_FONT, UI_LAYER } from './uiTokens';/**
+import { UI_COLOR, UI_FONT, UI_LAYER } from './uiTokens';/**
  * 방 전환 연출 — R3 소유 UI (PHASE_2 R3 P0)
  * R1 결합: controller.on('room-transition', (state, durationMs) =>
  *            playRoomTransition(`ROOM ${state.roomIndex + 1}`, durationMs));
@@ -20,7 +20,7 @@ const CSS = `
 #${WRAP_ID}.active { visibility: visible; }
 #${WRAP_ID} .transition-label {
   font-size: clamp(30px, 5vw, 46px); font-weight: 800; letter-spacing: 0.3em;
-  color: #eef1ff; text-shadow: 0 0 26px rgba(76, 102, 255, 0.9);
+  color: ${UI_COLOR.textBright}; text-shadow: 0 0 26px rgba(216, 187, 114, 0.9);
   transform: translateX(0.15em); /* letter-spacing 시각 중앙 보정 */
 }
 #${WRAP_ID} .transition-sub {

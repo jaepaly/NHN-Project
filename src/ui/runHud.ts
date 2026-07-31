@@ -28,7 +28,7 @@ const CSS = `
   border: 1px solid #3a4a8f;
   background: rgba(8, 11, 28, 0.85);
   font-size: 14px; font-weight: 700; letter-spacing: 0.12em; color: #dfe6ff;
-  text-shadow: 0 0 10px rgba(76, 102, 255, 0.7);
+  text-shadow: 0 0 10px rgba(216, 187, 114, 0.7);
 }
 `;
 

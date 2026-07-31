@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { UI_HEX } from './uiTokens';
+import { drawGrimoirePanel } from '../render/grimoireFrame';
 import type { MinimapModel, MinimapNode } from '../run/mapGraphContract';
 import { MINIMAP_CONFIG, minimapLayout } from './minimapLayout';
 
@@ -12,19 +14,36 @@ import { MINIMAP_CONFIG, minimapLayout } from './minimapLayout';
  * (mapGraphContract 참조). update(model)를 부르면 전체를 다시 그린다(노드 수가
  * 십수 개 규모라 디프 갱신은 과공학).
  */
+/**
+ * 미니맵 팔레트 — **토큰에서 파생한다.**
+ *
+ * 종전엔 청색을 하드코딩했다(`0x8fa4ff`·`0x2c3a6e`·`0x2a735c`). UI 통일에서 빠져
+ * 일시정지를 열면 마도서 판 안에 청색 지도가 들어 있었다.
+ *
+ * ⚠️ 노드 상태 색(지나온 곳·현재·갈 수 있는 곳)은 **정보**다. 마도서 톤으로 전부
+ * 밀면 어디를 지나왔는지 알 수 없다. HUD의 HP·마나와 같은 원칙으로 색조는 유지하고
+ * 채도만 낮췄다.
+ */
 const STYLE = {
-  panelFill: 0x080b1c,
-  panelAlpha: 0.86,
-  panelStroke: 0x2a735c,
-  edge: 0x2c3a6e,
-  edgeCleared: 0x3f6e5c,
+  panelFill: UI_HEX.panel,
+  panelAlpha: 0.9,
+  panelStroke: UI_HEX.border,
+  /** 아직 안 간 길 — 흐린 잉크 */
+  edge: 0x4b3850,
+  /** 지나온 길 — 금박이 스민 자국 */
+  edgeCleared: 0x8a7448,
   node: {
-    cleared: 0x3f6e5c,
-    current: 0xffd166,
-    reachable: 0x8fa4ff,
-    unvisited: 0x2c3a6e,
+    /** 지나온 방 */
+    cleared: 0x7a6a4a,
+    /** 지금 있는 방 — 금박. 한눈에 찾아야 하므로 가장 밝다 */
+    current: UI_HEX.accent,
+    /** 갈 수 있는 방 — 탁한 보라(토큰 textSoft 계열) */
+    reachable: 0xaaa1c8,
+    /** 아직 모르는 방 */
+    unvisited: 0x3a2f42,
   },
-  bossAccent: 0xff5a6e,
+  /** 보스 — 위험은 붉은 계열로 남긴다(채도만 낮춤) */
+  bossAccent: 0xb95f72,
 } as const;
 
 export class MinimapHud {
@@ -74,10 +93,9 @@ export class MinimapHud {
     if (!model || model.nodes.length === 0) return;
 
     const { width, height, nodeRadius, currentRadius } = MINIMAP_CONFIG;
-    g.fillStyle(STYLE.panelFill, STYLE.panelAlpha);
-    g.fillRoundedRect(this.x, this.y, width, height, 12);
-    g.lineStyle(1, STYLE.panelStroke, 0.62);
-    g.strokeRoundedRect(this.x, this.y, width, height, 12);
+    // 마도서 판 — 일시정지를 열면 이 지도가 나온다. 옆의 HUD·상태 패널과 같은
+    // 문법이어야 한 화면으로 읽힌다(총괄 지시)
+    drawGrimoirePanel(g, this.x, this.y, width, height, STYLE.panelAlpha);
 
     const points = new Map(
       minimapLayout(model).map((point) => [point.id, point] as const),

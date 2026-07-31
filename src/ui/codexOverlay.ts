@@ -1,5 +1,6 @@
 import type { CodexEntry, CodexSortMode } from '../spell/spellCodex';
-import { UI_FONT, UI_LAYER } from './uiTokens';
+import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL } from './uiTokens';
+import { cornerFlourish, deckleMask, divider, ornamentCss } from './grimoireOrnament';
 import { sortCodex } from '../spell/spellCodex';
 import { ELEMENT_LABELS, ELEMENT_PALETTES, FORM_LABELS, paletteColorToCss } from '../render/palette';
 import { glyphSvg } from '../render/formGlyphs';
@@ -18,22 +19,32 @@ const CSS = `
 #${WRAP_ID} {
   position: fixed; inset: 0; z-index: ${UI_LAYER.codex};
   display: grid; place-items: center;
-  background: rgba(3, 5, 16, 0.9);
+  background: rgba(6, 5, 10, 0.9);
   opacity: 0; visibility: hidden; transition: opacity 200ms ease;
   font-family: ${UI_FONT.sans};
 }
 #${WRAP_ID}.active { opacity: 1; visibility: visible; }
+${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .codex-panel {
+  --orn: ${UI_COLOR.accent};
+  -webkit-mask-image: ${deckleMask()};
+  mask-image: ${deckleMask()};
+  -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+  background:
+    ${UI_MATERIAL.grain},
+    ${UI_MATERIAL.stain},
+    linear-gradient(163deg, rgba(26, 19, 30, 0.985), rgba(13, 10, 17, 0.975));
+  box-shadow: ${UI_MATERIAL.paperShadow}, ${UI_MATERIAL.rule};
   width: min(720px, 94vw); max-height: min(88vh, 720px);
   display: flex; flex-direction: column;
-  border: 1px solid #3a4a8f; border-radius: 14px;
-  background: rgba(8, 11, 28, 0.97);
-  box-shadow: 0 0 42px rgba(83, 109, 255, 0.18);
+  /* ⚠️ 여기 background·box-shadow를 다시 선언하면 위의 재질이 덮인다 — 실제로
+     그래서 도감만 배경 겹 0이었다. 테두리만 남긴다. */
+  border: 1px solid ${UI_COLOR.border};
   padding: 20px 22px 14px;
 }
 #${WRAP_ID} .codex-head { display: flex; align-items: baseline; gap: 12px; }
-#${WRAP_ID} .codex-title { font-size: 19px; font-weight: 800; letter-spacing: 0.28em; color: #eef1ff; }
-#${WRAP_ID} .codex-sub { font-size: 12px; color: #7f8aba; }
+#${WRAP_ID} .codex-title { font-size: 19px; font-weight: 800; letter-spacing: 0.28em; color: ${UI_COLOR.textBright}; }
+#${WRAP_ID} .codex-sub { font-size: 12px; color: ${UI_COLOR.textMuted}; }
 #${WRAP_ID} .codex-sortbar { margin-top: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
 #${WRAP_ID} .codex-sortbtn {
   font: inherit; font-size: 12px; cursor: pointer;
@@ -41,8 +52,8 @@ const CSS = `
   border: 1px solid #33447f; background: transparent; color: #9aa4d4;
   transition: background 120ms, color 120ms, border-color 120ms;
 }
-#${WRAP_ID} .codex-sortbtn:hover { color: #c7d0ff; border-color: #4c66ff; }
-#${WRAP_ID} .codex-sortbtn.active { background: #4c66ff; color: #fff; border-color: #4c66ff; }
+#${WRAP_ID} .codex-sortbtn:hover { color: #c7d0ff; border-color: ${UI_COLOR.accentGlow}; }
+#${WRAP_ID} .codex-sortbtn.active { background: ${UI_COLOR.accentGlow}; color: #fff; border-color: ${UI_COLOR.accentGlow}; }
 #${WRAP_ID} .codex-grid {
   margin-top: 14px; overflow-y: auto; flex: 1; min-height: 140px;
   display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
@@ -57,7 +68,7 @@ const CSS = `
 }
 #${WRAP_ID} .codex-tile:hover, #${WRAP_ID} .codex-tile.selected {
   transform: translateY(-3px); border-color: var(--tile-core);
-  box-shadow: 0 0 18px color-mix(in srgb, var(--tile-glow) 50%, transparent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
 }
 #${WRAP_ID} .codex-icon {
   width: 54px; height: 54px; margin: 0 auto 6px; border-radius: 10px;
@@ -67,7 +78,7 @@ const CSS = `
 }
 #${WRAP_ID} .codex-icon svg { width: 30px; height: 30px; color: #f4f6ff; }
 #${WRAP_ID} .codex-tile-name {
-  font-size: 11.5px; color: #dfe6ff; line-height: 1.25;
+  font-size: 11.5px; color: ${UI_COLOR.text}; line-height: 1.25;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #${WRAP_ID} .codex-tile-pow { font-size: 10px; color: #8a93bd; margin-top: 1px; }
@@ -81,16 +92,16 @@ const CSS = `
   border-top: 1px solid rgba(58, 74, 143, 0.4);
 }
 #${WRAP_ID} .codex-detail-name { font-size: 14px; font-weight: 700; }
-#${WRAP_ID} .codex-detail-sum { margin-top: 3px; font-size: 12.5px; color: #aeb9e8; }
+#${WRAP_ID} .codex-detail-sum { margin-top: 3px; font-size: 12.5px; color: ${UI_COLOR.textSoft}; }
 #${WRAP_ID} .codex-detail-flavor { margin-top: 2px; font-size: 12px; color: #8a93bd; font-style: italic; }
 #${WRAP_ID} .codex-detail-meta { margin-top: 3px; font-size: 11px; color: #6f7aa8; }
-#${WRAP_ID} .codex-detail-hint { font-size: 12.5px; color: #7f8aba; text-align: center; }
+#${WRAP_ID} .codex-detail-hint { font-size: 12.5px; color: ${UI_COLOR.textMuted}; text-align: center; }
 #${WRAP_ID} .codex-empty {
   grid-column: 1 / -1; display: grid; place-items: center; height: 150px;
-  font-size: 13.5px; color: #7f8aba; line-height: 1.9; text-align: center;
+  font-size: 13.5px; color: ${UI_COLOR.textMuted}; line-height: 1.9; text-align: center;
 }
-#${WRAP_ID} .codex-foot { margin-top: 10px; text-align: center; font-size: 12px; color: #7f8aba; }
-#${WRAP_ID} .codex-foot b { color: #dfe6ff; }
+#${WRAP_ID} .codex-foot { margin-top: 10px; text-align: center; font-size: 12px; color: ${UI_COLOR.textMuted}; }
+#${WRAP_ID} .codex-foot b { color: ${UI_COLOR.text}; }
 `;
 
 const SORT_LABELS: Record<CodexSortMode, string> = {
@@ -164,7 +175,12 @@ export function showCodexOverlay(entries: readonly CodexEntry[]): Promise<void> 
 
     panel.innerHTML = `
       <div class="codex-head">
+        ${cornerFlourish().replace('orn-corner', 'orn-corner tl')}
+        ${cornerFlourish().replace('orn-corner', 'orn-corner tr')}
+        ${cornerFlourish().replace('orn-corner', 'orn-corner bl')}
+        ${cornerFlourish().replace('orn-corner', 'orn-corner br')}
         <div class="codex-title">주문 도감</div>
+        ${divider()}
         <div class="codex-sub">${entries.length > 0 ? `새겨진 주문 ${entries.length}종` : '비어 있는 책'}</div>
       </div>
       <div class="codex-sortbar">${entries.length > 0 ? sortButtons : ''}</div>

@@ -41,6 +41,22 @@ export const ALTAR_OFFER_CONFIG = {
    * 대신 **확률을 위쪽에 둔다** — 확정 1회에 더해 낮은 확률로 한 번 더(3중 울림).
    * 잃을 수 있는 확률이 아니라 얻을 수 있는 확률이다.
    */
+  /**
+   * 파문 — 에코와 **같은 값(50) · 같은 급**이되 축이 다르다.
+   *
+   * 위력이 에코(0.7)보다 낮은 이유: 대상이 늘어나므로 총 산출을 맞춰야 한다.
+   * 다만 **적이 둘 이상 있을 때만 발동**한다 — 보스전에서는 완전히 논다.
+   * 그 상황 의존성이 에코와의 균형을 잡는다(에코는 어디서나 켜진다).
+   */
+  ripple: {
+    delayMs: 260,
+    powerScale: 0.55,
+    /** 번지는 최대 대상 수 (원본 대상 제외) */
+    maxTargets: 2,
+    /** 이 거리 안의 적에게만 — 화면 밖까지 번지면 무슨 일인지 안 읽힌다 */
+    radius: 420,
+    decorScale: 0.45,
+  },
   echo: {
     /**
      * 원본과 에코 사이 간격 (총괄 제보: "거의 직후에 바로 발동되는 탓에 에코가
@@ -61,15 +77,32 @@ export const ALTAR_OFFER_CONFIG = {
 } as const;
 
 /** 거래 등급 — 대가(최대 체력)와 보상이 한 장에 묶인다 */
+export type AltarTierKind = 'all-affinity' | 'awaken' | 'echo' | 'ripple';
+
 export interface AltarTier {
   cost: number;
-  kind: 'all-affinity' | 'awaken' | 'echo';
+  kind: AltarTierKind;
 }
 
+/**
+ * 거래 등급.
+ *
+ * ⚠️ **최상위가 둘인 이유** (총괄 지적: "제단을 한 런에서 2회 이상 방문하는 플레이어를
+ * 위해 다른 보상 하나 더"). 실측으로 한 런에 제단 2회가 3.2%이고, 맵에 제단이 2개
+ * 이상인 경우가 21.7%다 — 일부러 노리면 더 잦다. 최상위가 하나뿐이면 두 번째 제단이
+ * "이미 가진 걸 또 사거나 하위로 내려가는" 자리가 된다.
+ *
+ * 에코와 파문은 **값도 급도 같고 축이 다르다**:
+ *   에코 — 같은 자리에 한 번 더 (시간축). 단일 대상 화력 → 보스용
+ *   파문 — 다른 적에게 번진다 (공간축). 다수 동시 타격 → 잡몹·정예용
+ *
+ * 그래서 두 번째 제단이 "남은 걸 줍는 자리"가 아니라 **빌드 방향을 정하는 자리**다.
+ */
 export const ALTAR_TIERS: readonly AltarTier[] = [
   { cost: 10, kind: 'all-affinity' },
   { cost: 25, kind: 'awaken' },
   { cost: 50, kind: 'echo' },
+  { cost: 50, kind: 'ripple' },
 ];
 
 /** 대가를 치른 뒤의 체력. 현재 체력은 새 최대치로 클램프된다. */
@@ -101,9 +134,12 @@ function tierDescription(tier: AltarTier, awakenElement: SpellElement | null): s
       return awakenElement
         ? `${ELEMENT_LABELS[awakenElement]} 각성을 지금 연다\n원래 친화를 깊이 쌓아야 열리는 문`
         : '각성을 지금 연다\n원래 친화를 깊이 쌓아야 열리는 문';
+    case 'ripple':
+      return `수동 영창이 **다른 적에게** 번진다 (위력 ${Math.round(ALTAR_OFFER_CONFIG.ripple.powerScale * 100)}%)`
+        + `\n가장 가까운 다른 적 ${ALTAR_OFFER_CONFIG.ripple.maxTargets}체까지 · 시퀀스 제외`;
     case 'echo':
     default:
-      return `수동 영창이 한 번 더 울린다 (위력 ${Math.round(ALTAR_OFFER_CONFIG.echo.powerScale * 100)}%)`
+      return `수동 영창이 **같은 자리에** 한 번 더 울린다 (위력 ${Math.round(ALTAR_OFFER_CONFIG.echo.powerScale * 100)}%)`
         + `\n${Math.round(ALTAR_OFFER_CONFIG.echo.extraChance * 100)}% 확률로 세 겹 · 시퀀스 제외`;
   }
 }
@@ -120,19 +156,30 @@ function tierDescription(tier: AltarTier, awakenElement: SpellElement | null): s
 export function drawAltarOffer(
   maxHp: number,
   awakenElement: SpellElement | null,
+  /**
+   * 이미 가진 등급 — **잠근다.**
+   *
+   * ⚠️ 종전엔 이 정보가 없어 2회차 제단이 이미 가진 능력을 또 제시했다. 에코는
+   * boolean이라 두 번 사도 아무 일도 안 일어나는데 **최대 체력 50은 그대로 나간다.**
+   */
+  ownedKinds: readonly AltarTierKind[] = [],
 ): RewardOption[] {
   const options: RewardOption[] = ALTAR_TIERS.map((tier) => {
-    const affordable = canAffordAltarTier(maxHp, tier.cost)
+    const owned = ownedKinds.includes(tier.kind);
+    const affordable = !owned
+      && canAffordAltarTier(maxHp, tier.cost)
       && (tier.kind !== 'awaken' || awakenElement !== null);
     const locked = !affordable;
-    const title = locked
-      ? `봉인됨 · 생명 −${tier.cost}`
-      : `생명 −${tier.cost}`;
-    const description = locked
-      ? (tier.kind === 'awaken' && awakenElement === null
-        ? '아직 어떤 원소도 부르지 못한다 — 먼저 영창하라'
-        : `최대 생명이 ${ALTAR_OFFER_CONFIG.minMaxHp} 아래로 내려간다`)
-      : tierDescription(tier, awakenElement);
+    const title = !locked
+      ? `생명 −${tier.cost}`
+      : owned ? '이미 지녔다' : `봉인됨 · 생명 −${tier.cost}`;
+    const description = !locked
+      ? tierDescription(tier, awakenElement)
+      : owned
+        ? '이미 이 힘을 지녔다 — 같은 것을 두 번 살 수는 없다'
+        : (tier.kind === 'awaken' && awakenElement === null
+          ? '아직 어떤 원소도 부르지 못한다 — 먼저 영창하라'
+          : `최대 생명이 ${ALTAR_OFFER_CONFIG.minMaxHp} 아래로 내려간다`);
     return {
       id: `altar-${tier.kind}-${tier.cost}${locked ? '-locked' : ''}`,
       kind: locked ? 'altar-leave' : tier.kind,
