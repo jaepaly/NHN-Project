@@ -1,0 +1,1607 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T11:36:48.243Z",
+  "baselinePath": "docs/SEQUENCE_JUDGE_CANDIDATE_55_MOVEMENT_EFFECT.json",
+  "expectationsPath": "docs/SEQUENCE_JUDGE_MOVEMENT_EFFECT_HELDOUT_EXPECTATIONS.json",
+  "workerUrl": "https://incant-judge-proxy.incant-judge-proxy.workers.dev",
+  "results": [
+    {
+      "id": 1,
+      "key": "heldout-01",
+      "input": "불꽃을 두르고 적진을 꿰뚫는다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 15,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:fire",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 fire 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 beam/slash/wave 중 실제 beam"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "allowed-speed",
+          "state": "pass",
+          "weight": 1,
+          "detail": "허용 속도 fast 중 실제 fast"
+        },
+        {
+          "id": "relation:parallel",
+          "state": "pass",
+          "weight": 2,
+          "detail": "parallel 검출"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 1, 허용 1~2"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 520, 선호 250~700"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 1/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "불꽃을 두른 시전자가 적진을 관통하며 같은 궤적에 화염 피해를 전달한다."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "key": "heldout-02",
+      "input": "도약 끝에 벼락을 내리꽂는다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 93,
+      "passed": 14,
+      "failed": 1,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:lightning",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 lightning 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "fail",
+          "weight": 2,
+          "detail": "허용 형태 nova/beam/wave 중 실제 bolt"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "relation:order",
+          "state": "pass",
+          "weight": 2,
+          "detail": "order 검출"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "relation:finale",
+          "state": "pass",
+          "weight": 2,
+          "detail": "finale 검출"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 2, 허용 2~3"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 900, 선호 450~1200"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 1/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "도약 이동이 먼저 일어나고 착지 또는 낙하 끝에 벼락 타격이 피날레로 발생한다."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "key": "heldout-03",
+      "input": "한 칼을 남기고 바람처럼 빠져나온다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 96,
+      "passed": 14,
+      "failed": 1,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:wind",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 wind 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 slash 중 실제 slash"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "allowed-speed",
+          "state": "pass",
+          "weight": 1,
+          "detail": "허용 속도 fast 중 실제 fast"
+        },
+        {
+          "id": "relation:order",
+          "state": "pass",
+          "weight": 2,
+          "detail": "order 검출"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 2, 허용 2~3"
+        },
+        {
+          "id": "duration-range",
+          "state": "fail",
+          "weight": 1,
+          "detail": "durationMs 950, 선호 250~900"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 1/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "참격이 먼저 남고 시전자가 바람처럼 빠르게 이탈한다."
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "key": "heldout-04",
+      "input": "서리 길을 그리며 미끄러진다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 14,
+      "failed": 0,
+      "manualPending": 2,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:ice",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 ice 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 zone/wave/wall 중 실제 zone"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 control 중 실제 control"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "relation:parallel",
+          "state": "pass",
+          "weight": 2,
+          "detail": "parallel 검출"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "relation:persistence",
+          "state": "manual",
+          "weight": 2,
+          "detail": "persistence 의미 보존은 수동 판정 필요"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 1, 허용 1~2"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 600, 선호 500~1200"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 1/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "미끄러지는 이동 경로에 적을 느리게 하거나 얼리는 지속적인 서리 길이 남는다."
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "key": "heldout-05",
+      "input": "회오리 속을 달려 적들을 밀어낸다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 14,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:wind",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 wind 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 wave/nova/zone 중 실제 wave"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 control 중 실제 control"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "relation:parallel",
+          "state": "pass",
+          "weight": 2,
+          "detail": "parallel 검출"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 1, 허용 1~2"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 500, 선호 350~1000"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 1/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "회오리와 함께 달리는 동안 주변 적을 밀어내는 바람 제어가 발생한다."
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "key": "heldout-06",
+      "input": "그림자 사이를 오가며 발목을 묶는다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 14,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:dark",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 dark 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 chain/cage/zone 중 실제 wave/zone"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 control 중 실제 control"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "relation:parallel",
+          "state": "pass",
+          "weight": 2,
+          "detail": "parallel 검출"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 2, 허용 1~3"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 900, 선호 400~1200"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 2/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "그림자 사이를 이동하는 동안 어둠의 사슬이나 영역이 적의 발목을 붙든다."
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "key": "heldout-07",
+      "input": "빛의 틈으로 몸을 피한다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 14,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:light",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 light 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 buff/wall/zone 중 실제 buff"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 shield/buff 중 실제 shield"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 damage/heal/summon 없음"
+        },
+        {
+          "id": "relation:parallel",
+          "state": "pass",
+          "weight": 2,
+          "detail": "parallel 검출"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 1, 허용 1~2"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 300, 선호 100~500"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 1/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "빛의 틈으로 회피 이동하며 짧은 보호 또는 회피 강화가 몸에 남는다."
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "key": "heldout-08",
+      "input": "바람을 타니 몸이 깃털처럼 가벼워진다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 13,
+      "failed": 0,
+      "manualPending": 2,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:wind",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 wind 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 buff/orbit/zone 중 실제 buff"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 buff 중 실제 buff"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 damage/heal/shield/summon 없음"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "relation:persistence",
+          "state": "manual",
+          "weight": 2,
+          "detail": "persistence 의미 보존은 수동 판정 필요"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 1, 허용 1~2"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 600, 선호 500~1200"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 1/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "바람에 실려 이동하고 그 결과 몸이 가벼워지는 지속적인 기동 강화가 남는다."
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "key": "heldout-09",
+      "input": "철의 껍질을 두르고 돌진한다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 14,
+      "failed": 0,
+      "manualPending": 2,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:earth",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 earth 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 buff/wall/orbit 중 실제 buff"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 shield 중 실제 shield"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/buff/summon 없음"
+        },
+        {
+          "id": "relation:parallel",
+          "state": "pass",
+          "weight": 2,
+          "detail": "parallel 검출"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "relation:persistence",
+          "state": "manual",
+          "weight": 2,
+          "detail": "persistence 의미 보존은 수동 판정 필요"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 1, 허용 1~2"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 450, 선호 300~900"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 1/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "철갑 보호를 몸에 두른 채 돌진하며 방어 효과가 이동 중에도 유지된다."
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "key": "heldout-10",
+      "input": "쓰러진 동료에게 날아가 생명의 빛을 건넨다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 14,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:light",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 light 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 buff/nova/zone 중 실제 buff"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 heal 중 실제 heal"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 damage/shield/buff/summon 없음"
+        },
+        {
+          "id": "relation:order",
+          "state": "pass",
+          "weight": 2,
+          "detail": "order 검출"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 2, 허용 2~3"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 900, 선호 500~1400"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 1/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "쓰러진 동료에게 먼저 이동한 뒤 도착해 생명의 빛으로 회복시킨다."
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "key": "heldout-11",
+      "input": "늑대 등에 올라 함께 적진을 달린다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 13,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 summon 중 실제 summon"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 summon 중 실제 summon"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff 없음"
+        },
+        {
+          "id": "relation:order",
+          "state": "pass",
+          "weight": 2,
+          "detail": "order 검출"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 2, 허용 2~3"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 850, 선호 600~1500"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 1/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "늑대가 먼저 나타나고 시전자가 등에 올라 함께 달리는 소환과 이동 관계가 보인다."
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "key": "heldout-12",
+      "input": "달빛을 밟고 적 곁에 내려선다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 96,
+      "passed": 12,
+      "failed": 1,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:light",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 light 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 nova/slash/zone/buff 중 실제 nova"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage/control/shield/buff 중 실제 control"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/summon 없음"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 1, 허용 1~3"
+        },
+        {
+          "id": "duration-range",
+          "state": "fail",
+          "weight": 1,
+          "detail": "durationMs 550, 선호 600~1500"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 1/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "달빛을 발판 삼아 적 곁으로 내려서며 착지 공격·제어·보호·강화 중 장면에 맞는 효용이 남는다."
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "key": "heldout-13",
+      "input": "안개 속으로 사라져 다른 곳에 나타난다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 13,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:dark",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 dark 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 2/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 buff/zone/nova/chain 중 실제 buff"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 shield/buff/control/damage 중 실제 shield"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/summon 없음"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "forbidden:delay",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 delay 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 1, 허용 1~3"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 400, 선호 150~800"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 1/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "안개 속으로 사라져 재등장하며 회피 보호·은폐 강화·안개 제어·도착 공격 중 자연스러운 효용을 남긴다."
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "key": "heldout-14",
+      "input": "불새의 비행",
+      "legacyStatus": "new",
+      "expectedMode": "single_preferred",
+      "actualMode": "sequence",
+      "automaticScore": 79,
+      "passed": 6,
+      "failed": 2,
+      "manualPending": 3,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "manual",
+          "weight": 0,
+          "detail": "선호 single_preferred, 실제 sequence — 핵심 이미지와 사건 역할 보존 여부를 수동 판정"
+        },
+        {
+          "id": "element:fire",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 fire 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "fail",
+          "weight": 2,
+          "detail": "허용 형태 summon/bolt/orbit/rain 중 실제 wave"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 summon/damage 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff 없음"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "fail",
+          "weight": 1,
+          "detail": "금지 movement 검출"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 1, 허용 1~2"
+        },
+        {
+          "id": "manual:decorative-move",
+          "state": "manual",
+          "weight": 0,
+          "detail": "move가 의미적 사건인지 장식용인지 수동 판정 필요"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "움직이는 주체는 불새 형상 또는 소환수이며 player move를 만들지 않는다."
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "key": "heldout-15",
+      "input": "상처 위에 별빛이 머문다",
+      "legacyStatus": "new",
+      "expectedMode": "single_preferred",
+      "actualMode": "single",
+      "automaticScore": 100,
+      "passed": 8,
+      "failed": 0,
+      "manualPending": 2,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 2,
+          "detail": "기대 single_preferred, 실제 single"
+        },
+        {
+          "id": "element:light",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 light 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 buff/zone/orbit 중 실제 buff"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 heal 중 실제 heal"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 damage/shield/buff/summon 없음"
+        },
+        {
+          "id": "relation:persistence",
+          "state": "manual",
+          "weight": 2,
+          "detail": "persistence 의미 보존은 수동 판정 필요"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "별빛이 상처에 머물며 지속적으로 회복시키고 player는 이동하지 않는다."
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "key": "heldout-16",
+      "input": "뿌리가 전장을 기어가 발목을 잡는다",
+      "legacyStatus": "new",
+      "expectedMode": "single_preferred",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 8,
+      "failed": 0,
+      "manualPending": 3,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "manual",
+          "weight": 0,
+          "detail": "선호 single_preferred, 실제 sequence — 핵심 이미지와 사건 역할 보존 여부를 수동 판정"
+        },
+        {
+          "id": "element:earth",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 earth 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 2/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 chain/zone/cage 중 실제 zone/cage"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 control 중 실제 control"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "relation:persistence",
+          "state": "manual",
+          "weight": 2,
+          "detail": "persistence 의미 보존은 수동 판정 필요"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 2, 허용 1~2"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "전장을 기어가는 주체는 뿌리 form이며 적의 발목을 붙들고 player move는 없다."
+        }
+      ]
+    }
+  ]
+}

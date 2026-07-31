@@ -145,7 +145,7 @@ try {
   assert.equal((await networkJudge.judge('폭풍 공격')).disposition, 'cast');
   assert.equal(networkJudge.lastFallbackReason, 'network_error');
 
-  assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.15-abstract-seq');
+  assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.16-all-plan');
 } finally {
   globalThis.fetch = originalFetch;
 }

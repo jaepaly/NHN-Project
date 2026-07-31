@@ -1,0 +1,1740 @@
+{
+  "workerUrl": "https://incant-judge-proxy.incant-judge-proxy.workers.dev",
+  "generatedAt": "2026-07-30T12:07:18.914Z",
+  "results": [
+    {
+      "index": 1,
+      "key": "heldout-01",
+      "input": "적막을 가르는 섬광",
+      "intent": "적막을 순간적으로 가르는 빠르고 선명한 한 줄기의 빛.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "적막의 섬광",
+          "power": 74,
+          "durationMs": 160,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "light"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 2,
+                    "speed": 3
+                  },
+                  "spec": {
+                    "name": "섬광 가르기",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "beam",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "blind"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1615
+    },
+    {
+      "index": 2,
+      "key": "heldout-02",
+      "input": "도망치는 별",
+      "intent": "별 형상이 추적을 피하며 이동하고 빛의 궤적이나 공격을 남긴다. DSL의 move는 플레이어 본체 이동이므로 별의 움직임은 form의 속도와 궤적으로 표현한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "도망치는 별",
+          "power": 68,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "도망치는 별",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1564
+    },
+    {
+      "index": 3,
+      "key": "heldout-03",
+      "input": "화산맥의 기상",
+      "intent": "지형이 솟아오르고 화산 활동이 시작된 뒤 분화한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "화산맥의 기상",
+          "power": 82,
+          "durationMs": 900,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "damage": 2,
+                    "radius": 2
+                  },
+                  "spec": {
+                    "name": "대지 융기",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "earth",
+                    "element_secondary": "fire",
+                    "form": "wall",
+                    "size": "large",
+                    "speed": "slow",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1577
+    },
+    {
+      "index": 4,
+      "key": "heldout-04",
+      "input": "서리 거울",
+      "intent": "차갑고 반사적인 하나의 거울 형상이 전장에 드러난다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "서리 거울",
+          "power": 52,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "서리 거울",
+                    "effect": "shield",
+                    "target": "self",
+                    "element_primary": "ice",
+                    "element_secondary": null,
+                    "form": "wall",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1434
+    },
+    {
+      "index": 5,
+      "key": "heldout-05",
+      "input": "사슬을 끊는 파도",
+      "intent": "파도가 구속을 밀어내거나 끊어내는 강한 해방감을 준다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "쇄도의 파도",
+          "power": 74,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "사슬을 끊는 파도",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "water",
+                    "element_secondary": "earth",
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "vulnerable"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1407
+    },
+    {
+      "index": 6,
+      "key": "heldout-06",
+      "input": "천둥새의 비행",
+      "intent": "천둥새 형상의 비행 궤적과 번개 공격이 하나의 안무로 연결된다. DSL move는 플레이어 본체 전용이므로 새의 궤적은 form으로 표현한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "천둥새의 비행",
+          "power": 72,
+          "durationMs": 520,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "lightning"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "spec": {
+                    "name": "뇌명 활공",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "lightning",
+                    "element_secondary": "wind",
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "shock"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1404
+    },
+    {
+      "index": 7,
+      "key": "heldout-07",
+      "input": "태풍의 회랑",
+      "intent": "길게 형성된 바람 통로 안에서 태풍이 회전하거나 전진한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "태풍의 회랑",
+          "power": 76,
+          "durationMs": 600,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "wind"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "range": 2,
+                    "radius": 2
+                  },
+                  "spec": {
+                    "name": "바람의 회랑",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": null,
+                    "form": "wall",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1750
+    },
+    {
+      "index": 8,
+      "key": "heldout-08",
+      "input": "그림자 바느질",
+      "intent": "그림자 실이 대상을 찍고 묶고 이어 붙이는 바느질 과정을 보여준다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "그림자 바느질",
+          "power": 72,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "그림자 바느질",
+                    "effect": "control",
+                    "target": "enemy",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "chain",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1472
+    },
+    {
+      "index": 9,
+      "key": "heldout-09",
+      "input": "백야의 성역",
+      "intent": "밤을 밝히는 하나의 지속적인 빛의 구역이나 보호 영역.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "백야의 성역",
+          "power": 78,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "백야의 성역",
+                    "effect": "shield",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "wall",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1533
+    },
+    {
+      "index": 10,
+      "key": "heldout-10",
+      "input": "모래시계의 수호",
+      "intent": "시간이 흐르는 동안 방어가 유지되거나 갱신되는 모래시계 형상.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "모래시계의 수호",
+          "power": 68,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "duration": 2,
+                    "amount": 2
+                  },
+                  "spec": {
+                    "name": "모래 장막",
+                    "effect": "shield",
+                    "target": "self",
+                    "element_primary": "earth",
+                    "element_secondary": "light",
+                    "form": "wall",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1750
+    },
+    {
+      "index": 11,
+      "key": "heldout-11",
+      "input": "찰나의 전이",
+      "intent": "순간적인 플레이어 공간 이동이 발생한다. 도착 충격은 허용되지만 필수 사건은 아니다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "찰나의 전이",
+          "power": 65,
+          "durationMs": 120,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "light"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "공간 도약",
+                    "effect": "control",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1416
+    },
+    {
+      "index": 12,
+      "key": "heldout-12",
+      "input": "사방의 포화",
+      "intent": "여러 방향을 같은 순간에 공격하는 포화.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "사방의 포화",
+          "power": 76,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "포화",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "fire",
+                    "element_secondary": null,
+                    "form": "rain",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1788
+    },
+    {
+      "index": 13,
+      "key": "heldout-13",
+      "input": "유성우를 거슬러",
+      "intent": "낙하하는 유성우의 흐름을 거슬러 돌파한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "유성우 역행",
+          "power": 76,
+          "durationMs": 480,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "fire"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "spec": {
+                    "name": "유성우 쇄도",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "fire",
+                    "element_secondary": "light",
+                    "form": "rain",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1340
+    },
+    {
+      "index": 14,
+      "key": "heldout-14",
+      "input": "얼어붙은 추격전",
+      "intent": "얼음 공격과 추격, 구속이 시간축으로 이어지는 추격전.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "얼어붙은 추격",
+          "power": 72,
+          "durationMs": 520,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "water"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "range": 2,
+                    "speed": 2
+                  },
+                  "spec": {
+                    "name": "서리 추적",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "water",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "freeze"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1472
+    },
+    {
+      "index": 15,
+      "key": "heldout-15",
+      "input": "용이 잠든 산",
+      "intent": "정적인 산과 잠든 용, 또는 잠듦에서 각성으로 이어지는 장면.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "용의 산맥 각성",
+          "power": 75,
+          "durationMs": 1200,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "잠든 대지",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "earth",
+                    "element_secondary": null,
+                    "form": "wall",
+                    "size": "large",
+                    "speed": "slow",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 2,
+                    "radius": 2
+                  },
+                  "spec": {
+                    "name": "용의 분노",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "earth",
+                    "element_secondary": "fire",
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1700
+    },
+    {
+      "index": 16,
+      "key": "heldout-16",
+      "input": "심장이 두 번 뛰는 동안",
+      "intent": "두 번의 박동이 분명히 구분되고 그 사이에 짧은 시간 간격이 느껴진다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "이중 박동",
+          "power": 62,
+          "durationMs": 1800,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "첫 번째 고동",
+                    "effect": "buff",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "두 번째 고동",
+                    "effect": "buff",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1980
+    },
+    {
+      "index": 17,
+      "key": "heldout-17",
+      "input": "별자리를 꿰매는 바늘",
+      "intent": "바늘이 별을 찍고 선으로 연결해 별자리를 완성한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "별자리 바늘",
+          "power": 82,
+          "durationMs": 600,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "range": 2,
+                    "damage": 1
+                  },
+                  "spec": {
+                    "name": "별빛 꿰매기",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "chain",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "bind"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1376
+    },
+    {
+      "index": 18,
+      "key": "heldout-18",
+      "input": "무지개를 한 자루 창으로",
+      "intent": "여러 색과 원소가 하나의 창으로 융합된 결과.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "무지개 창",
+          "power": 75,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "무지개 창 투사",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "light",
+                    "element_secondary": "water",
+                    "form": "bolt",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1497
+    },
+    {
+      "index": 19,
+      "key": "heldout-19",
+      "input": "불사조의 낙화",
+      "intent": "불사조 형상의 불꽃 궤적 뒤에 낙하와 명확한 충돌·폭발이 발생한다. DSL move 대신 rain·wave·nova 같은 form의 순서로 표현한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "불사조의 낙화",
+          "power": 82,
+          "durationMs": 900,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 2,
+                    "radius": 2
+                  },
+                  "spec": {
+                    "name": "불사조의 낙화",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "fire",
+                    "element_secondary": "light",
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 2688
+    },
+    {
+      "index": 20,
+      "key": "heldout-20",
+      "input": "뇌광의 사냥",
+      "intent": "표적을 포착하고 번개처럼 추격해 연쇄 공격으로 사냥한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "뇌광의 사냥",
+          "power": 80,
+          "durationMs": 420,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "lightning"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 2,
+                    "speed": 3
+                  },
+                  "spec": {
+                    "name": "뇌광 돌격",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "lightning",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "shock"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1949
+    },
+    {
+      "index": 21,
+      "key": "heldout-21",
+      "input": "겨울 정원의 폐막",
+      "intent": "겨울 정원이 전개된 뒤 닫히거나 파쇄되는 분명한 폐막.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "겨울 정원의 폐막",
+          "power": 76,
+          "durationMs": 900,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "서리 방벽",
+                    "effect": "shield",
+                    "target": "self",
+                    "element_primary": "water",
+                    "element_secondary": null,
+                    "form": "wall",
+                    "size": "large",
+                    "speed": "slow",
+                    "status": [
+                      "freeze"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 2,
+                    "radius": 2
+                  },
+                  "spec": {
+                    "name": "정원의 침묵",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "water",
+                    "element_secondary": "dark",
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "slow",
+                    "status": [
+                      "freeze",
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1829
+    },
+    {
+      "index": 22,
+      "key": "heldout-22",
+      "input": "일식의 왈츠",
+      "intent": "어둠과 빛이 회전하며 교대하는 춤.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "일식의 왈츠",
+          "power": 85,
+          "durationMs": 1600,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "light",
+                  "angle": 0,
+                  "distance": 200
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "빛의 회전",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "blind"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "dark",
+                  "angle": 180,
+                  "distance": 200
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "어둠의 회전",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "weaken"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1659
+    },
+    {
+      "index": 23,
+      "key": "heldout-23",
+      "input": "최후의 성채",
+      "intent": "하나의 견고한 마지막 방어선.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "최후의 성채",
+          "power": 74,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "duration": 3,
+                    "radius": 2
+                  },
+                  "spec": {
+                    "name": "최후의 성채",
+                    "effect": "shield",
+                    "target": "self",
+                    "element_primary": "earth",
+                    "element_secondary": "light",
+                    "form": "wall",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1467
+    },
+    {
+      "index": 24,
+      "key": "heldout-24",
+      "input": "해일의 역류",
+      "intent": "거대한 물결이 기존 흐름을 거슬러 반대 방향으로 되돌아간다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "해일의 역류",
+          "power": 76,
+          "durationMs": 900,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "해일 역류",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "water",
+                    "element_secondary": null,
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "drench"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1287
+    },
+    {
+      "index": 25,
+      "key": "heldout-25",
+      "input": "폭풍의 눈",
+      "intent": "고요한 중심과 주변의 회전 폭풍이 하나의 공간 효과로 보인다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "폭풍의 눈",
+          "power": 75,
+          "durationMs": 1200,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "radius": 2,
+                    "duration": 2
+                  },
+                  "spec": {
+                    "name": "폭풍의 눈",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": "water",
+                    "form": "zone",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1825
+    },
+    {
+      "index": 26,
+      "key": "heldout-26",
+      "input": "심연의 군세",
+      "intent": "심연의 군세가 등장하고 전장을 장악한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "심연의 군세",
+          "power": 85,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "심연의 군세",
+                    "effect": "summon",
+                    "target": "area",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "summon",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1845
+    },
+    {
+      "index": 27,
+      "key": "heldout-27",
+      "input": "새벽의 순례",
+      "intent": "어둠을 지나 빛으로 향하는 지속적인 이동과 변화.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "새벽의 순례",
+          "power": 74,
+          "durationMs": 600,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "light",
+                  "distance": 320
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "새벽의 발걸음",
+                    "effect": "buff",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": "wind",
+                    "form": "wave",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1901
+    },
+    {
+      "index": 28,
+      "key": "heldout-28",
+      "input": "허공답보",
+      "intent": "허공을 여러 번 딛으며 방향을 바꾸는 연속 이동.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "허공답보",
+          "power": 75,
+          "durationMs": 800,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "wind",
+                  "angle": -60,
+                  "distance": 240
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "공중 발걸음",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "wind",
+                  "angle": 60,
+                  "distance": 240
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "공중 발걸음",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1599
+    },
+    {
+      "index": 29,
+      "key": "heldout-29",
+      "input": "유리별의 사격",
+      "intent": "유리처럼 투명하고 날카로운 별 투사체를 발사한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "유리별의 사격",
+          "power": 68,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "유리별의 사격",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1403
+    },
+    {
+      "index": 30,
+      "key": "heldout-30",
+      "input": "팔원소 대합창",
+      "intent": "8원소가 누락 없이 여러 파트로 나뉘어 합창하고, 동시성과 시간적 전개가 모두 느껴진다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "팔원소 대합창",
+          "power": 92,
+          "durationMs": 1600,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "화염과 물의 합주",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "fire",
+                    "element_secondary": "water",
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "번개와 대지의 합주",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "lightning",
+                    "element_secondary": "earth",
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "빛과 어둠의 합주",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "beam",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "weaken"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "바람과 얼음의 합주",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": "ice",
+                    "form": "rain",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "freeze"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1758
+    }
+  ]
+}

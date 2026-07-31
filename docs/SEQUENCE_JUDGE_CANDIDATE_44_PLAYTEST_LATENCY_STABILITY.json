@@ -1,0 +1,374 @@
+{
+  "workerUrl": "https://incant-judge-proxy.incant-judge-proxy.workers.dev",
+  "generatedAt": "2026-07-30T09:14:32.875Z",
+  "repeats": 3,
+  "attempts": [
+    {
+      "input": "화산맥의 기상",
+      "repetition": 1,
+      "status": 200,
+      "elapsedMs": 1796,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell": {
+          "name": "화산맥의 기상",
+          "effect": "damage",
+          "target": "area",
+          "element_primary": "earth",
+          "element_secondary": "fire",
+          "form": "nova",
+          "size": "huge",
+          "speed": "normal",
+          "status": [
+            "burn",
+            "knockback"
+          ],
+          "power": 82,
+          "cost": 49
+        }
+      }
+    },
+    {
+      "input": "화산맥의 기상",
+      "repetition": 2,
+      "status": 200,
+      "elapsedMs": 1903,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "화산맥의 기상",
+          "power": 78,
+          "durationMs": 2200,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "earth"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "대지의 고동",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "earth",
+                    "element_secondary": "fire",
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "slow",
+                    "status": [
+                      "knockback"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 3,
+                    "radius": 2
+                  },
+                  "spec": {
+                    "name": "화산 분화",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "fire",
+                    "element_secondary": "earth",
+                    "form": "nova",
+                    "size": "huge",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "화산맥의 기상",
+      "repetition": 3,
+      "status": 200,
+      "elapsedMs": 1470,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell": {
+          "name": "화산맥의 기상",
+          "effect": "buff",
+          "target": "self",
+          "element_primary": "earth",
+          "element_secondary": "fire",
+          "form": "buff",
+          "size": "large",
+          "speed": "normal",
+          "status": [],
+          "power": 65,
+          "cost": 39,
+          "flavor": "대지의 깊은 분화와 불꽃의 숨결이 시전자를 감싼다."
+        }
+      }
+    },
+    {
+      "input": "베어낸 자리엔 나만 없다",
+      "repetition": 1,
+      "status": 200,
+      "elapsedMs": 2169,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "잔상 회피참",
+          "power": 74,
+          "durationMs": 400,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "damage": 2,
+                    "range": 1
+                  },
+                  "spec": {
+                    "name": "일격",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "slash",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "away-from-target",
+                  "element": "dark"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "베어낸 자리엔 나만 없다",
+      "repetition": 2,
+      "status": 200,
+      "elapsedMs": 1995,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "잔상 회피",
+          "power": 74,
+          "durationMs": 400,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "damage": 2,
+                    "range": 1
+                  },
+                  "spec": {
+                    "name": "참격의 흔적",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "slash",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "away-from-target",
+                  "element": "dark"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "베어낸 자리엔 나만 없다",
+      "repetition": 3,
+      "status": 200,
+      "elapsedMs": 1393,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "잔상 도피참",
+          "power": 68,
+          "durationMs": 600,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "허공 베기",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "slash",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "away-from-target",
+                  "element": "dark"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "input": "죽은 숲이 발목을 붙든다",
+      "repetition": 1,
+      "status": 200,
+      "elapsedMs": 1419,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell": {
+          "name": "숲의 속박",
+          "effect": "control",
+          "target": "area",
+          "element_primary": "earth",
+          "element_secondary": "dark",
+          "form": "cage",
+          "size": "large",
+          "speed": "slow",
+          "status": [
+            "slow",
+            "weaken"
+          ],
+          "power": 45,
+          "cost": 27,
+          "flavor": "죽은 숲의 원념이 발목을 붙잡아 움직임을 봉쇄한다."
+        }
+      }
+    },
+    {
+      "input": "죽은 숲이 발목을 붙든다",
+      "repetition": 2,
+      "status": 200,
+      "elapsedMs": 1500,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell": {
+          "name": "숲의 속박",
+          "effect": "control",
+          "target": "area",
+          "element_primary": "earth",
+          "element_secondary": "dark",
+          "form": "cage",
+          "size": "large",
+          "speed": "slow",
+          "status": [
+            "slow",
+            "weaken"
+          ],
+          "power": 45,
+          "cost": 27,
+          "flavor": "죽은 대지와 숲의 원한이 발목을 움켜쥔다."
+        }
+      }
+    },
+    {
+      "input": "죽은 숲이 발목을 붙든다",
+      "repetition": 3,
+      "status": 200,
+      "elapsedMs": 1410,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell": {
+          "name": "숲의 구속",
+          "effect": "control",
+          "target": "enemy",
+          "element_primary": "earth",
+          "element_secondary": "dark",
+          "form": "wall",
+          "size": "large",
+          "speed": "slow",
+          "status": [
+            "slow"
+          ],
+          "power": 35,
+          "cost": 21,
+          "flavor": "죽은 숲의 원한이 발목을 움켜쥔다"
+        }
+      }
+    }
+  ]
+}

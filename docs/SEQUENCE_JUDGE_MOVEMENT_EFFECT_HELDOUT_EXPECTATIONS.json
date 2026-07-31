@@ -1,0 +1,364 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Sealed movement-plus-useful-effect held-out expectations for the post-candidate-24 contract. Written before implementing or collecting responses from the next candidate.",
+  "sealedAt": "2026-07-30",
+  "supersedesForFutureEvaluation": "docs/SEQUENCE_JUDGE_MOVEMENT_HELDOUT_EXPECTATIONS.json",
+  "designPrinciples": [
+    "Player move must be accompanied by at least one useful form, but the form effect is not fixed to damage.",
+    "Select effect from explicit meaning, direct movement consequence, and movement purpose in that order.",
+    "Allow damage, control, shield, buff, heal, or summon when grounded by the input.",
+    "Do not add player move to non-player motion or non-movement support and control spells.",
+    "Do not use these exact inputs or expected outputs as prompt examples."
+  ],
+  "coverage": {
+    "damageFocused": 3,
+    "controlFocused": 3,
+    "shieldOrBuffFocused": 3,
+    "explicitHealOrSummon": 2,
+    "multipleEffectsAllowed": 2,
+    "nonPlayerOrNonMovementControls": 3
+  },
+  "globalHardRules": {
+    "maxSequences": 10,
+    "maxBehaviorsPerSequence": 5,
+    "behaviorTypes": ["form", "move", "wait"],
+    "waitMustBeAlone": true,
+    "moveRequiresElement": true,
+    "moveRequiresUsefulForm": true,
+    "moveDoesNotRequireDamage": true,
+    "specPowerMustBeZero": true,
+    "specCostMustBeZero": true,
+    "forbidUnsupportedResourceEffects": true,
+    "forbidDecorativeMove": true,
+    "forbidInventedEnums": true
+  },
+  "cases": [
+    {
+      "id": 1,
+      "input": "불꽃을 두르고 적진을 꿰뚫는다",
+      "source": "movement-effect-held-out",
+      "category": "damage-focused",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["fire"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move", "form"],
+        "allowedFormsAnyOf": ["beam", "slash", "wave"],
+        "allowedEffectsAnyOf": ["damage"],
+        "forbiddenEffects": ["heal", "shield", "buff", "summon"],
+        "allowedSpeedsAnyOf": ["fast"]
+      },
+      "relations": {"required": ["parallel", "movement"], "optional": ["finale"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": true, "minimumParallelBehaviors": 2, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [250, 700], "minimumMoveCount": 1},
+      "visualIntent": "불꽃을 두른 시전자가 적진을 관통하며 같은 궤적에 화염 피해를 전달한다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 2,
+      "input": "도약 끝에 벼락을 내리꽂는다",
+      "source": "movement-effect-held-out",
+      "category": "damage-focused",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["lightning"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move", "form"],
+        "allowedFormsAnyOf": ["nova", "beam", "wave"],
+        "allowedEffectsAnyOf": ["damage"],
+        "forbiddenEffects": ["heal", "shield", "buff", "summon"]
+      },
+      "relations": {"required": ["order", "movement", "finale"], "optional": [], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [2, 3], "requiresParallel": false, "requiresFinale": true, "forbidDecorativeMove": false, "preferredDurationMsRange": [450, 1200], "minimumMoveCount": 1},
+      "visualIntent": "도약 이동이 먼저 일어나고 착지 또는 낙하 끝에 벼락 타격이 피날레로 발생한다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 3,
+      "input": "한 칼을 남기고 바람처럼 빠져나온다",
+      "source": "movement-effect-held-out",
+      "category": "damage-focused",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["wind"],
+        "optionalElements": ["dark", "light"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form", "move"],
+        "allowedFormsAnyOf": ["slash"],
+        "allowedEffectsAnyOf": ["damage"],
+        "forbiddenEffects": ["heal", "shield", "buff", "summon"],
+        "allowedSpeedsAnyOf": ["fast"]
+      },
+      "relations": {"required": ["order", "movement"], "optional": ["finale"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [2, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [250, 900], "minimumMoveCount": 1},
+      "visualIntent": "참격이 먼저 남고 시전자가 바람처럼 빠르게 이탈한다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 4,
+      "input": "서리 길을 그리며 미끄러진다",
+      "source": "movement-effect-held-out",
+      "category": "control-focused",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["ice"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move", "form"],
+        "allowedFormsAnyOf": ["zone", "wave", "wall"],
+        "allowedEffectsAnyOf": ["control"],
+        "forbiddenEffects": ["heal", "shield", "buff", "summon"]
+      },
+      "relations": {"required": ["parallel", "movement", "persistence"], "optional": [], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": true, "minimumParallelBehaviors": 2, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [500, 1200], "minimumMoveCount": 1},
+      "visualIntent": "미끄러지는 이동 경로에 적을 느리게 하거나 얼리는 지속적인 서리 길이 남는다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 5,
+      "input": "회오리 속을 달려 적들을 밀어낸다",
+      "source": "movement-effect-held-out",
+      "category": "control-focused",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["wind"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move", "form"],
+        "allowedFormsAnyOf": ["wave", "nova", "zone"],
+        "allowedEffectsAnyOf": ["control"],
+        "forbiddenEffects": ["heal", "shield", "buff", "summon"]
+      },
+      "relations": {"required": ["parallel", "movement"], "optional": ["persistence"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": true, "minimumParallelBehaviors": 2, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [350, 1000], "minimumMoveCount": 1},
+      "visualIntent": "회오리와 함께 달리는 동안 주변 적을 밀어내는 바람 제어가 발생한다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 6,
+      "input": "그림자 사이를 오가며 발목을 묶는다",
+      "source": "movement-effect-held-out",
+      "category": "control-focused",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["dark"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move", "form"],
+        "allowedFormsAnyOf": ["chain", "cage", "zone"],
+        "allowedEffectsAnyOf": ["control"],
+        "forbiddenEffects": ["heal", "shield", "buff", "summon"]
+      },
+      "relations": {"required": ["parallel", "movement"], "optional": ["repetition", "persistence"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": true, "minimumParallelBehaviors": 2, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [400, 1200], "minimumMoveCount": 1},
+      "visualIntent": "그림자 사이를 이동하는 동안 어둠의 사슬이나 영역이 적의 발목을 붙든다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 7,
+      "input": "빛의 틈으로 몸을 피한다",
+      "source": "movement-effect-held-out",
+      "category": "shield-or-buff-focused",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["light"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move", "form"],
+        "allowedFormsAnyOf": ["buff", "wall", "zone"],
+        "allowedEffectsAnyOf": ["shield", "buff"],
+        "forbiddenEffects": ["damage", "heal", "summon"]
+      },
+      "relations": {"required": ["parallel", "movement"], "optional": ["persistence"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": true, "minimumParallelBehaviors": 2, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [100, 500], "minimumMoveCount": 1},
+      "visualIntent": "빛의 틈으로 회피 이동하며 짧은 보호 또는 회피 강화가 몸에 남는다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 8,
+      "input": "바람을 타니 몸이 깃털처럼 가벼워진다",
+      "source": "movement-effect-held-out",
+      "category": "shield-or-buff-focused",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["wind"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move", "form"],
+        "allowedFormsAnyOf": ["buff", "orbit", "zone"],
+        "allowedEffectsAnyOf": ["buff"],
+        "forbiddenEffects": ["damage", "heal", "shield", "summon"]
+      },
+      "relations": {"required": ["movement", "persistence"], "optional": ["parallel", "transition"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [500, 1200], "minimumMoveCount": 1},
+      "visualIntent": "바람에 실려 이동하고 그 결과 몸이 가벼워지는 지속적인 기동 강화가 남는다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 9,
+      "input": "철의 껍질을 두르고 돌진한다",
+      "source": "movement-effect-held-out",
+      "category": "shield-or-buff-focused",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["earth"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move", "form"],
+        "allowedFormsAnyOf": ["buff", "wall", "orbit"],
+        "allowedEffectsAnyOf": ["shield"],
+        "forbiddenEffects": ["heal", "buff", "summon"]
+      },
+      "relations": {"required": ["parallel", "movement", "persistence"], "optional": [], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": true, "minimumParallelBehaviors": 2, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [300, 900], "minimumMoveCount": 1},
+      "visualIntent": "철갑 보호를 몸에 두른 채 돌진하며 방어 효과가 이동 중에도 유지된다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 10,
+      "input": "쓰러진 동료에게 날아가 생명의 빛을 건넨다",
+      "source": "movement-effect-held-out",
+      "category": "explicit-heal-or-summon",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["light"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move", "form"],
+        "allowedFormsAnyOf": ["buff", "nova", "zone"],
+        "allowedEffectsAnyOf": ["heal"],
+        "forbiddenEffects": ["damage", "shield", "buff", "summon"]
+      },
+      "relations": {"required": ["order", "movement"], "optional": ["finale"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [2, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [500, 1400], "minimumMoveCount": 1},
+      "visualIntent": "쓰러진 동료에게 먼저 이동한 뒤 도착해 생명의 빛으로 회복시킨다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 11,
+      "input": "늑대 등에 올라 함께 적진을 달린다",
+      "source": "movement-effect-held-out",
+      "category": "explicit-heal-or-summon",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {
+        "requiredElements": [],
+        "optionalElements": ["wind", "earth", "dark", "light"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move", "form"],
+        "allowedFormsAnyOf": ["summon"],
+        "allowedEffectsAnyOf": ["summon"],
+        "forbiddenEffects": ["heal", "shield", "buff"]
+      },
+      "relations": {"required": ["order", "movement"], "optional": ["parallel", "persistence"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [2, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [600, 1500], "minimumMoveCount": 1},
+      "visualIntent": "늑대가 먼저 나타나고 시전자가 등에 올라 함께 달리는 소환과 이동 관계가 보인다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 12,
+      "input": "달빛을 밟고 적 곁에 내려선다",
+      "source": "movement-effect-held-out",
+      "category": "multiple-effects-allowed",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "medium"},
+      "anchors": {
+        "requiredElements": ["light"],
+        "optionalElements": ["wind"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move", "form"],
+        "allowedFormsAnyOf": ["nova", "slash", "zone", "buff"],
+        "allowedEffectsAnyOf": ["damage", "control", "shield", "buff"],
+        "forbiddenEffects": ["heal", "summon"]
+      },
+      "relations": {"required": ["movement"], "optional": ["parallel", "order", "finale"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [600, 1500], "minimumMoveCount": 1},
+      "visualIntent": "달빛을 발판 삼아 적 곁으로 내려서며 착지 공격·제어·보호·강화 중 장면에 맞는 효용이 남는다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 13,
+      "input": "안개 속으로 사라져 다른 곳에 나타난다",
+      "source": "movement-effect-held-out",
+      "category": "multiple-effects-allowed",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "medium"},
+      "anchors": {
+        "requiredElements": ["dark"],
+        "optionalElements": ["water", "wind"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move", "form"],
+        "allowedFormsAnyOf": ["buff", "zone", "nova", "chain"],
+        "allowedEffectsAnyOf": ["shield", "buff", "control", "damage"],
+        "forbiddenEffects": ["heal", "summon"]
+      },
+      "relations": {"required": ["movement"], "optional": ["parallel", "transition", "persistence"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [150, 800], "minimumMoveCount": 1},
+      "visualIntent": "안개 속으로 사라져 재등장하며 회피 보호·은폐 강화·안개 제어·도착 공격 중 자연스러운 효용을 남긴다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 14,
+      "input": "불새의 비행",
+      "source": "movement-effect-held-out-control",
+      "category": "non-player-or-non-movement-control",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["fire"],
+        "optionalElements": ["wind", "light"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["summon", "bolt", "orbit", "rain"],
+        "allowedEffectsAnyOf": ["summon", "damage"],
+        "forbiddenEffects": ["heal", "shield", "buff"]
+      },
+      "relations": {"required": [], "optional": ["persistence"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "움직이는 주체는 불새 형상 또는 소환수이며 player move를 만들지 않는다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 15,
+      "input": "상처 위에 별빛이 머문다",
+      "source": "movement-effect-held-out-control",
+      "category": "non-player-or-non-movement-control",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["light"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["buff", "zone", "orbit"],
+        "allowedEffectsAnyOf": ["heal"],
+        "forbiddenEffects": ["damage", "shield", "buff", "summon"]
+      },
+      "relations": {"required": ["persistence"], "optional": [], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "별빛이 상처에 머물며 지속적으로 회복시키고 player는 이동하지 않는다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 16,
+      "input": "뿌리가 전장을 기어가 발목을 잡는다",
+      "source": "movement-effect-held-out-control",
+      "category": "non-player-or-non-movement-control",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["earth"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["chain", "zone", "cage"],
+        "allowedEffectsAnyOf": ["control"],
+        "forbiddenEffects": ["heal", "shield", "buff", "summon"]
+      },
+      "relations": {"required": ["persistence"], "optional": ["causality"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "전장을 기어가는 주체는 뿌리 form이며 적의 발목을 붙들고 player move는 없다.",
+      "legacyIssue": null
+    }
+  ]
+}

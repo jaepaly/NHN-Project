@@ -1,0 +1,977 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T11:44:45.742Z",
+  "baselinePath": "docs/SEQUENCE_JUDGE_CANDIDATE_55_GENERALIZATION_RESULTS.json",
+  "expectationsPath": "docs/SEQUENCE_JUDGE_CANDIDATE_55_GENERALIZATION_EXPECTATIONS.json",
+  "workerUrl": "https://incant-judge-proxy.incant-judge-proxy.workers.dev",
+  "results": [
+    {
+      "id": 1,
+      "key": "heldout-01",
+      "input": "황혼이 갈라진다",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_preferred",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 6,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 2,
+          "detail": "기대 sequence_preferred, 실제 sequence"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 2/2"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage/control 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 1, 허용 1~4"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "황혼의 대비와 갈라짐이 공격·제어 사건으로 보인다."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "key": "heldout-02",
+      "input": "천공의 장례",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_preferred",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 5,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 2,
+          "detail": "기대 sequence_preferred, 실제 sequence"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 2/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage/control 중 실제 control/damage"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 3, 허용 1~4"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "하늘 규모의 장례 이미지가 평범한 buff로 축약되지 않는다."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "key": "heldout-03",
+      "input": "심연의 개화",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_preferred",
+      "actualMode": "single",
+      "automaticScore": 100,
+      "passed": 4,
+      "failed": 0,
+      "manualPending": 2,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "manual",
+          "weight": 0,
+          "detail": "선호 sequence_preferred, 실제 single — 핵심 이미지와 사건 역할 보존 여부를 수동 판정"
+        },
+        {
+          "id": "element:dark",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 dark 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 2/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage/control 중 실제 damage"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "심연이 피어나는 전개와 결과가 어둠 공격·제어로 표현된다."
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "key": "heldout-04",
+      "input": "폭풍의 즉위",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_preferred",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 6,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 2,
+          "detail": "기대 sequence_preferred, 실제 sequence"
+        },
+        {
+          "id": "element:wind",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 wind 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 2/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage/control 중 실제 damage"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 1, 허용 1~4"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "폭풍의 권위와 규모가 공격적 장면으로 보인다."
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "key": "heldout-05",
+      "input": "우주의 심장박동",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 80,
+      "passed": 4,
+      "failed": 1,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 2/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "relation:repetition",
+          "state": "fail",
+          "weight": 2,
+          "detail": "repetition 미검출"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 3, 허용 2~5"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "심장박동이 최소 두 번의 구분되는 맥동으로 보인다."
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "key": "heldout-06",
+      "input": "별을 삼킨 파도",
+      "legacyStatus": "new",
+      "expectedMode": "either",
+      "actualMode": "single",
+      "automaticScore": 100,
+      "passed": 6,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 2,
+          "detail": "single 허용"
+        },
+        {
+          "id": "element:water",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 water 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 2/2"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage/control 중 실제 damage"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "파도가 별빛을 삼키는 복합 이미지이며 player move는 아니다."
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "key": "heldout-07",
+      "input": "겨울이 폭발한다",
+      "legacyStatus": "new",
+      "expectedMode": "either",
+      "actualMode": "single",
+      "automaticScore": 100,
+      "passed": 7,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 2,
+          "detail": "single 허용"
+        },
+        {
+          "id": "element:ice",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 ice 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 2/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage 중 실제 damage"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 heal/shield/buff/summon 없음"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "겨울의 폭발이 직접 피해로 보이며 player move를 만들지 않는다."
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "key": "heldout-08",
+      "input": "불멸의 행진",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 8,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 2/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 1, 허용 1~5"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 950, 선호 500~1400"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 1/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "행진의 공간 진행을 player move와 전투 form으로 보여준다."
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "key": "heldout-09",
+      "input": "서리의 활공",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 10,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:ice",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 ice 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 damage/control 중 실제 damage"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 1, 허용 1~3"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 520, 선호 300~700"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 1/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "새로운 활공 제목도 빠른 move+form으로 일반화된다."
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "key": "heldout-10",
+      "input": "달의 선회",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 8,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:light",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 light 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 2/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 2, 허용 1~4"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 2/2"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "선회의 순환 궤적을 최소 두 구간 player move로 보여준다."
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "key": "heldout-11",
+      "input": "번개의 순례",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 9,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element:lightning",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 lightning 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 3/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 2, 허용 1~4"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 1100, 선호 500~1400"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 2/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "상반된 번개·순례 이미지도 공간 진행으로 해석한다."
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "key": "heldout-12",
+      "input": "바람 없는 비행",
+      "legacyStatus": "new",
+      "expectedMode": "sequence_required",
+      "actualMode": "sequence",
+      "automaticScore": 100,
+      "passed": 8,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 3,
+          "detail": "기대 sequence_required, 실제 sequence"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:move",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 move 존재"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "relation:movement",
+          "state": "pass",
+          "weight": 2,
+          "detail": "movement 검출"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 1, 허용 1~3"
+        },
+        {
+          "id": "duration-range",
+          "state": "pass",
+          "weight": 1,
+          "detail": "durationMs 550, 선호 300~700"
+        },
+        {
+          "id": "minimum-move-count",
+          "state": "pass",
+          "weight": 1,
+          "detail": "move 1/1"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "비행 과정은 보존하되 바람 원소를 기계적으로 강제하지 않는다."
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "key": "heldout-13",
+      "input": "별의 깃털",
+      "legacyStatus": "new",
+      "expectedMode": "single_preferred",
+      "actualMode": "single",
+      "automaticScore": 100,
+      "passed": 4,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 2,
+          "detail": "기대 single_preferred, 실제 single"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 2/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "정적 이동 가능 이미지만으로 player move를 만들지 않는다."
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "key": "heldout-14",
+      "input": "불꽃을 실은 화살이 날아간다",
+      "legacyStatus": "new",
+      "expectedMode": "single_preferred",
+      "actualMode": "single",
+      "automaticScore": 100,
+      "passed": 6,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 2,
+          "detail": "기대 single_preferred, 실제 single"
+        },
+        {
+          "id": "element:fire",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 fire 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 bolt/beam 중 실제 bolt"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "명시적 투사체 이동은 player move가 아니다."
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "key": "heldout-15",
+      "input": "해일의 행진",
+      "legacyStatus": "new",
+      "expectedMode": "single_preferred",
+      "actualMode": "sequence",
+      "automaticScore": 82,
+      "passed": 5,
+      "failed": 2,
+      "manualPending": 2,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "manual",
+          "weight": 0,
+          "detail": "선호 single_preferred, 실제 sequence — 핵심 이미지와 사건 역할 보존 여부를 수동 판정"
+        },
+        {
+          "id": "element:water",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 water 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 형태 wave/zone 중 실제 wave"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "fail",
+          "weight": 1,
+          "detail": "금지 movement 검출"
+        },
+        {
+          "id": "sequence-range",
+          "state": "pass",
+          "weight": 2,
+          "detail": "시퀀스 1, 허용 1~2"
+        },
+        {
+          "id": "maximum-move-count",
+          "state": "fail",
+          "weight": 1,
+          "detail": "move 1/0 이하"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "행진하는 주체가 해일이므로 player move를 만들지 않는다."
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "key": "heldout-16",
+      "input": "새벽의 방패",
+      "legacyStatus": "new",
+      "expectedMode": "single_preferred",
+      "actualMode": "single",
+      "automaticScore": 100,
+      "passed": 7,
+      "failed": 0,
+      "manualPending": 1,
+      "checks": [
+        {
+          "id": "mode",
+          "state": "pass",
+          "weight": 2,
+          "detail": "기대 single_preferred, 실제 single"
+        },
+        {
+          "id": "element:light",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 원소 light 보존"
+        },
+        {
+          "id": "element-diversity",
+          "state": "pass",
+          "weight": 1,
+          "detail": "서로 다른 원소 1/1"
+        },
+        {
+          "id": "behavior:form",
+          "state": "pass",
+          "weight": 2,
+          "detail": "필수 행동 form 존재"
+        },
+        {
+          "id": "allowed-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "허용 효과 shield 중 실제 shield"
+        },
+        {
+          "id": "forbidden-effect",
+          "state": "pass",
+          "weight": 2,
+          "detail": "금지 효과 damage 없음"
+        },
+        {
+          "id": "forbidden:movement",
+          "state": "pass",
+          "weight": 1,
+          "detail": "금지 movement 없음"
+        },
+        {
+          "id": "manual:visual-intent",
+          "state": "manual",
+          "weight": 0,
+          "detail": "정적 보호 주문이며 공격·이동을 추가하지 않는다."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,927 @@
+{
+  "workerUrl": "https://incant-judge-proxy.incant-judge-proxy.workers.dev",
+  "generatedAt": "2026-07-30T11:36:36.141Z",
+  "results": [
+    {
+      "index": 1,
+      "key": "heldout-01",
+      "input": "불꽃을 두르고 적진을 꿰뚫는다",
+      "intent": "불꽃을 두른 시전자가 적진을 관통하며 같은 궤적에 화염 피해를 전달한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "화염 돌입",
+          "power": 78,
+          "durationMs": 520,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "fire"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 2,
+                    "range": 1
+                  },
+                  "spec": {
+                    "name": "화염 관통",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "fire",
+                    "element_secondary": null,
+                    "form": "beam",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1781
+    },
+    {
+      "index": 2,
+      "key": "heldout-02",
+      "input": "도약 끝에 벼락을 내리꽂는다",
+      "intent": "도약 이동이 먼저 일어나고 착지 또는 낙하 끝에 벼락 타격이 피날레로 발생한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "뇌락 도약",
+          "power": 76,
+          "durationMs": 900,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "lightning"
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 2,
+                    "range": 1
+                  },
+                  "spec": {
+                    "name": "벼락 내리꽂기",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "lightning",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "shock"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 2634
+    },
+    {
+      "index": 3,
+      "key": "heldout-03",
+      "input": "한 칼을 남기고 바람처럼 빠져나온다",
+      "intent": "참격이 먼저 남고 시전자가 바람처럼 빠르게 이탈한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "바람의 일섬탈출",
+          "power": 76,
+          "durationMs": 950,
+          "sequences": [
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "spec": {
+                    "name": "남겨진 일섬",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "wind",
+                    "element_secondary": null,
+                    "form": "slash",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "away-from-target",
+                  "element": "wind"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1571
+    },
+    {
+      "index": 4,
+      "key": "heldout-04",
+      "input": "서리 길을 그리며 미끄러진다",
+      "intent": "미끄러지는 이동 경로에 적을 느리게 하거나 얼리는 지속적인 서리 길이 남는다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "서리 미끄럼",
+          "power": 68,
+          "durationMs": 600,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "ice",
+                  "angle": 90,
+                  "distance": 280
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "서리 흔적",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "ice",
+                    "element_secondary": null,
+                    "form": "zone",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [
+                      "freeze"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 2050
+    },
+    {
+      "index": 5,
+      "key": "heldout-05",
+      "input": "회오리 속을 달려 적들을 밀어낸다",
+      "intent": "회오리와 함께 달리는 동안 주변 적을 밀어내는 바람 제어가 발생한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "회오리 질주",
+          "power": 74,
+          "durationMs": 500,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "wind"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "range": 2,
+                    "damage": 1
+                  },
+                  "spec": {
+                    "name": "회오리 밀치기",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "wind",
+                    "element_secondary": null,
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "knockback"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1417
+    },
+    {
+      "index": 6,
+      "key": "heldout-06",
+      "input": "그림자 사이를 오가며 발목을 묶는다",
+      "intent": "그림자 사이를 이동하는 동안 어둠의 사슬이나 영역이 적의 발목을 붙든다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "그림자 속박",
+          "power": 72,
+          "durationMs": 900,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "dark",
+                  "angle": -90,
+                  "distance": 200
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "그림자 밟기",
+                    "effect": "control",
+                    "target": "enemy",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "wave",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "dark",
+                  "angle": 90,
+                  "distance": 200
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "발목 묶기",
+                    "effect": "control",
+                    "target": "enemy",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "zone",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1639
+    },
+    {
+      "index": 7,
+      "key": "heldout-07",
+      "input": "빛의 틈으로 몸을 피한다",
+      "intent": "빛의 틈으로 회피 이동하며 짧은 보호 또는 회피 강화가 몸에 남는다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "빛틈 회피",
+          "power": 62,
+          "durationMs": 300,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "away-from-target",
+                  "element": "light"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "빛의 은폐",
+                    "effect": "shield",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "buff",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1401
+    },
+    {
+      "index": 8,
+      "key": "heldout-08",
+      "input": "바람을 타니 몸이 깃털처럼 가벼워진다",
+      "intent": "바람에 실려 이동하고 그 결과 몸이 가벼워지는 지속적인 기동 강화가 남는다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "바람의 깃털",
+          "power": 65,
+          "durationMs": 600,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "wind",
+                  "angle": 0,
+                  "distance": 180
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "깃털 가벼움",
+                    "effect": "buff",
+                    "target": "self",
+                    "element_primary": "wind",
+                    "element_secondary": null,
+                    "form": "buff",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1490
+    },
+    {
+      "index": 9,
+      "key": "heldout-09",
+      "input": "철의 껍질을 두르고 돌진한다",
+      "intent": "철갑 보호를 몸에 두른 채 돌진하며 방어 효과가 이동 중에도 유지된다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "철갑 돌진",
+          "power": 74,
+          "durationMs": 450,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "earth"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 2,
+                    "strength": 2
+                  },
+                  "spec": {
+                    "name": "철의 껍질",
+                    "effect": "shield",
+                    "target": "self",
+                    "element_primary": "earth",
+                    "element_secondary": null,
+                    "form": "buff",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1678
+    },
+    {
+      "index": 10,
+      "key": "heldout-10",
+      "input": "쓰러진 동료에게 날아가 생명의 빛을 건넨다",
+      "intent": "쓰러진 동료에게 먼저 이동한 뒤 도착해 생명의 빛으로 회복시킨다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "생명의 비행",
+          "power": 75,
+          "durationMs": 900,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "light"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "spec": {
+                    "name": "생명의 빛",
+                    "effect": "heal",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "buff",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1325
+    },
+    {
+      "index": 11,
+      "key": "heldout-11",
+      "input": "늑대 등에 올라 함께 적진을 달린다",
+      "intent": "늑대가 먼저 나타나고 시전자가 등에 올라 함께 달리는 소환과 이동 관계가 보인다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "야수 돌격",
+          "power": 74,
+          "durationMs": 850,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "맹수 소환",
+                    "effect": "summon",
+                    "target": "self",
+                    "element_primary": "earth",
+                    "element_secondary": null,
+                    "form": "summon",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "earth",
+                  "distance": 320
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1835
+    },
+    {
+      "index": 12,
+      "key": "heldout-12",
+      "input": "달빛을 밟고 적 곁에 내려선다",
+      "intent": "달빛을 발판 삼아 적 곁으로 내려서며 착지 공격·제어·보호·강화 중 장면에 맞는 효용이 남는다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "달빛의 강림",
+          "power": 72,
+          "durationMs": 550,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "light"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "range": 1,
+                    "duration": 1
+                  },
+                  "spec": {
+                    "name": "달빛 착지",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1515
+    },
+    {
+      "index": 13,
+      "key": "heldout-13",
+      "input": "안개 속으로 사라져 다른 곳에 나타난다",
+      "intent": "안개 속으로 사라져 재등장하며 회피 보호·은폐 강화·안개 제어·도착 공격 중 자연스러운 효용을 남긴다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "안개 점멸",
+          "power": 74,
+          "durationMs": 400,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "away-from-target",
+                  "element": "dark"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "은폐의 안개",
+                    "effect": "shield",
+                    "target": "self",
+                    "element_primary": "dark",
+                    "element_secondary": "water",
+                    "form": "buff",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1569
+    },
+    {
+      "index": 14,
+      "key": "heldout-14",
+      "input": "불새의 비행",
+      "intent": "움직이는 주체는 불새 형상 또는 소환수이며 player move를 만들지 않는다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "불새의 비행",
+          "power": 72,
+          "durationMs": 520,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "fire"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 2,
+                    "range": 1
+                  },
+                  "spec": {
+                    "name": "화염 비행",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "fire",
+                    "element_secondary": null,
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1341
+    },
+    {
+      "index": 15,
+      "key": "heldout-15",
+      "input": "상처 위에 별빛이 머문다",
+      "intent": "별빛이 상처에 머물며 지속적으로 회복시키고 player는 이동하지 않는다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell": {
+          "name": "별빛 치유",
+          "effect": "heal",
+          "target": "self",
+          "element_primary": "light",
+          "element_secondary": null,
+          "form": "buff",
+          "size": "small",
+          "speed": "slow",
+          "status": [],
+          "power": 45,
+          "cost": 27,
+          "flavor": "상처를 감싸 안는 온화한 별빛"
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1606
+    },
+    {
+      "index": 16,
+      "key": "heldout-16",
+      "input": "뿌리가 전장을 기어가 발목을 잡는다",
+      "intent": "전장을 기어가는 주체는 뿌리 form이며 적의 발목을 붙들고 player move는 없다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "포박의 덩굴",
+          "power": 72,
+          "durationMs": 1100,
+          "sequences": [
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "range": 2,
+                    "duration": 1
+                  },
+                  "spec": {
+                    "name": "기어가는 뿌리",
+                    "effect": "control",
+                    "target": "enemy",
+                    "element_primary": "earth",
+                    "element_secondary": "water",
+                    "form": "zone",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 2,
+                    "radius": 1
+                  },
+                  "spec": {
+                    "name": "발목 결박",
+                    "effect": "control",
+                    "target": "enemy",
+                    "element_primary": "earth",
+                    "element_secondary": null,
+                    "form": "cage",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 2126
+    }
+  ]
+}

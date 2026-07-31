@@ -79,7 +79,7 @@ const remoteJudge = new GeminiJudge('https://invalid.example');
 assert.equal((await remoteJudge.judge('ㅁㄴㅇㄹ')).disposition, 'fizzle');
 assert.equal(remoteJudge.lastSource, 'local');
 assert.equal(JUDGE_SCHEMA_VERSION, 2);
-assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.15-abstract-seq'); // v2.15: 추상 영창→시퀀스 확장(#200 C안·#203 절충안 — 이름 신호 기반, heal/shield/buff 금지·수사 존중·≤3 캡)
+assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.16-all-plan'); // v2.16: 모든 cast를 spell_plan으로 통일하고 단순 사건도 1-sequence plan으로 보존
 
 assert.equal(validateJudgement({ element_primary: 'fire', form: 'bolt' }), null,
   'v1 responses must not pass v2 validation');

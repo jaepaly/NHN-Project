@@ -1,0 +1,418 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Minimal complete-JSON contrasts for teaching single-vs-plan and choreography boundaries without copying the legacy 30 cases.",
+  "cases": [
+    {
+      "id": "magic-object-motion-single",
+      "input": "푸른 유성이 적에게 날아간다",
+      "boundary": "마법 형상의 이동은 플레이어 move가 아니다. 투사체 form 하나로 완결한다.",
+      "expected": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell": {
+          "name": "푸른 유성",
+          "effect": "damage",
+          "target": "enemy",
+          "element_primary": "water",
+          "element_secondary": "light",
+          "form": "bolt",
+          "size": "large",
+          "speed": "fast",
+          "status": [],
+          "power": 72,
+          "cost": 43
+        }
+      }
+    },
+    {
+      "id": "embodied-motion-parallel-plan",
+      "input": "내가 번개가 되어 파고들며 벤다",
+      "boundary": "플레이어 체현 이동과 참격이 동시에 일어나므로 한 sequence의 move+form이다.",
+      "expected": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "뇌광 돌입참",
+          "power": 78,
+          "durationMs": 1700,
+          "sequences": [
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "lightning"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 2,
+                    "range": 1
+                  },
+                  "spec": {
+                    "name": "돌입 참격",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "lightning",
+                    "element_secondary": null,
+                    "form": "slash",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "shock"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "static-image-single",
+      "input": "영원의 빙벽",
+      "boundary": "정적인 방어 이미지 하나는 장식용 형성 단계를 만들지 않고 단일 wall로 유지한다.",
+      "expected": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell": {
+          "name": "영원의 빙벽",
+          "effect": "shield",
+          "target": "self",
+          "element_primary": "ice",
+          "element_secondary": null,
+          "form": "wall",
+          "size": "large",
+          "speed": "normal",
+          "status": [],
+          "power": 68,
+          "cost": 41
+        }
+      }
+    },
+    {
+      "id": "causal-transition-plan",
+      "input": "빙벽이 갈라진 뒤 틈에서 불길이 솟는다",
+      "boundary": "앞 사건이 뒤 사건의 원인이므로 wall 다음 fire form의 순차 plan이다.",
+      "expected": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "빙열 균열",
+          "power": 82,
+          "durationMs": 2200,
+          "sequences": [
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "strength": 1,
+                    "duration": 2
+                  },
+                  "spec": {
+                    "name": "갈라지는 빙벽",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "ice",
+                    "element_secondary": null,
+                    "form": "wall",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 3,
+                  "tuning": {
+                    "damage": 3,
+                    "range": 1
+                  },
+                  "spec": {
+                    "name": "균열의 불길",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "fire",
+                    "element_secondary": null,
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "simultaneous-dual-element-plan",
+      "input": "빛과 어둠이 동시에 교차해 폭발한다",
+      "boundary": "서로 다른 두 원소 사건이 동시에 일어나므로 같은 sequence의 병렬 forms다.",
+      "expected": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "명암 교차폭발",
+          "power": 84,
+          "durationMs": 1900,
+          "sequences": [
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "교차하는 빛",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "beam",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "터지는 어둠",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "weaken"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "sequential-move-then-form-plan",
+      "input": "뒤로 물러선 다음 화염 폭풍을 일으킨다",
+      "boundary": "플레이어 이동이 완료된 뒤 공격하므로 move와 form을 별도 sequence로 나눈다.",
+      "expected": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "후퇴 화염폭풍",
+          "power": 76,
+          "durationMs": 1800,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "away-from-target",
+                  "element": "fire"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 1,
+                    "radius": 3
+                  },
+                  "spec": {
+                    "name": "화염 폭풍",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "fire",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "huge",
+                    "speed": "normal",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "explicit-repeat-with-wait-plan",
+      "input": "대지의 종이 두 번 울린다",
+      "boundary": "명시된 두 박동과 사이 간격을 form, wait-only, form으로 보존한다.",
+      "expected": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "대지의 이중 종",
+          "power": 74,
+          "durationMs": 1900,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "첫 울림",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "earth",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "둘째 울림",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "earth",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "pure-movement-plan",
+      "input": "바람을 딛고 왼쪽과 오른쪽으로 연달아 도약한다",
+      "boundary": "플레이어의 연속 이동 자체가 효과다. form이나 buff를 만들지 않고 move 단계만 사용한다.",
+      "expected": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "바람 디딤",
+          "power": 64,
+          "durationMs": 1600,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "wind",
+                  "angle": -90,
+                  "distance": 150
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "wind",
+                  "angle": 90,
+                  "distance": 150
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "form-encodes-plurality-single",
+      "input": "적들을 잇는 번개 사슬",
+      "boundary": "chain form 자체가 여러 적을 잇는 관계를 표현하므로 plan으로 과분할하지 않는다.",
+      "expected": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell": {
+          "name": "번개 사슬",
+          "effect": "damage",
+          "target": "enemy",
+          "element_primary": "lightning",
+          "element_secondary": null,
+          "form": "chain",
+          "size": "large",
+          "speed": "fast",
+          "status": [
+            "shock"
+          ],
+          "power": 70,
+          "cost": 42
+        }
+      }
+    }
+  ]
+}

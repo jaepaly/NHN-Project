@@ -195,7 +195,13 @@ function normalizeBehaviors(behaviors: readonly SpellBehavior[]): SpellBehavior[
 export const SEQUENCE_FLOW_CONFIG = {
   /** 다음 시퀀스가 발동되는 이전 시퀀스 진행률 (0.7 = 70% 시점) */
   overlapStart: 0.7,
+  /** 순간형 피날레가 끝난 뒤 입력·진행바만 남는 공백의 상한 */
+  instantFinalTailMs: 200,
 } as const;
+
+const SUSTAINED_FINAL_FORMS = new Set<SpellForm>([
+  'beam', 'rain', 'wall', 'cage', 'orbit', 'summon', 'buff', 'zone',
+]);
 
 export interface SequenceFlowTimeline {
   /** 시퀀스 i 발동 후 다음 발동까지 실제로 기다릴 ms */
@@ -210,13 +216,26 @@ function isWaitOnly(sequence: ResolvedSpellSequence): boolean {
   return sequence.behaviors.every((behavior) => behavior.type === 'wait');
 }
 
+function finalSequenceWaitMs(sequence: ResolvedSpellSequence): number {
+  const duration = Math.max(0, sequence.durationMs);
+  if (isWaitOnly(sequence)) return 0;
+  if (sequence.behaviors.some((behavior) => behavior.type === 'move')) return duration;
+  const hasSustainedForm = sequence.behaviors.some((behavior) => (
+    behavior.type === 'form' && SUSTAINED_FINAL_FORMS.has(behavior.spec.form)
+  ));
+  return hasSustainedForm
+    ? duration
+    : Math.min(duration, SEQUENCE_FLOW_CONFIG.instantFinalTailMs);
+}
+
 export function sequenceFlowTimeline(
   sequences: readonly ResolvedSpellSequence[],
 ): SequenceFlowTimeline {
   const waitsMs = sequences.map((sequence, index) => {
     const duration = Math.max(0, sequence.durationMs);
     const isLast = index === sequences.length - 1;
-    if (isLast || isWaitOnly(sequence)) return duration;
+    if (isLast) return finalSequenceWaitMs(sequence);
+    if (isWaitOnly(sequence)) return duration;
     return duration * SEQUENCE_FLOW_CONFIG.overlapStart;
   });
   const totalMs = waitsMs.reduce((sum, ms) => sum + ms, 0);
@@ -283,6 +302,13 @@ export function resolveSpellPlan(plan: SpellPlan): ResolvedSpellPlan {
       sequence.durationWeight === 0
       && sequence.behaviors.every((behavior) => behavior.type === 'wait')
     ));
+  // wait은 사건 사이의 간격이다. 뒤따르는 사건이 없는 trailing wait은 의미가 없고
+  // 진행바·무적·다음 입력만 늦추므로 입력 출처와 무관하게 로컬에서 제거한다.
+  while (sequences.length > 0 && sequences.at(-1)!.behaviors.every(
+    (behavior) => behavior.type === 'wait',
+  )) {
+    sequences.pop();
+  }
 
   const totalDurationWeight = sequences.reduce(
     (sum, sequence) => sum + sequence.durationWeight,

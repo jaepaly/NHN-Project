@@ -1,0 +1,746 @@
+{
+  "workerUrl": "https://incant-judge-proxy.incant-judge-proxy.workers.dev",
+  "generatedAt": "2026-07-30T12:04:01.072Z",
+  "results": [
+    {
+      "index": 1,
+      "key": "heldout-01",
+      "input": "파이어볼",
+      "intent": "닫힌 단일 투사체는 1 sequence·1 form 원자 plan으로 즉시 발동한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "파이어볼",
+          "power": 45,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "파이어볼",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "fire",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1607
+    },
+    {
+      "index": 2,
+      "key": "heldout-02",
+      "input": "나를 지켜줘",
+      "intent": "닫힌 보호 목적은 1 sequence·1 shield form 원자 plan이며 공격을 창작하지 않는다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "수호의 가호",
+          "power": 45,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "duration": 2,
+                    "strength": 2
+                  },
+                  "spec": {
+                    "name": "결계 장벽",
+                    "effect": "shield",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "buff",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1435
+    },
+    {
+      "index": 3,
+      "key": "heldout-03",
+      "input": "단 한 발의 얼음창",
+      "intent": "명시적 단발은 wait·반복 없이 1 sequence·1 form 원자 plan이다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "단발 얼음창",
+          "power": 40,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "얼음창",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "water",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "freeze"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 2025
+    },
+    {
+      "index": 4,
+      "key": "heldout-04",
+      "input": "영원의 방패",
+      "intent": "정적이고 닫힌 방어 이미지는 장식 단계를 붙이지 않은 원자 plan이다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "영원의 방패",
+          "power": 50,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "영원의 방패",
+                    "effect": "shield",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "wall",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1422
+    },
+    {
+      "index": 5,
+      "key": "heldout-05",
+      "input": "황혼이 갈라진다",
+      "intent": "황혼의 대비와 갈라짐을 원자 효과로 축약하지 않고 형성·분열 또는 빛·어둠 관계로 펼친다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "황혼의 분할",
+          "power": 82,
+          "durationMs": 1200,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "damage": 2,
+                    "range": 2
+                  },
+                  "spec": {
+                    "name": "빛의 갈래",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "beam",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "tuning": {
+                    "damage": 2,
+                    "range": 2
+                  },
+                  "spec": {
+                    "name": "어둠의 갈래",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "beam",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "weaken"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1559
+    },
+    {
+      "index": 6,
+      "key": "heldout-06",
+      "input": "천공의 장례",
+      "intent": "장엄한 과정과 결말을 입력 이미지에 근거한 복수 사건으로 구성한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "천공의 장례",
+          "power": 85,
+          "durationMs": 1200,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "별들의 낙하",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "rain",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "blind"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 3,
+                    "radius": 2
+                  },
+                  "spec": {
+                    "name": "천공의 종말",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "slow"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1732
+    },
+    {
+      "index": 7,
+      "key": "heldout-07",
+      "input": "심연의 개화",
+      "intent": "개화의 전개·확장을 단일 정적 효과보다 복합 사건으로 우선 검토한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "심연의 개화",
+          "power": 82,
+          "durationMs": 1200,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "심연의 봉인",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "cage",
+                    "size": "large",
+                    "speed": "slow",
+                    "status": [
+                      "stun"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 2,
+                    "radius": 2
+                  },
+                  "spec": {
+                    "name": "어둠의 개화",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "weaken"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1760
+    },
+    {
+      "index": 8,
+      "key": "heldout-08",
+      "input": "우주의 심장박동",
+      "intent": "박동의 반복 가능성을 실제 복수 form 또는 리듬으로 표현한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "우주의 심장박동",
+          "power": 85,
+          "durationMs": 1900,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "첫 번째 박동",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 2,
+                    "radius": 2
+                  },
+                  "spec": {
+                    "name": "대폭발",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "nova",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1740
+    },
+    {
+      "index": 9,
+      "key": "heldout-09",
+      "input": "불멸의 행진",
+      "intent": "행진의 이동 과정과 유효 form을 포함하며 원자 buff로 축약하지 않는다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "불멸의 행진",
+          "power": 74,
+          "durationMs": 800,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "target-direction",
+                  "element": "fire"
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "range": 2,
+                    "duration": 1
+                  },
+                  "spec": {
+                    "name": "불멸의 발걸음",
+                    "effect": "shield",
+                    "target": "self",
+                    "element_primary": "fire",
+                    "element_secondary": "earth",
+                    "form": "buff",
+                    "size": "large",
+                    "speed": "slow",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1479
+    },
+    {
+      "index": 10,
+      "key": "heldout-10",
+      "input": "달의 선회",
+      "intent": "player 체현이 자연스러우면 두 방향 이상의 순환 move와 유효 form을 구성한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "달의 선회",
+          "power": 68,
+          "durationMs": 900,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "light",
+                  "angle": 0,
+                  "distance": 180
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "초승달의 궤적",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "orbit",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "move",
+                  "destination": "custom-vector",
+                  "element": "light",
+                  "angle": 180,
+                  "distance": 180
+                },
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "보름달의 회귀",
+                    "effect": "control",
+                    "target": "area",
+                    "element_primary": "light",
+                    "element_secondary": "dark",
+                    "form": "orbit",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1684
+    },
+    {
+      "index": 11,
+      "key": "heldout-11",
+      "input": "별을 삼킨 파도",
+      "intent": "포식·파도 이미지가 허용하는 전개나 변화가 있으면 적극적으로 복합화하되 player move는 만들지 않는다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "성식의 파도",
+          "power": 85,
+          "durationMs": 1200,
+          "sequences": [
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 2,
+                    "radius": 2
+                  },
+                  "spec": {
+                    "name": "별을 삼킨 파도",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "water",
+                    "element_secondary": "light",
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "blind"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1372
+    },
+    {
+      "index": 12,
+      "key": "heldout-12",
+      "input": "새벽의 방패",
+      "intent": "방패만으로 닫히면 원자 plan을 유지하고 새벽이라는 이유만으로 공격·이동을 창작하지 않는다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "새벽의 방패",
+          "power": 65,
+          "durationMs": 80,
+          "sequences": [
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "새벽의 방패",
+                    "effect": "shield",
+                    "target": "self",
+                    "element_primary": "light",
+                    "element_secondary": null,
+                    "form": "wall",
+                    "size": "medium",
+                    "speed": "normal",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1519
+    }
+  ]
+}

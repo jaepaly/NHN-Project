@@ -1,0 +1,839 @@
+{
+  "workerUrl": "https://incant-judge-proxy.incant-judge-proxy.workers.dev",
+  "generatedAt": "2026-07-30T11:30:16.290Z",
+  "results": [
+    {
+      "index": 1,
+      "key": "heldout-01",
+      "input": "불씨 화살 연사",
+      "intent": "불씨 화살이 짧은 간격을 두고 2~3발 연속 발사된다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "불씨 화살 연사",
+          "power": 72,
+          "durationMs": 1350,
+          "sequences": [
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "첫 불씨 화살",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "fire",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "둘째 불씨 화살",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "fire",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "셋째 불씨 화살",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "fire",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "burn"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 2028
+    },
+    {
+      "index": 2,
+      "key": "heldout-02",
+      "input": "얼음 송곳을 세 발 연속으로 쏜다",
+      "intent": "얼음 송곳 form 세 개가 두 번의 짧은 wait을 사이에 두고 발사된다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "얼음 삼연발",
+          "power": 74,
+          "durationMs": 1400,
+          "sequences": [
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "첫 번째 얼음 송곳",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "ice",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "freeze"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "두 번째 얼음 송곳",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "ice",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "freeze"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "세 번째 얼음 송곳",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "ice",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "freeze"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 2275
+    },
+    {
+      "index": 3,
+      "key": "heldout-03",
+      "input": "천둥 창을 잇달아 꽂는다",
+      "intent": "천둥 창이 짧은 간격으로 잇달아 적에게 꽂힌다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "천둥 창 연사",
+          "power": 74,
+          "durationMs": 1350,
+          "sequences": [
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "첫 번째 천둥 창",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "lightning",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "shock"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "두 번째 천둥 창",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "lightning",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "shock"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "세 번째 천둥 창",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "lightning",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "shock"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1638
+    },
+    {
+      "index": 4,
+      "key": "heldout-04",
+      "input": "작은 물방울을 두 번 쏘고 마지막에 파도를 터뜨린다",
+      "intent": "작은 물방울 두 발이 시간차로 나가고 마지막 파도 form이 피날레로 터진다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "수류와 파도",
+          "power": 76,
+          "durationMs": 1600,
+          "sequences": [
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "첫 물방울",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "water",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "둘째 물방울",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "water",
+                    "element_secondary": null,
+                    "form": "bolt",
+                    "size": "small",
+                    "speed": "fast",
+                    "status": [],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 3,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 2,
+                  "tuning": {
+                    "damage": 2,
+                    "radius": 2
+                  },
+                  "spec": {
+                    "name": "파도 폭발",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "water",
+                    "element_secondary": null,
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "knockback"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1685
+    },
+    {
+      "index": 5,
+      "key": "heldout-05",
+      "input": "어둠의 칼날을 속사한다",
+      "intent": "어둠 칼날이 빠른 간격을 두고 2~3회 연속 발생한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "어둠의 칼날 속사",
+          "power": 74,
+          "durationMs": 1350,
+          "sequences": [
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "첫 번째 칼날",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "slash",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "weaken"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "두 번째 칼날",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "slash",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "weaken"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "세 번째 칼날",
+                    "effect": "damage",
+                    "target": "enemy",
+                    "element_primary": "dark",
+                    "element_secondary": null,
+                    "form": "slash",
+                    "size": "medium",
+                    "speed": "fast",
+                    "status": [
+                      "weaken"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1737
+    },
+    {
+      "index": 6,
+      "key": "heldout-06",
+      "input": "대지 충격파를 두 차례 연발한다",
+      "intent": "대지 충격파 form 두 개가 짧은 wait 하나를 사이에 두고 발생한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell_plan": {
+          "name": "대지 이중 충격파",
+          "power": 75,
+          "durationMs": 1800,
+          "sequences": [
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "첫 번째 충격파",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "earth",
+                    "element_secondary": null,
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "knockback"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            },
+            {
+              "durationWeight": 1,
+              "behaviors": [
+                {
+                  "type": "wait"
+                }
+              ]
+            },
+            {
+              "durationWeight": 2,
+              "behaviors": [
+                {
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "두 번째 충격파",
+                    "effect": "damage",
+                    "target": "area",
+                    "element_primary": "earth",
+                    "element_secondary": null,
+                    "form": "wave",
+                    "size": "large",
+                    "speed": "fast",
+                    "status": [
+                      "knockback"
+                    ],
+                    "power": 0,
+                    "cost": 0
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1905
+    },
+    {
+      "index": 7,
+      "key": "heldout-07",
+      "input": "불꽃 창을 한꺼번에 쏟아붓는다",
+      "intent": "시간차 연사가 아니라 동시에 쏟아지는 병렬 화염창 또는 밀집 rain이다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell": {
+          "name": "불꽃 창 세례",
+          "effect": "damage",
+          "target": "enemy",
+          "element_primary": "fire",
+          "element_secondary": null,
+          "form": "rain",
+          "size": "large",
+          "speed": "fast",
+          "status": [
+            "burn"
+          ],
+          "power": 75,
+          "cost": 45
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1148
+    },
+    {
+      "index": 8,
+      "key": "heldout-08",
+      "input": "서리 포대 일제사격",
+      "intent": "서리 포대가 동시에 발사되며 발사 사이 wait을 만들지 않는다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell": {
+          "name": "서리 포대 일제사격",
+          "effect": "damage",
+          "target": "enemy",
+          "element_primary": "ice",
+          "element_secondary": null,
+          "form": "rain",
+          "size": "large",
+          "speed": "fast",
+          "status": [
+            "freeze"
+          ],
+          "power": 76,
+          "cost": 45
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1223
+    },
+    {
+      "index": 9,
+      "key": "heldout-09",
+      "input": "태양 광선을 계속 유지한다",
+      "intent": "여러 광선을 쏘는 것이 아니라 하나의 지속 beam을 유지한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell": {
+          "name": "태양 광선",
+          "effect": "damage",
+          "target": "enemy",
+          "element_primary": "light",
+          "element_secondary": null,
+          "form": "beam",
+          "size": "large",
+          "speed": "fast",
+          "status": [],
+          "power": 68,
+          "cost": 41
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1217
+    },
+    {
+      "index": 10,
+      "key": "heldout-10",
+      "input": "독안개 장판을 오래 유지한다",
+      "intent": "독안개 zone 하나가 오래 지속되며 반복 form이나 wait을 만들지 않는다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell": {
+          "name": "독안개 장판",
+          "effect": "control",
+          "target": "area",
+          "element_primary": "dark",
+          "element_secondary": "wind",
+          "form": "zone",
+          "size": "large",
+          "speed": "slow",
+          "status": [
+            "slow",
+            "weaken"
+          ],
+          "power": 55,
+          "cost": 33,
+          "flavor": "오랫동안 대지를 뒤덮는 독기의 장막"
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1385
+    },
+    {
+      "index": 11,
+      "key": "heldout-11",
+      "input": "유성 소나기가 전장을 덮는다",
+      "intent": "개별 유성을 시간차 form으로 늘어놓지 않고 하나의 밀집 rain으로 표현한다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell": {
+          "name": "유성 소나기",
+          "effect": "damage",
+          "target": "area",
+          "element_primary": "fire",
+          "element_secondary": "earth",
+          "form": "rain",
+          "size": "huge",
+          "speed": "fast",
+          "status": [
+            "burn",
+            "knockback"
+          ],
+          "power": 82,
+          "cost": 51,
+          "flavor": "타오르는 유성들이 하늘에서 쏟아져 내려 전장을 휩쓴다"
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1629
+    },
+    {
+      "index": 12,
+      "key": "heldout-12",
+      "input": "단 한 발의 바람 화살",
+      "intent": "바람 화살 한 발의 단일 spell로 끝난다.",
+      "schemaFocus": [
+        "held-out",
+        "candidate-17"
+      ],
+      "expected": null,
+      "actual": {
+        "schema_version": 2,
+        "disposition": "cast",
+        "spell": {
+          "name": "바람 화살",
+          "effect": "damage",
+          "target": "enemy",
+          "element_primary": "wind",
+          "element_secondary": null,
+          "form": "bolt",
+          "size": "medium",
+          "speed": "fast",
+          "status": [],
+          "power": 45,
+          "cost": 27,
+          "flavor": "단 한 발로 적을 꿰뚫는 바람의 화살"
+        }
+      },
+      "status": 200,
+      "elapsedMs": 1479
+    }
+  ]
+}

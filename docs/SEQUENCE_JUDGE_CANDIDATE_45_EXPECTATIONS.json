@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Sealed candidate-45 expectations for offensive weak priority, movement-effect preservation, meaningful multi-element composition, and mono-element controls.",
+  "sealedAt": "2026-07-30",
+  "globalHardRules": {
+    "maxSequences": 10,
+    "maxBehaviorsPerSequence": 5,
+    "behaviorTypes": ["form", "move", "wait"],
+    "waitMustBeAlone": true,
+    "moveRequiresElement": true,
+    "specPowerMustBeZero": true,
+    "specCostMustBeZero": true
+  },
+  "cases": [
+    {
+      "id": 1, "input": "왕좌를 잃은 번개", "source": "candidate-45-sealed", "category": "offensive-abstract",
+      "legacyStatus": "new", "recommendation": {"mode": "either", "confidence": "high"},
+      "anchors": {"requiredElements": ["lightning"], "requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["damage"], "forbiddenEffects": ["heal", "shield", "buff", "summon"]},
+      "relations": {"required": [], "optional": ["repetition", "transition"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 4], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "통제를 잃은 번개의 난폭함이 피해 사건으로 드러나며 평범한 utility로 축약되지 않는다.", "legacyIssue": null
+    },
+    {
+      "id": 2, "input": "붉은 달이 이빨을 드러낸다", "source": "candidate-45-sealed", "category": "offensive-abstract",
+      "legacyStatus": "new", "recommendation": {"mode": "either", "confidence": "high"},
+      "anchors": {"requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["damage"], "forbiddenEffects": ["heal", "shield", "buff", "summon"]},
+      "relations": {"required": [], "optional": ["transition"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 4], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "달 형상의 적대성과 이빨 이미지가 공격으로 번역되며 player move를 만들지 않는다.", "legacyIssue": null
+    },
+    {
+      "id": 3, "input": "폭풍이 왕관을 부순다", "source": "candidate-45-sealed", "category": "offensive-abstract",
+      "legacyStatus": "new", "recommendation": {"mode": "either", "confidence": "high"},
+      "anchors": {"requiredElements": ["wind"], "requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["damage"], "forbiddenEffects": ["heal", "shield", "buff", "summon"]},
+      "relations": {"required": [], "optional": ["finale"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 4], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "폭풍의 파괴 행위가 직접 피해와 충격으로 보이며 단순 둔화로 끝나지 않는다.", "legacyIssue": null
+    },
+    {
+      "id": 4, "input": "침묵이 칼날이 되어 떨어진다", "source": "candidate-45-sealed", "category": "offensive-abstract",
+      "legacyStatus": "new", "recommendation": {"mode": "either", "confidence": "high"},
+      "anchors": {"requiredBehaviorTypes": ["form"], "allowedFormsAnyOf": ["slash", "rain", "wave", "bolt"], "allowedEffectsAnyOf": ["damage"], "forbiddenEffects": ["heal", "shield", "buff", "summon"]},
+      "relations": {"required": [], "optional": ["transition"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 4], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "침묵이 칼날로 변해 낙하하는 공격이며 정적 control 하나로 축약되지 않는다.", "legacyIssue": null
+    },
+    {
+      "id": 5, "input": "찰나의 전이", "source": "candidate-45-sealed", "category": "ambiguous-offensive-move",
+      "legacyStatus": "reference-only", "recommendation": {"mode": "sequence_required", "confidence": "medium"},
+      "anchors": {"requiredElements": ["light"], "requiredBehaviorTypes": ["move", "form"], "allowedEffectsAnyOf": ["damage", "control"], "forbiddenEffects": ["heal", "summon"]},
+      "relations": {"required": ["movement"], "optional": ["parallel"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "preferredDurationMsRange": [80, 350], "minimumMoveCount": 1},
+      "visualIntent": "목적이 없는 순간 전이는 빠른 이동과 공격적 form을 결합하고 방어 buff 하나로 끝나지 않는다.", "legacyIssue": null
+    },
+    {
+      "id": 6, "input": "빛보다 먼저 도착한다", "source": "candidate-45-sealed", "category": "ambiguous-offensive-move",
+      "legacyStatus": "reference-only", "recommendation": {"mode": "sequence_required", "confidence": "medium"},
+      "anchors": {"requiredElements": ["light"], "requiredBehaviorTypes": ["move", "form"], "allowedEffectsAnyOf": ["damage", "control"], "forbiddenEffects": ["heal", "summon"]},
+      "relations": {"required": ["movement"], "optional": ["parallel"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "preferredDurationMsRange": [80, 350], "minimumMoveCount": 1},
+      "visualIntent": "초고속 선제 이동과 공격적 결과가 함께 보이며 정적 buff로 축약되지 않는다.", "legacyIssue": null
+    },
+    {
+      "id": 7, "input": "시간을 베어 한 걸음 앞선다", "source": "candidate-45-sealed", "category": "ambiguous-offensive-move",
+      "legacyStatus": "new", "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {"requiredBehaviorTypes": ["move", "form"], "allowedFormsAnyOf": ["slash", "wave"], "allowedEffectsAnyOf": ["damage"], "forbiddenEffects": ["heal", "shield", "summon"]},
+      "relations": {"required": ["movement"], "optional": ["parallel", "order"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": false, "requiresFinale": false, "preferredDurationMsRange": [100, 600], "minimumMoveCount": 1},
+      "visualIntent": "시간 절단과 위치 우위가 참격·이동 사건으로 함께 보인다.", "legacyIssue": null
+    },
+    {
+      "id": 8, "input": "밤을 가르고 한 걸음 앞선다", "source": "candidate-45-sealed", "category": "ambiguous-offensive-move",
+      "legacyStatus": "new", "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {"requiredElements": ["dark"], "requiredBehaviorTypes": ["move", "form"], "allowedFormsAnyOf": ["slash", "wave"], "allowedEffectsAnyOf": ["damage"], "forbiddenEffects": ["heal", "shield", "summon"]},
+      "relations": {"required": ["movement"], "optional": ["parallel", "order"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": false, "requiresFinale": false, "preferredDurationMsRange": [100, 700], "minimumMoveCount": 1},
+      "visualIntent": "밤을 가르는 공격 궤적과 한 걸음의 위치 변화가 결합된다.", "legacyIssue": null
+    },
+    {
+      "id": 9, "input": "다시 일어설 빛", "source": "candidate-45-sealed", "category": "non-offensive-control",
+      "legacyStatus": "reference-only", "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {"requiredElements": ["light"], "requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["heal"], "forbiddenEffects": ["damage", "summon"]},
+      "relations": {"required": [], "optional": ["persistence"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "회복 의도를 유지하고 공격성 조정 때문에 damage로 바뀌지 않는다.", "legacyIssue": null
+    },
+    {
+      "id": 10, "input": "빛의 틈으로 몸을 피한다", "source": "candidate-45-sealed", "category": "non-offensive-control",
+      "legacyStatus": "reference-only", "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {"requiredElements": ["light"], "requiredBehaviorTypes": ["move", "form"], "allowedEffectsAnyOf": ["shield", "buff"], "forbiddenEffects": ["damage", "heal", "summon"]},
+      "relations": {"required": ["movement"], "optional": ["parallel"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "minimumMoveCount": 1},
+      "visualIntent": "명시적 회피 이동은 보호 효용을 유지하고 damage를 억지로 추가하지 않는다.", "legacyIssue": null
+    },
+    {
+      "id": 11, "input": "그들의 시간만 멈춘다", "source": "candidate-45-sealed", "category": "non-offensive-control",
+      "legacyStatus": "reference-only", "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {"requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["control"], "forbiddenEffects": ["damage", "heal", "shield", "buff", "summon"]},
+      "relations": {"required": [], "optional": ["persistence"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "적만 멈추는 제어를 보존하고 공격 주문으로 바꾸지 않는다.", "legacyIssue": null
+    },
+    {
+      "id": 12, "input": "죽은 숲이 발목을 붙든다", "source": "candidate-45-sealed", "category": "non-offensive-control",
+      "legacyStatus": "new", "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {"requiredElements": ["earth"], "requiredBehaviorTypes": ["form"], "allowedFormsAnyOf": ["cage", "wall", "chain", "zone"], "allowedEffectsAnyOf": ["control"], "forbiddenEffects": ["damage", "heal", "shield", "buff", "summon"]},
+      "relations": {"required": [], "optional": ["persistence"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "숲 형상의 속박 제어를 유지하고 player move나 damage를 추가하지 않는다.", "legacyIssue": null
+    },
+    {
+      "id": 13, "input": "불사조의 낙화", "source": "candidate-45-sealed", "category": "meaningful-multi-element",
+      "legacyStatus": "reference-only", "recommendation": {"mode": "sequence_preferred", "confidence": "medium"},
+      "anchors": {"requiredElements": ["fire", "wind"], "minimumDistinctElements": 2, "requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["damage"], "forbiddenEffects": ["heal", "shield", "buff"]},
+      "relations": {"required": [], "optional": ["order", "transition", "finale"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 4], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "불사조의 fire 정체성과 비행·날개의 wind 역할이 실제 form 원소로 함께 드러난다.", "legacyIssue": null
+    },
+    {
+      "id": 14, "input": "천둥새의 비행", "source": "candidate-45-sealed", "category": "meaningful-multi-element",
+      "legacyStatus": "reference-only", "recommendation": {"mode": "sequence_preferred", "confidence": "medium"},
+      "anchors": {"requiredElements": ["lightning", "wind"], "minimumDistinctElements": 2, "requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["damage", "control"], "forbiddenEffects": ["heal", "shield", "buff"]},
+      "relations": {"required": [], "optional": ["order", "transition"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 4], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "천둥의 lightning 정체성과 새의 비행을 이루는 wind가 player move 없이 함께 보인다.", "legacyIssue": null
+    },
+    {
+      "id": 15, "input": "재가 춤추고 불꽃이 답한다", "source": "candidate-45-sealed", "category": "meaningful-multi-element",
+      "legacyStatus": "new", "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {"requiredElements": ["fire"], "minimumDistinctElements": 2, "requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["damage", "control"], "forbiddenEffects": ["heal", "shield", "buff", "summon"]},
+      "relations": {"required": ["order"], "optional": ["transition", "finale"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [2, 4], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "재의 earth 또는 dark 사건과 fire 응답이 서로 다른 원소·역할의 순차 장면으로 보인다.", "legacyIssue": null
+    },
+    {
+      "id": 16, "input": "일식의 왈츠", "source": "candidate-45-sealed", "category": "meaningful-multi-element",
+      "legacyStatus": "reference-only", "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {"requiredElements": ["light", "dark"], "minimumDistinctElements": 2, "requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["damage", "control", "buff"], "forbiddenEffects": ["heal", "shield", "summon"]},
+      "relations": {"required": ["transition"], "optional": ["parallel", "order", "movement"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 4], "requiresParallel": false, "requiresFinale": false},
+      "visualIntent": "빛과 어둠이 교대·교차하며 각 원소가 별도 사건 역할을 가진다.", "legacyIssue": null
+    },
+    {
+      "id": 17, "input": "끝나지 않는 겨울", "source": "candidate-45-sealed", "category": "mono-element-control",
+      "legacyStatus": "reference-only", "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {"requiredElements": ["ice"], "requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["control", "damage"], "forbiddenEffects": ["heal", "shield", "buff", "summon"]},
+      "relations": {"required": [], "optional": ["persistence"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "지속 냉기 이미지는 ice 하나로 완결하며 의미 없는 보조 원소를 추가하지 않는다.", "legacyIssue": null
+    },
+    {
+      "id": 18, "input": "번개 사슬", "source": "candidate-45-sealed", "category": "mono-element-control",
+      "legacyStatus": "new", "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {"requiredElements": ["lightning"], "requiredBehaviorTypes": ["form"], "allowedFormsAnyOf": ["chain"], "allowedEffectsAnyOf": ["damage", "control"], "forbiddenEffects": ["heal", "shield", "buff", "summon"]},
+      "relations": {"required": [], "optional": ["repetition"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "명시적 번개 사슬은 lightning 단일 원소의 chain으로 간결하게 유지한다.", "legacyIssue": null
+    }
+  ]
+}

@@ -1,0 +1,412 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Sealed 20-case held-out expectations for candidate 17. Written before collecting any candidate 17 responses.",
+  "sealedAt": "2026-07-30",
+  "designPrinciples": [
+    "Prefer poetic, implicit, exaggerated, skill-name-like player inputs over explicit procedural commands.",
+    "Cover heal, shield, buff, control, summon, movement, movement plus attack, and overwhelming single effects.",
+    "Prefer a grounded multi-event composition when formation, development, transformation, or finale are naturally implied.",
+    "Do not invent unrelated damage, healing, movement, or resource effects merely to increase sequence count."
+  ],
+  "globalHardRules": {
+    "maxSequences": 10,
+    "maxBehaviorsPerSequence": 5,
+    "behaviorTypes": ["form", "move", "wait"],
+    "waitMustBeAlone": true,
+    "moveRequiresElement": true,
+    "specPowerMustBeZero": true,
+    "specCostMustBeZero": true,
+    "forbidUnsupportedResourceEffects": true,
+    "forbidDecorativeMove": true,
+    "forbidInventedEnums": true
+  },
+  "cases": [
+    {
+      "id": 1,
+      "input": "다시 일어설 빛",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["light"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["buff", "zone", "nova"],
+        "allowedEffectsAnyOf": ["heal"],
+        "forbiddenEffects": ["damage", "summon"]
+      },
+      "relations": {"required": [], "optional": ["persistence"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "쓰러질 위기에서 다시 일어설 수 있게 밝은 회복의 빛이 몸을 감싼다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 2,
+      "input": "부서져도 다시 피는 심장",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_preferred", "confidence": "medium"},
+      "anchors": {
+        "requiredElements": [],
+        "optionalElements": ["fire", "light", "water"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["buff", "nova", "zone"],
+        "allowedEffectsAnyOf": ["heal", "buff"],
+        "forbiddenEffects": ["summon"]
+      },
+      "relations": {"required": ["transition"], "optional": ["order", "finale", "persistence"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [2, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "부서짐 뒤 심장이 다시 피어나며 생명력을 되찾는 재생과 전환이 보인다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 3,
+      "input": "오늘은 어떤 칼날도 닿지 않는다",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {
+        "requiredElements": [],
+        "optionalElements": ["light", "earth", "ice", "wind"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["buff", "wall", "zone"],
+        "allowedEffectsAnyOf": ["shield"],
+        "forbiddenEffects": ["damage", "heal", "summon"]
+      },
+      "relations": {"required": ["persistence"], "optional": [], "forbidden": ["movement", "finale"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "공격을 허용하지 않는 지속적인 방어막이나 방어 영역이 완결된 마법으로 보인다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 4,
+      "input": "깨지지 않는 겨울의 품",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "either", "confidence": "medium"},
+      "anchors": {
+        "requiredElements": ["ice"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["buff", "wall", "zone", "cage"],
+        "allowedEffectsAnyOf": ["shield", "control"],
+        "forbiddenEffects": ["heal", "summon"]
+      },
+      "relations": {"required": ["persistence"], "optional": ["parallel"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "겨울이 보호하듯 감싸거나 침입자를 얼려 멈추는 견고하고 지속적인 공간이다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 5,
+      "input": "피가 끓어오른다",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["fire"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["buff", "zone", "nova"],
+        "allowedEffectsAnyOf": ["buff"],
+        "forbiddenEffects": ["heal", "shield", "summon"]
+      },
+      "relations": {"required": ["persistence"], "optional": ["accumulation"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "몸 안의 열과 힘이 끓어올라 시전자를 강화하는 자기 강화 영창이다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 6,
+      "input": "그들의 시간만 멈춘다",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {
+        "requiredElements": [],
+        "optionalElements": ["light", "dark", "ice"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["zone", "cage", "buff", "nova"],
+        "allowedEffectsAnyOf": ["control"],
+        "forbiddenEffects": ["heal", "shield", "summon"]
+      },
+      "relations": {"required": ["persistence"], "optional": [], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "시전자가 아니라 적들의 시간과 행동만 정지시키는 명확한 제어 효과다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 7,
+      "input": "그림자가 발목을 기억한다",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_preferred", "confidence": "medium"},
+      "anchors": {
+        "requiredElements": ["dark"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["chain", "cage", "zone", "bolt"],
+        "allowedEffectsAnyOf": ["control"],
+        "forbiddenEffects": ["heal", "shield", "summon"]
+      },
+      "relations": {"required": ["causality"], "optional": ["order", "persistence"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "그림자가 대상을 찾아 발목에 달라붙고 기억하듯 계속 붙잡는다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 8,
+      "input": "숨조차 얼어붙는 밤",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "either", "confidence": "medium"},
+      "anchors": {
+        "requiredElements": ["ice"],
+        "optionalElements": ["dark"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["zone", "rain", "cage", "nova"],
+        "allowedEffectsAnyOf": ["control", "damage"],
+        "forbiddenEffects": ["heal", "buff", "summon"]
+      },
+      "relations": {"required": ["persistence"], "optional": ["accumulation"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "밤 전체가 얼어붙어 숨과 움직임을 빼앗는 광역 냉기 제어 장면이다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 9,
+      "input": "잿더미에서 그가 돌아온다",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_preferred", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["fire"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["summon", "nova", "rain", "wave"],
+        "allowedEffectsAnyOf": ["summon", "damage"],
+        "forbiddenEffects": ["heal", "shield"]
+      },
+      "relations": {"required": ["transition"], "optional": ["order", "finale"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [2, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "잿더미가 모여 불의 존재가 되살아나며, 등장과 귀환이 별개의 사건으로 읽힌다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 10,
+      "input": "심해가 눈을 뜬다",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_preferred", "confidence": "medium"},
+      "anchors": {
+        "requiredElements": ["water"],
+        "optionalElements": ["dark"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["summon", "zone", "wave", "cage"],
+        "allowedEffectsAnyOf": ["summon", "control", "damage"],
+        "forbiddenEffects": ["heal", "shield", "buff"]
+      },
+      "relations": {"required": ["transition"], "optional": ["order", "finale", "persistence"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "어두운 심해 공간이 형성되고 거대한 존재나 눈이 깨어나 전장을 압박한다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 11,
+      "input": "별빛 늑대의 사냥",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_preferred", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["light"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["summon", "orbit", "chain", "bolt"],
+        "allowedEffectsAnyOf": ["summon", "damage", "control"],
+        "forbiddenEffects": ["heal", "shield", "buff"]
+      },
+      "relations": {"required": ["causality"], "optional": ["order", "finale"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [2, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "별빛 늑대가 나타나 표적을 추적하고 공격하는 소환과 행동의 연결이 보인다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 12,
+      "input": "빛보다 먼저 도착한다",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["light"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move"],
+        "allowedFormsAnyOf": [],
+        "forbiddenEffects": ["damage", "heal", "shield", "buff", "control", "summon"]
+      },
+      "relations": {"required": ["movement"], "optional": [], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 1], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [0, 300], "minimumMoveCount": 1},
+      "visualIntent": "목표 지점에 빛보다 빠르게 도착하는 순간 이동 또는 극고속 이동이다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 13,
+      "input": "천둥을 밟고 달린다",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["lightning"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move"],
+        "allowedFormsAnyOf": [],
+        "forbiddenEffects": ["heal", "shield", "buff", "summon"]
+      },
+      "relations": {"required": ["movement"], "optional": ["repetition"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [150, 600], "minimumMoveCount": 1},
+      "visualIntent": "천둥을 디딤돌처럼 밟으며 매우 빠르게 연속 질주한다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 14,
+      "input": "바람이 나를 데려간다",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["wind"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move"],
+        "allowedFormsAnyOf": [],
+        "forbiddenEffects": ["damage", "heal", "shield", "buff", "control", "summon"]
+      },
+      "relations": {"required": ["movement"], "optional": [], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [400, 1000], "minimumMoveCount": 1},
+      "visualIntent": "바람에 실려 자연스럽고 보통 속도로 위치를 옮긴다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 15,
+      "input": "달 위를 걷는 것처럼",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "medium"},
+      "anchors": {
+        "requiredElements": ["light"],
+        "optionalElements": ["wind"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move"],
+        "allowedFormsAnyOf": [],
+        "forbiddenEffects": ["damage", "heal", "shield", "buff", "control", "summon"]
+      },
+      "relations": {"required": ["movement"], "optional": ["repetition"], "forbidden": []},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [800, 1800], "minimumMoveCount": 1},
+      "visualIntent": "낮은 중력처럼 느리고 부드럽게 허공을 걷거나 부유 이동한다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 16,
+      "input": "번개가 되어 적진을 꿰뚫는다",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["lightning"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move", "form"],
+        "allowedFormsAnyOf": ["beam", "slash", "bolt", "wave"],
+        "allowedEffectsAnyOf": ["damage"],
+        "forbiddenEffects": ["heal", "shield", "buff", "summon"],
+        "allowedSpeedsAnyOf": ["fast"]
+      },
+      "relations": {"required": ["parallel", "movement"], "optional": ["finale"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": true, "minimumParallelBehaviors": 2, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [150, 700], "minimumMoveCount": 1},
+      "visualIntent": "시전자가 번개가 되어 고속 이동과 관통 공격을 같은 순간에 수행한다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 17,
+      "input": "베어낸 자리엔 나만 없다",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "medium"},
+      "anchors": {
+        "requiredElements": [],
+        "optionalElements": ["wind", "dark", "light"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["move", "form"],
+        "allowedFormsAnyOf": ["slash"],
+        "allowedEffectsAnyOf": ["damage"],
+        "forbiddenEffects": ["heal", "shield", "buff", "summon"],
+        "allowedSpeedsAnyOf": ["fast"]
+      },
+      "relations": {"required": ["order", "movement"], "optional": ["finale"], "forbidden": ["delay"]},
+      "structure": {"sequenceRangeIfPlan": [2, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": false, "preferredDurationMsRange": [250, 900], "minimumMoveCount": 1},
+      "visualIntent": "빠르게 베어낸 뒤 이미 다른 위치로 사라져 있는 일격 이탈 장면이다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 18,
+      "input": "태양을 삼킨 불꽃",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "single_preferred", "confidence": "medium"},
+      "anchors": {
+        "requiredElements": ["fire"],
+        "optionalElements": ["dark", "light"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["nova", "zone", "wave", "orbit"],
+        "allowedEffectsAnyOf": ["damage"],
+        "forbiddenEffects": ["heal", "shield", "buff", "summon"]
+      },
+      "relations": {"required": [], "optional": ["accumulation", "persistence"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "태양을 삼킨 듯 거대하고 압도적인 하나의 불꽃 현상이 전장을 지배한다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 19,
+      "input": "바다를 둘로 가르는 한 칼",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["water"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["slash", "wave", "beam"],
+        "allowedEffectsAnyOf": ["damage"],
+        "forbiddenEffects": ["heal", "shield", "buff", "summon"],
+        "allowedSpeedsAnyOf": ["fast"]
+      },
+      "relations": {"required": [], "optional": ["finale"], "forbidden": ["movement", "delay", "repetition"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "단 한 번의 거대한 물 참격이 바다를 양분할 정도의 규모와 속도로 뻗는다.",
+      "legacyIssue": null
+    },
+    {
+      "id": 20,
+      "input": "끝나지 않는 겨울",
+      "source": "held-out",
+      "legacyStatus": "new",
+      "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {
+        "requiredElements": ["ice"],
+        "minimumDistinctElements": 1,
+        "requiredBehaviorTypes": ["form"],
+        "allowedFormsAnyOf": ["zone", "rain", "wall", "cage"],
+        "allowedEffectsAnyOf": ["control", "damage"],
+        "forbiddenEffects": ["heal", "shield", "buff", "summon"]
+      },
+      "relations": {"required": ["persistence"], "optional": ["accumulation"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": false, "requiresFinale": false, "forbidDecorativeMove": true},
+      "visualIntent": "광대한 겨울이 지속되며 전장을 얼리고 압박하는 장기 영역 효과다.",
+      "legacyIssue": null
+    }
+  ]
+}

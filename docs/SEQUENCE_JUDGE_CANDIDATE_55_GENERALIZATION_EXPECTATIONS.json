@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Sealed candidate-55 generalization expectations for unseen short abstract spells, movement-process titles, and static/non-player controls.",
+  "sealedAt": "2026-07-30",
+  "globalHardRules": {
+    "maxSequences": 10,
+    "maxBehaviorsPerSequence": 5,
+    "behaviorTypes": ["form", "move", "wait"],
+    "waitMustBeAlone": true,
+    "moveRequiresElement": true,
+    "specPowerMustBeZero": true,
+    "specCostMustBeZero": true
+  },
+  "cases": [
+    {
+      "id": 1, "input": "황혼이 갈라진다", "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_preferred", "confidence": "medium"},
+      "anchors": {"minimumDistinctElements": 2, "requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["damage", "control"], "forbiddenEffects": ["heal", "shield", "buff", "summon"]},
+      "relations": {"required": [], "optional": ["transition", "parallel", "finale"], "forbidden": []},
+      "structure": {"sequenceRangeIfPlan": [1, 4], "requiresParallel": false, "requiresFinale": false},
+      "visualIntent": "황혼의 대비와 갈라짐이 공격·제어 사건으로 보인다."
+    },
+    {
+      "id": 2, "input": "천공의 장례", "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_preferred", "confidence": "medium"},
+      "anchors": {"requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["damage", "control"]},
+      "relations": {"required": [], "optional": ["order", "finale"], "forbidden": []},
+      "structure": {"sequenceRangeIfPlan": [1, 4], "requiresParallel": false, "requiresFinale": false},
+      "visualIntent": "하늘 규모의 장례 이미지가 평범한 buff로 축약되지 않는다."
+    },
+    {
+      "id": 3, "input": "심연의 개화", "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_preferred", "confidence": "medium"},
+      "anchors": {"requiredElements": ["dark"], "requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["damage", "control"]},
+      "relations": {"required": [], "optional": ["transition", "accumulation"], "forbidden": []},
+      "structure": {"sequenceRangeIfPlan": [1, 4], "requiresParallel": false, "requiresFinale": false},
+      "visualIntent": "심연이 피어나는 전개와 결과가 어둠 공격·제어로 표현된다."
+    },
+    {
+      "id": 4, "input": "폭풍의 즉위", "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_preferred", "confidence": "medium"},
+      "anchors": {"requiredElements": ["wind"], "requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["damage", "control"]},
+      "relations": {"required": [], "optional": ["accumulation", "finale"], "forbidden": []},
+      "structure": {"sequenceRangeIfPlan": [1, 4], "requiresParallel": false, "requiresFinale": false},
+      "visualIntent": "폭풍의 권위와 규모가 공격적 장면으로 보인다."
+    },
+    {
+      "id": 5, "input": "우주의 심장박동", "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {"requiredBehaviorTypes": ["form"]},
+      "relations": {"required": ["repetition"], "optional": ["delay", "accumulation"], "forbidden": []},
+      "structure": {"sequenceRangeIfPlan": [2, 5], "requiresParallel": false, "requiresFinale": false, "requiredRepetitionCount": 2},
+      "visualIntent": "심장박동이 최소 두 번의 구분되는 맥동으로 보인다."
+    },
+    {
+      "id": 6, "input": "별을 삼킨 파도", "legacyStatus": "new",
+      "recommendation": {"mode": "either", "confidence": "medium"},
+      "anchors": {"requiredElements": ["water"], "minimumDistinctElements": 2, "requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["damage", "control"]},
+      "relations": {"required": [], "optional": ["transition"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 4], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "파도가 별빛을 삼키는 복합 이미지이며 player move는 아니다."
+    },
+    {
+      "id": 7, "input": "겨울이 폭발한다", "legacyStatus": "new",
+      "recommendation": {"mode": "either", "confidence": "high"},
+      "anchors": {"requiredElements": ["ice"], "requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["damage"], "forbiddenEffects": ["heal", "shield", "buff", "summon"]},
+      "relations": {"required": [], "optional": ["finale"], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "겨울의 폭발이 직접 피해로 보이며 player move를 만들지 않는다."
+    },
+    {
+      "id": 8, "input": "불멸의 행진", "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "medium"},
+      "anchors": {"requiredBehaviorTypes": ["move", "form"]},
+      "relations": {"required": ["movement"], "optional": ["repetition"], "forbidden": []},
+      "structure": {"sequenceRangeIfPlan": [1, 5], "requiresParallel": false, "requiresFinale": false, "preferredDurationMsRange": [500, 1400], "minimumMoveCount": 1},
+      "visualIntent": "행진의 공간 진행을 player move와 전투 form으로 보여준다."
+    },
+    {
+      "id": 9, "input": "서리의 활공", "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {"requiredElements": ["ice"], "requiredBehaviorTypes": ["move", "form"], "allowedEffectsAnyOf": ["damage", "control"]},
+      "relations": {"required": ["movement"], "optional": ["parallel"], "forbidden": []},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": false, "requiresFinale": false, "preferredDurationMsRange": [300, 700], "minimumMoveCount": 1},
+      "visualIntent": "새로운 활공 제목도 빠른 move+form으로 일반화된다."
+    },
+    {
+      "id": 10, "input": "달의 선회", "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "medium"},
+      "anchors": {"requiredElements": ["light"], "requiredBehaviorTypes": ["move", "form"]},
+      "relations": {"required": ["movement"], "optional": ["parallel"], "forbidden": []},
+      "structure": {"sequenceRangeIfPlan": [1, 4], "requiresParallel": false, "requiresFinale": false, "minimumMoveCount": 2},
+      "visualIntent": "선회의 순환 궤적을 최소 두 구간 player move로 보여준다."
+    },
+    {
+      "id": 11, "input": "번개의 순례", "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "medium"},
+      "anchors": {"requiredElements": ["lightning"], "requiredBehaviorTypes": ["move", "form"]},
+      "relations": {"required": ["movement"], "optional": ["order"], "forbidden": []},
+      "structure": {"sequenceRangeIfPlan": [1, 4], "requiresParallel": false, "requiresFinale": false, "preferredDurationMsRange": [500, 1400], "minimumMoveCount": 1},
+      "visualIntent": "상반된 번개·순례 이미지도 공간 진행으로 해석한다."
+    },
+    {
+      "id": 12, "input": "바람 없는 비행", "legacyStatus": "new",
+      "recommendation": {"mode": "sequence_required", "confidence": "high"},
+      "anchors": {"requiredBehaviorTypes": ["move", "form"]},
+      "relations": {"required": ["movement"], "optional": ["parallel"], "forbidden": []},
+      "structure": {"sequenceRangeIfPlan": [1, 3], "requiresParallel": false, "requiresFinale": false, "preferredDurationMsRange": [300, 700], "minimumMoveCount": 1},
+      "visualIntent": "비행 과정은 보존하되 바람 원소를 기계적으로 강제하지 않는다."
+    },
+    {
+      "id": 13, "input": "별의 깃털", "legacyStatus": "new",
+      "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {"requiredBehaviorTypes": ["form"]},
+      "relations": {"required": [], "optional": [], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "정적 이동 가능 이미지만으로 player move를 만들지 않는다."
+    },
+    {
+      "id": 14, "input": "불꽃을 실은 화살이 날아간다", "legacyStatus": "new",
+      "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {"requiredElements": ["fire"], "requiredBehaviorTypes": ["form"], "allowedFormsAnyOf": ["bolt", "beam"]},
+      "relations": {"required": [], "optional": [], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "명시적 투사체 이동은 player move가 아니다."
+    },
+    {
+      "id": 15, "input": "해일의 행진", "legacyStatus": "new",
+      "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {"requiredElements": ["water"], "requiredBehaviorTypes": ["form"], "allowedFormsAnyOf": ["wave", "zone"]},
+      "relations": {"required": [], "optional": [], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "행진하는 주체가 해일이므로 player move를 만들지 않는다."
+    },
+    {
+      "id": 16, "input": "새벽의 방패", "legacyStatus": "new",
+      "recommendation": {"mode": "single_preferred", "confidence": "high"},
+      "anchors": {"requiredElements": ["light"], "requiredBehaviorTypes": ["form"], "allowedEffectsAnyOf": ["shield"], "forbiddenEffects": ["damage"]},
+      "relations": {"required": [], "optional": [], "forbidden": ["movement"]},
+      "structure": {"sequenceRangeIfPlan": [1, 2], "requiresParallel": false, "requiresFinale": false, "maximumMoveCount": 0},
+      "visualIntent": "정적 보호 주문이며 공격·이동을 추가하지 않는다."
+    }
+  ]
+}

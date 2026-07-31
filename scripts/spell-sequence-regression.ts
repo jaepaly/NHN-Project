@@ -46,6 +46,18 @@ assert.equal(normalizedDuplicate.sequences[0].behaviors.length, 1,
   'mixed wait and exact form duplicates should be removed');
 assert.equal(normalizedDuplicate.sequences[0].behaviors[0].type, 'form');
 
+const trailingWaitPlan = resolveSpellPlan({
+  name: 'trailing wait',
+  power: 50,
+  durationMs: 1000,
+  sequences: [
+    { durationWeight: 2, behaviors: debugSpellPlan('#seq single')!.sequences[0].behaviors },
+    { durationWeight: 1, behaviors: [{ type: 'wait' }] },
+  ],
+});
+assert.equal(trailingWaitPlan.sequences.length, 1, '마지막 wait-only sequence는 로컬에서 제거');
+assert.equal(trailingWaitPlan.sequences[0].durationMs, 1000, '제거한 wait 몫은 남은 사건에 재배분');
+
 const zeroWeights: SpellPlan = {
   name: 'zero weights',
   power: 40,
@@ -294,28 +306,46 @@ console.info('custom-vector 화면 절대 방향 매핑: 6방향 + 단위벡터 
   const seq = (durationMs: number, type: 'form' | 'wait' = 'form') => ({
     durationMs,
     behaviors: type === 'form'
-      ? [{ type: 'form' as const, form: 'bolt' as const, element: 'fire' as const }]
+      ? [debugSpellPlan('#seq single')!.sequences[0].behaviors[0]]
       : [{ type: 'wait' as const }],
   });
 
-  // 기본: 마지막 빼고 70%만 기다린다 → 다음 행동이 70% 시점에 겹쳐 발동
+  // 기본: 앞 시퀀스는 70%, 마지막 순간형 form은 빈 꼬리를 최대 200ms만 유지한다.
   const t3 = sequenceFlowTimeline([seq(1000), seq(1000), seq(1000)]);
-  assert.deepEqual(t3.waitsMs, [700, 700, 1000], '앞 시퀀스는 70%, 마지막은 온전');
-  assert.equal(t3.totalMs, 2400, '실효 총 시간 = 3000 → 2400 (20% 단축)');
+  assert.deepEqual(t3.waitsMs, [700, 700, 200], '앞은 70%, 마지막 순간형 꼬리는 200ms');
+  assert.equal(t3.totalMs, 1600, '마지막 효과 뒤 빈 실행시간을 제거한다');
   assert.deepEqual(
     t3.boundaries.map((b) => +b.toFixed(4)),
-    [+(700 / 2400).toFixed(4), +(1400 / 2400).toFixed(4)],
+    [+(700 / 1600).toFixed(4), +(1400 / 1600).toFixed(4)],
     '진행바 경계 = 실제 발동 시점 — 화면과 발동이 어긋나면 안 된다',
   );
 
   // wait 전용 시퀀스는 오버랩 금지 — "심장이 두 번 뛰는 동안"의 간격은 내용이다
   const tw = sequenceFlowTimeline([seq(1000), seq(800, 'wait'), seq(1000)]);
-  assert.deepEqual(tw.waitsMs, [700, 800, 1000], 'wait 시퀀스는 온전히 기다린다');
+  assert.deepEqual(tw.waitsMs, [700, 800, 200], '중간 wait은 보존하고 마지막 빈 꼬리만 줄인다');
 
-  // 단일 시퀀스 = 오버랩 대상 없음
+  // 단일 순간형은 200ms 꼬리만, 지속형과 move는 동작 완료까지 전부 기다린다.
   const t1 = sequenceFlowTimeline([seq(900)]);
-  assert.deepEqual(t1.waitsMs, [900]);
+  assert.deepEqual(t1.waitsMs, [200]);
   assert.deepEqual(t1.boundaries, [], '단일이면 경계 없음');
+  const sustained = {
+    durationMs: 900,
+    behaviors: [{
+      type: 'form' as const,
+      spec: { form: 'zone' as const },
+    }],
+  };
+  assert.deepEqual(sequenceFlowTimeline([sustained as never]).waitsMs, [900]);
+  const moving = {
+    durationMs: 900,
+    behaviors: [{ type: 'move' as const, destination: 'cast-direction' as const }],
+  };
+  assert.deepEqual(sequenceFlowTimeline([moving as never]).waitsMs, [900]);
+  assert.deepEqual(
+    sequenceFlowTimeline([{ durationMs: 900, behaviors: [{ type: 'wait' as const }] }]).waitsMs,
+    [0],
+    '방어적으로 전달된 trailing wait도 실행시간을 늘리지 않는다',
+  );
 
   // 방어: 빈 배열·0 duration
   assert.deepEqual(sequenceFlowTimeline([]), { waitsMs: [], totalMs: 0, boundaries: [] });
@@ -398,5 +428,3 @@ console.info('custom-vector 화면 절대 방향 매핑: 6방향 + 단위벡터 
     '트윈 인계 전에 이전 트윈을 멈춘다 — 인계 1프레임 정지가 재발한다');
   assert.ok(instantAt >= 0 && tweenAddAt > instantAt, '전제: 분기 순서가 바뀜 — 검사 갱신 필요');
 }
-
-
