@@ -1,11 +1,6 @@
 import type { MapGraphDefinition } from './mapGraph';
 import type { MapNode, MapNodeKind } from './mapGraphContract';
 import { TRAP_ROOM_PROFILES } from './trapRoomProfile';
-import {
-  dominates,
-  roomRewardValue,
-  roomRisk,
-} from '../combat-core/run/roomRewardScale';
 
 /**
  * 파티션 기반 런 맵 생성기 — R1(이도원) #240 설계의 구현.
@@ -45,11 +40,10 @@ import {
 
 export interface MapGeneratorConfig {
   /** 스테이지별 목표 방 수 — [1스테이지, 2스테이지]. 시작 방·보스는 별도로 센다 */
-  roomsPerStage: readonly [number, number];
+  pathRoomsPerStage: readonly [readonly [number, number], readonly [number, number]];
   /** 생성 재시도 상한 — 규칙을 만족하는 후보를 못 찾으면 프리셋으로 폴백한다 */
   maxAttempts: number;
   /** 비전투 방 비율 목표 (설계 §5.5) — 스테이지 전체 노드 기준 */
-  nonCombatShare: { min: number; max: number };
 }
 
 export const MAP_GENERATOR_CONFIG: MapGeneratorConfig = {
@@ -63,7 +57,7 @@ export const MAP_GENERATOR_CONFIG: MapGeneratorConfig = {
    * 맵을 매번 다르게 만드는 일이고, **길이를 바꾸는 건 별건**이므로 체감 길이를
    * 프리셋에 맞춘다.
    */
-  roomsPerStage: [2, 3],
+  pathRoomsPerStage: [[3, 4], [4, 5]],
   /**
    * 실측(600시드): 상한 40 → 폴백 2.2% · 80 → 0.2% · **160 → 0%**. 최악 시도는 89회.
    * 생성은 순수 계산이라 맵당 0.8ms — 재시도는 사실상 무료다. 폴백은 안전망으로
@@ -71,11 +65,30 @@ export const MAP_GENERATOR_CONFIG: MapGeneratorConfig = {
    */
   maxAttempts: 160,
   // 설계 §5.5. 방 수가 적으면 이산값이라 딱 맞지 않으므로 폭을 준다
-  nonCombatShare: { min: 0.22, max: 0.34 },
 };
 
 /** 분기 경로의 성격 (설계 §4) */
 type BranchProfile = 'stable' | 'balanced' | 'volatile';
+
+/**
+ * #240의 경로 비교 전용 상대값이다.
+ * 실제 카드 배율·HP 대가와 분리한다. 이 값을 roomRewardScale로 대체하면
+ * "위험한 전투방은 보상 0"이라는 설계 전제가 깨져 지배 관계 검사가 무의미해진다.
+ */
+const MAP_RISK: Record<MapNodeKind, number> = {
+  start: 1, combat: 1, elite: 2, trap: 2, treasure: 0, altar: 1,
+  'stage-boss': 0, 'memory-boss': 0,
+};
+const MAP_REWARD: Record<MapNodeKind, number> = {
+  start: 0, combat: 0, elite: 0, trap: 0, treasure: 1, altar: 1,
+  'stage-boss': 0, 'memory-boss': 0,
+};
+
+function mapRisk(kind: MapNodeKind): number { return MAP_RISK[kind]; }
+function mapReward(kind: MapNodeKind): number { return MAP_REWARD[kind]; }
+function mapDominates(a: { risk: number; reward: number }, b: { risk: number; reward: number }): boolean {
+  return a.risk > b.risk && a.reward < b.reward;
+}
 
 /**
  * 방 종류 가중치 — R1 프로토타입의 표를 그대로 옮겼다.
@@ -184,14 +197,14 @@ function chooseSignature(
   rand: () => number,
   remaining: number,
   stage: number,
-  requireBranch: boolean,
 ): PartitionSignature {
   // 2스테이지가 더 복잡해진다 — 진행감이 구조로도 드러나야 한다 (프로토타입 가중치)
   const rows: ReadonlyArray<readonly [1 | 2 | 3, number]> = stage === 2
     ? [[1, 10], [2, 55], [3, 35]]
     : [[1, 35], [2, 55], [3, 10]];
   // 분기에는 사슬 길이 2가 필요하다(minN) — 예산이 없으면 강제할 수 없다
-  const canBranch = requireBranch && remaining >= 2;
+  // 분기는 선택지를 위한 확률 요소다. 스테이지마다 하나를 강제하지 않는다.
+  const canBranch = remaining >= 2 && rand() < (stage === 2 ? 0.72 : 0.58);
   const a = pickWeighted<1 | 2 | 3>(
     rand,
     canBranch ? rows.filter(([value]) => value >= 2) : rows,
@@ -254,11 +267,9 @@ function buildStage(
   let layer = startLayer;
   let remaining = roomBudget;
   let current = [...entries];
-  let first = true;
 
   while (remaining > 0) {
-    const signature = chooseSignature(rand, remaining, stage, first);
-    first = false;
+    const signature = chooseSignature(rand, remaining, stage);
     const branchCount = Math.min(signature.a, Math.max(1, remaining));
     const profiles = branchProfiles(rand, branchCount);
     const lanes: DraftNode[][] = [];
@@ -360,7 +371,6 @@ function ruleViolation(
   draft: Draft,
   startId: string,
   bossId: string,
-  share: { min: number; max: number },
 ): string | null {
   const paths = enumeratePaths(draft, startId, bossId);
   if (paths.length === 0) return '시작-보스 경로가 없다';
@@ -382,14 +392,14 @@ function ruleViolation(
   const scored = paths.map((path) => {
     const playable = path.filter((node) => node.kind !== 'memory-boss' && node.kind !== 'stage-boss');
     return {
-      risk: playable.reduce((sum, node) => sum + roomRisk(node.kind), 0),
-      reward: playable.reduce((sum, node) => sum + roomRewardValue(node.kind), 0),
+      risk: playable.reduce((sum, node) => sum + mapRisk(node.kind), 0),
+      reward: playable.reduce((sum, node) => sum + mapReward(node.kind), 0),
     };
   });
   for (let i = 0; i < scored.length; i += 1) {
     for (let j = i + 1; j < scored.length; j += 1) {
-      if (dominates(scored[i], scored[j])) return `경로 ${i}가 경로 ${j}에 지배된다`;
-      if (dominates(scored[j], scored[i])) return `경로 ${j}가 경로 ${i}에 지배된다`;
+      if (mapDominates(scored[i], scored[j])) return `경로 ${i}가 경로 ${j}에 지배된다`;
+      if (mapDominates(scored[j], scored[i])) return `경로 ${j}가 경로 ${i}에 지배된다`;
     }
   }
   // **스테이지마다 분기가 최소 하나** — 설계에 없는 규칙이지만 실측이 필요를 보였다.
@@ -409,9 +419,8 @@ function ruleViolation(
         .filter((child): child is DraftNode => child !== undefined);
       if (children.length >= 2) branchStages.add(children[0].stage);
     }
-    for (const stage of [1, 2]) {
-      if (!branchStages.has(stage)) return `스테이지 ${stage}에 분기가 없다`;
-    }
+    // 분기 유무는 다양성 선호에만 사용한다. #240의 구조적 필수 조건은 아니다.
+    void branchStages;
   }
 
   // §5.5 전투/비전투 비율 — 스테이지 전체 노드 기준. 보스와 시작 방은 선택 대상이
@@ -421,21 +430,60 @@ function ruleViolation(
   // 방 종류를 바꾸면 §5.3 지배 관계가 다시 깨질 수 있어 또 다른 재조정을 부른다 —
   // 후처리 여섯 개가 생긴 경로다. 축이 단조가 된 지금은 **규칙으로 두고 재시도**하는
   // 게 싸다(실측 평균 3회 내외).
-  const choosable = draft.nodes.filter(
-    (node) => node.kind !== 'start'
-      && node.kind !== 'stage-boss'
-      && node.kind !== 'memory-boss',
-  );
-  if (choosable.length > 0) {
-    const nonCombat = choosable.filter(
-      (node) => node.kind === 'treasure' || node.kind === 'altar',
-    ).length;
-    const ratio = nonCombat / choosable.length;
-    if (ratio < share.min) return `비전투 비율 ${(ratio * 100).toFixed(0)}% < ${share.min * 100}%`;
-    if (ratio > share.max) return `비전투 비율 ${(ratio * 100).toFixed(0)}% > ${share.max * 100}%`;
-  }
-
   return null;
+}
+
+/**
+ * 구조를 만든 뒤 방 종류 후보를 비교한다. #240의 우선순위 0~3은 hard constraint,
+ * 4~6은 그 안에서의 선택 기준이다. 실제 보상 배율은 여기서 사용하지 않는다.
+ */
+function chooseRoomKinds(draft: Draft, startId: string, finalBossId: string, rand: () => number): boolean {
+  const mutable = draft.nodes.filter((node) => (
+    node.kind !== 'start' && node.kind !== 'stage-boss' && node.kind !== 'memory-boss'
+  ));
+  const stageTwoStarts = new Set(
+    draft.edges.filter((edge) => edge.from === 's1-boss').map((edge) => edge.to),
+  );
+  const fixed = new Set([startId, ...stageTwoStarts]);
+  const original = new Map(mutable.map((node) => [node.id, node.kind]));
+  let best: Map<string, MapNodeKind> | null = null;
+  let bestScore: readonly number[] | null = null;
+
+  for (let sample = 0; sample < 768; sample += 1) {
+    for (const node of mutable) {
+      node.kind = fixed.has(node.id)
+        ? 'combat'
+        : pickWeighted(rand, KIND_WEIGHTS[sample % 3 === 0 ? 'balanced' : sample % 3 === 1 ? 'stable' : 'volatile']);
+    }
+    // Each stage must contain at least one reward room. Prefer the later room
+    // so the entry room remains readable as ordinary combat.
+    for (const stage of [1, 2]) {
+      const rooms = mutable.filter((node) => node.stage === stage && !fixed.has(node.id));
+      if (rooms.length > 0 && !rooms.some((node) => node.kind === 'treasure' || node.kind === 'altar')) {
+        rooms[rooms.length - 1].kind = sample % 2 === 0 ? 'treasure' : 'altar';
+      }
+    }
+    if (ruleViolation(draft, startId, finalBossId) !== null) continue;
+
+    const kinds = new Set(mutable.map((node) => node.kind));
+    const special = ['elite', 'trap', 'treasure', 'altar'].filter((kind) => kinds.has(kind as MapNodeKind)).length;
+    const extraCombat = mutable.some((node) => !fixed.has(node.id) && node.kind === 'combat') ? 1 : 0;
+    const nonCombat = mutable.filter((node) => node.kind === 'treasure' || node.kind === 'altar').length;
+    const sharePenalty = Math.abs(nonCombat / Math.max(1, mutable.length) - 0.275);
+    const score: readonly number[] = [special, extraCombat, -sharePenalty];
+    if (!bestScore || score.some((value, index) => value !== bestScore![index]
+      && score.slice(0, index).every((prefix, prefixIndex) => prefix === bestScore![prefixIndex])
+      && value > bestScore![index])) {
+      bestScore = score;
+      best = new Map(mutable.map((node) => [node.id, node.kind]));
+    }
+  }
+  if (!best) {
+    for (const node of mutable) node.kind = original.get(node.id)!;
+    return false;
+  }
+  for (const node of mutable) node.kind = best.get(node.id)!;
+  return true;
 }
 
 /**
@@ -495,21 +543,26 @@ export function generateRunMap(
     draft.nodes.push(start);
 
     // 스테이지 1 → 수문장 → 스테이지 2 → 기억의 주인
-    const s1 = buildStage(draft, rand, 1, 1, [start], config.roomsPerStage[0]);
+    const s1Rooms = config.pathRoomsPerStage[0][0]
+      + Math.floor(rand() * (config.pathRoomsPerStage[0][1] - config.pathRoomsPerStage[0][0] + 1));
+    const s1 = buildStage(draft, rand, 1, 1, [start], s1Rooms);
     const stageBoss: DraftNode = {
       id: 's1-boss', stage: 1, kind: 'stage-boss', layer: s1.nextLayer, lane: 0,
     };
     draft.nodes.push(stageBoss);
     for (const exit of s1.exits) addEdge(draft, exit.id, stageBoss.id);
 
-    const s2 = buildStage(draft, rand, 2, s1.nextLayer + 1, [stageBoss], config.roomsPerStage[1]);
+    const s2Rooms = config.pathRoomsPerStage[1][0]
+      + Math.floor(rand() * (config.pathRoomsPerStage[1][1] - config.pathRoomsPerStage[1][0] + 1));
+    const s2 = buildStage(draft, rand, 2, s1.nextLayer + 1, [stageBoss], s2Rooms);
     const finalBoss: DraftNode = {
       id: 's2-memory-boss', stage: 2, kind: 'memory-boss', layer: s2.nextLayer, lane: 0,
     };
     draft.nodes.push(finalBoss);
     for (const exit of s2.exits) addEdge(draft, exit.id, finalBoss.id);
 
-    if (ruleViolation(draft, start.id, finalBoss.id, config.nonCombatShare) !== null) continue;
+    if (!chooseRoomKinds(draft, start.id, finalBoss.id, rand)) continue;
+    if (ruleViolation(draft, start.id, finalBoss.id) !== null) continue;
 
     const definition: MapGraphDefinition = {
       nodes: draft.nodes.map((node) => finalizeNode(node, rand)),
