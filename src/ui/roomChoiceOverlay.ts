@@ -86,6 +86,14 @@ export function nextRoomChoiceFocusIndex(
   return Math.min(Math.max(currentIndex + direction, 0), optionCount - 1);
 }
 
+export function roomChoiceFocusDirection(
+  input: Pick<KeyboardEvent, 'code' | 'key'>,
+): -1 | 0 | 1 {
+  if (input.code === 'KeyW') return -1;
+  if (input.code === 'KeyS') return 1;
+  return 0;
+}
+
 const STYLE_ID = 'r3-room-choice-style';
 const WRAP_ID = 'r3-room-choice-wrap';
 
@@ -407,7 +415,7 @@ export function showRoomChoices(
         <div class="route-detail-title"></div>
         <div class="route-detail-description"></div>
       </div>
-      <div class="route-hint"><b>숫자키</b> 또는 <b>↑↓ + Enter</b> · 빛나는 인장을 선택</div>
+      <div class="route-hint"><b>W/S + Enter</b> · 숫자키 또는 빛나는 인장 선택</div>
     </div>`;
 
   const svg = wrap.querySelector<SVGSVGElement>('.route-edges')!;
@@ -484,12 +492,13 @@ export function showRoomChoices(
         finish(hotkey);
         return;
       }
-      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      const focusDirection = roomChoiceFocusDirection(event);
+      if (focusDirection !== 0) {
         event.preventDefault();
         event.stopImmediatePropagation();
         setFocus(nextRoomChoiceFocusIndex(
           focusIndex,
-          event.key === 'ArrowDown' ? 1 : -1,
+          focusDirection,
           shown.length,
         ));
         return;
