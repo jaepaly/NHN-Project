@@ -6,6 +6,7 @@
 
 | 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
 |---|---|---|---|---|---|---|
+| 2026-07-31 | 임재윤 | Codex + Cloudflare Wrangler + Gemini Worker + GitHub CLI | #311 Gemini 지역 제한 Worker placement 시정 | 데모 기본 Worker의 실행 위치가 흔들리며 Gemini 지역 오류가 발생하는 원인을 배포 위치 누락으로 좁히고 `gcp:asia-northeast1` placement를 추가해 재배포·검증 | `proxy/wrangler.toml`, Worker version `b7b45c1c-768d-42f5-bc2a-93cd9bbf6351`, `R2_PROGRESS.md`, Issue #311 | Wrangler dry-run 통과. 반복 실호출 HTTP 200 5/5·502 0/5·`cf-placement: remote-NRT` 확인. placement hint는 절대적 고정이 아니므로 후속 관측 필요 |
 | 2026-08-02 | 이도원 | Codex + TypeScript/Vite 회귀 | PR #312 R3 최종 지적 3건 반영 | MapGraph 런의 함정 기믹 출처를 실제 trap 노드의 `trapProfile`로 단일화하고 레거시 방 저주 우회를 제거. #240 직접 이식 코어의 `@ts-nocheck`를 제거해 전 모듈을 도메인 타입으로 복구하고 지적 파일의 LF를 고정 | `ProtoScene.ts`, `partitionMapGeneratorCore.ts`, map wiring 회귀, `.gitattributes` | 전체 회귀 92종·production build·맵 500시드·원본 5,000시드 통과. 생성 순서·가중치 변경 없음, 외부 AI 호출·추가 플레이테스트 없음 |
 | 2026-08-02 | 이도원 | Codex + Git | PR #312 최신 main 재리베이스 | `ea41d09` 기준으로 PR 브랜치를 재리베이스하고 #323 플레이테스트 회귀 수정과 #325 연구 진행 체감 변경을 보존. 작업 로그 충돌은 양쪽 기록을 합쳐 해소 | `codex/repair-map-generator-288-main`, R1 작업 로그 | 전체 회귀 92종·production build·diff check 통과. 코드 충돌 없음 |
 | 2026-08-01 | jaepaly | Codex + Browser | 플레이테스트 회귀 3종 수정 | 필살영창이 일반 주문으로 실행되던 모드 불일치와 Mock 폴백 누락을 4막·6폼 필살 plan으로 복구하고, DOM 입력 전환 시 Phaser 이동키 상태를 초기화하며, 보물·제단 입장 배너를 방 수명에 묶어 다음 방 시작 즉시 제거 | `MockJudge`, `GeminiJudge`, `ProtoScene.ts`, `systemBanner.ts`, 판정·슬로모션·방 설치물 회귀 테스트 | 로컬 Mock 강제 필살영창에서 `SEQUENCE`·power 100·마나 100 유지 확인. 외부 Gemini 호출 없음 |
