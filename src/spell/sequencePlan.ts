@@ -127,6 +127,46 @@ export interface ResolvedSpellPlan {
   sequences: ResolvedSpellSequence[];
 }
 
+/**
+ * 시퀀스 필살기 격상 — 이동·대기·다른 form은 그대로 두고, 대표가 되는 가장 강한
+ * form 하나만 기존 FusionGauge가 만든 방출 스펙으로 교체한다. 동률이면
+ * representativeSpecFromPlan과 같은 규칙으로 뒤쪽 form을 택해 피날레를 격상한다.
+ *
+ * manaCost는 원래 주문의 가격 기록으로 보존한다. 실제 지불 0 처리는 시전 게이트가
+ * 담당하며, 여기서는 실행 의미와 연출만 바꾼다.
+ */
+export function applyFusionReleaseToPlan(
+  plan: ResolvedSpellPlan,
+  fusedSpec: SpellSpec,
+): ResolvedSpellPlan {
+  let targetSequence = -1;
+  let targetBehavior = -1;
+  let targetPower = Number.NEGATIVE_INFINITY;
+
+  for (const [sequenceIndex, sequence] of plan.sequences.entries()) {
+    for (const [behaviorIndex, behavior] of sequence.behaviors.entries()) {
+      if (behavior.type !== 'form' || behavior.spec.power < targetPower) continue;
+      targetSequence = sequenceIndex;
+      targetBehavior = behaviorIndex;
+      targetPower = behavior.spec.power;
+    }
+  }
+
+  if (targetSequence < 0) return plan;
+  return {
+    ...plan,
+    power: Math.max(plan.power, fusedSpec.power),
+    sequences: plan.sequences.map((sequence, sequenceIndex) => ({
+      ...sequence,
+      behaviors: sequence.behaviors.map((behavior, behaviorIndex) => (
+        sequenceIndex === targetSequence && behaviorIndex === targetBehavior
+          ? { ...behavior, spec: fusedSpec }
+          : behavior
+      )),
+    })),
+  };
+}
+
 export function tuningScale(
   tuning: BehaviorTuning | undefined,
   key: keyof BehaviorTuning,

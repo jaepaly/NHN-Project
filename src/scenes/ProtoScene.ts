@@ -295,6 +295,7 @@ import { SUMMON_CONFIG, summonGroupPlan } from '../combat-core/summons/summonCon
 import { SummonedOrb } from '../combat-core/summons/summonedOrb';
 import { GameAudio } from '../audio/gameAudio';
 import {
+  applyFusionReleaseToPlan,
   behaviorElements,
   behaviorUsesAnyElement,
   resolveSpellPlan,
@@ -4942,9 +4943,20 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     rawPlan: SpellPlan,
     text: string,
     source: JudgeSource,
+    representativeSpec: SpellSpec,
   ): Promise<void> {
     const plan = resolveSpellPlan(rawPlan);
-    if (!this.playerState.trySpendMana(plan.manaCost)) {
+    // all-plan Judge는 단순 주문도 이 경로로 보낸다. 따라서 필살기 판정을 여기서도
+    // 마나 검사보다 먼저 해야 한다. 실행할 form이 없는 이동 전용 plan은 게이지를
+    // 소비하지 않는다.
+    const hasForm = plan.sequences.some((sequence) => (
+      sequence.behaviors.some((behavior) => behavior.type === 'form')
+    ));
+    const fusedSpec = hasForm
+      ? this.fusionGauge.tryRelease(representativeSpec)
+      : null;
+    const spend = fusedSpec ? 0 : plan.manaCost;
+    if (!this.playerState.trySpendMana(spend)) {
       this.audio.playSfx('fizzle');
       this.announceManaShortage(plan.manaCost);
       return;
@@ -4967,10 +4979,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ),
         power: plan.power,
         manaCost: plan.manaCost,
+        spentMana: spend,
       });
     }
-    // 융합 게이지 — 시퀀스도 수동 영창이므로 충전한다 (방출 격상은 v1에선 단일 주문만)
-    if (this.fusionGauge.charge(plan.manaCost)) {
+    // 융합 게이지 — 일반 시퀀스도 수동 영창이므로 실제 지불 마나만큼 충전한다.
+    // 방출 시전은 0을 지불하며 이미 게이지를 소모했으므로 다시 채우지 않는다.
+    if (!fusedSpec && this.fusionGauge.charge(spend)) {
       this.announceSystemMessage('융합의 힘이 응축됐다 — 두 원소를 담아 영창하라 (마나 무소모)', '#e2b7ff', 3400);
     }
     const sequenceElements = [...new Set(plan.sequences.flatMap((sequence) => (
@@ -5014,9 +5028,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         '#ff9f43',
       );
     }
+    const executionPlan = fusedSpec
+      ? applyFusionReleaseToPlan(plan, fusedSpec)
+      : plan;
     await this.executeSpellSequencePlan(
-      plan,
+      executionPlan,
       plan.power > 0 ? sequenceHistoryEntry.power / plan.power : 1,
+      fusedSpec,
     );
   }
 
@@ -5040,7 +5058,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       // 영창 시퀀스(복합 주문) — 판정이 plan을 실었고 기능 플래그가 켜져 있으면 시퀀스 런타임으로.
       // 플래그(VITE_SEQUENCE_JUDGE=0)로 언제든 v2 단일 경로로 즉시 복귀할 수 있다.
       if (this.sequenceJudgeEnabled && judgement.plan) {
-        await this.runSequenceCast(judgement.plan, text, this.currentJudgeSource());
+        await this.runSequenceCast(
+          judgement.plan, text, this.currentJudgeSource(), judgement.spell,
+        );
         return;
       }
 
@@ -5360,6 +5380,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private async executeSpellSequencePlan(
     plan: ResolvedSpellPlan,
     repeatPowerScale = 1,
+    fusedSpec: SpellSpec | null = null,
   ): Promise<void> {
     const targetState: SequenceTargetState = {
       lockedEnemy: null,
@@ -5398,7 +5419,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
             behavior, sequence.durationMs, targetState, chainRoles[sequenceIndex] ?? 'solo',
           );
         } else if (behavior.type === 'form') {
-          this.executeSequenceForm(behavior, targetState, repeatPowerScale);
+          this.executeSequenceForm(
+            behavior,
+            targetState,
+            repeatPowerScale,
+            behavior.spec === fusedSpec,
+          );
         }
       }
       const waitMs = timeline.waitsMs[sequenceIndex];
@@ -5483,6 +5509,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     behavior: FormBehavior,
     targetState: SequenceTargetState,
     repeatPowerScale: number,
+    fusionRelease = false,
   ): void {
     const { spec: baseSpec, tuning } = behavior;
     const priorUsages = this.spellHistory.allBehaviorUsages;
@@ -5495,16 +5522,19 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       { element: baseSpec.element_primary, form: baseSpec.form },
       priorUsages.map((entry) => ({ element: entry.elementPrimary, form: entry.form })),
     );
-    const spec: SpellSpec = {
-      ...baseSpec,
-      status: [...baseSpec.status],
-      power: Math.round(
-        spellPowerWithAffinity(baseSpec.power * repeatPowerScale, affinityBonus)
-        * escalationWeaken
-        * diversity
-        * this.playerState.damageOutMultiplier,
-      ),
-    };
+    // 융합 방출은 단일 경로와 동일하게 페널티·친화·감쇠 체인을 덮는 고정 최대치다.
+    const spec: SpellSpec = fusionRelease
+      ? baseSpec
+      : {
+        ...baseSpec,
+        status: [...baseSpec.status],
+        power: Math.round(
+          spellPowerWithAffinity(baseSpec.power * repeatPowerScale, affinityBonus)
+          * escalationWeaken
+          * diversity
+          * this.playerState.damageOutMultiplier,
+        ),
+      };
     this.spellHistory.recordBehaviorUsage(baseSpec, Date.now());
     if (escalationWeaken < 1 && !this.escalationNoticed.has(baseSpec.form)) {
       this.escalationNoticed.add(baseSpec.form);
@@ -5515,6 +5545,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
     this.audio.playCast(spec.element_primary);
     this.applySpellPalette(spec);
+    if (fusionRelease) this.playFusionRelease(spec);
     const options: SpellExecutionOptions = {
       sequenceTarget: targetState,
       damageScale: tuningScale(tuning, 'damage'),
@@ -5523,6 +5554,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       controlDurationScale: tuningScale(tuning, 'duration'),
       controlStrengthScale: tuningScale(tuning, 'strength'),
       shieldAmountScale: tuningScale(tuning, 'amount'),
+      fusionRelease,
       onAffectEnemy: (enemy) => {
         if (targetState.lockedEnemy?.alive) return;
         targetState.lockedEnemy = enemy;

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { FUSION_CONFIG, FusionGauge } from '../src/combat-core/player/fusionGauge';
+import { applyFusionReleaseToPlan } from '../src/spell/sequencePlan';
+import type { FormBehavior, ResolvedSpellPlan } from '../src/spell/sequencePlan';
 import type { SpellSpec } from '../src/spell/types';
 
 const dual: SpellSpec = {
@@ -89,4 +91,62 @@ assert.ok(FUSION_CONFIG.fullCharge >= 90, '만충 기준이 중형 주문 3발 �
     '방출 시전이 마나를 낸다 — 필살기는 마나 무소모(spend 0)여야 한다');
 }
 
-console.log('fusion gauge regression: 충전·방출게이트·격상내용·소모/보존·합집합·리셋·마나무소모 8군 통과');
+// 9) all-plan 시퀀스 경로도 같은 규칙을 지킨다.
+// 최신 Judge는 단순 주문에도 spell_plan을 줄 수 있다. 이 경로가 먼저 return하므로
+// runSequenceCast 안에서 방출을 검사하지 않으면 만충이어도 마나 부족으로 거부된다.
+{
+  const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+  const sequenceBody = scene.slice(
+    scene.indexOf('private async runSequenceCast'),
+    scene.indexOf('// ── 판정 → 렌더링 사이클'),
+  );
+  const releaseAt = sequenceBody.indexOf('this.fusionGauge.tryRelease(representativeSpec)');
+  const spendAt = sequenceBody.indexOf('this.playerState.trySpendMana');
+  assert.ok(releaseAt >= 0 && spendAt >= 0, '시퀀스 방출·마나 지점을 못 찾음');
+  assert.ok(releaseAt < spendAt,
+    '시퀀스 방출 판정이 마나 검사 뒤에 있다 — all-plan 필살기가 마나 0에서 거부된다');
+  assert.ok(sequenceBody.includes('fusedSpec ? 0 : plan.manaCost'),
+    '시퀀스 필살기의 실제 소모 마나는 0이어야 한다');
+  assert.match(
+    scene,
+    /runSequenceCast\(\s*judgement\.plan,\s*text,\s*this\.currentJudgeSource\(\),\s*judgement\.spell,\s*\)/s,
+    '시퀀스 경로가 판정 대표 주문을 넘겨야 이중 원소 필살기 조건을 확인할 수 있다',
+  );
+}
+
+// 10) 시퀀스 의미 보존 — 가장 강한 form 하나만 격상하고 이동·다른 form·기록 비용은 유지.
+{
+  const plan: ResolvedSpellPlan = {
+    name: '증기 돌진',
+    power: 70,
+    manaCost: 42,
+    sequences: [
+      {
+        durationMs: 400,
+        behaviors: [
+          { type: 'move', destination: 'target-direction', element: 'wind', distance: 120 },
+          { type: 'form', spec: { ...single, power: 40 } },
+        ],
+      },
+      {
+        durationMs: 300,
+        behaviors: [{ type: 'form', spec: { ...dual, power: 70 } }],
+      },
+    ],
+  };
+  const releaseGauge = new FusionGauge();
+  releaseGauge.charge(FUSION_CONFIG.fullCharge);
+  const fused = releaseGauge.tryRelease(dual);
+  assert.ok(fused);
+  const elevated = applyFusionReleaseToPlan(plan, fused!);
+  const forms = elevated.sequences
+    .flatMap((sequence) => sequence.behaviors)
+    .filter((behavior): behavior is FormBehavior => behavior.type === 'form');
+  assert.equal(elevated.manaCost, plan.manaCost, '기록용 원래 비용은 보존');
+  assert.equal(elevated.sequences[0].behaviors[0].type, 'move', '이동 행동 보존');
+  assert.equal(forms[0].spec.power, 40, '대표가 아닌 form은 그대로');
+  assert.equal(forms[1].spec, fused, '가장 강한 피날레 form만 방출 스펙으로 교체');
+  assert.equal(elevated.power, FUSION_CONFIG.releasePower, '진행 표시용 plan 위력도 방출 상한');
+}
+
+console.log('fusion gauge regression: 충전·방출게이트·격상내용·소모/보존·합집합·리셋·마나무소모·all-plan·시퀀스보존 10군 통과');
