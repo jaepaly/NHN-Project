@@ -97,6 +97,7 @@ import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomReward
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { showRoomChoices } from '../ui/roomChoiceOverlay';
 import { UI_COLOR, UI_HEX, UI_SEMANTIC, hex } from '../ui/uiTokens';
+import { drawGrimoirePanel, drawSectionRule } from '../render/grimoireFrame';
 import type { GameSettings } from '../run/gameSettings';
 import { DEFAULT_SETTINGS, loadSettings } from '../run/gameSettings';
 import { setVfxBrightness } from '../render/vfxBrightness';
@@ -6573,10 +6574,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const heatPulse = 0.36 + Math.sin(this.time.now / 420) * 0.12;
     const g = this.hudGraphics.clear();
 
-    g.fillStyle(UI_HEX.panel, 0.9);
-    g.fillRoundedRect(HUD.x, HUD.y, HUD.width, HUD.height, 12);
-    g.lineStyle(1, UI_HEX.border, 0.72);
-    g.strokeRoundedRect(HUD.x, HUD.y, HUD.width, HUD.height, 12);
+    // 마도서 판 — 불규칙한 변 + 이중 괘선 + 모서리 갈고리.
+    // 종전엔 `fillRoundedRect` + 1px 테두리였다(총괄 지적: "상자에 색만 칠한 느낌").
+    drawGrimoirePanel(g, HUD.x, HUD.y, HUD.width, HUD.height, 0.9);
 
     // 라벨과 같은 줄에 — 텍스트 세로 중앙에 맞춰 바를 놓는다 (원점이 좌상단이므로 −3)
     const barOffset = Math.round(HUD.barHeight / 2) + 1;
@@ -6623,13 +6623,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 우상단 상태 패널 — 종전엔 ROOM 칩(DOM) 아래에 따로 떠서 우상단이 3단이었다.
     // ROOM을 이 패널 안으로 넣어(updateStatusText) 2단으로 줄였다 (총괄 지적).
     const { width } = this.scale;
-    g.fillStyle(UI_HEX.panel, 0.86);
     // 패널은 **내용에 맞춰 늘어난다** — 보스전에서 저항·관통 줄이 붙으면 3~4줄이 되어
     // 고정 높이로는 텍스트가 패널을 넘고 미니맵과 겹쳤다. 평시(2줄)엔 그대로 조밀하다.
     const panelHeight = rightPanelHeight(this.waveText.height);
-    g.fillRoundedRect(width - 306, RIGHT_PANEL.y, 288, panelHeight, 10);
-    g.lineStyle(1, UI_HEX.border, 0.62);
-    g.strokeRoundedRect(width - 306, RIGHT_PANEL.y, 288, panelHeight, 10);
+    drawGrimoirePanel(g, width - 306, RIGHT_PANEL.y, 288, panelHeight, 0.86);
+    // 첫 줄(ROOM n/m)과 나머지를 가르는 구획 괘선 — 여백만으로 나누면 "칸"이 아니라
+    // "간격"이다. 줄이 늘어난 방(보스전 등)에서만 그린다
+    if (this.waveText.height > RIGHT_PANEL.baseTextHeight * 0.8) {
+      drawSectionRule(g, width - 306, RIGHT_PANEL.y + RIGHT_PANEL.padTop + 18, 288);
+    }
     // 미니맵을 패널 아래로 — 높이가 바뀔 때만 옮긴다 (setTop이 동일 y면 no-op)
     this.runMinimap?.setTop(RIGHT_PANEL.y + panelHeight + RIGHT_PANEL.gap);
   }

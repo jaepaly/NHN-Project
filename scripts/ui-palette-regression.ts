@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { UI_COLOR, UI_HEX, UI_MATERIAL, UI_SEMANTIC, hex } from '../src/ui/uiTokens';
+import { FRAME_CONFIG, deckledPoints } from '../src/render/grimoireFrameGeometry';
 
 /**
  * UI 팔레트 통일 회귀 (총괄 지시: "이 스타일에 맞게 다른 UI도 다 통일시켜야 하지 않을까?").
@@ -386,4 +387,59 @@ import { UI_COLOR, UI_HEX, UI_MATERIAL, UI_SEMANTIC, hex } from '../src/ui/uiTok
   }
 }
 
-console.log('ui palette regression: 마도서정본·의미색구분·숫자토큰파생·주요화면이행·HUD·하드코딩상한·영창바대조·마도서재질·장식 9군 통과');
+// ── 10) **항상 떠 있는 판도 장식이 있는가** ────────────────────────────────
+//
+// 총괄 지시: 자주 보이는 것부터 — *"체력 마나 뜨는 좌측 상단이랑, 현재 상태 뜨는
+// 우측 상단이랑 아무튼 다"*. HUD는 오버레이보다 훨씬 자주 보인다(늘 떠 있다).
+//
+// DOM은 SVG를 쓰지만 HUD는 Phaser Graphics라 **선을 직접 그어야 한다.** 종전엔
+// `fillRoundedRect` + 1px 테두리 — 지적받은 "상자에 색만" 그 형태였다.
+{
+  const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+
+  // 두 판(HUD·우측 상태)이 모두 장식 판을 쓰는가
+  assert.equal(
+    (scene.match(/drawGrimoirePanel\(g/g) ?? []).length, 2,
+    'HUD와 우측 패널 둘 다 장식 판을 써야 한다',
+  );
+  // 옛 둥근 사각형이 남아 있으면 그 판만 기본값으로 보인다
+  assert.ok(
+    !/fillRoundedRect\(HUD\.x, HUD\.y/.test(scene),
+    'HUD가 아직 fillRoundedRect를 쓴다 — 매끈한 호는 종이가 되지 않는다',
+  );
+  assert.ok(
+    !/fillRoundedRect\(width - 306/.test(scene),
+    '우측 패널이 아직 fillRoundedRect를 쓴다',
+  );
+
+  // 변이 실제로 불규칙한가 — 직사각형이면 x·y가 각각 2종뿐이다
+  const pts = deckledPoints(18, 18, 300, 130);
+  assert.equal(pts.length / 2, 8, '변마다 중간점을 넣어 8꼭짓점');
+  const xs = new Set<string>();
+  const ys = new Set<string>();
+  for (let i = 0; i < pts.length; i += 2) {
+    xs.add(pts[i].toFixed(2));
+    ys.add(pts[i + 1].toFixed(2));
+  }
+  assert.ok(xs.size > 2 && ys.size > 2, '꼭짓점이 직사각형이면 흔든 의미가 없다');
+
+  // ⚠️ **결정론**이어야 한다. 매 프레임 다시 그리는데 난수를 쓰면 판이 떨린다 —
+  // 늘 떠 있는 물체라 미세한 떨림도 누적 피로가 된다(#220).
+  assert.deepEqual(
+    deckledPoints(18, 18, 300, 130), pts,
+    '같은 입력이면 같은 꼭짓점이어야 한다 (난수 금지)',
+  );
+
+  // 흔드는 폭 — 크면 찢어진 종이가 되고 작으면 직선과 구분이 안 된다
+  assert.ok(
+    FRAME_CONFIG.jitter >= 1 && FRAME_CONFIG.jitter <= 4,
+    `흔드는 폭 ${FRAME_CONFIG.jitter}px가 범위를 벗어났다`,
+  );
+
+  // 늘 떠 있는 판에 애니메이션·발광을 넣지 않았는가 (#220 광과민성 예산)
+  const frame = readFileSync('src/render/grimoireFrame.ts', 'utf8');
+  assert.ok(!/BlendModes\.ADD/.test(frame), 'HUD 판에 ADD 블렌드를 쓰지 않는다');
+  assert.ok(!/tweens\.add|time\.now|Math\.sin/.test(frame), 'HUD 판은 정지해 있어야 한다');
+}
+
+console.log('ui palette regression: 마도서정본·의미색구분·숫자토큰파생·주요화면이행·HUD·하드코딩상한·영창바대조·마도서재질·장식·HUD장식 10군 통과');
