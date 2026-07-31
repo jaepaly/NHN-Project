@@ -1,5 +1,5 @@
 import type { RewardOption } from '../run/runContract';
-import { UI_FONT, UI_LAYER } from './uiTokens';
+import { UI_COLOR, UI_FONT, UI_LAYER, UI_SEMANTIC } from './uiTokens';
 import type { SpellForm } from '../spell/types';
 import { ELEMENT_LABELS, ELEMENT_PALETTES, paletteColorToCss } from '../render/palette';
 import { glyphSvg } from '../render/formGlyphs';
@@ -26,8 +26,8 @@ const CSS = `
 #${WRAP_ID} {
   position: fixed; inset: 0; z-index: ${UI_LAYER.reward};
   display: grid; place-items: center;
-  background: radial-gradient(circle at 50% 42%, rgba(76, 102, 255, 0.10), transparent 42%),
-              rgba(3, 5, 16, 0.72);
+  background: radial-gradient(circle at 50% 42%, rgba(216, 187, 114, 0.10), transparent 42%),
+              rgba(6, 5, 10, 0.72);
   backdrop-filter: blur(2px) saturate(0.9);
   opacity: 0; visibility: hidden; transition: opacity 180ms ease;
   font-family: ${UI_FONT.sans};
@@ -36,18 +36,18 @@ const CSS = `
 #${WRAP_ID} .reward-panel { text-align: center; max-width: min(700px, calc(100vw - 32px)); }
 #${WRAP_ID} .reward-kicker {
   font-size: 12px; font-weight: 700; letter-spacing: 0.24em;
-  color: #8fa4ff; text-shadow: 0 0 12px rgba(76, 102, 255, 0.8);
+  color: ${UI_COLOR.accent}; text-shadow: 0 0 12px rgba(216, 187, 114, 0.8);
 }
-#${WRAP_ID} .reward-title { margin: 6px 0 22px; font-size: 24px; font-weight: 700; color: #eef1ff; }
+#${WRAP_ID} .reward-title { margin: 6px 0 22px; font-size: 24px; font-weight: 700; color: ${UI_COLOR.textBright}; }
 #${WRAP_ID} .reward-cards { display: flex; gap: 20px; justify-content: center; }
 #${WRAP_ID} .reward-card {
-  --card-core: #8fa4ff; --card-glow: #4c66ff;
+  --card-core: ${UI_COLOR.accent}; --card-glow: ${UI_COLOR.borderStrong};
   position: relative; width: clamp(150px, 21vw, 200px); min-height: 218px;
   padding: 18px 14px 46px; box-sizing: border-box; text-align: center;
   border: 1px solid color-mix(in srgb, var(--card-core) 55%, #26305b);
   border-radius: 14px; cursor: pointer;
   background: linear-gradient(160deg, rgba(10, 14, 34, 0.97), rgba(15, 21, 52, 0.93));
-  color: #dfe6ff; font: inherit;
+  color: ${UI_COLOR.text}; font: inherit;
   transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 #${WRAP_ID} .reward-card:hover, #${WRAP_ID} .reward-card.focused {
@@ -61,22 +61,22 @@ const CSS = `
 #${WRAP_ID} .reward-card--rare {
   border-color: transparent;
   background:
-    linear-gradient(160deg, rgba(14, 12, 30, 0.97), rgba(26, 18, 44, 0.95)) padding-box,
-    linear-gradient(120deg, #ffe08a, #ffb347, var(--card-core), #ffd76a, #ffe08a) border-box;
+    linear-gradient(160deg, rgba(14, 12, 30, 0.97), rgba(24, 17, 28, 0.95)) padding-box,
+    linear-gradient(120deg, ${UI_COLOR.accentGlow}, ${UI_COLOR.warm}, var(--card-core), ${UI_COLOR.accentGlow}, ${UI_COLOR.accentGlow}) border-box;
   border: 2px solid transparent;
   background-size: 100% 100%, 300% 100%;
   animation: r3-rare-shimmer 2.6s linear infinite;
-  box-shadow: 0 0 20px rgba(255, 196, 92, 0.28);
+  box-shadow: 0 0 20px rgba(216, 187, 114, 0.28);
 }
 #${WRAP_ID} .reward-card--rare:hover, #${WRAP_ID} .reward-card--rare.focused {
-  box-shadow: 0 0 34px rgba(255, 196, 92, 0.5), 0 18px 50px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 34px rgba(216, 187, 114, 0.5), 0 18px 50px rgba(0, 0, 0, 0.5);
 }
 #${WRAP_ID} .card-rare-ribbon {
   position: absolute; top: 9px; right: 10px;
   font-size: 10px; font-weight: 800; letter-spacing: 0.12em;
-  color: #1a1204; background: linear-gradient(120deg, #ffe08a, #ffb347);
+  color: #1a1204; background: linear-gradient(120deg, ${UI_COLOR.accentGlow}, ${UI_COLOR.warm});
   padding: 2px 8px; border-radius: 999px;
-  box-shadow: 0 0 10px rgba(255, 196, 92, 0.6);
+  box-shadow: 0 0 10px rgba(216, 187, 114, 0.6);
 }
 @keyframes r3-rare-shimmer {
   from { background-position: 0 0, 0 0; }
@@ -89,7 +89,7 @@ const CSS = `
   position: absolute; top: 10px; left: 12px;
   font: 700 12px/1.6 'Consolas', monospace;
   width: 20px; height: 20px; border-radius: 5px;
-  color: #0a0e22; background: var(--card-core);
+  color: ${UI_COLOR.ink}; background: var(--card-core);
   box-shadow: 0 0 10px var(--card-glow);
 }
 #${WRAP_ID} .card-glyph {
@@ -99,8 +99,8 @@ const CSS = `
   display: grid; place-items: center;
 }
 /* 폼이 있는 카드는 원형 위에 형태 글리프를 얹는다 — 빌드 HUD 칩과 같은 어휘 */
-#${WRAP_ID} .card-glyph svg { width: 30px; height: 30px; color: #f4f6ff; }
-#${WRAP_ID} .card-title { font-size: 17px; font-weight: 700; color: #f4f6ff; }
+#${WRAP_ID} .card-glyph svg { width: 30px; height: 30px; color: ${UI_COLOR.textBright}; }
+#${WRAP_ID} .card-title { font-size: 17px; font-weight: 700; color: ${UI_COLOR.textBright}; }
 #${WRAP_ID} .card-desc { margin-top: 8px; font-size: 13px; line-height: 1.5; color: #a9b4e6; }
 #${WRAP_ID} .card-kind {
   position: absolute; left: 0; right: 0; bottom: 14px;
@@ -110,17 +110,17 @@ const CSS = `
   position: absolute; top: 9px; right: 11px;
   font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
   padding: 2px 7px; border-radius: 999px;
-  color: #0a0e22; background: var(--card-core); opacity: 0.92;
+  color: ${UI_COLOR.ink}; background: var(--card-core); opacity: 0.92;
 }
-#${WRAP_ID} .reward-hint { margin-top: 20px; font-size: 12.5px; color: #7f8aba; }
-#${WRAP_ID} .reward-hint b { color: #aeb9e8; font-weight: 600; }
+#${WRAP_ID} .reward-hint { margin-top: 20px; font-size: 12.5px; color: ${UI_COLOR.textMuted}; }
+#${WRAP_ID} .reward-hint b { color: ${UI_COLOR.textSoft}; font-weight: 600; }
 /* 이번 런 누적 — 전투 HUD에서 옮겨온 자리. "지금 뭘 쌓았나 → 뭘 더할까"의 근거 */
 #${WRAP_ID} .reward-context {
   margin: 20px auto 0; padding-top: 14px; max-width: 560px;
   border-top: 1px solid #232c52;
-  font-size: 12px; line-height: 1.7; color: #7f8aba;
+  font-size: 12px; line-height: 1.7; color: ${UI_COLOR.textMuted};
 }
-#${WRAP_ID} .reward-context b { color: #aeb9e8; font-weight: 600; }
+#${WRAP_ID} .reward-context b { color: ${UI_COLOR.textSoft}; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) {
   #${WRAP_ID}, #${WRAP_ID} .reward-card { transition: none; }
 }
@@ -176,11 +176,11 @@ function cardColors(option: RewardOption): { core: string; glow: string } {
     const pal = ELEMENT_PALETTES[option.element];
     return { core: paletteColorToCss(pal.core), glow: paletteColorToCss(pal.glow) };
   }
-  if (option.kind === 'max-hp') return { core: '#72f1a8', glow: '#1f9d5c' };
-  if (option.kind === 'swift-incant') return { core: '#ffd166', glow: '#b8860b' };
-  if (option.kind === 'mana-surge') return { core: '#91b7ff', glow: '#2456c4' };
-  if (option.kind === 'ward-start') return { core: '#72d8ff', glow: '#1f7a9d' };
-  return { core: '#8fa4ff', glow: '#4c66ff' };
+  if (option.kind === 'max-hp') return { core: UI_SEMANTIC.ok, glow: '#3f7a5f' };
+  if (option.kind === 'swift-incant') return { core: UI_COLOR.warm, glow: '#8a6420' };
+  if (option.kind === 'mana-surge') return { core: UI_SEMANTIC.mana, glow: '#3f5a8a' };
+  if (option.kind === 'ward-start') return { core: UI_SEMANTIC.shield, glow: '#3a6f80' };
+  return { core: UI_COLOR.accent, glow: UI_COLOR.borderStrong };
 }
 
 /** 같은 3택 UI를 다른 맥락(방 클리어 보상 / 주문서 유산)으로 재사용하기 위한 문구 */

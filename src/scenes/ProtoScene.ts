@@ -96,7 +96,7 @@ import { ALTAR_OFFER_CONFIG, drawAltarOffer } from '../combat-core/run/altarOffe
 import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomRewardScale';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { showRoomChoices } from '../ui/roomChoiceOverlay';
-import { UI_COLOR } from '../ui/uiTokens';
+import { UI_COLOR, UI_HEX, UI_SEMANTIC, hex } from '../ui/uiTokens';
 import type { GameSettings } from '../run/gameSettings';
 import { DEFAULT_SETTINGS, loadSettings } from '../run/gameSettings';
 import { setVfxBrightness } from '../render/vfxBrightness';
@@ -2233,42 +2233,42 @@ export class ProtoScene extends Phaser.Scene {
       fontFamily: 'Consolas, monospace',
       fontSize: '14px',
       fontStyle: 'bold',
-      color: '#72f1b8',
+      color: UI_SEMANTIC.ok,
     }).setScrollFactor(0).setDepth(100);
     // 정적 라벨 — 값이 안 바뀌므로 한 번만 만든다
     (['HP', 'MANA', 'SHIELD'] as const).forEach((label, index) => {
       this.add.text(HUD.x + HUD.labelX, hudRowY(index), label, {
         fontFamily: 'Consolas, monospace',
         fontSize: '11px',
-        color: '#7f8aba',
+        color: UI_COLOR.textMuted,
       }).setScrollFactor(0).setDepth(100);
     });
     this.hpText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(0), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
-      color: '#ff91ad',
+      color: UI_SEMANTIC.hp,
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
     this.manaText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(1), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
-      color: '#91b7ff',
+      color: UI_SEMANTIC.mana,
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
     this.shieldText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(2), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
-      color: '#72d8ff',
+      color: UI_SEMANTIC.shield,
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
     this.attunementText = this.add.text(HUD.x + HUD.labelX, hudRowY(3) - 4, 'ARCANE // UNBOUND', {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
-      color: '#8fa4ff',
+      color: UI_COLOR.accent,
     }).setScrollFactor(0).setDepth(100);
     // 활성 자기 강화 — 종류·세기·남은 시간 (버프 없으면 빈 줄)
     this.buffStatusText = this.add.text(HUD.x + 152, hudRowY(3) - 4, '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
       fontStyle: 'bold',
-      color: '#c7f9e0',
+      color: UI_SEMANTIC.buff,
     }).setScrollFactor(0).setDepth(100);
     // 친화 경험치 바 라벨 — 메인 HUD 박스 아래. 원소별로 1행씩(주력이 맨 위) 세워
     // "다른 원소도 오르고 있다"가 보이게 한다 (사용 성장 #166 체감 · 총괄 제보)
@@ -5442,7 +5442,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const shielded = this.playerState.addShield(
         spellShieldFromPower(spec.power) * (options?.shieldAmountScale ?? 1),
       );
-      this.announceSystemMessage(`보호막 +${Math.round(shielded)}`, '#72d8ff');
+      this.announceSystemMessage(`보호막 +${Math.round(shielded)}`, UI_SEMANTIC.shield);
       return;
     }
     if (spec.effect === 'buff') {
@@ -5688,7 +5688,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         continue;
       }
       const amount = this.playerState.addShield(request.amount);
-      if (amount > 0) this.announceSystemMessage(`수호 정령 · 보호막 +${Math.round(amount)}`, '#72d8ff');
+      if (amount > 0) this.announceSystemMessage(`수호 정령 · 보호막 +${Math.round(amount)}`, UI_SEMANTIC.shield);
     }
   }
 
@@ -6065,7 +6065,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 자리수가 늘어도 왼쪽으로 자라 바를 침범하지 않는다 — padStart 정렬이 필요 없다.
     this.hpText
       .setText(`${hp}/${this.playerState.maxHp}`)
-      .setColor(heatwaveDamaging ? '#ffad62' : '#ff91ad');
+      .setColor(heatwaveDamaging ? '#e0a860' : UI_SEMANTIC.hp);
     this.manaText.setText(`${mana}/${this.playerState.maxMana}`);
     this.shieldText.setText(`${shield}/${this.playerState.maxHp}`);
     this.drawBuildChips();
@@ -6335,7 +6335,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const top = PAUSE_LAYOUT.titleY - 34;
     const bottom = PAUSE_LAYOUT.firstY + (PAUSE_MAIN.length - 1) * PAUSE_LAYOUT.rowGap + 24;
     const g = this.pauseMenuPlate.clear();
-    g.fillStyle(0x080b1c, 0.94);
+    g.fillStyle(UI_HEX.panel, 0.94);
     g.fillRoundedRect((width - plateW) / 2, top, plateW, bottom - top, 14);
     g.lineStyle(1, 0x2f3d76, 0.9);
     g.strokeRoundedRect((width - plateW) / 2, top, plateW, bottom - top, 14);
@@ -6538,9 +6538,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 내려가 하단 중앙 밴드(시퀀스 바 x266~694 · 필살기 라벨 ~x670)와 겹친다.
     const x = width - 20 - boxW;
     const y = height - 26 - span - 10;
-    g.fillStyle(0x080b1c, 0.92);
+    g.fillStyle(UI_HEX.panel, 0.92);
     g.fillRoundedRect(x, y - boxH, boxW, boxH, 8);
-    g.lineStyle(1, chip?.element ? ELEMENT_PALETTES[chip.element].core : 0x33447f, 0.7);
+    g.lineStyle(1, chip?.element ? ELEMENT_PALETTES[chip.element].core : UI_HEX.border, 0.7);
     g.strokeRoundedRect(x, y - boxH, boxW, boxH, 8);
     this.buildInspectPlate.setVisible(true);
     this.buildInspectText.setPosition(x + 10, y - 9).setVisible(true);
@@ -6573,19 +6573,19 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const heatPulse = 0.36 + Math.sin(this.time.now / 420) * 0.12;
     const g = this.hudGraphics.clear();
 
-    g.fillStyle(0x080b1c, 0.9);
+    g.fillStyle(UI_HEX.panel, 0.9);
     g.fillRoundedRect(HUD.x, HUD.y, HUD.width, HUD.height, 12);
-    g.lineStyle(1, 0x33447f, 0.72);
+    g.lineStyle(1, UI_HEX.border, 0.72);
     g.strokeRoundedRect(HUD.x, HUD.y, HUD.width, HUD.height, 12);
 
     // 라벨과 같은 줄에 — 텍스트 세로 중앙에 맞춰 바를 놓는다 (원점이 좌상단이므로 −3)
     const barOffset = Math.round(HUD.barHeight / 2) + 1;
     const rowBarY = (index: number): number => hudRowY(index) + barOffset;
-    g.fillStyle(0x141a35, 1);
+    g.fillStyle(UI_HEX.track, 1);
     for (let index = 0; index < 3; index += 1) {
       g.fillRoundedRect(HUD.barX, rowBarY(index), HUD.barWidth, HUD.barHeight, 3);
     }
-    g.fillStyle(heatwaveDamaging ? 0xff734c : 0xff5c82, 1);
+    g.fillStyle(heatwaveDamaging ? 0xff734c : hex(UI_SEMANTIC.hp), 1);
     g.fillRoundedRect(HUD.barX, rowBarY(0), HUD.barWidth * hpRatio, HUD.barHeight, 3);
     if (heatwaveDamaging && hpRatio > 0) {
       const filledWidth = HUD.barWidth * hpRatio;
@@ -6601,12 +6601,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         g.fillCircle(x, y, 1.8 - progress * 0.55);
       }
     }
-    g.fillStyle(0x5b8cff, 1);
+    g.fillStyle(hex(UI_SEMANTIC.mana), 1);
     g.fillRoundedRect(HUD.barX, rowBarY(1), HUD.barWidth * manaRatio, HUD.barHeight, 3);
-    g.fillStyle(0x48c9ff, 1);
+    g.fillStyle(hex(UI_SEMANTIC.shield), 1);
     g.fillRoundedRect(HUD.barX, rowBarY(2), HUD.barWidth * shieldRatio, HUD.barHeight, 3);
 
-    g.fillStyle(0x1d2445, 1);
+    g.fillStyle(UI_HEX.track, 1);
     g.fillRoundedRect(HUD.x + 8, HUD.y + HUD.height - 5, HUD.width - 16, 3, 2);
     g.fillStyle(cooldownRatio > 0 ? 0xffb86b : 0x72f1b8, 1);
     g.fillRoundedRect(
@@ -6623,12 +6623,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 우상단 상태 패널 — 종전엔 ROOM 칩(DOM) 아래에 따로 떠서 우상단이 3단이었다.
     // ROOM을 이 패널 안으로 넣어(updateStatusText) 2단으로 줄였다 (총괄 지적).
     const { width } = this.scale;
-    g.fillStyle(0x080b1c, 0.86);
+    g.fillStyle(UI_HEX.panel, 0.86);
     // 패널은 **내용에 맞춰 늘어난다** — 보스전에서 저항·관통 줄이 붙으면 3~4줄이 되어
     // 고정 높이로는 텍스트가 패널을 넘고 미니맵과 겹쳤다. 평시(2줄)엔 그대로 조밀하다.
     const panelHeight = rightPanelHeight(this.waveText.height);
     g.fillRoundedRect(width - 306, RIGHT_PANEL.y, 288, panelHeight, 10);
-    g.lineStyle(1, 0x2a735c, 0.62);
+    g.lineStyle(1, UI_HEX.border, 0.62);
     g.strokeRoundedRect(width - 306, RIGHT_PANEL.y, 288, panelHeight, 10);
     // 미니맵을 패널 아래로 — 높이가 바뀔 때만 옮긴다 (setTop이 동일 y면 no-op)
     this.runMinimap?.setTop(RIGHT_PANEL.y + panelHeight + RIGHT_PANEL.gap);
@@ -6665,7 +6665,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const alpha = main ? 1 : 0.55;
       const barY = HUD.y + HUD.height + 22 + i * AFFINITY_ROW_HEIGHT;
 
-      g.fillStyle(0x141a35, alpha);
+      g.fillStyle(UI_HEX.track, alpha);
       g.fillRoundedRect(barX, barY, barW, barH, barH / 2);
       g.fillStyle(pal.core, alpha);
       g.fillRoundedRect(barX, barY, barW * ratio, barH, barH / 2);
@@ -6830,7 +6830,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const separator = shieldPart && hpPart ? ' · ' : '';
     this.announceSystemMessage(
       `${shieldPart}${separator}${hpPart}`,
-      hpDamage > 0 ? '#ff8fa3' : '#72d8ff',
+      hpDamage > 0 ? UI_COLOR.danger : UI_SEMANTIC.shield,
     );
   }
 
@@ -7374,7 +7374,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const label = this.add.text(x, y - 18, `+${Math.round(amount)}`, {
       fontSize: '13px',
       fontStyle: 'bold',
-      color: '#91b7ff',
+      color: UI_SEMANTIC.mana,
       stroke: '#05060f',
       strokeThickness: 3,
     }).setOrigin(0.5).setDepth(8).setBlendMode(Phaser.BlendModes.ADD);

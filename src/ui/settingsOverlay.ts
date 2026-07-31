@@ -70,7 +70,7 @@ ${overlayBaseCss(WRAP_ID)}
   width: 16px; height: 16px; border-radius: ${UI_RADIUS.circle};
   background: ${UI_COLOR.text}; border: 2px solid ${UI_COLOR.ink}; cursor: grab;
 }
-#${WRAP_ID} input[type="range"]:focus-visible { box-shadow: 0 0 0 3px rgba(76, 102, 255, 0.5); }
+#${WRAP_ID} input[type="range"]:focus-visible { box-shadow: 0 0 0 3px rgba(216, 187, 114, 0.5); }
 #${WRAP_ID} .settings-toggle {
   margin-top: 22px; width: 100%; display: flex; justify-content: space-between;
   align-items: center; padding: 11px 14px;
