@@ -221,16 +221,86 @@ interface DraftNode {
   lane: number;
 }
 
-interface Draft {
-  nodes: DraftNode[];
-  edges: { from: string; to: string }[];
+interface DraftEdge {
+  from: string;
+  to: string;
+  diagonal?: true;
 }
 
-function addEdge(draft: Draft, from: string, to: string): void {
-  if (from === to) return;
-  if (draft.edges.some((edge) => edge.from === from && edge.to === to)) return;
-  draft.edges.push({ from, to });
+interface Draft {
+  nodes: DraftNode[];
+  edges: DraftEdge[];
 }
+
+interface DiagonalCandidateGroup {
+  stage: number;
+  upward: DraftEdge[];
+  downward: DraftEdge[];
+}
+
+function addEdge(draft: Draft, from: string, to: string, diagonal = false): boolean {
+  if (from === to) return false;
+  if (draft.edges.some((edge) => edge.from === from && edge.to === to)) return false;
+  draft.edges.push({ from, to, ...(diagonal ? { diagonal: true as const } : {}) });
+  return true;
+}
+
+function shuffleWith<T>(rand: () => number, values: readonly T[]): T[] {
+  const shuffled = [...values];
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rand() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+/** 대각선을 놓을 수 있는 용량이 늘수록 2→3→4개로 늘리고, 후보보다 많이 요구하지 않는다. */
+export function generatedDiagonalRouteTarget(capacity: number): number {
+  if (!Number.isFinite(capacity) || capacity <= 0) return 0;
+  return Math.min(4, Math.max(1, Math.floor(capacity)));
+}
+
+function addGeneratedDiagonalRoutes(
+  draft: Draft,
+  rand: () => number,
+  candidates: readonly DiagonalCandidateGroup[],
+  requestedTarget?: number,
+): DraftEdge[] {
+  const oriented = candidates.map((group) => ({
+    stage: group.stage,
+    edges: shuffleWith(rand, rand() < 0.5 ? group.upward : group.downward),
+  }));
+  const capacity = oriented.reduce((sum, group) => sum + group.edges.length, 0);
+  const target = Math.min(
+    generatedDiagonalRouteTarget(capacity),
+    requestedTarget ?? Number.POSITIVE_INFINITY,
+  );
+  const selected: DraftEdge[] = [];
+
+  // 2개 이상이면 수문장 전·후에 하나씩 먼저 배치한다. 기존 균형 규칙과
+  // 양립하지 않는 희귀 레이아웃의 1개 폴백은 어느 스테이지든 시드 기반으로 고른다.
+  const requiredStages = target >= 2 ? [1, 2] : shuffleWith(rand, [1, 2]);
+  for (const stage of requiredStages) {
+    if (selected.length >= target) break;
+    const group = shuffleWith(rand, oriented.filter((entry) => entry.stage === stage))
+      .find((entry) => entry.edges.length > 0);
+    const edge = group?.edges.shift();
+    if (edge) selected.push(edge);
+  }
+
+  const remaining = shuffleWith(rand, oriented.flatMap((group) => group.edges));
+  while (selected.length < target && remaining.length > 0) {
+    selected.push(remaining.shift()!);
+  }
+
+  const added: DraftEdge[] = [];
+  for (const edge of selected) {
+    if (addEdge(draft, edge.from, edge.to, true)) added.push({ ...edge, diagonal: true });
+  }
+  return added;
+}
+
+const MAX_DIAGONAL_LAYOUT_ATTEMPTS = 32;
 
 /**
  * 한 스테이지를 파티션으로 이어 붙인다.
@@ -243,11 +313,16 @@ function buildStage(
   startLayer: number,
   entries: readonly DraftNode[],
   roomBudget: number,
-): { exits: DraftNode[]; nextLayer: number } {
+): {
+  exits: DraftNode[];
+  nextLayer: number;
+  diagonalCandidates: DiagonalCandidateGroup[];
+} {
   let layer = startLayer;
   let remaining = roomBudget;
   let current = [...entries];
   let first = true;
+  const diagonalCandidates: DiagonalCandidateGroup[] = [];
 
   while (remaining > 0) {
     const signature = chooseSignature(rand, remaining, stage, first);
@@ -287,6 +362,23 @@ function buildStage(
     for (const chain of lanes) {
       for (let i = 1; i < chain.length; i += 1) addEdge(draft, chain[i - 1].id, chain[i].id);
     }
+    // 분기 사슬의 인접 layer 사이에서만 lane 전환 후보를 만든다. 한 경계에서는
+    // 위쪽 또는 아래쪽 한 방향만 나중에 선택하므로 X자 간선이 생기지 않는다.
+    for (let step = 1; step < lanes[0].length; step += 1) {
+      const upward: DraftEdge[] = [];
+      const downward: DraftEdge[] = [];
+      for (let branch = 0; branch < lanes.length - 1; branch += 1) {
+        downward.push({
+          from: lanes[branch][step - 1].id,
+          to: lanes[branch + 1][step].id,
+        });
+        upward.push({
+          from: lanes[branch + 1][step - 1].id,
+          to: lanes[branch][step].id,
+        });
+      }
+      if (upward.length > 0) diagonalCandidates.push({ stage, upward, downward });
+    }
 
     const chainLength = lanes[0].length;
     layer += chainLength;
@@ -322,7 +414,7 @@ function buildStage(
     }
   }
 
-  return { exits: current, nextLayer: layer };
+  return { exits: current, nextLayer: layer, diagonalCandidates };
 }
 
 /** 시작 노드부터 종착까지의 모든 경로 (노드 배열) */
@@ -467,6 +559,8 @@ export interface GeneratedMap {
   seed: number;
   /** 몇 번째 시도에서 규칙을 만족했나 — 생성 난이도를 관측한다 */
   attempts: number;
+  /** 일반 생성 맵에만 추가된 중간 lane 전환 간선. 고정 프리셋에는 적용되지 않는다. */
+  diagonalEdges: readonly Readonly<{ from: string; to: string }>[];
 }
 
 /**
@@ -477,6 +571,8 @@ export function generateRunMap(
   seed: number,
   config: MapGeneratorConfig = MAP_GENERATOR_CONFIG,
 ): GeneratedMap | null {
+  let singleDiagonalFallback: GeneratedMap | null = null;
+
   for (let attempt = 1; attempt <= config.maxAttempts; attempt += 1) {
     // 시드를 섞어 재시도 — 같은 시드로 다시 돌리면 같은 실패를 반복한다
     const rand = seededRandom((seed + attempt * 0x9e3779b9) >>> 0);
@@ -502,18 +598,79 @@ export function generateRunMap(
     draft.nodes.push(finalBoss);
     for (const exit of s2.exits) addEdge(draft, exit.id, finalBoss.id);
 
-    if (ruleViolation(draft, start.id, finalBoss.id, config.nonCombatShare) !== null) continue;
+    const diagonalCandidates = [...s1.diagonalCandidates, ...s2.diagonalCandidates];
+    const baseEdges = draft.edges.map((edge) => ({ ...edge }));
+    let diagonalEdges: DraftEdge[] | null = null;
+    const diagonalCapacity = diagonalCandidates.reduce(
+      (sum, group) => sum + group.upward.length,
+      0,
+    );
+    const preferredDiagonalCount = generatedDiagonalRouteTarget(diagonalCapacity);
+    // 같은 방 풀에서도 대각선 방향·부분집합에 따라 중복/지배 경로 여부가 달라진다.
+    // 방 종류를 전부 다시 뽑기 전에 배치만 바꿔 기존 균형 규칙을 통과하는 조합을 찾고,
+    // 큰 방 풀의 4개가 성립하지 않을 때 3→2개로 낮춘다. 2개도 성립하지 않으면
+    // 아래에서 1개 구성을 후보로만 저장하고, 다음 방 배치를 계속 시도한다.
+    for (
+      let requestedCount = preferredDiagonalCount;
+      requestedCount >= Math.min(2, preferredDiagonalCount) && !diagonalEdges;
+      requestedCount -= 1
+    ) {
+      for (
+        let layoutAttempt = 0;
+        layoutAttempt < MAX_DIAGONAL_LAYOUT_ATTEMPTS;
+        layoutAttempt += 1
+      ) {
+        draft.edges = baseEdges.map((edge) => ({ ...edge }));
+        const candidateEdges = addGeneratedDiagonalRoutes(
+          draft,
+          rand,
+          diagonalCandidates,
+          requestedCount,
+        );
+        if (ruleViolation(draft, start.id, finalBoss.id, config.nonCombatShare) === null) {
+          diagonalEdges = candidateEdges;
+          break;
+        }
+      }
+    }
 
-    const definition: MapGraphDefinition = {
-      nodes: draft.nodes.map((node) => finalizeNode(node, rand)),
-      edges: draft.edges,
-      startNodeId: start.id,
-      // 최종 보스로 직접 이어지는 노드 — 계약이 이 간선의 존재를 검사한다
-      lastBeforeBossNodeId: s2.exits[0].id,
-    };
-    return { definition, seed, attempts: attempt };
+    const toGeneratedMap = (selectedDiagonals: readonly DraftEdge[]): GeneratedMap => ({
+      definition: {
+        nodes: draft.nodes.map((node) => finalizeNode(node, rand)),
+        edges: draft.edges.map(({ from, to }) => ({ from, to })),
+        startNodeId: start.id,
+        // 최종 보스로 직접 이어지는 노드 — 계약이 이 간선의 존재를 검사한다
+        lastBeforeBossNodeId: s2.exits[0].id,
+      },
+      seed,
+      attempts: attempt,
+      diagonalEdges: selectedDiagonals.map(({ from, to }) => ({ from, to })),
+    });
+
+    if (diagonalEdges) return toGeneratedMap(diagonalEdges);
+    // 전체 생성 시도를 모두 썼는데도 2개가 불가능할 때를 대비해, 균형 규칙을
+    // 통과하는 1개 구성을 보관한다. 여기서 즉시 반환하지 않아 2~4개를 우선한다.
+    for (
+      let layoutAttempt = 0;
+      layoutAttempt < MAX_DIAGONAL_LAYOUT_ATTEMPTS && !diagonalEdges;
+      layoutAttempt += 1
+    ) {
+      draft.edges = baseEdges.map((edge) => ({ ...edge }));
+      const candidateEdges = addGeneratedDiagonalRoutes(
+        draft,
+        rand,
+        diagonalCandidates,
+        1,
+      );
+      if (ruleViolation(draft, start.id, finalBoss.id, config.nonCombatShare) === null) {
+        diagonalEdges = candidateEdges;
+      }
+    }
+    if (diagonalEdges && !singleDiagonalFallback) {
+      singleDiagonalFallback = toGeneratedMap(diagonalEdges);
+    }
   }
-  return null;
+  return singleDiagonalFallback;
 }
 
 /** 규칙 위반 사유를 그대로 노출한다 — 회귀와 진단이 같은 함수를 본다 */

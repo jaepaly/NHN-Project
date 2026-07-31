@@ -3,8 +3,10 @@ import { readFileSync } from 'node:fs';
 import {
   MAP_GENERATOR_CONFIG,
   generateRunMap,
+  generatedDiagonalRouteTarget,
   seededRandom,
 } from '../src/run/mapGenerator';
+import type { GeneratedMap } from '../src/run/mapGenerator';
 import { RunMapGraph, maximumMapPathRooms } from '../src/run/mapGraph';
 import { MAP_GRAPH_PRESET_01 } from '../src/run/mapGraphPreset';
 import { WAVE_SETS } from '../src/combat-core/waves/waveManager';
@@ -29,11 +31,12 @@ import type { MapNodeKind } from '../src/run/mapGraphContract';
  */
 
 const SEEDS = 500;
-const generated: MapGraphDefinition[] = [];
+const generatedResults: GeneratedMap[] = [];
 for (let seed = 1; seed <= SEEDS; seed += 1) {
   const result = generateRunMap(seed);
-  if (result) generated.push(result.definition);
+  if (result) generatedResults.push(result);
 }
+const generated: MapGraphDefinition[] = generatedResults.map((result) => result.definition);
 
 // ── 1) 폴백이 상시 경로가 아니다 ────────────────────────────────────────────
 //
@@ -46,7 +49,81 @@ assert.ok(
 );
 assert.ok(MAP_GENERATOR_CONFIG.maxAttempts >= 160, '재시도 상한이 폴백률 0% 지점 이상');
 
-// ── 2) 계약을 통과한다 ──────────────────────────────────────────────────────
+// ── 2) 일반 생성 맵에 규모별 비대칭 대각선 2~4개 ───────────────────────────
+assert.equal(generatedDiagonalRouteTarget(0), 0, '후보가 없으면 대각선 없음');
+assert.equal(generatedDiagonalRouteTarget(1), 1, '후보보다 많이 요구하지 않음');
+assert.equal(generatedDiagonalRouteTarget(2), 2, '작은 방 풀은 2개');
+assert.equal(generatedDiagonalRouteTarget(3), 3, '중간 방 풀은 3개');
+assert.equal(generatedDiagonalRouteTarget(8), 4, '큰 방 풀도 최대 4개');
+
+const observedDiagonalCounts = new Set<number>();
+let singleDiagonalFallbacks = 0;
+for (const result of generatedResults) {
+  const definition = result.definition;
+  const byId = new Map(definition.nodes.map((node) => [node.id, node]));
+  const byBoundary = new Map<string, number[]>();
+  const stages = new Set<number>();
+
+  assert.ok(
+    result.diagonalEdges.length >= 1 && result.diagonalEdges.length <= 4,
+    `생성 대각선은 1~4개여야 한다 (${result.diagonalEdges.length})`,
+  );
+  if (result.diagonalEdges.length === 1) singleDiagonalFallbacks += 1;
+  observedDiagonalCounts.add(result.diagonalEdges.length);
+
+  for (const edge of result.diagonalEdges) {
+    const from = byId.get(edge.from);
+    const to = byId.get(edge.to);
+    assert.ok(from && to, `대각선이 실제 노드를 가리켜야 한다: ${edge.from} -> ${edge.to}`);
+    assert.equal(from!.stage, to!.stage, '대각선은 수문장을 건너뛰지 않는다');
+    assert.equal(to!.layer, from!.layer + 1, '대각선은 인접한 다음 layer만 연결');
+    assert.equal(Math.abs(to!.lane - from!.lane), 1, '대각선은 인접 lane만 연결');
+    assert.equal(
+      definition.edges.filter((candidate) => (
+        candidate.from === edge.from && candidate.to === edge.to
+      )).length,
+      1,
+      '대각선은 실제 그래프에 정확히 한 번 들어간다',
+    );
+    assert.ok(
+      definition.edges.filter((candidate) => candidate.from === edge.from).length <= 2,
+      '대각선 출발 노드의 선택지는 직선+대각선 최대 2개',
+    );
+
+    stages.add(from!.stage);
+    const boundary = `${from!.stage}:${from!.layer}`;
+    byBoundary.set(boundary, [
+      ...(byBoundary.get(boundary) ?? []),
+      Math.sign(to!.lane - from!.lane),
+    ]);
+  }
+
+  if (result.diagonalEdges.length >= 2) {
+    assert.deepEqual(
+      [...stages].sort(),
+      [1, 2],
+      '대각선이 2개 이상이면 각 스테이지에 최소 하나씩 있어야 한다',
+    );
+  }
+  for (const directions of byBoundary.values()) {
+    assert.equal(
+      new Set(directions).size,
+      1,
+      '같은 layer 경계의 대각선은 한 방향이어야 X자로 교차하지 않는다',
+    );
+  }
+}
+assert.deepEqual(
+  [...observedDiagonalCounts].sort(),
+  [1, 2, 3, 4],
+  '방 풀과 균형 조건에 따라 대각선 1·2·3·4개가 모두 생성돼야 한다',
+);
+assert.ok(
+  singleDiagonalFallbacks <= Math.ceil(SEEDS * 0.02),
+  `1개 폴백은 희귀해야 한다 (${singleDiagonalFallbacks}/${SEEDS})`,
+);
+
+// ── 3) 계약을 통과한다 ──────────────────────────────────────────────────────
 //
 // `validateDefinition`이 연결성·비순환·고립 노드·인카운터 필드를 전부 본다(설계 §5.0).
 // 생성기는 그 검사를 다시 구현하지 않고 만족시킨다 — 그러니 실제로 통과하는지가
