@@ -5,6 +5,9 @@ import type {
 } from '../run/mapGraphContract';
 import { MINIMAP_CONFIG, minimapLayout } from './minimapLayout';
 import { UI_COLOR, UI_FONT, UI_LAYER } from './uiTokens';
+import {
+  cornerFlourish, divider, ornamentCss,
+} from './grimoireOrnament';
 
 /**
  * 다음 방 선택 UI의 입력 계약.
@@ -102,7 +105,9 @@ const CSS = `
   font-family: ${UI_FONT.serif}; color: #ded3bc;
 }
 #${WRAP_ID}.active { opacity: 1; visibility: visible; }
+${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .route-panel {
+  --orn: #d8bb72;
   position: relative; width: min(1080px, calc(100vw - 32px));
   padding: 28px 30px 20px; box-sizing: border-box; overflow: hidden;
   border: 1px solid rgba(179, 151, 99, 0.46);
@@ -130,7 +135,7 @@ const CSS = `
 #${WRAP_ID} .route-panel::after { right: 22px; }
 #${WRAP_ID} .route-kicker {
   font: 600 12px/1 ${UI_FONT.serif}; letter-spacing: 0.22em; color: #b79a68;
-  text-shadow: 0 0 14px rgba(183, 154, 104, 0.34);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 }
 #${WRAP_ID} .route-title {
   margin: 8px 0 5px; font-family: ${UI_FONT.serif}; font-size: 27px;
@@ -219,7 +224,7 @@ const CSS = `
   width: 58px; height: 58px; opacity: 1; color: #d8bb72; border-color: #d8bb72;
   box-shadow:
     0 0 0 5px rgba(216, 187, 114, 0.07),
-    0 0 23px rgba(216, 187, 114, 0.23),
+    0 3px 9px rgba(0, 0, 0, 0.5),
     inset 0 0 18px rgba(216, 187, 114, 0.09);
 }
 #${WRAP_ID} .route-node.selectable {
@@ -228,7 +233,7 @@ const CSS = `
     radial-gradient(circle, color-mix(in srgb, var(--room-color) 15%, #241a29) 0 46%, #0d0910 49% 58%, color-mix(in srgb, var(--room-color) 42%, #16101a) 60% 62%, #0b080e 64%);
   box-shadow:
     0 0 0 6px color-mix(in srgb, var(--room-color) 7%, transparent),
-    0 0 24px color-mix(in srgb, var(--room-color) 31%, transparent),
+    0 4px 12px rgba(0, 0, 0, 0.55),
     inset 0 0 18px color-mix(in srgb, var(--room-color) 10%, transparent);
   animation: r3-route-ready 2.2s ease-in-out infinite;
 }
@@ -237,7 +242,7 @@ const CSS = `
   transform: translate(-50%, -50%) scale(1.09);
   box-shadow:
     0 0 0 8px color-mix(in srgb, var(--room-color) 9%, transparent),
-    0 0 35px color-mix(in srgb, var(--room-color) 47%, transparent),
+    0 6px 16px rgba(0, 0, 0, 0.6),
     inset 0 0 22px color-mix(in srgb, var(--room-color) 15%, transparent);
 }
 #${WRAP_ID} .route-node:focus-visible {
@@ -251,7 +256,7 @@ const CSS = `
   position: absolute; top: -9px; left: -9px; width: 22px; height: 22px;
   box-sizing: border-box; border: 1px solid #d8bb72; border-radius: 50%;
   color: #24180c; background: #d8bb72;
-  box-shadow: 0 0 10px rgba(216, 187, 114, 0.3);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
   font: 800 11px/20px ${UI_FONT.serif};
 }
 #${WRAP_ID} .route-ready-label {
@@ -260,7 +265,7 @@ const CSS = `
   color: color-mix(in srgb, var(--room-color) 78%, #eadfc8);
   background: transparent; border: 0;
   font: 700 10px/1 ${UI_FONT.serif}; letter-spacing: 0.12em;
-  text-shadow: 0 0 8px color-mix(in srgb, var(--room-color) 48%, transparent);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
 }
 #${WRAP_ID} .route-detail {
   position: relative; min-height: 76px; margin: 16px auto 0; padding: 14px 32px 10px;
@@ -395,8 +400,13 @@ export function showRoomChoices(
   const wrap = ensureDom();
   wrap.innerHTML = `
     <div class="route-panel">
+      ${cornerFlourish().replace('orn-corner', 'orn-corner tl')}
+      ${cornerFlourish().replace('orn-corner', 'orn-corner tr')}
+      ${cornerFlourish().replace('orn-corner', 'orn-corner bl')}
+      ${cornerFlourish().replace('orn-corner', 'orn-corner br')}
       <div class="route-kicker">운명의 갈림길</div>
       <div class="route-title">다음 길을 선택하라</div>
+      ${divider()}
       <div class="route-subtitle">드러난 운명의 흐름 속에서 빛이 깃든 방으로 나아갈 수 있습니다</div>
       <div class="route-map">
         <svg class="route-edges" aria-hidden="true"></svg>

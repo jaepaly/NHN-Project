@@ -248,25 +248,72 @@ import { FRAME_CONFIG, deckledPoints } from '../src/render/grimoireFrameGeometry
 // 실측으로 뽑은 차이(경로 지도 vs 나머지): 양피지 결 · 비대칭 얼룩 · 잉크 번짐 ·
 // 낡은 채도 · serif 서체. 그리고 **양쪽 다 갖고 있던 문제**가 네온 글로우다.
 {
-  const overlays = ['rewardCardOverlay', 'bossChoiceOverlay', 'runSummaryOverlay'];
+  // 다섯 오버레이 전부 — 하나라도 빠지면 그 화면만 다른 게임처럼 보인다
+  const overlays = [
+    'rewardCardOverlay', 'bossChoiceOverlay', 'runSummaryOverlay',
+    'roomChoiceOverlay', 'codexOverlay',
+  ];
 
   // ⚠️ `box-shadow: 0 0 Npx`는 **네온·SF 문법**이다. 종이는 스스로 빛나지 않고
   // 아래로 그림자를 떨어뜨린다. 색을 아무리 금색으로 바꿔도 균일 글로우가 남으면
   // 홀로그램 카드로 읽힌다. (`inset 0 0 0 1px`은 테두리라 예외)
   for (const name of overlays) {
     const src = readFileSync(`src/ui/${name}.ts`, 'utf8');
-    // ⚠️ 그림자 선언은 **여러 줄에 걸친다** — `box-shadow: A,` 다음 줄에 `inset B`가
-    // 오는 식이다. 줄 단위로 보면 두 번째 줄의 inset을 놓쳐 오탐한다(실제로 그렇게
-    // 걸렸다). `;`까지를 한 덩어리로 잡고 그 안을 쉼표로 나눠 본다.
+    // ⚠️ 그림자 선언은 여러 줄에 걸치고, `rgba(0, 0, 0, .5)`처럼 **함수 인자 안에도
+    // 쉼표가 있다.** 그냥 쉼표로 나누면 `inset 0 0 55px rgba(0` / ` 0` / ` 0` 식으로
+    // 쪼개져 오탐한다(실제로 그렇게 걸렸다).
+    // 함수 인자를 먼저 지우고 나눈다.
     const shadows = src.match(/(?:box|text|drop)-shadow:[^;]+/g) ?? [];
-    const neon = shadows.flatMap((decl) => decl.split(','))
+    const neon = shadows
+      // 중첩 괄호(`color-mix(in srgb, var(--x) 30%, transparent)`)까지 지우려면
+      // 안쪽부터 반복 치환해야 한다
+      .map((decl) => {
+        let out = decl;
+        for (let pass = 0; pass < 4; pass += 1) {
+          const next = out.replace(/[a-z-]+\([^()]*\)/gi, 'C');
+          if (next === out) break;
+          out = next;
+        }
+        return out;
+      })
+      .flatMap((decl) => decl.split(','))
       .filter((part) => !/inset/.test(part))
+      // ⚠️ `0 0 0 Npx`는 **퍼짐 링**이지 발광이 아니다(오프셋 0·흐림 0·퍼짐 N).
+      // 선택 테두리를 두껍게 그리는 정상 용법이라 걸러야 한다 — 실제로 오탐했다.
+      .filter((part) => !/0 0 0 [0-9]+px/.test(part))
       .filter((part) => /(?:^|[^0-9])0 0 [0-9]+px/.test(part));
     assert.ok(
       neon.length <= 1,
       `${name}: 네온 글로우가 ${neon.length}건 남았다 — 종이는 스스로 빛나지 않는다`
       + ` (${neon.slice(0, 2).join(' / ')})`,
     );
+  }
+
+  // **모든 오버레이가 장식을 쓰는가.** 만들어만 두면 아무 소용이 없다.
+  for (const name of overlays) {
+    const src = readFileSync(`src/ui/${name}.ts`, 'utf8');
+    assert.ok(
+      /cornerFlourish\(\)/.test(src),
+      `${name}: 모서리 장식이 없다 — 판만 있으면 "상자에 색만"으로 돌아간다`,
+    );
+    assert.equal(
+      (src.match(/orn-corner (?:tl|tr|bl|br)/g) ?? []).length >= 2, true,
+      `${name}: 모서리 장식이 최소 둘은 있어야 한다`,
+    );
+    assert.ok(/divider\(\)/.test(src), `${name}: 구획 괘선이 없다`);
+
+    // ⚠️ **같은 규칙 안에서 background를 두 번 선언하면 뒤엣것이 이긴다.**
+    // 도감에서 실제로 그랬다 — 재질을 넣었는데 아래에 `background: rgba(...)`가
+    // 남아 있어 배경 겹이 0이었다. 라이브로 확인하기 전엔 회귀도 통과했다.
+    for (const rule of src.match(/\.[a-z-]*panel \{[^}]*\}/g) ?? []) {
+      const bg = (rule.match(/(?:^|\s)background:/g) ?? []).length;
+      assert.ok(
+        bg <= 1,
+        `${name}: 패널 규칙에 background가 ${bg}번 — 뒤엣것이 재질을 덮는다`,
+      );
+      const shadow = (rule.match(/(?:^|\s)box-shadow:/g) ?? []).length;
+      assert.ok(shadow <= 1, `${name}: 패널 규칙에 box-shadow가 ${shadow}번`);
+    }
   }
 
   // 재질 토큰이 실제로 쓰이는가 — 정의만 하고 안 쓰면 아무 소용이 없다

@@ -1,5 +1,8 @@
 
-import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL } from './uiTokens';/**
+import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL } from './uiTokens';
+import {
+  cornerFlourish, deckleMask, divider, ornamentCss,
+} from './grimoireOrnament';/**
  * 보스 후 선택 오버레이 — "이대로 마칠까 vs 이어갈까" (게임성: 절정 + 성장하는 맛).
  * R3 자립형 DOM 오버레이 (runSummary/codex 패턴). 씬은 현재 루프·다음 난이도만 넘기고,
  * 선택('end' | 'continue')을 Promise로 돌려받는다.
@@ -17,6 +20,22 @@ const CSS = `
   font-family: ${UI_FONT.sans}; text-align: center;
 }
 #${WRAP_ID}.active { opacity: 1; visibility: visible; }
+#${WRAP_ID} .bc-panel {
+  position: relative; text-align: center;
+  --orn: ${UI_COLOR.accent};
+  max-width: min(720px, calc(100vw - 32px));
+  padding: 40px 34px 28px;
+  -webkit-mask-image: ${deckleMask()};
+  mask-image: ${deckleMask()};
+  -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+  background:
+    ${UI_MATERIAL.grain},
+    ${UI_MATERIAL.stain},
+    linear-gradient(163deg, rgba(26, 19, 30, 0.985), rgba(13, 10, 17, 0.975));
+  box-shadow: ${UI_MATERIAL.paperShadow}, ${UI_MATERIAL.rule};
+  border: 1px solid ${UI_COLOR.border};
+}
+${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .bc-kicker {
   font-size: 13px; letter-spacing: 0.34em; color: ${UI_COLOR.positive};
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
@@ -103,9 +122,14 @@ export function showBossChoice(nextLoop: number, nextDamagePct: number): Promise
   ];
 
   wrap.innerHTML = `
-    <div>
+    <div class="ui-panel bc-panel">
+      ${cornerFlourish().replace('orn-corner', 'orn-corner tl')}
+      ${cornerFlourish().replace('orn-corner', 'orn-corner tr')}
+      ${cornerFlourish().replace('orn-corner', 'orn-corner bl')}
+      ${cornerFlourish().replace('orn-corner', 'orn-corner br')}
       <div class="bc-kicker">BOSS FELLED</div>
       <div class="bc-title">${nextLoop > 1 ? `${nextLoop - 1}순환 돌파` : '기억의 보스를 넘었다'}</div>
+      ${divider()}
       <div class="bc-sub">유산은 은행에 새겨졌다. 이대로 마칠 것인가, 더 깊이 밀어붙일 것인가.</div>
       <div class="bc-cards">
         ${cards.map((c) => `
