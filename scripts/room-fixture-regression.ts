@@ -52,36 +52,40 @@ assert.ok(
 // 안내 반경이 방을 다 덮으면 안내가 상시 켜진 것과 같다 (방 폭 1920의 절반보다 작아야)
 assert.ok(ROOM_FIXTURE_CONFIG.hintRadius < 960, '안내가 방 전체를 덮지 않는다');
 
-// 5) 무장 지연 — 도착 즉시 발동을 막는다. 다만 포탈보다 짧다(중앙까지 걸어와야 하므로
-//    이미 시간이 지나 있고, 길면 닿았는데 안 열리는 구간이 생긴다).
+// 5) 무장 지연 — 도착 즉시 발동을 막는다. 길면 닿았는데 안 열리는 구간이 생긴다.
 assert.ok(ROOM_FIXTURE_CONFIG.armDelayMs > 0, '무장 지연이 있다');
 assert.ok(
   ROOM_FIXTURE_CONFIG.armDelayMs < PORTAL_CONFIG.armDelayMs,
-  '설치물 무장은 포탈보다 짧다 (중앙까지 걸어오는 시간이 이미 있다)',
+  '설치물 무장은 포탈보다 짧다',
 );
 
 // 6) 문구 — 두 종류 모두 라벨·안내가 있어야 한다 (빈 방에 덜렁 놓이면 뭘 할지 모른다)
 for (const kind of ['treasure', 'altar'] as const) {
   assert.ok(ROOM_FIXTURE_LABEL[kind].length > 0, `${kind} 라벨`);
   assert.ok(ROOM_FIXTURE_GUIDE[kind].length > 0, `${kind} 안내`);
-  assert.ok(ROOM_FIXTURE_GUIDE[kind].includes('중앙'), `${kind} 안내가 위치를 알려준다`);
+  assert.ok(ROOM_FIXTURE_GUIDE[kind].includes('오른쪽'), `${kind} 안내가 위치를 알려준다`);
 }
 assert.notEqual(ROOM_FIXTURE_LABEL.treasure, ROOM_FIXTURE_LABEL.altar, '두 라벨이 다르다');
 // 제단 안내는 대가를 예고한다 — 모르고 다가가면 선택이 아니라 함정이 된다
 assert.ok(ROOM_FIXTURE_GUIDE.altar.includes('대가'), '제단 안내가 대가를 예고한다');
 
-// 7) 도착 지점에서는 절대 닿지 않는다 — 걸어와야 열린다는 게 이 변경의 목적이다.
-//    도착 (176, 640) · 설치물 중앙 (960, 640) — 방 1920×1280 기준.
-const ARRIVAL = { x: 176, y: 640 };
-const CENTER = { x: 960, y: 640 };
+// 7) 중앙 도착 지점에서는 닿지 않지만 안내는 보인다 — 직접 다가가야 열린다.
+const ARRIVAL = { x: 960, y: 640 };
+const FIXTURE = { x: ARRIVAL.x + ROOM_FIXTURE_CONFIG.offsetX, y: ARRIVAL.y };
 assert.equal(
-  isWithinFixtureReach(ARRIVAL.x, ARRIVAL.y, CENTER.x, CENTER.y), false,
+  isWithinFixtureReach(ARRIVAL.x, ARRIVAL.y, FIXTURE.x, FIXTURE.y), false,
   '도착 지점에서 즉시 열리면 종전의 팝업과 같아진다',
 );
 assert.equal(
-  isWithinFixtureReach(ARRIVAL.x, ARRIVAL.y, CENTER.x, CENTER.y, ROOM_FIXTURE_CONFIG.hintRadius),
-  false,
-  '도착 지점에선 안내조차 안 보인다 — 중앙으로 향해야 알게 된다',
+  isWithinFixtureReach(
+    ARRIVAL.x,
+    ARRIVAL.y,
+    FIXTURE.x,
+    FIXTURE.y,
+    ROOM_FIXTURE_CONFIG.hintRadius,
+  ),
+  true,
+  '도착 지점에서 설치물 안내가 보여야 직접 다가갈 이유를 안다',
 );
 
 console.log('room fixture regression: 사거리·방어·포탈대비·안내반경·무장지연·문구·도착격리 7군 통과');

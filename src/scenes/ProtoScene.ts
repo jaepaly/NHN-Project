@@ -95,6 +95,7 @@ import { drawTreasureReward } from '../combat-core/run/treasureRewardConfig';
 import { ALTAR_OFFER_CONFIG, drawAltarOffer } from '../combat-core/run/altarOffer';
 import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomRewardScale';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
+import { showRoomChoices } from '../ui/roomChoiceOverlay';
 import { UI_COLOR } from '../ui/uiTokens';
 import type { GameSettings } from '../run/gameSettings';
 import { DEFAULT_SETTINGS, loadSettings } from '../run/gameSettings';
@@ -243,15 +244,13 @@ import { PortalField } from '../render/portalField';
 import { cleanseReadoutLine } from '../render/floorHazardReadout';
 import { blocksFromPlacements, terrainForRoom } from '../run/roomTerrainConfig';
 import { RoomFixture } from '../render/roomFixture';
-import { ROOM_FIXTURE_GUIDE } from '../run/roomFixtureConfig';
+import { ROOM_FIXTURE_CONFIG, ROOM_FIXTURE_GUIDE } from '../run/roomFixtureConfig';
 import { mockMinimapModel } from '../run/mapGraphMock';
 import { RunMapGraph, maximumMapPathRooms, toMinimapModel } from '../run/mapGraph';
 import { MAP_GRAPH_PRESET_01 } from '../run/mapGraphPreset';
 import { generateRunMap } from '../run/mapGenerator';
 import type { MapGraphDefinition } from '../run/mapGraph';
 import { encounterFromMapNode } from '../run/mapEncounter';
-import { layoutRoomArrival, layoutRoomExits } from '../run/roomPortalLayout';
-import type { RoomArrivalPlacement, RoomBounds } from '../run/roomPortalContract';
 import {
   DEMO_SAMPLE_INCANTATIONS,
   DEMO_START_ROOM,
@@ -312,6 +311,8 @@ import type { TrapRoomProfile, TrapSafeCorridor } from '../run/mapGraphContract'
 
 // 임시값: 카메라 방식과 방 크기를 최종 확정한 뒤 조정한다.
 const WORLD_SIZE_MULTIPLIER = 2;
+/** 중앙에서 시작하는 플레이어와 보스가 겹치지 않도록 둔 초기 세로 간격. */
+const BOSS_INITIAL_OFFSET_Y = 340;
 /** 제품 기본값: 첫 번째 조우부터 전체 런을 시작한다. */
 const DEBUG_START_ROOM = 1;
 /** 무내성 기본값 — R2 계약(BossResistanceProfile) 형태 유지 */
@@ -615,7 +616,7 @@ export class ProtoScene extends Phaser.Scene {
      * 포탈 선택이 있는 방에서는 붙잡아 두고, 없으면 종전대로 즉시 예약한다.
      */
     scheduleTransition: (delayMs, callback) => {
-      if (this.transitionNeedsPortalChoice()) {
+      if (this.transitionNeedsRoomChoice()) {
         this.pendingRunTransition = { delayMs, run: callback };
         return;
       }
@@ -906,11 +907,8 @@ export class ProtoScene extends Phaser.Scene {
   private devMinimap: MinimapHud | null = null;
   private devPortalField: PortalField | null = null;
   private runMinimap: MinimapHud | null = null;
-  private portalField: PortalField | null = null;
   /** 방 중앙 설치물 (보물상자·제단) — 다가가야 보상이 열린다 (#214) */
   private roomFixture: RoomFixture | null = null;
-  /** 다음 방에서 적용할 도착 배치 — 포탈로 넘어왔을 때만 설정된다 (첫 방은 null) */
-  private pendingArrival: RoomArrivalPlacement | null = null;
   /**
    * 정적 지형 장벽 (#214 지형 Tier 2). 배치 데이터는 R1 소유이고 여기는 기전만 —
    * 방 진입 시 채우고 방 전환 시 비운다. 비어 있으면 전 경로가 무비용으로 통과한다.
@@ -1310,18 +1308,16 @@ export class ProtoScene extends Phaser.Scene {
       this.updateManaCrystals(d);
       this.updateManaPotion(d);
       this.updateWaveFlow(d);
-    } else if (this.portalField || this.roomFixture) {
-      // 포탈·설치물 단계에서는 **이동만** 허용한다 — 전투는 멈춘 채로 갈림길을 걸어간다.
-      // 이게 없으면 방을 정리한 순간 조작이 잠겨 포탈에 닿을 수 없다(런이 갇힌다).
+    } else if (this.roomFixture) {
+      // 설치물 단계에서는 **이동만** 허용한다 — 전투는 멈춘 채 직접 다가간다.
+      // 이게 없으면 무전투 방에서 조작이 잠겨 설치물을 열 수 없다(런이 갇힌다).
       const d = (delta / 1000) * this.timeScale;
       this.updatePlayerMovement(delta / 1000);
       // ⚠️ **따라다니는 것들은 여기서도 갱신해야 한다** (총괄 제보: "보상 선택시 정령이
       // 갑자기 거기에 멈추는 버그").
       //
-      // 종전엔 이 분기가 `updatePlayerMovement` 하나뿐이었다. 그런데 #262로 보상 선택
-      // 뒤에 **포탈까지 걸어가는 단계**가 생겼고, 그 동안 플레이어는 움직이는데
-      // updateSpirits가 안 돌아 정령이 마지막 궤도 좌표에 그대로 박혀 있었다.
-      // 방을 정리한 직후가 아니라 **몇 초씩 걸어가는 동안** 그러니 눈에 띈다.
+      // 플레이어만 움직이고 updateSpirits가 멈추면 정령이 마지막 궤도 좌표에 박힌다.
+      // 설치물에 다가가는 짧은 구간에도 동행 개체는 계속 플레이어를 따라야 한다.
       //
       // 전투 없이 따라다니기만 하는 것들만 고른다 — 적·투사체·웨이브는 멈춘 채로 둔다.
       this.updateSpirits(d);
@@ -1333,9 +1329,6 @@ export class ProtoScene extends Phaser.Scene {
     }
     // 성장 표식은 전투 정지 중(보상 선택·전환)에도 플레이어를 따라간다
     this.growthMarks.follow(this.player.x, this.player.y);
-    // 포탈은 **전투가 끝난 뒤**에 서므로 isCombatActive 게이트 밖에서 돌려야 한다 —
-    // 안에 두면 방을 정리한 순간 포탈이 멈춰 접촉 판정이 영영 안 걸린다.
-    this.portalField?.update(this.player.x, this.player.y);
     // 설치물도 게이트 밖에서 — 보상 카드가 뜬 뒤에도 좌표 갱신이 멈추면 안 된다
     this.roomFixture?.update(this.player.x, this.player.y);
     // 숨겨져 있으면 다시 그리지 않는다 — 펄스는 보일 때만 의미가 있다
@@ -1795,15 +1788,9 @@ export class ProtoScene extends Phaser.Scene {
     this.applyRoomBackdrop(roomIndex);
     this.applyRoomTerrain();
     this.basicAttackCooldownRemaining = 0;
-    // 포탈로 넘어왔으면 왼쪽 중앙 도착(#245), 첫 방이면 종전대로 방 중앙.
-    // 도착 지점이 하나로 고정돼 있어야 함정·지형·적 스폰이 그 한 점만 비우면 된다(#246).
-    const arrival = this.pendingArrival;
-    this.pendingArrival = null;
-    if (arrival) {
-      this.player.setPosition(arrival.playerSpawn.x, arrival.playerSpawn.y);
-    } else {
-      this.player.setPosition(this.worldBounds.centerX, this.worldBounds.centerY);
-    }
+    // 방 선택 즉시 전환하므로 물리 포탈의 좌측 도착점은 더 이상 없다.
+    // 모든 방을 중앙에서 시작해 선택 직후 전투까지의 이동 공백을 없앤다.
+    this.player.setPosition(this.worldBounds.centerX, this.worldBounds.centerY);
     this.cameras.main.centerOn(this.player.x, this.player.y);
     this.activateRoomCurse(roomIndex);
     if (this.isBossEncounter()) {
@@ -1891,14 +1878,12 @@ export class ProtoScene extends Phaser.Scene {
       }
     }
 
-    // ⚠️ **방 중앙**에서 나타난다 (총괄 지적: "맵에 진입하자마자 보스가 바로 근처에서
-    // 나타나더라"). 종전엔 `player.y - 340`으로 플레이어 기준이었는데, #262에서 도착을
-    // 왼쪽 중앙(176, 640)으로 옮기면서 보스가 (176, 300) — 플레이어 옆에 붙어 나왔다.
-    // 내가 도착 지점을 바꾸며 만든 회귀다. 절대 좌표로 고정해 다시 어긋나지 않게 한다.
+    // 플레이어가 방 중앙에서 시작하므로 보스는 기존에 검증됐던 340px 위에서 시작한다.
+    // 둘 다 중앙에 겹쳐 즉시 접촉 피해가 발생하지 않게 절대 좌표로 유지한다.
     const boss = new BossEnemy(
       this,
       this.worldBounds.centerX,
-      this.worldBounds.centerY,
+      this.worldBounds.centerY - BOSS_INITIAL_OFFSET_Y,
       usesMemory ? 'memory' : 'stage',
       // 보스는 절반 배율 — 내성 누적(#77)과 이중 강화가 되지 않게
       enemyHpScale(this.combatRunController.state.loopIndex, true),
@@ -2894,7 +2879,7 @@ export class ProtoScene extends Phaser.Scene {
    * 자동 진입하지 않는다(`rewardlessNodeKind` 규칙). 선택지가 없으면(보스 직전 등)
    * 붙잡을 이유가 없으므로 종전대로 즉시 예약한다.
    */
-  private transitionNeedsPortalChoice(): boolean {
+  private transitionNeedsRoomChoice(): boolean {
     return this.mapGraph.choices().length > 0;
   }
 
@@ -2985,7 +2970,6 @@ export class ProtoScene extends Phaser.Scene {
     this.mapGraph = new RunMapGraph(definition, initialNodeId ?? definition.startNodeId);
     this.mapEncounterByRoom.clear();
     this.mapEncounterByRoom.set(roomIndex, encounterFromMapNode(this.mapGraph.current()));
-    this.pendingArrival = null;
     this.refreshMinimap();
   }
 
@@ -3019,12 +3003,11 @@ export class ProtoScene extends Phaser.Scene {
    * 전투 중엔 우상단 자리만 먹고, Tab이 이미 "내 상태를 들여다본다"는 제스처라
    * (빌드 검사·일시정지·툴팁) 거기 얹으면 의미가 일관된다.
    *
-   * ⚠️ **포탈 선택 중에는 예외로 자동 표시한다.** 갈림길에서 걸어가는 그 순간이 맵이
-   * 가장 필요한 시점인데 거기서 Tab을 눌러야 한다면 상시 노출보다 오히려 나쁘다.
-   * 두 조건 모두 "맵이 결정에 쓰이는 순간"이라는 하나의 원칙이다.
+   * 다음 방 선택은 전체 경로를 그리는 중앙 DOM 오버레이가 담당한다. 작은 Phaser
+   * 미니맵까지 함께 띄우면 같은 정보가 두 번 보이므로 빌드 검사에서만 표시한다.
    */
   private shouldShowMinimap(): boolean {
-    return this.buildInspectOpen || this.portalField !== null;
+    return this.buildInspectOpen;
   }
 
   /** 가시성 동기화 — update와 상태 전환 지점에서 호출 (setVisible은 동일 값이면 무해) */
@@ -3035,12 +3018,10 @@ export class ProtoScene extends Phaser.Scene {
   private destroyRunMapUi(): void {
     this.runMinimap?.destroy();
     this.runMinimap = null;
-    this.portalField?.destroy();
-    this.portalField = null;
   }
 
   /**
-   * 보상 선택 후 다음 방을 고른다 (runUiBinding.beforeAdvance).
+   * 보상 선택 후 UI에서 다음 방을 고른다 (runUiBinding.chooseNextRoom).
    *
    * ⚠️ 종전엔 이게 resolve될 때까지 `chooseReward` 자체를 미뤘다. 그런데 그 호출이
    * **보상 적용도 같이** 하므로, 카드를 골라도 포탈에 진입할 때까지 최대 체력·마나가
@@ -3049,90 +3030,36 @@ export class ProtoScene extends Phaser.Scene {
    *
    * 그래서 이 함수의 **모든 종료 경로**가 `releaseRunTransition()`을 불러야 한다.
    * 하나라도 빠뜨리면 보상은 반영됐는데 방이 영영 안 넘어간다 — 런이 갇힌다.
-   *
-   * 갈래가 하나뿐이면 포탈을 세우지 않고 조용히 넘어간다 — 선택지가 없는데 선택을
-   * 시키면 걸어가는 시간만 늘어난다. 둘 이상일 때만 세운다.
+   * 갈래 수와 관계없이 전체 경로 지도를 열어 현재 위치와 다음 목적지를 확인시킨다.
    */
-  choosePortalDestination(): Promise<void> {
+  async chooseRoomDestination(): Promise<void> {
     const choices = this.mapGraph.choices();
-    // 선택지가 없으면 전환은 애초에 붙잡히지 않았다(transitionNeedsPortalChoice=false).
-    // 그래도 해제를 부른다 — 보관된 게 없으면 no-op이라 안전하고, 조건이 나중에
-    // 갈라져도 갇히지 않는다.
-    if (choices.length === 0) { this.releaseRunTransition(); return Promise.resolve(); }
-    // 갈래가 하나면 보통 포탈을 세우지 않는다 — 선택지가 없는데 선택을 시키면 걸어가는
-    // 시간만 늘어난다. **단, 무전투 방은 예외다** (총괄 지적): 그 방의 흐름은
-    // "왼쪽 도착 → 중앙 상호작용 → 오른쪽 출구"이고, 마지막 구간을 자동으로 건너뛰면
-    // 다시 방이 아니라 팝업이 된다. 그 방에서는 걷는 것 자체가 내용이다.
-    if (choices.length === 1 && !this.rewardlessNodeKind()) {
-      this.enterMapNode(choices[0].id);
+    if (choices.length === 0) {
       this.releaseRunTransition();
-      return Promise.resolve();
+      return;
     }
-    // 출구 슬롯 y는 R1 계약이 정한다 — 목적지 lane 순서대로 위에서 아래로 (#245).
-    // 배치가 실패하면(방 경계 미확정 등) 첫 갈래로 조용히 넘어간다 — 그래프가 여기서
-    // 멈추면 RunController만 방을 세어 두 축이 영구히 어긋난다.
-    let exits;
-    try {
-      exits = layoutRoomExits(
-        this.roomBoundsForPortals(),
-        choices.map((node) => ({ nodeId: node.id, lane: node.lane })),
-      );
-    } catch (error) {
-      devInfo('[Map] portal layout failed — 첫 갈래로 진행', error);
-      this.enterMapNode(choices[0].id);
-      this.releaseRunTransition();
-      return Promise.resolve();
-    }
-    const kindById = new Map(choices.map((node) => [node.id, node.kind]));
-    return new Promise<void>((resolve) => {
-      this.portalField?.destroy();
-      this.portalField = new PortalField(
-        this,
-        exits[0].x,
-        this.worldBounds.centerY,
-        exits.map((exit) => {
-          const kind = kindById.get(exit.targetNodeId) ?? 'combat';
-          return {
-            nodeId: exit.targetNodeId,
-            kind,
-            // 계약값을 그대로 넘긴다 — 자체 가로 배치를 쓰면 포탈이 방 밖으로 밀려난다
-            x: exit.x,
-            y: exit.y,
-            // 보상 크기를 **고르기 전에** 보여준다. 방 이름만 보이면 위험한 방을 고를
-            // 근거가 없어 "누가 함정방을 선택하겠어"가 된다(총괄 지적).
-            rewardHint: rewardScaleFor(kind).hint,
-          };
-        }),
-        (choice) => {
-          this.enterMapNode(choice.nodeId);
-          this.portalField?.destroy();
-          this.portalField = null;
-          this.syncMinimapVisibility();
-          // 붙잡아 둔 전환을 여기서 놓아준다 — 이게 빠지면 보상은 반영됐는데
-          // 방이 영영 안 넘어가 런이 갇힌다
-          this.releaseRunTransition();
-          resolve();
-        },
-      );
-      this.syncMinimapVisibility();
-      this.announceSystemMessage(
-        choices.length > 1
-          ? '갈림길 — 포탈로 들어가 다음 방을 고르세요'
-          : '오른쪽 포탈로 나가세요',
-        '#8fa4ff',
-        3000,
-      );
-    });
-  }
 
-  /** 포탈 배치 기준 방 경계 — 월드 경계를 그대로 쓴다 (R1 계약의 RoomBounds). */
-  private roomBoundsForPortals(): RoomBounds {
-    return {
-      x: this.worldBounds.x,
-      y: this.worldBounds.y,
-      width: this.worldBounds.width,
-      height: this.worldBounds.height,
-    };
+    try {
+      const selected = await showRoomChoices({
+        map: toMinimapModel(this.mapGraph.snapshot()),
+        options: choices.map((node) => ({
+          nodeId: node.id,
+          kind: node.kind,
+          rewardHint: rewardScaleFor(node.kind).hint,
+        })),
+      });
+      const selectedId = choices.some((node) => node.id === selected.nodeId)
+        && this.mapGraph.canEnter(selected.nodeId)
+        ? selected.nodeId
+        : choices[0].id;
+      this.enterMapNode(selectedId);
+    } catch (error) {
+      // UI 실패가 런 고착으로 번지지 않게 첫 도달 가능 노드로 진행한다.
+      devInfo('[Map] room choice failed — 첫 갈래로 진행', error);
+      this.enterMapNode(choices[0].id);
+    } finally {
+      this.releaseRunTransition();
+    }
   }
 
   /**
@@ -3194,7 +3121,7 @@ export class ProtoScene extends Phaser.Scene {
     this.clearRoomFixture();
     this.roomFixture = new RoomFixture(
       this,
-      this.worldBounds.centerX,
+      this.worldBounds.centerX + ROOM_FIXTURE_CONFIG.offsetX,
       this.worldBounds.centerY,
       kind,
       () => this.openRewardlessRoomChoice(),
@@ -3226,12 +3153,7 @@ export class ProtoScene extends Phaser.Scene {
       encounterFromMapNode(node),
     );
     this.refreshMinimap();
-    // 도착은 **항상 왼쪽 중앙**이다 (#245·#246) — 방마다 진입 계약이 하나여야
-    // 함정·지형·적 스폰이 여러 진입 좌표를 고려하지 않아도 된다.
-    this.pendingArrival = layoutRoomArrival(
-      this.roomBoundsForPortals(),
-      { fromNodeId: from, toNodeId: node.id },
-    );
+    // 실제 배치는 startRoom에서 공통 중앙 좌표로 수행한다.
     devInfo('[Map] entered', { from, to: node.id, kind: node.kind });
   }
 
