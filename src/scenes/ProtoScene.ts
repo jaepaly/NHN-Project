@@ -311,6 +311,13 @@ import { sequenceEngraveCandidate } from '../spell/sequenceEngraveCandidate';
 import { applyMetaRunOutcome, loadMetaProfile, saveMetaProfile } from '../meta/metaProfile';
 import { buildMetaRunSummary } from '../meta/metaRunSummary';
 import { RunResearchTracker } from '../meta/runResearchTracker';
+import {
+  availableBasicResearchContracts,
+  ELEMENTAL_FOCUS_START_AFFINITY,
+  WARD_STUDY_START_SHIELD,
+  type ActiveResearchContract,
+  type ResearchContractSelection,
+} from '../meta/researchContract';
 import { runSpellMatrixAudit, summarizeMatrix } from '../dev/spellMatrixAudit';
 import { SilenceCurseField } from '../render/silenceCurseField';
 import { BlackoutCurseField } from '../render/blackoutCurseField';
@@ -615,6 +622,7 @@ export class ProtoScene extends Phaser.Scene {
   private metaProfile = loadMetaProfile();
   private readonly runResearchTracker = new RunResearchTracker(
     this.metaProfile.discoveredSignatures,
+    this.metaProfile.completedContractIds,
   );
   private readonly engraveManager = new EngraveManager();
   private readonly spiritManager = new SpiritManager();
@@ -955,6 +963,8 @@ export class ProtoScene extends Phaser.Scene {
   private growthMarks!: GrowthMarks;
   /** 주문서 유산 선택 중 — 카드가 키를 캡처하는 동안 전투를 멈춘다 */
   private legacySelecting = false;
+  /** 메타 연구 선택 중 — 유산 선택과 같은 방식으로 전투를 멈춘다. */
+  private researchSelecting = false;
   /** 시연 런("각성한 영창가로 시작")인가 — 유산 선택을 건너뛰는 데 쓴다 */
   private demoRun = false;
   /** #214 선행 개발 프리뷰 전용 (DEV 콘솔 훅이 생성) — 본 게임 경로 미배선 */
@@ -1291,9 +1301,9 @@ export class ProtoScene extends Phaser.Scene {
       this.toggleBuildInspect();
     });
 
-    // 시연 런은 유산 선택을 건너뛴다 — 이미 후반 상태라 카드가 겹치고,
+    // 시연 런은 연구·유산 선택을 건너뛴다 — 이미 후반 상태라 카드가 겹치고,
     // 심사위원을 시작하자마자 선택 UI로 막는 게 이 모드의 취지에 어긋난다.
-    if (!this.demoRun) void this.offerLegacyEngrave();
+    if (!this.demoRun) void this.offerRunStartChoices();
   }
 
   /**
@@ -1394,6 +1404,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private isCombatActive(): boolean {
+    if (this.researchSelecting) return false;
     // 유산 선택 중에는 전투를 멈춘다 — 카드가 키를 캡처하는 동안 적에게 맞으면 안 된다
     if (this.legacySelecting) return false;
     // Tab 빌드 검사 중에도 멈춘다 — 상세를 읽는 동안 맞으면 안 된다 (같은 근거)
@@ -1615,6 +1626,111 @@ export class ProtoScene extends Phaser.Scene {
     };
   }
 
+  /** 새 런 시작 선택은 겹치지 않게 연구 → 유산 순서로 한 장씩 연다. */
+  private async offerRunStartChoices(): Promise<void> {
+    await this.offerResearchContract();
+    await this.offerLegacyEngrave();
+  }
+
+  private async offerResearchContract(): Promise<void> {
+    const memory = loadRunMemory();
+    const previousDominantElement = memory.recentDominantElements.at(-1) ?? null;
+    const contracts = availableBasicResearchContracts(
+      this.metaProfile,
+      previousDominantElement,
+    );
+    if (contracts.length === 0) return;
+
+    const options: RewardOption[] = contracts.map((contract) => (
+      contract.id === 'elemental-focus'
+        ? {
+          id: `research-${contract.id}`,
+          kind: 'affinity' as const,
+          element: contract.element,
+          title: `원소 심화 · ${ELEMENT_LABELS[contract.element]}`,
+          description: `${ELEMENT_LABELS[contract.element]} 친화 +15%로 시작\n`
+            + `목표 · ${ELEMENT_LABELS[contract.element]}의 서로 다른 형태 3종 시전`,
+        }
+        : {
+          id: `research-${contract.id}`,
+          kind: 'ward-start' as const,
+          title: '수호 연구',
+          description: `보호막 +${WARD_STUDY_START_SHIELD}로 시작\n`
+            + '목표 · 회복·보호막·강화·제어 영창 3회 성공',
+        }
+    ));
+
+    this.researchSelecting = true;
+    try {
+      const chosen = await showRewardCards(options, {
+        kicker: 'ARCANE RESEARCH',
+        title: '이번 런의 연구 주제를 고른다',
+        contextLines: ['완료한 연구와 통찰은 승패와 관계없이 런 결산에 기록된다'],
+      });
+      const selected = contracts.find((contract) => chosen.id === `research-${contract.id}`);
+      if (!selected) return;
+      const active = this.runResearchTracker.selectResearch(selected);
+      this.applyResearchStartBonus(selected);
+      this.announceBanner({
+        title: `연구 시작 · ${this.researchTitle(active)}`,
+        lines: [this.researchGoal(active)],
+        color: 0x8fa4ff,
+        holdMs: 3000,
+      });
+    } finally {
+      this.researchSelecting = false;
+    }
+  }
+
+  private applyResearchStartBonus(selection: ResearchContractSelection): void {
+    if (selection.id === 'elemental-focus') {
+      this.combatRunController.grantStartingAffinity(
+        selection.element,
+        ELEMENTAL_FOCUS_START_AFFINITY,
+      );
+      const state = this.combatRunController.state;
+      this.growthMarks.sync(
+        state.rewards.length,
+        state.elementalAffinity,
+        this.player.x,
+        this.player.y,
+      );
+      return;
+    }
+    this.playerState.addShield(WARD_STUDY_START_SHIELD);
+  }
+
+  private researchTitle(contract: ActiveResearchContract): string {
+    return contract.id === 'elemental-focus' && contract.element
+      ? `원소 심화 · ${ELEMENT_LABELS[contract.element]}`
+      : '수호 연구';
+  }
+
+  private researchGoal(contract: ActiveResearchContract): string {
+    return contract.id === 'elemental-focus' && contract.element
+      ? `${ELEMENT_LABELS[contract.element]}의 서로 다른 형태 ${contract.goal}종 시전`
+      : `회복·보호막·강화·제어 영창 ${contract.goal}회 성공`;
+  }
+
+  private reportResearchAdvance(previous: ActiveResearchContract | null): void {
+    const current = this.runResearchTracker.snapshot().research;
+    if (!current || current.progress === previous?.progress) return;
+    if (current.completed && !previous?.completed) {
+      this.announceBanner({
+        title: `연구 완료 · ${this.researchTitle(current)}`,
+        lines: [`통찰 +${current.rewardInsight} · 런 결산에 기록`],
+        color: 0x72f1b8,
+        holdMs: 2600,
+      });
+      return;
+    }
+    this.announceSystemMessage(
+      `연구 · ${this.researchTitle(current)} ${current.progress}/${current.goal}`,
+      '#8fa4ff',
+      1800,
+    );
+  }
+
   /** 런 간 기억 저장 (GDD §4.2) — 요약은 리셋 전 히스토리 기준, 다음 런 보스가 소비 */
   /**
    * 주문서 유산 선택 (Phase 5) — 보스가 기억하듯 플레이어도 기억한다.
@@ -1760,7 +1876,7 @@ export class ProtoScene extends Phaser.Scene {
 
   private continueToNextLoop(inherit: { element: SpellElement; value: number } | null = null): void {
     this.deathHandled = false;
-    this.resetRunResearchTracking();
+    this.continueRunResearchTracking();
     // 전투 전용 상태만 초기화 (다음 보스가 내성 재계산, 장판·쿨다운은 방 단위)
     this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
@@ -1868,13 +1984,24 @@ export class ProtoScene extends Phaser.Scene {
     this.prepareRunEscalation();
     this.pendingRunStartReason = 'death-restart';
     this.combatRunController.reset();
-    // 새 런에도 유산 선택 — 직전 런에서 기록된 주문이 곧바로 후보가 된다
-    void this.offerLegacyEngrave();
+    // 새 런에도 연구→유산 순서로 선택한다.
+    void this.offerRunStartChoices();
   }
 
   private resetRunResearchTracking(): void {
     this.metaProfile = loadMetaProfile();
-    this.runResearchTracker.reset(this.metaProfile.discoveredSignatures);
+    this.runResearchTracker.reset(
+      this.metaProfile.discoveredSignatures,
+      this.metaProfile.completedContractIds,
+    );
+  }
+
+  private continueRunResearchTracking(): void {
+    this.metaProfile = loadMetaProfile();
+    this.runResearchTracker.beginContinuedLoop(
+      this.metaProfile.discoveredSignatures,
+      this.metaProfile.completedContractIds,
+    );
   }
 
   private logRunStarted(
@@ -5006,7 +5133,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceManaShortage(plan.manaCost);
       return;
     }
-    if (!ultimate) this.runResearchTracker.recordNormalPlan(plan);
+    if (!ultimate) {
+      const previousResearch = this.runResearchTracker.snapshot().research;
+      this.runResearchTracker.recordNormalPlan(plan);
+      this.reportResearchAdvance(previousResearch);
+    }
     if (import.meta.env.DEV) {
       void postPlayLog({
         type: 'sequence_exec',
@@ -5131,7 +5262,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         return;
       }
       this.playerState.trySpendMana(castPlan.spend);
-      if (castMode === 'normal') this.runResearchTracker.recordNormalSpell(spec);
+      if (castMode === 'normal') {
+        const previousResearch = this.runResearchTracker.snapshot().research;
+        this.runResearchTracker.recordNormalSpell(spec);
+        this.reportResearchAdvance(previousResearch);
+      }
 
       if (!fusedSpec && this.fusionGauge.charge(castPlan.spend, {
         name: spec.name,
@@ -6383,6 +6518,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     let actionState = 'READY';
     if (!this.playerState.alive) actionState = 'DEAD';
     else if (runState.phase === 'run-over') actionState = 'RUN COMPLETE';
+    else if (this.researchSelecting) actionState = 'RESEARCH SELECT';
     else if (runState.phase === 'reward-select') actionState = 'REWARD SELECT';
     else if (runState.phase === 'room-transition') actionState = 'NEXT ROOM';
     else if (this.casting && this.sequenceProgressDurationMs > 0) actionState = 'SEQUENCE';
@@ -6394,13 +6530,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     const statusColor = !this.playerState.alive
       ? '#ff5c7a'
-      : this.casting
-        ? '#ffd166'
-        : this.incanting
-          ? '#8fa4ff'
-          : this.playerState.cooldownRemaining > 0
-            ? '#ffb86b'
-            : '#72f1b8';
+      : this.researchSelecting
+        ? '#8fa4ff'
+        : this.casting
+          ? '#ffd166'
+          : this.incanting
+            ? '#8fa4ff'
+            : this.playerState.cooldownRemaining > 0
+              ? '#ffb86b'
+              : '#72f1b8';
     this.statusText.setText(`● ${actionState}`).setColor(statusColor);
     const heatwaveDamaging = this.activeRoomCurse?.kind === 'heatwave'
       && isHeatwaveDamaging({
@@ -6436,8 +6574,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.floorHazardPlayer,
       this.presentFloorHazardKinds(),
     );
-    const withCleanse = (lines: readonly string[]): string =>
-      (cleanseLine ? [...lines, cleanseLine] : [...lines]).join('\n');
+    const research = this.runResearchTracker.snapshot().research;
+    const researchLine = research
+      ? `연구 · ${this.researchTitle(research)} ${research.completed ? '완료' : `${research.progress}/${research.goal}`}`
+      : null;
+    const withCleanse = (lines: readonly string[]): string => [
+      ...lines,
+      ...(researchLine ? [researchLine] : []),
+      ...(cleanseLine ? [cleanseLine] : []),
+    ].join('\n');
     if (runState.phase === 'run-over') {
       this.waveText.setText(withCleanse([roomLine, 'RUN COMPLETE']));
     } else if (runState.phase === 'reward-select') {
@@ -6845,7 +6990,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
    * 멈춘다. (b)가 없으면 "정지" 중에 장판이 계속 때린다.
    */
   private toggleBuildInspect(): void {
-    if (!this.buildInspectOpen && (this.incanting || this.casting || this.legacySelecting)) return;
+    if (!this.buildInspectOpen && (
+      this.incanting || this.casting || this.legacySelecting || this.researchSelecting
+    )) return;
     this.buildInspectOpen = !this.buildInspectOpen;
     this.time.paused = this.buildInspectOpen;
     this.hoveredChipIndex = -1;

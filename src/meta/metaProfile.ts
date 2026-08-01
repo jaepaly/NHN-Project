@@ -20,6 +20,7 @@ export interface MetaRunOutcome {
   result: 'win' | 'lose';
   insightEarned: number;
   discoveredSignatures: readonly DiscoverySignature[];
+  completedContractIds?: readonly string[];
 }
 
 export interface StorageLike {
@@ -113,6 +114,10 @@ export function applyMetaRunOutcome(
     discoveredSignatures: [
       ...profile.discoveredSignatures,
       ...outcome.discoveredSignatures,
+    ],
+    completedContractIds: [
+      ...profile.completedContractIds,
+      ...(outcome.completedContractIds ?? []),
     ],
     totalRuns: profile.totalRuns + 1,
     totalWins: profile.totalWins + (outcome.result === 'win' ? 1 : 0),

@@ -110,10 +110,10 @@ const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
 {
   const toggleAt = scene.indexOf('private toggleBuildInspect()');
   assert.ok(toggleAt > 0, 'toggleBuildInspect가 있어야 한다');
-  const guard = scene.slice(toggleAt, toggleAt + 260);
+  const guard = scene.slice(toggleAt, toggleAt + 320);
   assert.ok(
-    /!this\.buildInspectOpen && \(this\.incanting/.test(guard),
-    '영창·시전·유산선택 중에는 열리지 않아야 한다 (ESC가 영창 창도 닫으므로 둘 다 발화한다)',
+    /!this\.buildInspectOpen && \([\s\S]*this\.incanting[\s\S]*this\.casting[\s\S]*this\.legacySelecting[\s\S]*this\.researchSelecting/.test(guard),
+    '영창·시전·유산선택·연구선택 중에는 열리지 않아야 한다 (ESC가 영창 창도 닫으므로 둘 다 발화한다)',
   );
 }
 

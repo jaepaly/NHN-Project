@@ -1,6 +1,7 @@
 import type { MetaProfileV1 } from './metaProfile';
 import type { RunResearchSnapshot } from './runResearchTracker';
 import type { DiscoverySignature } from './discoverySignature';
+import type { ActiveResearchContract } from './researchContract';
 
 export type MetaUnlockId =
   | 'basic-research'
@@ -25,7 +26,9 @@ export interface MetaRunSummary {
   totalInsight: number;
   discoveryInsight: number;
   roomInsight: number;
+  researchInsight: number;
   newSignatures: readonly DiscoverySignature[];
+  research: ActiveResearchContract | null;
   nextUnlock: MetaInsightUnlock | null;
   insightToNextUnlock: number;
 }
@@ -49,7 +52,11 @@ export function buildMetaRunSummary(
     totalInsight,
     discoveryInsight: run.discoveryInsight,
     roomInsight: run.roomInsight,
+    researchInsight: run.researchInsight,
     newSignatures: [...run.newSignatures],
+    research: run.research
+      ? { ...run.research, usedForms: [...run.research.usedForms] }
+      : null,
     nextUnlock,
     insightToNextUnlock: nextUnlock ? nextUnlock.threshold - totalInsight : 0,
   };

@@ -9,6 +9,7 @@ import {
   discoverySignatureLabel,
   META_UNLOCK_LABELS,
   representativeBuildLabel,
+  researchContractSummaryLabel,
 } from '../src/ui/runSummaryModel';
 
 assert.deepEqual(META_INSIGHT_UNLOCKS.map((unlock) => unlock.threshold), [4, 14, 30, 50]);
@@ -25,10 +26,12 @@ const summary = buildMetaRunSummary(
     insightEarned: 7,
     discoveryInsight: 3,
     roomInsight: 4,
+    researchInsight: 0,
     newSignatures: [
       'damage:fire:none:bolt',
       'heal:water:light:nova',
     ],
+    research: null,
   },
 );
 assert.equal(summary.totalInsight, 9);
@@ -44,6 +47,15 @@ assert.equal(representativeBuildLabel('ice', null), '빙결 중심');
 assert.equal(representativeBuildLabel(null, 'wall'), '벽 중심');
 assert.equal(representativeBuildLabel(null, null), '아직 형성되지 않음');
 assert.equal(META_UNLOCK_LABELS['basic-research'], '기본 연구');
+assert.equal(researchContractSummaryLabel({
+  id: 'ward-study',
+  element: null,
+  progress: 3,
+  goal: 3,
+  completed: true,
+  rewardInsight: 3,
+  usedForms: [],
+}), '수호 연구 3/3 · 완료 +3');
 
 const overlaySource = readFileSync('src/ui/runSummaryOverlay.ts', 'utf8');
 for (const phrase of ['대표 빌드', '수동 영창', '새로운 발견', '마도 통찰', '다음 해금']) {
@@ -54,6 +66,7 @@ assert.ok(overlaySource.includes('slice(0, 6)'), '발견이 많아도 결산 카
 assert.ok(overlaySource.includes('hiddenDiscoveryCount'), '숨긴 발견 수 표시');
 assert.ok(overlaySource.includes('data.meta.insightEarned'), '이번 런 통찰 데이터 배선');
 assert.ok(overlaySource.includes('data.meta.totalInsight'), '누적 통찰 데이터 배선');
+assert.ok(overlaySource.includes('data.meta.researchInsight'), '연구 통찰 데이터 배선');
 
 const sceneSource = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
 assert.ok(sceneSource.includes('buildMetaRunSummary(this.metaProfile'), '저장 후 메타 프로필 결산 배선');

@@ -9,6 +9,7 @@ import {
   discoverySignatureLabel,
   META_UNLOCK_LABELS,
   representativeBuildLabel,
+  researchContractSummaryLabel,
 } from './runSummaryModel';
 
 /**
@@ -153,6 +154,9 @@ export function showRunSummaryOverlay(data: RunSummaryData): Promise<void> {
   const nextUnlock = data.meta.nextUnlock
     ? `${META_UNLOCK_LABELS[data.meta.nextUnlock.id]}까지 ${data.meta.insightToNextUnlock}`
     : '현재 연구 단계 모두 기록됨';
+  const researchResult = data.meta.research
+    ? `<div class="meta-sub">연구 · ${escapeHtml(researchContractSummaryLabel(data.meta.research))}</div>`
+    : '';
   wrap.innerHTML = `
     <div class="ui-panel summary-panel">
       ${cornerFlourish().replace('orn-corner', 'orn-corner tl')}
@@ -177,7 +181,8 @@ export function showRunSummaryOverlay(data: RunSummaryData): Promise<void> {
         <section class="summary-meta-card">
           <div class="meta-title">마도 통찰</div>
           <div class="meta-main">이번 런 <b>+${data.meta.insightEarned}</b> · 누적 <b>${data.meta.totalInsight}</b></div>
-          <div class="meta-sub">발견 +${data.meta.discoveryInsight} · 방 돌파 +${data.meta.roomInsight}</div>
+          <div class="meta-sub">발견 +${data.meta.discoveryInsight} · 방 돌파 +${data.meta.roomInsight} · 연구 +${data.meta.researchInsight}</div>
+          ${researchResult}
           <div class="meta-sub">다음 해금 · ${escapeHtml(nextUnlock)}</div>
         </section>
       </div>
