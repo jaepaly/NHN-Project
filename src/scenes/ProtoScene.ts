@@ -315,6 +315,7 @@ import type {
 } from '../spell/sequencePlan';
 import { sequenceEngraveCandidate } from '../spell/sequenceEngraveCandidate';
 import { applyMetaRunOutcome, loadMetaProfile, saveMetaProfile } from '../meta/metaProfile';
+import { buildMetaRunSummary } from '../meta/metaRunSummary';
 import { RunResearchTracker } from '../meta/runResearchTracker';
 import { runSpellMatrixAudit, summarizeMatrix } from '../dev/spellMatrixAudit';
 import { SilenceCurseField } from '../render/silenceCurseField';
@@ -1610,10 +1611,10 @@ export class ProtoScene extends Phaser.Scene {
       roomIndex: runState.roomIndex,
       maxRooms: runState.maxRooms,
       totalCasts: memory.totalCasts,
-      dominantElementLabel: memory.dominantElement
-        ? ELEMENT_LABELS[memory.dominantElement]
-        : null,
+      dominantElement: memory.dominantElement,
+      dominantForm: memory.dominantForm,
       recentSpellNames: memory.recentSpellNames,
+      meta: buildMetaRunSummary(this.metaProfile, this.runResearchTracker.snapshot()),
     };
   }
 
