@@ -128,8 +128,9 @@ function buildOption(
 
 /** 시드 랜덤 추첨이 뽑는 카드 풀 (PROGRESSION_DESIGN §1 — 각인·정령은 ②③에서 추가) */
 const REWARD_POOL: readonly StaticRewardKind[] = [
-  // swift-incant는 입력락 감소로 대체 후 풀 복귀 (GATE_DECISION_0728 #67 보상 풀 충돌 해소)
-  'max-hp', 'max-mana', 'affinity', 'swift-incant', 'mana-surge', 'ward-start', 'spirit-haste',
+  // swift-incant는 all-plan 영창에서 효용이 없어 재설계 전까지 추첨에서 제외한다.
+  // 기존 런 기록 호환을 위해 RewardKind와 적용 로직은 유지한다.
+  'max-hp', 'max-mana', 'affinity', 'mana-surge', 'ward-start', 'spirit-haste',
 ];
 
 /**
