@@ -7,6 +7,12 @@ import {
   type DiscoverySignature,
 } from './discoverySignature';
 import type { MetaRunOutcome } from './metaProfile';
+import {
+  advanceResearchContract,
+  startResearchContract,
+  type ActiveResearchContract,
+  type ResearchContractSelection,
+} from './researchContract';
 
 export const RUN_RESEARCH_REWARDS = {
   discoveryInsightCap: 4,
@@ -22,7 +28,9 @@ export interface RunResearchSnapshot {
   insightEarned: number;
   discoveryInsight: number;
   roomInsight: number;
+  researchInsight: number;
   newSignatures: readonly DiscoverySignature[];
+  research: ActiveResearchContract | null;
 }
 
 export class RunResearchTracker {
@@ -31,25 +39,63 @@ export class RunResearchTracker {
   private clearedRoomIds = new Set<string>();
   private combatRoomInsight = 0;
   private bossInsight = 0;
+  private completedContractIds = new Set<string>();
+  private activeResearch: ActiveResearchContract | null = null;
 
-  constructor(knownSignatures: readonly DiscoverySignature[] = []) {
-    this.reset(knownSignatures);
+  constructor(
+    knownSignatures: readonly DiscoverySignature[] = [],
+    completedContractIds: readonly string[] = [],
+  ) {
+    this.reset(knownSignatures, completedContractIds);
   }
 
-  reset(knownSignatures: readonly DiscoverySignature[] = []): void {
+  reset(
+    knownSignatures: readonly DiscoverySignature[] = [],
+    completedContractIds: readonly string[] = [],
+  ): void {
     this.knownSignatures = new Set(knownSignatures);
+    this.completedContractIds = new Set(completedContractIds);
     this.newSignatures.clear();
     this.clearedRoomIds.clear();
     this.combatRoomInsight = 0;
     this.bossInsight = 0;
+    this.activeResearch = null;
+  }
+
+  /** 심층 이어가기는 같은 연구를 유지하되, 이미 받은 완료 보상은 다시 들고 가지 않는다. */
+  beginContinuedLoop(
+    knownSignatures: readonly DiscoverySignature[],
+    completedContractIds: readonly string[],
+  ): void {
+    const incompleteResearch = this.activeResearch?.completed ? null : this.activeResearch;
+    this.reset(knownSignatures, completedContractIds);
+    this.activeResearch = incompleteResearch;
+  }
+
+  selectResearch(selection: ResearchContractSelection): ActiveResearchContract {
+    this.activeResearch = startResearchContract(selection, [...this.completedContractIds]);
+    return this.activeResearch;
   }
 
   recordNormalSpell(spec: SpellSpec): DiscoverySignature[] {
-    return this.recordSignatures([discoverySignatureFromSpec(spec)]);
+    const discovered = this.recordSignatures([discoverySignatureFromSpec(spec)]);
+    this.advanceResearch([spec]);
+    return discovered;
   }
 
   recordNormalPlan(plan: ResolvedSpellPlan): DiscoverySignature[] {
-    return this.recordSignatures(discoverySignaturesFromPlan(plan));
+    if (plan.castMode !== 'normal') return [];
+    const discovered = this.recordSignatures(discoverySignaturesFromPlan(plan));
+    const specs = plan.sequences.flatMap((sequence) => sequence.behaviors.flatMap((behavior) => (
+      behavior.type === 'form' ? [behavior.spec] : []
+    )));
+    this.advanceResearch(specs);
+    return discovered;
+  }
+
+  private advanceResearch(specs: readonly SpellSpec[]): void {
+    if (!this.activeResearch) return;
+    this.activeResearch = advanceResearchContract(this.activeResearch, specs).contract;
   }
 
   private recordSignatures(signatures: readonly DiscoverySignature[]): DiscoverySignature[] {
@@ -89,11 +135,18 @@ export class RunResearchTracker {
       RUN_RESEARCH_REWARDS.discoveryInsightCap,
     );
     const roomInsight = this.combatRoomInsight + this.bossInsight;
+    const researchInsight = this.activeResearch?.completed
+      ? this.activeResearch.rewardInsight
+      : 0;
     return {
-      insightEarned: discoveryInsight + roomInsight,
+      insightEarned: discoveryInsight + roomInsight + researchInsight,
       discoveryInsight,
       roomInsight,
+      researchInsight,
       newSignatures: [...this.newSignatures],
+      research: this.activeResearch
+        ? { ...this.activeResearch, usedForms: [...this.activeResearch.usedForms] }
+        : null,
     };
   }
 
@@ -103,6 +156,9 @@ export class RunResearchTracker {
       result,
       insightEarned: snapshot.insightEarned,
       discoveredSignatures: snapshot.newSignatures,
+      completedContractIds: snapshot.research?.completed
+        ? [snapshot.research.id]
+        : [],
     };
   }
 }

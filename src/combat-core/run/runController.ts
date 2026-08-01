@@ -137,6 +137,14 @@ export class CombatRunController implements RunController {
     }
   }
 
+  /** 메타 연구 등 런 시작 선택이 주는 소량의 친화를 현재 값에 더한다. */
+  grantStartingAffinity(element: SpellElement, amount: number): { added: number; total: number } {
+    const added = Number.isFinite(amount) ? Math.max(0, amount) : 0;
+    const total = (this.elementalAffinity[element] ?? 0) + added;
+    if (added > 0) this.elementalAffinity[element] = total;
+    return { added, total };
+  }
+
   /** 마지막 활성 적 처치 후 전투 씬이 호출하는 R1 내부 진입점. */
   notifyRoomCleared(): void {
     if (this.phase !== 'combat') return;

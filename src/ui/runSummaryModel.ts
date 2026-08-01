@@ -1,5 +1,6 @@
 import type { DiscoverySignature } from '../meta/discoverySignature';
 import type { MetaUnlockId } from '../meta/metaRunSummary';
+import type { ActiveResearchContract } from '../meta/researchContract';
 import { ELEMENT_LABELS, FORM_LABELS } from '../render/palette';
 import type { SpellEffect, SpellElement, SpellForm } from '../spell/types';
 
@@ -40,4 +41,12 @@ export function representativeBuildLabel(
   if (element) return `${ELEMENT_LABELS[element]} 중심`;
   if (form) return `${FORM_LABELS[form]} 중심`;
   return '아직 형성되지 않음';
+}
+
+export function researchContractSummaryLabel(contract: ActiveResearchContract): string {
+  const title = contract.id === 'elemental-focus' && contract.element
+    ? `원소 심화 · ${ELEMENT_LABELS[contract.element]}`
+    : '수호 연구';
+  return `${title} ${contract.progress}/${contract.goal}`
+    + (contract.completed ? ` · 완료 +${contract.rewardInsight}` : '');
 }
