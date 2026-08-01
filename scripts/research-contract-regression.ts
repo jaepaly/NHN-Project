@@ -12,6 +12,7 @@ import {
   elementalFocusEchoUnlocked,
   elementalFocusSpatialScale,
   ELEMENTAL_FOCUS_START_AFFINITY,
+  EXPANDED_RESEARCH_UNLOCK_INSIGHT,
   ELEMENTAL_FOCUS_MILESTONE_AFFINITY,
   isWardResearchSupportSpell,
   RESEARCH_FIRST_REWARD,
@@ -22,6 +23,8 @@ import {
   startResearchContract,
   wardStudyIncomingDamageScale,
   wardStudyPulseUnlocked,
+  variationDiversityMaxBonus,
+  VARIATION_DIVERSITY_MAX_BONUS,
   WARD_STUDY_GUARD_DAMAGE_SCALE,
   WARD_STUDY_MILESTONE_SHIELD,
   WARD_STUDY_START_SHIELD,
@@ -60,6 +63,18 @@ assert.deepEqual(
 assert.deepEqual(
   availableBasicResearchContracts({ insight: 4, totalRuns: 1 }, 'fire'),
   [{ id: 'elemental-focus', element: 'fire' }, { id: 'ward-study' }],
+);
+assert.deepEqual(
+  availableBasicResearchContracts({ insight: EXPANDED_RESEARCH_UNLOCK_INSIGHT - 1, totalRuns: 1 }, 'fire'),
+  [{ id: 'elemental-focus', element: 'fire' }, { id: 'ward-study' }],
+);
+assert.deepEqual(
+  availableBasicResearchContracts({ insight: EXPANDED_RESEARCH_UNLOCK_INSIGHT, totalRuns: 1 }, 'fire'),
+  [
+    { id: 'elemental-focus', element: 'fire' },
+    { id: 'ward-study' },
+    { id: 'variation-study' },
+  ],
 );
 
 // 최초 완료 +3, 다른 런의 반복 완료 +2.
@@ -130,6 +145,28 @@ ward = advanceResearchContract(ward, [spell('control', 'zone', 'dark')]).contrac
 assert.equal(ward.completed, true);
 assert.equal(wardStudyPulseUnlocked(ward), true);
 
+// 만물의 변주는 원소·형태의 더 적은 고유 개수를 단계로 삼고, 단계마다 상한을 올린다.
+let variation = startResearchContract({ id: 'variation-study' }, []);
+assert.equal(variation.goal, 4);
+assert.equal(researchProgressSlots(variation), '○○○○');
+assert.equal(variationDiversityMaxBonus(variation), 0.3);
+variation = advanceResearchContract(variation, [
+  spell('damage', 'bolt', 'fire', 'water'),
+]).contract;
+assert.deepEqual(variation.usedElements, ['fire', 'water']);
+assert.deepEqual(variation.usedForms, ['bolt']);
+assert.equal(variation.progress, 1);
+assert.equal(variationDiversityMaxBonus(variation), 0.325);
+variation = advanceResearchContract(variation, [spell('damage', 'beam', 'water')]).contract;
+assert.equal(variation.progress, 2);
+variation = advanceResearchContract(variation, [spell('control', 'wall', 'ice')]).contract;
+assert.equal(variation.progress, 3);
+variation = advanceResearchContract(variation, [spell('damage', 'nova', 'wind')]).contract;
+assert.equal(variation.progress, 4);
+assert.equal(variation.completed, true);
+assert.equal(variationDiversityMaxBonus(variation), VARIATION_DIVERSITY_MAX_BONUS);
+assert.equal(researchProgressSlots(variation), '●●●●');
+
 // Tracker는 필살영창을 연구에서 제외하고 완료 보상을 결과에 한 번만 싣는다.
 const tracker = new RunResearchTracker();
 tracker.selectResearch({ id: 'ward-study' });
@@ -193,6 +230,8 @@ assert.ok(sceneSource.includes('researchProgressSlots(research)'), '상시 연�
 assert.ok(sceneSource.includes('scheduleElementalResearchEcho(executedSpecs)'), '시퀀스 공명 재시전 배선');
 assert.ok(sceneSource.includes('applyWardResearchCastPerks(previousResearch'), '수호 지속 특성 배선');
 assert.ok(sceneSource.includes('wardStudyIncomingDamageScale('), '수호 피해 감소 배선');
+assert.ok(sceneSource.includes('variationDiversityMaxBonus('), '변주 단계별 다양성 상한 배선');
+assert.ok(sceneSource.includes('원소 ${contract.usedElements.length}/${contract.goal}'), '변주 원소·형태 HUD 배선');
 assert.ok(sceneSource.includes("actionState = 'RESEARCH SELECT'"), '연구 선택 중 전투 정지 HUD');
 assert.equal(
   (sceneSource.match(/offerRunStartChoices\(\)/g) ?? []).length,
@@ -200,4 +239,4 @@ assert.equal(
   '메서드 정의 + 최초 시작 + 사망 재시작 경로',
 );
 
-console.log('research contract regression: 해금·2종목표·중복방지·이어가기·보너스 7군 통과');
+console.log('research contract regression: 해금·3종목표·중복방지·이어가기·보너스 8군 통과');

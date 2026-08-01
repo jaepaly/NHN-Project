@@ -145,7 +145,11 @@ export class RunResearchTracker {
       researchInsight,
       newSignatures: [...this.newSignatures],
       research: this.activeResearch
-        ? { ...this.activeResearch, usedForms: [...this.activeResearch.usedForms] }
+        ? {
+          ...this.activeResearch,
+          usedElements: [...this.activeResearch.usedElements],
+          usedForms: [...this.activeResearch.usedForms],
+        }
         : null,
     };
   }

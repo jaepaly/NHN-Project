@@ -330,6 +330,7 @@ import {
   researchMilestoneReward,
   researchProgressSlots,
   spellMatchesElementalResearch,
+  variationDiversityMaxBonus,
   wardStudyIncomingDamageScale,
   wardStudyPulseUnlocked,
   WARD_STUDY_GUARD_DAMAGE_SCALE,
@@ -1673,9 +1674,9 @@ export class ProtoScene extends Phaser.Scene {
     );
     if (contracts.length === 0) return;
 
-    const options: RewardOption[] = contracts.map((contract) => (
-      contract.id === 'elemental-focus'
-        ? {
+    const options: RewardOption[] = contracts.map((contract) => {
+      if (contract.id === 'elemental-focus') {
+        return {
           id: `research-${contract.id}`,
           kind: 'affinity' as const,
           element: contract.element,
@@ -1684,8 +1685,19 @@ export class ProtoScene extends Phaser.Scene {
             + `목표 · 서로 다른 ${ELEMENT_LABELS[contract.element]} 형태 3종\n`
             + `단계 · 새 형태마다 친화 +${Math.round(ELEMENTAL_FOCUS_MILESTONE_AFFINITY * 100)}% · 주문 범위 +10%\n`
             + `완료 · ${ELEMENTAL_FOCUS_ECHO_EVERY_CASTS}회마다 ${Math.round(ELEMENTAL_FOCUS_ECHO_POWER_SCALE * 100)}% 공명 재시전`,
-        }
-        : {
+        };
+      }
+      if (contract.id === 'variation-study') {
+        return {
+          id: `research-${contract.id}`,
+          kind: 'all-affinity' as const,
+          title: '만물의 변주',
+          description: '목표 · 일반 수동 영창으로 원소 4종 · 형태 4종\n'
+            + '단계 · 원소·형태 짝이 늘 때마다 다양성 최대 +2.5%\n'
+            + '완료 · 최근과 완전히 다른 영창 피해 최대 ×1.40',
+        };
+      }
+      return {
           id: `research-${contract.id}`,
           kind: 'ward-start' as const,
           title: '수호 연구',
@@ -1693,8 +1705,8 @@ export class ProtoScene extends Phaser.Scene {
             + '목표 · 지원 영창 3회\n'
             + `단계 · 인정마다 보호막 +${WARD_STUDY_MILESTONE_SHIELD} · 2단계부터 피해 -${Math.round((1 - WARD_STUDY_GUARD_DAMAGE_SCALE) * 100)}%\n`
             + '완료 · 지원 영창마다 보호막 보충·결계 파동',
-        }
-    ));
+      };
+    });
 
     this.researchSelecting = true;
     try {
@@ -1733,18 +1745,24 @@ export class ProtoScene extends Phaser.Scene {
       );
       return;
     }
-    this.playerState.addShield(WARD_STUDY_START_SHIELD);
+    if (selection.id === 'ward-study') {
+      this.playerState.addShield(WARD_STUDY_START_SHIELD);
+    }
   }
 
   private researchTitle(contract: ActiveResearchContract): string {
-    return contract.id === 'elemental-focus' && contract.element
-      ? `원소 심화 · ${ELEMENT_LABELS[contract.element]}`
-      : '수호 연구';
+    if (contract.id === 'elemental-focus' && contract.element) {
+      return `원소 심화 · ${ELEMENT_LABELS[contract.element]}`;
+    }
+    return contract.id === 'variation-study' ? '만물의 변주' : '수호 연구';
   }
 
   private researchGoal(contract: ActiveResearchContract): string {
-    return contract.id === 'elemental-focus' && contract.element
-      ? `${ELEMENT_LABELS[contract.element]}의 서로 다른 형태 ${contract.goal}종 시전`
+    if (contract.id === 'elemental-focus' && contract.element) {
+      return `${ELEMENT_LABELS[contract.element]}의 서로 다른 형태 ${contract.goal}종 시전`;
+    }
+    return contract.id === 'variation-study'
+      ? `일반 수동 영창으로 원소 ${contract.goal}종 · 형태 ${contract.goal}종 사용`
       : `회복·보호막·강화·제어 영창 ${contract.goal}회 성공`;
   }
 
@@ -1758,6 +1776,9 @@ export class ProtoScene extends Phaser.Scene {
         ? `대상 원소 범위 +${spatialPct}% · 공명 ${this.elementalResearchEchoCharge}/${ELEMENTAL_FOCUS_ECHO_EVERY_CASTS}`
         : `대상 원소 범위 +${spatialPct}%`;
     }
+    if (contract.id === 'variation-study') {
+      return `다양성 최대 ×${(1 + variationDiversityMaxBonus(contract)).toFixed(3).replace(/0$/, '')}`;
+    }
     if (contract.completed) return `지원 영창 보호막 +${WARD_STUDY_MILESTONE_SHIELD} · 결계 파동`;
     if (contract.progress >= 2) {
       return `보호막 중 피해 -${Math.round((1 - WARD_STUDY_GUARD_DAMAGE_SCALE) * 100)}%`;
@@ -1767,11 +1788,17 @@ export class ProtoScene extends Phaser.Scene {
 
   private reportResearchAdvance(previous: ActiveResearchContract | null): void {
     const current = this.runResearchTracker.snapshot().research;
-    if (!current || current.progress === previous?.progress) return;
+    if (!current) return;
     const reward = researchMilestoneReward(previous, current);
-    const newForms = current.id === 'elemental-focus'
+    const newElements = current.id === 'variation-study'
+      ? current.usedElements.filter((element) => !previous?.usedElements.includes(element))
+      : [];
+    const newForms = current.id === 'elemental-focus' || current.id === 'variation-study'
       ? current.usedForms.filter((form) => !previous?.usedForms.includes(form))
       : [];
+    if (current.progress === previous?.progress && newElements.length === 0 && newForms.length === 0) {
+      return;
+    }
     let rewardLine = '';
     if (current.id === 'elemental-focus' && current.element && reward.affinity > 0) {
       const result = this.combatRunController.grantStartingAffinity(current.element, reward.affinity);
@@ -1786,9 +1813,18 @@ export class ProtoScene extends Phaser.Scene {
       const added = this.playerState.addShield(reward.shield);
       rewardLine = `연구 보호막 +${Math.round(added)}${added < reward.shield ? ' · 최대치 도달' : ''}`;
     }
-    const progressSubject = newForms.length > 0
-      ? `${newForms.map((form) => FORM_LABELS[form]).join('·')} 형태 발견`
-      : '지원 영창 인정';
+    const progressSubject = current.id === 'variation-study'
+      ? [
+        ...(newElements.length > 0
+          ? [`${newElements.map((element) => ELEMENT_LABELS[element]).join('·')} 원소`]
+          : []),
+        ...(newForms.length > 0
+          ? [`${newForms.map((form) => FORM_LABELS[form]).join('·')} 형태`]
+          : []),
+      ].join(' · ') + ' 발견'
+      : newForms.length > 0
+        ? `${newForms.map((form) => FORM_LABELS[form]).join('·')} 형태 발견`
+        : '지원 영창 인정';
     const perkLine = `연구 특성 · ${this.researchPerkSummary(current)}`;
     if (current.completed && !previous?.completed) {
       this.announceBanner({
@@ -1811,6 +1847,14 @@ export class ProtoScene extends Phaser.Scene {
       '#8fa4ff',
       2600,
     );
+  }
+
+  private researchProgressSummary(contract: ActiveResearchContract): string {
+    if (contract.id === 'variation-study') {
+      return `${researchProgressSlots(contract)} 원소 ${contract.usedElements.length}/${contract.goal}`
+        + ` · 형태 ${contract.usedForms.length}/${contract.goal}`;
+    }
+    return `${researchProgressSlots(contract)} ${contract.progress}/${contract.goal}`;
   }
 
   /** 완료된 수호 연구를 일회성 체크리스트가 아니라 남은 런의 전투 규칙으로 유지한다. */
@@ -5534,6 +5578,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const diversity = diversityBonus(
         { element: spec.element_primary, form: spec.form },
         priorCasts.map((e) => ({ element: e.elementPrimary, form: e.form })),
+        variationDiversityMaxBonus(this.runResearchTracker.snapshot().research),
       );
       // 융합 방출은 페널티·친화·감쇠 체인을 덮는 고정 최대치 — "최대 방출"의 약속
       // 각성 — 수동 경로이므로 auto=false. 인장은 시전마다 발치에 잠깐 새겨진다
@@ -5941,6 +5986,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const diversity = diversityBonus(
       { element: baseSpec.element_primary, form: baseSpec.form },
       priorUsages.map((entry) => ({ element: entry.elementPrimary, form: entry.form })),
+      variationDiversityMaxBonus(this.runResearchTracker.snapshot().research),
     );
     const spec: SpellSpec = {
       ...baseSpec,
@@ -6820,7 +6866,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         `RESEARCH · ${this.researchTitle(research)}`,
         research.completed
           ? `${researchProgressSlots(research)} ${this.researchPerkSummary(research)} · 통찰 +${research.rewardInsight}`
-          : `${researchProgressSlots(research)} ${research.progress}/${research.goal} · ${this.researchGoal(research)}`,
+          : `${this.researchProgressSummary(research)} · ${this.researchGoal(research)}`,
         ...(!research.completed && research.progress > 0
           ? [`효과 · ${this.researchPerkSummary(research)}`]
           : []),

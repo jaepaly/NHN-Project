@@ -54,4 +54,8 @@ assert.ok(
   '원소 다양성이 폼 다양성보다 커야 한다',
 );
 
-console.log('✅ spell-diversity-regression: 9군 통과');
+// ── 10. 연구가 확장한 상한은 같은 신선도 공식에만 주입된다 ──
+approx(diversityBonus(ice('beam'), [fire('bolt')], 0.4), 1.4);
+approx(diversityBonus(fire('bolt'), [fire('bolt')], 0.4), 1);
+
+console.log('✅ spell-diversity-regression: 10군 통과');

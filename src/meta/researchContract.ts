@@ -2,7 +2,9 @@ import type { MetaProfileV1 } from './metaProfile';
 import type { SpellElement, SpellForm, SpellSpec } from '../spell/types';
 
 export const BASIC_RESEARCH_UNLOCK_INSIGHT = 4;
+export const EXPANDED_RESEARCH_UNLOCK_INSIGHT = 14;
 export const RESEARCH_GOAL = 3;
+export const VARIATION_RESEARCH_GOAL = 4;
 export const RESEARCH_FIRST_REWARD = 3;
 export const RESEARCH_REPEAT_REWARD = 2;
 export const ELEMENTAL_FOCUS_START_AFFINITY = 0.15;
@@ -20,12 +22,16 @@ export const WARD_STUDY_GUARD_DAMAGE_SCALE = 0.85;
 /** 수호 연구 완료 뒤 지원 영창이 밀어내는 결계 파동의 전투 수치. */
 export const WARD_STUDY_PULSE_RADIUS = 190;
 export const WARD_STUDY_PULSE_KNOCKBACK = 110;
+export const VARIATION_DIVERSITY_BASE_BONUS = 0.3;
+export const VARIATION_DIVERSITY_BONUS_PER_STAGE = 0.025;
+export const VARIATION_DIVERSITY_MAX_BONUS = 0.4;
 
-export type ResearchContractId = 'elemental-focus' | 'ward-study';
+export type ResearchContractId = 'elemental-focus' | 'ward-study' | 'variation-study';
 
 export type ResearchContractSelection =
   | { id: 'elemental-focus'; element: SpellElement }
-  | { id: 'ward-study' };
+  | { id: 'ward-study' }
+  | { id: 'variation-study' };
 
 export interface ActiveResearchContract {
   id: ResearchContractId;
@@ -34,6 +40,7 @@ export interface ActiveResearchContract {
   goal: number;
   completed: boolean;
   rewardInsight: number;
+  usedElements: readonly SpellElement[];
   usedForms: readonly SpellForm[];
 }
 
@@ -101,6 +108,16 @@ export function wardStudyPulseUnlocked(contract: ActiveResearchContract | null):
   return contract?.id === 'ward-study' && contract.completed;
 }
 
+/** 만물의 변주 진행 단계가 실제 다양성 피해 상한을 조금씩 끌어올린다. */
+export function variationDiversityMaxBonus(contract: ActiveResearchContract | null): number {
+  if (contract?.id !== 'variation-study') return VARIATION_DIVERSITY_BASE_BONUS;
+  return Math.min(
+    VARIATION_DIVERSITY_MAX_BONUS,
+    VARIATION_DIVERSITY_BASE_BONUS
+      + contract.progress * VARIATION_DIVERSITY_BONUS_PER_STAGE,
+  );
+}
+
 export function availableBasicResearchContracts(
   profile: Pick<MetaProfileV1, 'insight' | 'totalRuns'>,
   previousDominantElement: SpellElement | null,
@@ -111,6 +128,9 @@ export function availableBasicResearchContracts(
       ? [{ id: 'elemental-focus' as const, element: previousDominantElement }]
       : []),
     { id: 'ward-study' as const },
+    ...(profile.insight >= EXPANDED_RESEARCH_UNLOCK_INSIGHT
+      ? [{ id: 'variation-study' as const }]
+      : []),
   ];
 }
 
@@ -122,11 +142,12 @@ export function startResearchContract(
     id: selection.id,
     element: selection.id === 'elemental-focus' ? selection.element : null,
     progress: 0,
-    goal: RESEARCH_GOAL,
+    goal: selection.id === 'variation-study' ? VARIATION_RESEARCH_GOAL : RESEARCH_GOAL,
     completed: false,
     rewardInsight: completedContractIds.includes(selection.id)
       ? RESEARCH_REPEAT_REWARD
       : RESEARCH_FIRST_REWARD,
+    usedElements: [],
     usedForms: [],
   };
 }
@@ -141,6 +162,7 @@ export function advanceResearchContract(
   }
 
   let progress = contract.progress;
+  let usedElements = [...contract.usedElements];
   let usedForms = [...contract.usedForms];
   if (contract.id === 'elemental-focus' && contract.element) {
     const matchingForms = executedSpecs
@@ -155,13 +177,23 @@ export function advanceResearchContract(
   ) {
     // behavior가 아니라 영창 횟수 기준: 지원 form이 여러 개여도 이번 호출에서 +1만.
     progress = Math.min(contract.goal, progress + 1);
+  } else if (contract.id === 'variation-study') {
+    const elements = executedSpecs.flatMap((spec) => [
+      spec.element_primary,
+      ...(spec.element_secondary ? [spec.element_secondary] : []),
+    ]);
+    usedElements = [...new Set([...usedElements, ...elements])];
+    usedForms = [...new Set([...usedForms, ...executedSpecs.map((spec) => spec.form)])];
+    progress = Math.min(contract.goal, usedElements.length, usedForms.length);
   }
 
-  const changed = progress !== contract.progress;
+  const changed = progress !== contract.progress
+    || usedElements.length !== contract.usedElements.length
+    || usedForms.length !== contract.usedForms.length;
   if (!changed) return { contract, changed: false, justCompleted: false };
   const completed = progress >= contract.goal;
   return {
-    contract: { ...contract, progress, completed, usedForms },
+    contract: { ...contract, progress, completed, usedElements, usedForms },
     changed: true,
     justCompleted: completed && !contract.completed,
   };

@@ -49,6 +49,7 @@ export const DIVERSITY_CONFIG = {
 export function diversityBonus(
   current: DiversityCast,
   recent: readonly DiversityCast[],
+  maxBonus: number = DIVERSITY_CONFIG.maxBonus,
 ): number {
   const window = recent.slice(-DIVERSITY_CONFIG.window);
   if (window.length === 0) return 1; // 비교 대상 없음(첫 시전 등) → 중립
@@ -60,5 +61,6 @@ export function diversityBonus(
     (elementFresh ? DIVERSITY_CONFIG.elementWeight : 0) +
     (formFresh ? DIVERSITY_CONFIG.formWeight : 0);
 
-  return 1 + DIVERSITY_CONFIG.maxBonus * novelty;
+  const safeMaxBonus = Number.isFinite(maxBonus) ? Math.max(0, maxBonus) : 0;
+  return 1 + safeMaxBonus * novelty;
 }
