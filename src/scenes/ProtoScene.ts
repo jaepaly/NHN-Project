@@ -308,6 +308,8 @@ import type {
   SpellPlan,
 } from '../spell/sequencePlan';
 import { sequenceEngraveCandidate } from '../spell/sequenceEngraveCandidate';
+import { applyMetaRunOutcome, loadMetaProfile, saveMetaProfile } from '../meta/metaProfile';
+import { RunResearchTracker } from '../meta/runResearchTracker';
 import { runSpellMatrixAudit, summarizeMatrix } from '../dev/spellMatrixAudit';
 import { SilenceCurseField } from '../render/silenceCurseField';
 import { BlackoutCurseField } from '../render/blackoutCurseField';
@@ -609,6 +611,10 @@ export class ProtoScene extends Phaser.Scene {
   private buffAura: Phaser.GameObjects.Arc | null = null;
   private playerState = new PlayerCombatState();
   private readonly spellHistory = new SpellHistory();
+  private metaProfile = loadMetaProfile();
+  private readonly runResearchTracker = new RunResearchTracker(
+    this.metaProfile.discoveredSignatures,
+  );
   private readonly engraveManager = new EngraveManager();
   private readonly spiritManager = new SpiritManager();
   private engraveRewardRand = createRunRandom(Date.now());
@@ -1401,6 +1407,8 @@ export class ProtoScene extends Phaser.Scene {
     if (this.runFlowBound) return;
     this.runFlowBound = true;
     this.combatRunController.on('room-cleared', (options, state) => {
+      const clearedNode = this.mapGraph.current();
+      this.runResearchTracker.recordRoomCleared(clearedNode.id, clearedNode.kind);
       this.audio.playSfx('room-clear');
       // 포탈/보상 선택 구간은 안전 상태여야 한다. 다음 방 시작까지 함정 판정과
       // 저주 연출을 남겨 두면 출구 접근을 방해하거나 전투 종료 뒤에도 피해처럼 보인다.
@@ -1534,6 +1542,8 @@ export class ProtoScene extends Phaser.Scene {
       // 플레이어 사망이 먼저 확정된 동시 확정 레이스(사망 후 장판 틱이 보스 처치 등)
       // — 패배가 선점: 기억 저장·승리 연출 모두 생략해 한 런에 lose/win 이중 기록을 막는다
       if (this.deathHandled) return;
+      const finalNode = this.mapGraph.current();
+      this.runResearchTracker.recordRoomCleared(finalNode.id, finalNode.kind);
       if (import.meta.env.DEV) {
         void postPlayLog({
           type: 'run_completed',
@@ -1659,6 +1669,11 @@ export class ProtoScene extends Phaser.Scene {
       loadRunMemory(),
       summarizeRun(this.spellHistory, result, this.runMovementDistance),
     ));
+    this.metaProfile = applyMetaRunOutcome(
+      this.metaProfile,
+      this.runResearchTracker.outcome(result),
+    );
+    saveMetaProfile(this.metaProfile);
     // 주문서 유산 기록 — 런을 클리어(승리)했을 때만. 큰 주문 하나 쓰고 자살해 유산을 파밍하는
     // 치즈를 막고, 유산 각인을 "클리어 보상"으로 만든다. (보스 기억은 위에서 승패 무관 유지)
     if (result !== 'win') return;
@@ -1744,6 +1759,7 @@ export class ProtoScene extends Phaser.Scene {
 
   private continueToNextLoop(inherit: { element: SpellElement; value: number } | null = null): void {
     this.deathHandled = false;
+    this.resetRunResearchTracking();
     // 전투 전용 상태만 초기화 (다음 보스가 내성 재계산, 장판·쿨다운은 방 단위)
     this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
@@ -1798,6 +1814,7 @@ export class ProtoScene extends Phaser.Scene {
   private resetForNewRun(): void {
     this.deathHandled = false;
     this.pendingRunStartReason = null;
+    this.resetRunResearchTracking();
     this.fusionGauge.reset();
     this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
@@ -1823,6 +1840,7 @@ export class ProtoScene extends Phaser.Scene {
 
   private restartRun(): void {
     this.deathHandled = false;
+    this.resetRunResearchTracking();
     this.fusionGauge.reset();
     this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
@@ -1851,6 +1869,11 @@ export class ProtoScene extends Phaser.Scene {
     this.combatRunController.reset();
     // 새 런에도 유산 선택 — 직전 런에서 기록된 주문이 곧바로 후보가 된다
     void this.offerLegacyEngrave();
+  }
+
+  private resetRunResearchTracking(): void {
+    this.metaProfile = loadMetaProfile();
+    this.runResearchTracker.reset(this.metaProfile.discoveredSignatures);
   }
 
   private logRunStarted(
@@ -4982,6 +5005,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceManaShortage(plan.manaCost);
       return;
     }
+    if (!ultimate) this.runResearchTracker.recordNormalPlan(plan);
     if (import.meta.env.DEV) {
       void postPlayLog({
         type: 'sequence_exec',
@@ -5106,6 +5130,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         return;
       }
       this.playerState.trySpendMana(castPlan.spend);
+      if (castMode === 'normal') this.runResearchTracker.recordNormalSpell(spec);
 
       if (!fusedSpec && this.fusionGauge.charge(castPlan.spend, {
         name: spec.name,
