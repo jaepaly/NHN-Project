@@ -100,6 +100,17 @@ const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
     leave >= enter,
     `슬로모션 진입 ${enter}회 vs 복귀 ${leave}회 — 안 푸는 경로가 있으면 화면이 멈춘 채 남는다`,
   );
+
+  const updateAt = scene.indexOf('override update(');
+  const updateBody = scene.slice(updateAt, scene.indexOf('private isCombatActive', updateAt));
+  assert.ok(
+    (updateBody.match(/this\.updatePlayerMovement\(d\)/g) ?? []).length >= 2,
+    '전투·설치물 이동 모두 timeScale이 반영된 델타를 사용해야 한다',
+  );
+  assert.ok(
+    !updateBody.includes('this.updatePlayerMovement(delta / 1000)'),
+    '판정 슬로모션 중 플레이어만 실시간 이동하면 안 된다',
+  );
 }
 
-console.log('slowmo scope regression: 차단공통화·연쇄·고정대상·낙하예외·배율3축·직접대입금지·복귀 7군 통과');
+console.log('slowmo scope regression: 차단공통화·연쇄·고정대상·낙하예외·배율3축·플레이어이동·직접대입금지·복귀 8군 통과');

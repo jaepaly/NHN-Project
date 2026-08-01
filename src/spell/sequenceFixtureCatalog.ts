@@ -65,18 +65,14 @@ export const SEQUENCE_FIXTURE_CATALOG: readonly SequenceFixtureDefinition[] = [
     key: 'silent-flash',
     input: '적막을 가르는 섬광',
     intent: '적에게 접근하며 관통한 뒤 반대편으로 빠져나오는 일격 이탈형 영창.',
-    schemaFocus: ['parallel move+form', 'target-direction', 'away-from-target', 'lock-on'],
+    schemaFocus: ['focused beam', 'wait timing', 'lock-on'],
     plan: {
       name: '적막을 가르는 섬광', power: 84, durationMs: 2300,
       sequences: [
         { durationWeight: 2, behaviors: [
-          { type: 'move', destination: 'target-direction', element: 'light', distance: 190 },
           form(spell('접근 섬광', 'beam', 'light'), 2, { range: 3, damage: 2 }),
         ] },
         { durationWeight: 1, behaviors: [{ type: 'wait' }] },
-        { durationWeight: 1, behaviors: [
-          { type: 'move', destination: 'away-from-target', element: 'light', distance: 170 },
-        ] },
       ],
     },
   },
@@ -84,16 +80,12 @@ export const SEQUENCE_FIXTURE_CATALOG: readonly SequenceFixtureDefinition[] = [
     key: 'fleeing-star',
     input: '도망치는 별',
     intent: '후퇴하면서 견제 사격을 남기고 다른 방향에서 별비를 내리는 원거리 회피 영창.',
-    schemaFocus: ['retreat while attacking', 'random-direction', 'persistent rain'],
+    schemaFocus: ['bolt opening', 'persistent rain', 'sequential escalation'],
     plan: {
       name: '도망치는 별', power: 78, durationMs: 2100,
       sequences: [
         { durationWeight: 2, behaviors: [
-          { type: 'move', destination: 'away-from-target', element: 'light', distance: 200 },
           form(spell('후퇴의 별빛', 'bolt', 'light'), 1),
-        ] },
-        { durationWeight: 1, behaviors: [
-          { type: 'move', destination: 'random-direction', element: 'light', distance: 130 },
         ] },
         { durationWeight: 2, behaviors: [
           form(spell('도주로의 별비', 'rain', 'light'), 3, { radius: 3, damage: 2 }),
@@ -147,16 +139,13 @@ export const SEQUENCE_FIXTURE_CATALOG: readonly SequenceFixtureDefinition[] = [
     key: 'breaking-current',
     input: '사슬을 끊는 파도',
     intent: '적을 밀어내 공간을 만든 뒤 후퇴하고 회복하는 생존 중심 영창.',
-    schemaFocus: ['control wave', 'away-from-target', 'self heal', 'non-damage payoff'],
+    schemaFocus: ['control wave', 'self heal', 'non-damage payoff'],
     plan: {
       name: '사슬을 끊는 파도', power: 74, durationMs: 2000,
       sequences: [
         { durationWeight: 2, behaviors: [
           form(spell('해방의 파도', 'wave', 'water', 'control', 'area', ['knockback']), 2,
             { range: 3, strength: 3 }),
-        ] },
-        { durationWeight: 1, behaviors: [
-          { type: 'move', destination: 'away-from-target', element: 'water', distance: 180 },
         ] },
         { durationWeight: 1, behaviors: [
           form(spell('고요한 숨', 'buff', 'water', 'heal', 'self'), 1,
@@ -169,19 +158,15 @@ export const SEQUENCE_FIXTURE_CATALOG: readonly SequenceFixtureDefinition[] = [
     key: 'thunderbird-flight',
     input: '천둥새의 비행',
     intent: '임의의 적에게 번개처럼 날아들어 연쇄 공격 후 방향을 틀어 빠지는 고속 영창.',
-    schemaFocus: ['random-enemy', 'chain', 'random-direction', 'multiple moves'],
+    schemaFocus: ['chain', 'bolt follow-up', 'sequential lightning'],
     plan: {
       name: '천둥새의 비행', power: 88, durationMs: 2600,
       sequences: [
-        { durationWeight: 1, behaviors: [
-          { type: 'move', destination: 'random-enemy', element: 'lightning', distance: 200 },
-        ] },
         { durationWeight: 2, behaviors: [
           form(spell('천둥새의 발톱', 'chain', 'lightning', 'damage', 'enemy', ['shock']), 3,
             { range: 3, damage: 2 }),
         ] },
         { durationWeight: 1, behaviors: [
-          { type: 'move', destination: 'random-direction', element: 'lightning', distance: 170 },
           form(spell('꼬리 번개', 'bolt', 'lightning'), 1),
         ] },
       ],
@@ -191,16 +176,14 @@ export const SEQUENCE_FIXTURE_CATALOG: readonly SequenceFixtureDefinition[] = [
     key: 'typhoon-corridor',
     input: '태풍의 회랑',
     intent: '좌우로 궤적을 그리며 벽과 회전체로 적의 진로를 재구성하는 공간 제어 영창.',
-    schemaFocus: ['custom-vector', 'wall+orbit persistence', 'parallel movement'],
+    schemaFocus: ['wall+orbit persistence', 'sequential area control'],
     plan: {
       name: '태풍의 회랑', power: 86, durationMs: 2500,
       sequences: [
         { durationWeight: 2, behaviors: [
-          { type: 'move', destination: 'custom-vector', element: 'wind', distance: 150, angle: -70 },
           form(spell('왼바람의 벽', 'wall', 'wind', 'control', 'area', ['knockback']), 2),
         ] },
         { durationWeight: 2, behaviors: [
-          { type: 'move', destination: 'custom-vector', element: 'wind', distance: 170, angle: 110 },
           form(spell('회랑의 회오리', 'orbit', 'wind'), 3),
         ] },
       ],
@@ -228,11 +211,10 @@ export const SEQUENCE_FIXTURE_CATALOG: readonly SequenceFixtureDefinition[] = [
     key: 'white-night-sanctuary',
     input: '백야의 성역',
     intent: '중앙을 선점하고 회복·보호·지속 피해를 한 장소에 겹치는 거점형 영창.',
-    schemaFocus: ['arena-center', 'heal+shield parallel', 'persistent zone'],
+    schemaFocus: ['heal+shield parallel', 'persistent zone'],
     plan: {
       name: '백야의 성역', power: 90, durationMs: 2700,
       sequences: [
-        { durationWeight: 1, behaviors: [{ type: 'move', destination: 'arena-center', element: 'light', distance: 0 }] },
         { durationWeight: 2, behaviors: [
           form(spell('백야의 치유', 'buff', 'light', 'heal', 'self'), 1, { amount: 3 }),
           form(spell('성역의 가호', 'buff', 'earth', 'shield', 'self'), 1, { amount: 3 }),
@@ -268,11 +250,10 @@ export const SEQUENCE_FIXTURE_CATALOG: readonly SequenceFixtureDefinition[] = [
     key: 'instant-crossing',
     input: '찰나의 전이',
     intent: '시간을 소비하지 않는 이동과 폭발을 같은 순간에 실행하는 순간 행동 영창.',
-    schemaFocus: ['zero total duration', 'teleport semantics', 'parallel instant form'],
+    schemaFocus: ['zero total duration', 'instant form'],
     plan: {
       name: '찰나의 전이', power: 70, durationMs: 0,
       sequences: [{ durationWeight: 1, behaviors: [
-        { type: 'move', destination: 'cast-point', element: 'lightning', distance: 0 },
         form(spell('전이 충격', 'nova', 'lightning'), 2, { radius: 2, damage: 2 }),
       ] }],
     },
@@ -297,17 +278,15 @@ export const SEQUENCE_FIXTURE_CATALOG: readonly SequenceFixtureDefinition[] = [
     key: 'against-meteor-rain',
     input: '유성우를 거슬러',
     intent: '후퇴하며 유성우를 깔고 곧바로 적진에 재진입해 폭발하는 역방향 전개 영창.',
-    schemaFocus: ['away then approach', 'rain remains after sequence', 'nova re-entry'],
+    schemaFocus: ['rain remains after sequence', 'wait timing', 'nova finisher'],
     plan: {
       name: '유성우를 거슬러', power: 92, durationMs: 2750,
       sequences: [
         { durationWeight: 2, behaviors: [
-          { type: 'move', destination: 'away-from-target', element: 'fire', distance: 210 },
           form(spell('후퇴의 유성우', 'rain', 'fire'), 2),
         ] },
         { durationWeight: 1, behaviors: [{ type: 'wait' }] },
         { durationWeight: 2, behaviors: [
-          { type: 'move', destination: 'target-direction', element: 'fire', distance: 230 },
           form(spell('역행 충돌', 'nova', 'fire'), 3, { radius: 3, damage: 2 }),
         ] },
       ],
@@ -317,16 +296,14 @@ export const SEQUENCE_FIXTURE_CATALOG: readonly SequenceFixtureDefinition[] = [
     key: 'frozen-chase',
     input: '얼어붙은 추격전',
     intent: '표적을 얼리며 접근하고 감금한 다음 다시 거리를 벌리는 단일 대상 추격 영창.',
-    schemaFocus: ['random-enemy', 'freeze', 'away-from-target', 'lock survives movement'],
+    schemaFocus: ['bolt opening', 'freeze follow-up'],
     plan: {
       name: '얼어붙은 추격전', power: 83, durationMs: 2350,
       sequences: [
         { durationWeight: 1, behaviors: [form(spell('서리 표식', 'bolt', 'ice'), 1)] },
-        { durationWeight: 1, behaviors: [{ type: 'move', destination: 'random-enemy', element: 'ice', distance: 170 }] },
         { durationWeight: 1, behaviors: [
           form(spell('추격의 감옥', 'cage', 'ice', 'control', 'enemy', ['freeze']), 2),
         ] },
-        { durationWeight: 1, behaviors: [{ type: 'move', destination: 'away-from-target', element: 'ice', distance: 160 }] },
       ],
     },
   },

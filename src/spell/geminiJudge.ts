@@ -1,4 +1,4 @@
-import type { SpellJudge } from './judge';
+import type { JudgeOptions, SpellJudge, UltimateResonanceContext } from './judge';
 import type { SpellJudgement } from './types';
 import { validateJudgement } from './validate';
 import { MockJudge, precheckText } from './mockJudge';
@@ -17,7 +17,7 @@ import { MockJudge, precheckText } from './mockJudge';
  */
 
 export const JUDGE_SCHEMA_VERSION = 2;
-export const JUDGE_PROMPT_VERSION = 'meaning-v2.16-all-plan';
+export const JUDGE_PROMPT_VERSION = 'meaning-v2.31-ultimate-resonance-echo';
 const CACHE_PREFIX = `incant:judge:v${JUDGE_SCHEMA_VERSION}:${JUDGE_PROMPT_VERSION}:`;
 const JUDGE_TIMEOUT_MS = 6000;
 
@@ -72,9 +72,12 @@ export class GeminiJudge implements SpellJudge {
     this.fallback = fallback;
   }
 
-  async judge(text: string): Promise<SpellJudgement> {
+  async judge(text: string, options: JudgeOptions = {}): Promise<SpellJudgement> {
     this.lastFallbackReason = undefined;
     const key = text.trim();
+    const castMode = options.castMode === 'ultimate' ? 'ultimate' : 'normal';
+    const resonance = castMode === 'ultimate' ? options.resonance : undefined;
+    const cacheKey = `${castMode}:${resonance ? JSON.stringify(resonance) : '-'}:${key}`;
     const prechecked = precheckText(key);
     if (prechecked) {
       this.lastSource = 'local';
@@ -82,7 +85,7 @@ export class GeminiJudge implements SpellJudge {
     }
 
     // 1) 캐시 히트 시 즉시 반환 (프록시 호출 없음)
-    const cached = this.readCache(key);
+    const cached = this.readCache(cacheKey);
     if (cached) {
       this.lastSource = 'cache';
       return cached;
@@ -90,11 +93,11 @@ export class GeminiJudge implements SpellJudge {
 
     // 2~3) 프록시 요청 + 스키마 재검증
     try {
-      const raw = await this.fetchWithTimeout(key);
+      const raw = await this.fetchWithTimeout(key, castMode, resonance);
       const judgement = validateJudgement(raw);
       if (judgement && judgement.disposition !== 'fizzle') {
         // cast/blocked만 캐시한다. 모델 드리프트가 만든 fizzle은 캐시에 고착시키지 않는다.
-        this.writeCache(key, judgement);
+        this.writeCache(cacheKey, judgement);
         this.lastSource = 'gemini';
         return judgement;
       }
@@ -108,18 +111,25 @@ export class GeminiJudge implements SpellJudge {
     // 4) 폴백 — 로컬 사전검사를 통과한 입력은 원격 fizzle도 모델 오류로 간주한다.
     // 명백한 키보드 매시·금칙어는 위 precheckText에서 이미 fizzle/blocked 처리됐다.
     this.lastSource = 'fallback';
-    return this.fallback.judge(text);
+    if (castMode === 'ultimate') {
+      return { schema_version: 2, disposition: 'fizzle', reason: 'nonsense', message: '필살영창 해석에 실패했습니다. 게이지는 보존됩니다.' };
+    }
+    return this.fallback.judge(text, options);
   }
 
   /** 프록시에 POST하고 상한(단순 2.5초 / 복합 3.2초) 초과 시 abort. */
-  private async fetchWithTimeout(text: string): Promise<unknown> {
+  private async fetchWithTimeout(
+    text: string,
+    castMode: 'normal' | 'ultimate',
+    resonance?: UltimateResonanceContext,
+  ): Promise<unknown> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), judgeTimeoutMs(text));
     try {
       const res = await fetch(this.proxyUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, castMode, ...(resonance ? { resonance } : {}) }),
         signal: ctrl.signal,
       });
       if (!res.ok) {

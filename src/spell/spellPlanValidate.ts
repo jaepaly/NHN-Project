@@ -1,14 +1,11 @@
-import { ELEMENTS } from './types';
 import type { SpellSpec } from './types';
 import { validateSpec } from './validate';
 import {
-  MOVE_DESTINATIONS,
   SEQUENCE_PLAN_LIMITS,
 } from './sequencePlan';
 import type {
   BehaviorTuning,
   FormBehavior,
-  MoveBehavior,
   SpellBehavior,
   SpellPlan,
   SpellSequence,
@@ -27,10 +24,6 @@ import type {
  */
 
 const MAX_PLAN_NAME_LENGTH = 40;
-
-function isOneOf<T extends readonly string[]>(list: T, v: unknown): v is T[number] {
-  return typeof v === 'string' && (list as readonly string[]).includes(v);
-}
 
 function finiteNumber(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
@@ -59,18 +52,6 @@ function validateBehavior(raw: unknown): SpellBehavior | null {
 
   if (o.type === 'wait') {
     return { type: 'wait' } satisfies WaitBehavior;
-  }
-
-  if (o.type === 'move') {
-    // 이동도 마법 정체성을 가지므로 element 필수, destination은 화이트리스트만.
-    if (!isOneOf(MOVE_DESTINATIONS, o.destination)) return null;
-    if (!isOneOf(ELEMENTS, o.element)) return null;
-    const move: MoveBehavior = { type: 'move', destination: o.destination, element: o.element };
-    const distance = finiteNumber(o.distance);
-    const angle = finiteNumber(o.angle);
-    if (distance !== undefined) move.distance = distance;
-    if (angle !== undefined) move.angle = angle;
-    return move;
   }
 
   if (o.type === 'form') {
@@ -118,19 +99,47 @@ export function validateSpellPlan(raw: unknown): SpellPlan | null {
     .map(validateSequence)
     .filter((s): s is SpellSequence => s !== null);
   if (sequences.length === 0) return null;
+  // wait is only an interval between forms. Without a form, resolveSpellPlan
+  // removes trailing waits and would otherwise leave an executable plan empty.
+  if (!sequences.some((sequence) => sequence.behaviors.some(
+    (behavior) => behavior.type === 'form',
+  ))) return null;
+  const elements = new Set<string>();
+  for (const sequence of sequences) {
+    for (const behavior of sequence.behaviors) {
+      if (behavior.type !== 'form') continue;
+      elements.add(behavior.spec.element_primary);
+      if (behavior.spec.element_secondary) elements.add(behavior.spec.element_secondary);
+    }
+  }
+  const castMode = o.castMode === 'ultimate' ? 'ultimate' : 'normal';
+  const formCount = sequences.reduce((count, sequence) => count + sequence.behaviors.filter(
+    (behavior) => behavior.type === 'form',
+  ).length, 0);
+  if (castMode === 'normal' && elements.size > 2) return null;
+  if (castMode === 'ultimate') {
+    if (elements.size > 8 || sequences.length < 4 || sequences.length > 8) return null;
+    if (formCount < 6 || formCount > 12) return null;
+    if (!sequences.some((sequence) => sequence.behaviors.filter(
+      (behavior) => behavior.type === 'form',
+    ).length >= 2)) return null;
+    if (!sequences.at(-1)?.behaviors.some((behavior) => behavior.type === 'form')) return null;
+  }
 
   const name = typeof o.name === 'string' && o.name.trim().length > 0
     ? o.name.trim().slice(0, MAX_PLAN_NAME_LENGTH)
     : '영창';
-  const power = Math.max(0, Math.min(100, finiteNumber(o.power) ?? 0));
+  const power = castMode === 'ultimate'
+    ? 100
+    : Math.max(0, Math.min(80, finiteNumber(o.power) ?? 0));
   const durationMs = Math.max(0, finiteNumber(o.durationMs) ?? 0);
-
-  return { name, power, durationMs, sequences };
+  if (castMode === 'ultimate' && (durationMs < 4000 || durationMs > 6000)) return null;
+  return { name, castMode, power, durationMs, sequences };
 }
 
 /**
  * plan → 대표 SpellSpec — 기록·반복판정·타입 완결용(실행은 시퀀스 경로가 담당).
- * 가장 위력 높은 damage/공격 form을 대표로 삼고, 이동/대기만 있으면 무해한 자리표시 주문을 만든다.
+ * 가장 위력 높은 damage/공격 form을 대표로 삼는다.
  */
 export function representativeSpecFromPlan(plan: SpellPlan): SpellSpec {
   let best: SpellSpec | null = null;
@@ -142,15 +151,12 @@ export function representativeSpecFromPlan(plan: SpellPlan): SpellSpec {
     }
   }
   if (best) return best;
-  const firstMove = plan.sequences
-    .flatMap((s) => s.behaviors)
-    .find((b): b is MoveBehavior => b.type === 'move');
   const power = Math.max(0, Math.min(100, plan.power));
   return {
     name: plan.name,
     effect: 'damage',
     target: 'enemy',
-    element_primary: firstMove?.element ?? 'wind',
+    element_primary: 'wind',
     element_secondary: null,
     form: 'bolt',
     size: 'small',

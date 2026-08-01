@@ -31,6 +31,76 @@
 
 ---
 
+## [R1] move 제거 후 영창 Judge 7번 form·wait 계약 재작성
+
+| 항목 | 내용 |
+|---|---|
+| 작업일 | 2026-08-01 |
+| 브랜치 | `codex/rebuild-sequence-judge-contract` |
+| 범위 | Worker 7번과 인게임 시퀀스 런타임을 `form|wait` 계약으로 일치시키고 검증 기준 재작성 |
+| 상태 | 코드·실험 Worker 검증 및 1차 인게임 플레이 완료, effect·창의성·일반 영창 2원소 한도 튜닝 완료 |
+
+- 최초 변경에서는 `proxy/worker.js`의 판정 규칙 1~6을 main과 동일하게 보존하고 7번 전체만 `form|wait` 계약으로 교체했다. 이후 1차 플레이 피드백에 따라 규칙 3의 effect 선택만 의도적으로 후속 변경했다.
+- 순차 sequence, 같은 sequence의 병렬 form, 명시적 박자에 한정한 wait-only sequence, 전체 power와 상대 `durationWeight`·`powerWeight` 계약을 유지했다.
+- player move·destination·distance·이동 예시와 이동 전용 후처리 실행 경로를 제거했다. 모델이 폐기된 move를 출력한 경우에는 기존 단일 재판정 경로에서 계약 위반으로 처리한다.
+- 인게임 `SpellBehavior`에서도 move 타입과 power 예약을 제거하고, validator가 legacy move를 버리며 실행 가능한 form이 없는 plan은 거부하도록 바꿨다. 씬의 move tween 실행, 시전 시간 전체 무적, 시전 중 WASD 이동 잠금을 제거했다. 명시적인 ward buff와 `wait` 시간축은 그대로 유지한다.
+- 기존 디버그·few-shot 픽스처의 move는 기동 buff로 위장하지 않았다. 동반 form은 보존하고 이동-only 박자는 form과 wait로 다시 구성했으며, 이동 어휘는 form 속도·범위·형태·순서로 수동 평가하도록 채점 기준을 바꿨다.
+- 캐시 프롬프트 버전을 move 제거 시 `meaning-v2.17-form-wait-sequence`, effect 경계 교정 후 `meaning-v2.18-effect-boundary`, 창의성 보상 교정 후 `meaning-v2.19-creativity-budget`, 일반 영창 원소 한도 적용 후 `meaning-v2.20-two-element-limit`으로 올려 이전 판정을 격리했다.
+- `wrangler.local.toml`로 실험 Worker `f9f44784-6569-475c-83da-ee34e265463e`를 배포했다. Node UTF-8 30종 실측은 30/30 HTTP 200·attempts=1·move 0건, 평균 1,443ms·p90 1,576ms·max 2,184ms였고 원자 대조군, 명시 연사 wait 간격, 명시 동시 입력 병렬 form을 보존했다.
+- 최초 배포에서 축약한 출력 예시 JSON의 닫는 괄호 오류와 8원소 목록 누락을 발견했다. 예시를 실제 `JSON.parse`로 검증하고 원소 enum을 명시한 뒤 재배포했으며, 이전 재요청 사례 5종은 모두 attempts=1·지원 원소로 정상화됐다.
+- 첫 30종에서는 병렬 form이 1건뿐이라 순차 편중으로 판정했다. 시간·인과가 없는 공존 사건의 병렬 우선 관계와 병렬 JSON 예시를 추가한 뒤 선별 10종을 재측정해 7/10 병렬, 10/10 attempts=1·move 0건을 확인했다.
+- 검증: `node --check proxy/worker.js`, `test:judge-output`, `test:planvalidate`, `test:sequence`, `test:sequence-fewshot`, `test:playlog`, `test:spell`, `test:judge-fallback`, `test:cacheseed`, `npm run build`, `git diff --check` 통과. 빌드는 기존 대용량 chunk 경고만 남았다.
+- 사용자 1차 인게임 플레이테스트에서 move 제거 뒤의 전체 구성은 “나쁘지 않다”는 평가를 받았으나 공격 주문 지향성이 부족했다. 후속 합의에 따라 추상적인 heal|shield|buff|summon 함축은 보존하고, 공격·지원 근거가 비슷하거나 모두 약할 때만 damage를 기본값으로 삼았다. 순수 공격은 모든 form을 damage로 유지하고 서로 독립된 목적이 각각 강하게 읽힐 때만 effect를 혼합한다.
+- 첫 effect 경계 12종 원격 검증에서 순수 공격 4종은 damage-only, 추상 지원 4종은 heal|shield|buff|summon을 보존했고 명시적 공격+보호 입력은 damage+shield로 분리됐다. `유리별 장송곡`에 근거 없는 control이 섞인 원인은 기존 JSON 예시의 damage+control 혼합으로 확인해 예시를 damage-only로 교체했다. 실험 Worker `d2cd96ac-ce8c-4ecb-a9df-6d02ed927931`의 대표 6종 재검증에서는 순수 공격 2종 damage-only, 지원 2종 지원 effect 보존, 복합 목적 2종 damage+shield를 확인했으며 전부 HTTP 200·attempts=1이었다.
+- 창의성의 주 보상을 원소 수·문장 길이·behavior 수가 아니라 사건·관계·변화·공간·시간·결말을 가시화하는 form·병렬·sequence·피날레로 정의했다. power는 기본 전투력 45~60에 의미 명확성 최대 +8, 창의적 관계 최대 +10만 허용하고 일반 영창 상한을 80으로 낮췄다. 모델이 최초 `팔원소`에 90을 출력해 프롬프트만으로 상한이 보장되지 않음을 확인하고 Worker 정규화에서 power 80 및 연동 duration 상한도 강제했다.
+- 최종 실험 Worker `1f7fd5f2-4323-4049-a0ee-23012c6380a5`에서 `팔원소`와 `팔원소 대합창`을 각 3회 반복했다. `팔원소` power는 55/65/55, 대합창은 72/72/72였고 모든 응답은 HTTP 200·attempts=1·damage-only·8 form이었다. 8개 사건은 각 sequence 최대 4개씩 4+4로 나뉘어 behavior 최대 5 계약도 지켰다. power의 소폭 확률 변동은 남지만 단순 집합보다 관계가 있는 대합창을 일관되게 높게 보상했다.
+- 일반 영창의 화려함이 원소 수 딸깍으로 결정되지 않도록 plan 전체 고유 원소를 최대 2개로 제한했다. 단일·2원소 영창의 form·sequence 복잡도는 제한하지 않으며, 3개 이상을 모두 실현하는 대규모 다원소 연출은 후속 필살 영창 계약으로 분리한다. 3원소 이상 모델 출력은 기존 단일 교정 요청으로 중심 원소 2개를 다시 선택하고, 재판정 후에도 위반하면 빈도와 선행 순서상 중심 primary 2개만 남겨 초과 원소 전용 form과 secondary를 제거한다. 클라이언트 validator도 3원소 이상 plan을 거부한다.
+- 실험 Worker `2741f6e3-8b03-40bb-b4f1-a682cc7411c1` 최종 대표 5종은 모두 HTTP 200이었다. `팔원소`는 light+dark·form 1·power 50, `팔원소 대합창`은 fire+ice·병렬 form 2·power 72로 나와 같은 원소 한도 안에서 관계 보상이 분리됐다. `불꽃 얼음 번개 빛`은 교정 1회 후 fire+ice form 2, 정상 `불과 얼음의 이중주`는 재판정 없이 fire+ice form 2, `꺼진 태양에서 다시 피어나는 불사조`는 교정 후 light+fire의 두 단계 변화를 보존했다.
+
+---
+
+## [R1] 일반 영창 Gemini 단일 호출 전환
+
+- 필살영창 재요청은 별도 튜닝 범위로 보류하고, 일반 영창만 Gemini 호출을 최대 1회로 고정했다. JSON 문법 파손은 즉시 502로 종료해 클라이언트 fallback으로 넘기고, 의미 계약 위반은 `suppressed-*` 진단 사유를 남긴 뒤 power·duration·2원소 제한 등 결정적인 로컬 정규화만 수행한다.
+- 기존 추상 영창 30종을 재요청 없이 측정한 결과 30/30 HTTP 200·실행 가능·attempts 1이었다. 평균 1.505초, p50 1.470초, p90 1.681초, p95 1.816초, 최대 2.000초였으며 move 0건, 최종 고유 원소 최대 2개를 지켰다.
+- 재요청 조건은 30종 중 3건(10%)에서만 발생했고 모두 `too-many-elements`였다. 세 결과 모두 기존 로컬 원소 제한으로 실행 가능한 1~2원소 plan이 됐으며 다른 의미 오류 재요청 조건은 발생하지 않았다.
+- 대조 재측정에서 `겨울 정원의 폐막`만 실제 2회 호출됐고 1.65초의 ice wall+zone shield/control 최초 결과가 3.03초의 ice+water damage-only 결과로 바뀌었다. 지연이 늘면서 의미 품질 개선 근거도 없어 일반 영창 재요청 제거를 확정했다.
+- 캐시 버전은 `meaning-v2.23-normal-single-attempt`, `wrangler.local.toml` 배포 Worker는 `4a753ce9-55a8-418d-8816-2f769637ed1a`이다. 배포 전파 완료 후 `유리별의 장례`, `겨울 정원의 폐막` 모두 `attempts=1`, `suppressed-too-many-elements`와 정상 2원소 plan을 확인했다.
+- `node --check` 2종, `test:judge-output`, `test:spell`, `test:judge-fallback`, `npm run build`, `git diff --check`를 통과했다. 필살영창 재요청 제거 여부는 이번 결정에 포함하지 않았다.
+
+---
+
+## [R1] 과대해석형 필살영창 v1
+
+- 필살영창 v1은 일반 Judge 1~7번을 그대로 두고 요청 `castMode=ultimate`일 때만 별도 계약을 추가하는 방식으로 분리했다. 핵심 의도와 effect 경계를 보존하면서 power 100 고정, 4~8 sequence, form 총 6~12, 최소 한 병렬 form 단계, 마지막 결말 form, duration 4000~6000ms, 맥락상 가능한 원소 1~8개를 요구한다.
+- 출력에는 과대해석된 제목 `name`과 전체 해석 `interpretation`만 추가한다. 단계별 `caption`은 전투 중 읽기 어렵고 behavior와 중복되며 출력량을 늘려 제거했고, sequence 객체의 허용 키를 `durationWeight|behaviors`로 제한했다. validator가 일반/필살 계약을 분리하고 resolver는 필살영창에만 최대 6000ms와 마나 비용 0을 허용한다.
+- 기존 융합 게이지를 Shift+Enter 필살영창 자원으로 연결했다. 게이지 부족은 요청 전에 거부하고 원격 실패·fizzle·invalid plan에서는 보존하며, 유효한 필살 plan 실행 직전에만 전량 소비한다. DEV에서는 `VITE_FORCE_ULTIMATE=1` 또는 URL `#ult`로 강제할 수 있다.
+- caption 제거 후 캐시 버전을 `meaning-v2.22-ultimate-no-caption`으로 올리고 `wrangler.local.toml`로 실험 Worker `948a2021-500a-4860-bf94-0953ce0ee34f`을 배포했다. 원격 `파이어볼`과 `달을 삼킨 파도` 모두 caption 없이 4 sequence·6~7 form·power 100을 생성했다. 두 측정은 계약 교정 1회 때문에 wall 4.65~4.87초였으므로 caption 제거만으로 지연 개선이 보장되지는 않으며 재판정 빈도가 더 큰 변수로 남았다.
+- 재요청 제거를 위해 별도 근거가 없는 필살영창의 기본 골격을 4 sequence, form 분포 `1-2-2-1`로 명시했다. 이 골격은 도입·병렬 증폭·병렬 수렴·결말과 form 하한 6개를 동시에 충족하며 입력이 더 많은 사건을 명확히 요구할 때만 확장한다.
+- 1차 최초 응답 10종은 구조 골격 10/10을 충족했으나 `배고프다`에서 비지원 `nature` 원소가 나와 실제 클라이언트 계약은 9/10이었다. 원소 enum과 순수 공격 damage-only·순수 지원 목적 보존을 다시 명시한 2차 20종은 원본 19/20이었고, 같은 `nature` 별칭 문제만 반복됐다.
+- 임의의 미지원 원소를 보정하지 않고 모델이 반복 생성한 자연 별칭 `nature|plant|flower`만 `earth`로 접는 결정적 정규화를 추가했다. 이를 포함하면 20/20이 4 sequence·6 valid form·병렬·피날레·interpretation 계약을 충족했다.
+- JSON 문법 교정과 의미 계약 교정에 쓰던 두 번째 `requestGemini` 경로를 모두 삭제했다. 현재 주문 판정 경로의 `requestGemini` 호출 지점은 하나뿐이며 일반·필살영창 모두 최대 1회다. 복구 불가능한 JSON은 즉시 502/fallback, 구조 위반은 `suppressed-*` 진단과 클라이언트 거부·게이지 보존으로 처리한다.
+- 캐시 버전은 `meaning-v2.24-all-single-attempt`, 최종 `wrangler.local.toml` Worker는 `9533bc1e-588c-474c-be74-1751a01f0a88`이다. 최종 원격 `파이어볼`, `배고프다`, `모두를 지켜라`는 모두 attempts 1·4 sequence·6 form·power 100·2.64~2.70초였고 각각 damage-only, heal+buff, shield-only를 유지했다. 일반 `겨울 정원의 폐막`도 attempts 1과 로컬 원소 제한을 확인했다.
+- 보호형 필살영창의 허전함은 damage를 강제하지 않고 전장 구조를 남기는 방식으로 보완했다. 순수 보호 입력은 최소 하나의 shield wall을 포함하고, 병렬 단계에서 복수 wall 또는 wall+shield zone을 우선하며 arc|line|ring|polygon shape를 활용하도록 했다.
+- 캐시 `meaning-v2.25-ultimate-shield-wall`, `wrangler.local.toml` Worker `eb60da38-0f47-40c2-a2c4-bc5b6c2be804`에서 보호형 8종을 측정했다. 8/8이 wall을 포함하고 6/8이 복수 wall을 사용했으며 ring·polygon shape와 wall+zone 병렬 구조가 확인됐다. 모든 응답은 attempts 1이었다. `어둠이 닿지 못하는 성역` 한 건은 보호·배제 이미지를 복합 의도로 읽어 damage가 섞였으므로 실제 플레이에서 effect 경계 확인이 필요하다.
+- 필살영창이 게이지를 채운 과정의 주문을 반영하도록 공명 맥락을 추가했다. 일반 영창이 게이지에 실제로 기여한 마나만큼 원소·form·effect를 가중하고 최근 주문명 3개를 보존하며, 만충 뒤 영창은 기록하지 않는다. 마지막 영창이 게이지 잔여 20만 채우면 그 주문도 20만큼만 반영한다.
+- 공명은 필살영창 요청에만 압축 전달하고 같은 입력이라도 공명별로 클라이언트 캐시를 분리한다. Worker는 enum과 길이를 다시 제한하며 현재 입력의 명시적 effect 경계를 최우선으로 둔다. 현재 입력과 충돌하지 않으면 선두 공명 원소를 실제 plan의 주 시각 원소로, 선두 form을 도입부·중간부에 사용하고, 최신 영창은 마지막 sequence의 확대·변형된 피날레로 고정한다. interpretation에도 계승 관계를 자연어로 드러내되 과거 effect는 현재 plan effect 결정에 사용하지 않는다.
+- 판정 실패·fizzle·invalid plan은 게이지와 공명을 함께 보존하고 유효 필살 plan 소비 또는 명시적 reset에서만 둘을 초기화한다. 중간안 `meaning-v2.30-ultimate-resonance-climax`, `wrangler.local.toml` Worker `5bfb23b1-600b-44a9-b289-7a04690e17d5`에서는 fire·wall 1위와 최신 `번개 사슬` 이력을 명시 공격·보호 양쪽 피날레에 강제하는 방식을 검증했다.
+- 후속 검토에서 v2.30의 선두 원소·form 및 최신 주문 피날레 강제가 현재 필살 입력의 과대해석을 약화할 위험을 확인했다. 최종 v2.31에서는 현재 입력만 제목·주원소·전체 sequence·핵심 목적·결말을 결정하고, 공명은 호환될 때 전체 6~12 form 중 1~2개 장면이나 피날레의 보조 form에만 흔적을 남기는 재료로 완화했다.
+- 필살영창 effect는 순수 공격 damage-only·순수 보호 support-only의 배타 규칙 대신 핵심 목적과 장면 인과를 사용한다. 공격에서 knockback·slow·weaken, 구속에서 damage, 보호벽에서 접촉 damage·buff, 치유 영역에서 buff·적 slow처럼 직접 파생되는 인접 effect를 허용하되, 별개 볼거리를 위한 무관한 effect는 금지한다.
+- 전투 중 긴 설명과 출력 비용을 줄이기 위해 `interpretation`을 Worker 필수 계약·클라이언트 plan 타입·validator·화면 표시에서 제거했다. 제목은 현재 입력을 과대해석하고, 공명은 실제 form 이름과 짧은 로컬 공명 표시에 맡긴다.
+- 최종 캐시는 `meaning-v2.31-ultimate-resonance-echo`, `wrangler.local.toml` Worker는 `c2035fc1-4251-4fb1-ae68-095657c3d07e`이다. 화염·번개 이력에서 `달이 바다에 추락한다`는 dark/ice/light/water 중심을 유지해 공명이 전체 설계를 지배하지 않았고, `거대한 해일이 적을 삼킨다`는 `번개 사슬의 격류` 한 장면과 damage+control, `모두를 지켜라`는 shield+buff+control로 생성됐다. 세 결과 모두 interpretation을 출력하지 않았다.
+- `test:fusion` 9개 그룹, `test:judge-fallback` 7개 그룹, `test:spell`, production build, `node --check proxy/worker.js`, `git diff --check`를 통과했다. 실제 한 런에서 여러 일반 영창을 누적한 뒤 필살영창의 체감 연결성은 플레이어 테스트가 남았다.
+- `node --check` 2종, `test:planvalidate`, `test:fusion`, `test:judge-output`, `test:spell`, `test:judge-fallback`, `test:sequence`, `npm run build`를 통과했다. 실제 전투 가독성·허전함 보완 정도·게이지 충전 체감은 플레이어 실테스트가 필요하다.
+- 플레이테스트에서 드러난 세 인게임 제약을 수정했다. Shift+Enter는 제출 순간의 보조키가 아니라 필살영창 입력 모드 진입 동작으로 고정하고, 이후 Enter로 발동한다. 판정 대기 중 플레이어 WASD 이동에도 전투 `timeScale`을 적용한다. 필살영창 한 plan 안의 wall/orbit은 각각 최대 6개까지 공존시키며, 일반 영창은 기존처럼 새 persistent form이 이전 것을 교체한다.
+- 최종 일반 영창 12종 원격 검증은 12/12 최초 응답 유효, 전부 `attempts=1`, 평균 1.472초, p95·최대 2.000초였다. 이 과정에서 Gemini가 두 차례 만든 미지원 `pulse`를 재요청 없이 `nova`로 바꾸는 좁은 결정론적 별칭을 추가했고, 재검증에서 정상 실행 plan을 확인했다.
+- 같은 공명 이력을 넣은 필살영창 12종은 최초 응답 10/12가 계약을 충족했다. 1건은 JSON 문법 오류로 502, 1건은 form 수 부족으로 빈 sequence가 되어 client validator가 거부했으며 두 경우 모두 게이지가 보존된다. 자동 재요청은 되살리지 않았고, 두 입력을 별도 재측정했을 때는 2/2 모두 4 sequence·6 form·power 100으로 유효했다.
+- 최종 배포는 캐시 `meaning-v2.31-ultimate-resonance-echo`, `wrangler.local.toml` Worker `c0ea9d3c-1bbd-473f-8ba8-e9663a8b45e6`이다. 전체 `npm test` 88/88, `npm run build`, `git diff --check`를 통과했다. wall/orbit 실제 화면 중첩과 Shift+Enter 입력 체감은 PR 전 플레이어 확인 항목으로 남긴다.
+- 미지원 form을 별칭 정규화 대신 공급자 생성 단계에서 막기 위해 JSON Schema form enum을 실험했다. 현재 고정 모델 `gemini-3.5-flash-lite`는 공식 구조화 출력 지원 목록에 없으며, `responseJsonSchema`와 최신 `responseFormat` 모두 실요청에서 upstream 400 `INVALID_ARGUMENT`가 되어 적용할 수 없었다. 전 요청 실패 상태를 남기지 않고 스키마 변경을 철회해 기존 JSON MIME·로컬 validator 경로로 복구했다.
+- 복구 배포는 `wrangler.local.toml` Worker `80c79dd4-f319-4dff-a0a8-c073292ebf0b`이며, `맥동하는 별의 심장`이 HTTP 200·attempts 1·지원 form 2개로 정상 생성됨을 확인했다. 공급자 enum 강제는 `gemini-3.5-flash` 등 지원 모델 전환과 지연·비용·일반/필살 품질 재검증을 함께 수행하는 별도 변경으로 남긴다. 현 PR에서는 명백한 `pulse→nova` 별칭과 미지 form 안전 거부를 유지한다.
+
+---
+
 ## [R1] Phase 1 — 전투 코어 루프
 
 ### 작업 개요

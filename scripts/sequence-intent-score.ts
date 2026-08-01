@@ -31,12 +31,9 @@ interface IntentExpectation {
     sequenceRangeIfPlan: [number, number];
     requiresParallel: boolean;
     requiresFinale: boolean;
-    forbidDecorativeMove?: boolean;
     preferredDurationMsRange?: [number, number];
     minimumParallelBehaviors?: number;
     requiredRepetitionCount?: number;
-    minimumMoveCount?: number;
-    maximumMoveCount?: number;
     minimumFormCount?: number;
     maximumFormCount?: number;
   };
@@ -47,9 +44,10 @@ interface ExpectationsFile {
   globalHardRules: {
     maxSequences: number;
     maxBehaviorsPerSequence: number;
+    maxDistinctElements: number;
     behaviorTypes: string[];
     waitMustBeAlone: boolean;
-    moveRequiresElement: boolean;
+    moveMustBeAbsent: boolean;
     specPowerMustBeZero: boolean;
     specCostMustBeZero: boolean;
   };
@@ -180,7 +178,9 @@ function relationDetected(
     case 'delay':
       return types.includes('wait');
     case 'movement':
-      return types.includes('move');
+      // Movement wording is now interpreted through form shape/speed/order.
+      // Whether that imagery survives is semantic and requires visual review.
+      return null;
     case 'repetition': {
       const signatures = behaviors.map((behavior) => {
         const spec = record(behavior.spec);
@@ -221,10 +221,6 @@ function scoreCase(
     ...actual.specs.flatMap((spec) =>
       [string(spec.element_primary), string(spec.element_secondary)]
         .filter((item): item is string => item !== null)),
-    ...actual.behaviors
-      .filter((behavior) => string(behavior.type) === 'move')
-      .map((behavior) => string(behavior.element))
-      .filter((item): item is string => item !== null),
   ]);
   const forms = new Set(actual.specs.map((spec) => string(spec.form)).filter((item): item is string => item !== null));
   const effects = new Set(actual.specs.map((spec) => string(spec.effect)).filter((item): item is string => item !== null));
@@ -250,6 +246,12 @@ function scoreCase(
     state: elements.size >= minimumDistinctElements ? 'pass' : 'fail',
     weight: 1,
     detail: `서로 다른 원소 ${elements.size}/${minimumDistinctElements}`,
+  });
+  checks.push({
+    id: 'contract:element-limit',
+    state: elements.size <= rules.maxDistinctElements ? 'pass' : 'fail',
+    weight: 3,
+    detail: `서로 다른 원소 ${elements.size}/${rules.maxDistinctElements} 이하`,
   });
   for (const behavior of requiredBehaviorTypes) {
     checks.push({
@@ -335,24 +337,6 @@ function scoreCase(
         detail: `durationMs ${duration ?? '없음'}, 선호 ${minimumDuration}~${maximumDuration}`,
       });
     }
-    if (expected.structure.minimumMoveCount !== undefined) {
-      const moveCount = actual.behaviors.filter((behavior) => string(behavior.type) === 'move').length;
-      checks.push({
-        id: 'minimum-move-count',
-        state: moveCount >= expected.structure.minimumMoveCount ? 'pass' : 'fail',
-        weight: 1,
-        detail: `move ${moveCount}/${expected.structure.minimumMoveCount}`,
-      });
-    }
-    if (expected.structure.maximumMoveCount !== undefined) {
-      const moveCount = actual.behaviors.filter((behavior) => string(behavior.type) === 'move').length;
-      checks.push({
-        id: 'maximum-move-count',
-        state: moveCount <= expected.structure.maximumMoveCount ? 'pass' : 'fail',
-        weight: 1,
-        detail: `move ${moveCount}/${expected.structure.maximumMoveCount} 이하`,
-      });
-    }
     if (expected.structure.minimumFormCount !== undefined) {
       const formCount = actual.behaviors.filter((behavior) => string(behavior.type) === 'form').length;
       checks.push({
@@ -402,8 +386,8 @@ function scoreCase(
     if (type && !rules.behaviorTypes.includes(type)) {
       checks.push({ id: `contract:behavior:${index + 1}`, state: 'fail', weight: 3, detail: `지원하지 않는 행동 ${type}` });
     }
-    if (rules.moveRequiresElement && type === 'move' && !string(behavior.element)) {
-      checks.push({ id: `contract:move-element:${index + 1}`, state: 'fail', weight: 3, detail: 'move element 누락' });
+    if (rules.moveMustBeAbsent && type === 'move') {
+      checks.push({ id: `contract:move-forbidden:${index + 1}`, state: 'fail', weight: 3, detail: '금지된 move behavior 출력' });
     }
     const spec = record(behavior.spec);
     if (rules.specPowerMustBeZero && spec && number(spec.power) !== 0) {
@@ -436,14 +420,6 @@ function scoreCase(
     }
   });
 
-  if (expected.structure.forbidDecorativeMove && actual.behaviors.some((behavior) => string(behavior.type) === 'move')) {
-    checks.push({
-      id: 'manual:decorative-move',
-      state: 'manual',
-      weight: 0,
-      detail: 'move가 의미적 사건인지 장식용인지 수동 판정 필요',
-    });
-  }
   checks.push({
     id: 'manual:visual-intent',
     state: 'manual',
@@ -501,12 +477,12 @@ function markdownReport(
     `- 자동 실패 항목: **${failures}개**`,
     `- 수동 판정 대기 항목: **${manual}개**`,
     '',
-    '자동 점수는 스키마에서 관찰 가능한 anchor·구조·관계만 평가한다. 시각적 만족도, 인과성, 전환의 자연스러움, 장식용 이동 여부는 점수에 포함하지 않고 수동 판정으로 남긴다.',
+    '자동 점수는 스키마에서 관찰 가능한 anchor·구조·관계만 평가한다. 시각적 만족도, 인과성, 전환의 자연스러움과 이동 이미지의 form 해석은 수동 판정으로 남긴다.',
     '',
     '## 해석',
     '',
     `- **${mean}점은 전체 품질 점수가 아니다.** 원소·형태·필수 구조처럼 스키마에서 관찰 가능한 표면 계약의 보존율이다.`,
-    `- 자동 항목만으로도 ${failureCases}종에서 실패가 발생했지만, 현행 출력의 핵심 문제인 비슷한 \`move → form\` 반복과 장면의 재미는 자동 점수에 거의 반영되지 않는다.`,
+    `- 자동 항목만으로도 ${failureCases}종에서 실패가 발생했지만, form 조합의 다양성과 장면의 재미는 자동 점수에 거의 반영되지 않는다.`,
     '- 따라서 이 수치는 프롬프트가 최소 계약을 훼손하는지 감시하는 하한선으로 사용하고, 최종 채택은 아래 수동 시각 평가를 함께 통과해야 한다.',
     '',
     '## 사례별 결과',
@@ -531,7 +507,7 @@ function markdownReport(
     '',
     '- 입력에서 기대한 사건과 장면 전개가 실제 출력에서 읽히는가',
     '- 단계마다 역할이 구분되고 앞뒤 사건의 인과가 자연스러운가',
-    '- 병렬 행동이 하나의 장면을 만들며 불필요한 `move`가 끼어들지 않는가',
+    '- 병렬 form이 하나의 장면을 만들고, 이동 표현이 속도·범위·형태·순서로 자연스럽게 번역되는가',
     '- 3초 내외의 실행에서 결과가 과밀하거나 지나치게 단조롭지 않은가',
     '- 정확한 legacy JSON과 다르더라도 더 재미있고 설득력 있는 대안인가',
   );

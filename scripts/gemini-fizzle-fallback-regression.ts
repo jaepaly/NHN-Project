@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { GeminiJudge, JUDGE_PROMPT_VERSION, JUDGE_SCHEMA_VERSION } from '../src/spell/geminiJudge';
 import { MockJudge } from '../src/spell/mockJudge';
+import type { UltimateResonanceContext } from '../src/spell/judge';
 import type { SpellJudgement } from '../src/spell/types';
 
 class MemoryStorage {
@@ -37,9 +38,11 @@ Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable
 const mock = new MockJudge();
 let remotePayload: SpellJudgement = await mock.judge('화염구');
 let fetchCount = 0;
+const requestBodies: unknown[] = [];
 const originalFetch = globalThis.fetch;
-globalThis.fetch = async () => {
+globalThis.fetch = async (_input, init) => {
   fetchCount += 1;
+  requestBodies.push(JSON.parse(String(init?.body ?? '{}')));
   return new Response(JSON.stringify(remotePayload), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
@@ -66,7 +69,25 @@ try {
   assert.equal(castJudge.lastFallbackReason, undefined);
   assert.equal(fetchCount, 1);
 
-  // 3) 모델이 의미 있는 짧은 주문을 fizzle해도 Mock이 발동으로 복구하고 캐시하지 않는다.
+  // 3) 같은 필살영창이라도 현재 게이지 공명이 다르면 요청과 캐시를 분리한다.
+  storage.clear();
+  const resonanceJudge = new GeminiJudge('https://proxy.invalid');
+  const fireResonance: UltimateResonanceContext = {
+    elements: ['fire'], forms: ['bolt'], effects: ['damage'], recentNames: ['화염구'],
+  };
+  const iceResonance: UltimateResonanceContext = {
+    elements: ['ice'], forms: ['wall'], effects: ['shield'], recentNames: ['얼음 장벽'],
+  };
+  const beforeResonance = fetchCount;
+  await resonanceJudge.judge('모든 것을 끝내라', { castMode: 'ultimate', resonance: fireResonance });
+  await resonanceJudge.judge('모든 것을 끝내라', { castMode: 'ultimate', resonance: iceResonance });
+  assert.equal(fetchCount, beforeResonance + 2, '공명이 다른 필살영창은 캐시를 공유하지 않는다');
+  assert.deepEqual((requestBodies.at(-2) as { resonance?: unknown }).resonance, fireResonance);
+  assert.deepEqual((requestBodies.at(-1) as { resonance?: unknown }).resonance, iceResonance);
+  await resonanceJudge.judge('모든 것을 끝내라', { castMode: 'ultimate', resonance: iceResonance });
+  assert.equal(fetchCount, beforeResonance + 2, '동일 공명은 캐시를 재사용한다');
+
+  // 4) 모델이 의미 있는 짧은 주문을 fizzle해도 Mock이 발동으로 복구하고 캐시하지 않는다.
   storage.clear();
   remotePayload = {
     schema_version: 2,
@@ -93,7 +114,7 @@ try {
   }
 
   // 5) 부분 배포 등으로 현재 버전 prefix에 fizzle 캐시가 생겨도 무시한다.
-  const poisonedKey = `incant:judge:v${JUDGE_SCHEMA_VERSION}:${JUDGE_PROMPT_VERSION}:얼음창`;
+  const poisonedKey = `incant:judge:v${JUDGE_SCHEMA_VERSION}:${JUDGE_PROMPT_VERSION}:normal:-:얼음창`;
   storage.setItem(poisonedKey, JSON.stringify(remotePayload));
   const countBeforePoisoned = fetchCount;
   assert.equal((await driftJudge.judge('얼음창')).disposition, 'cast');
@@ -145,9 +166,9 @@ try {
   assert.equal((await networkJudge.judge('폭풍 공격')).disposition, 'cast');
   assert.equal(networkJudge.lastFallbackReason, 'network_error');
 
-  assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.16-all-plan');
+  assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.31-ultimate-resonance-echo');
 } finally {
   globalThis.fetch = originalFetch;
 }
 
-console.log('Gemini fizzle safety regression: 로컬차단·cast캐시·fizzle폴백·회복의도·오염캐시·fallback원인 6군 통과');
+console.log('Gemini fizzle safety regression: 로컬차단·cast캐시·공명캐시분리·fizzle폴백·회복의도·오염캐시·fallback원인 7군 통과');

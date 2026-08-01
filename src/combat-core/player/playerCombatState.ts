@@ -32,7 +32,6 @@ export class PlayerCombatState {
 
   /** 자기 강화(buff) 타이머 — haste=이동, empower=주는피해, ward=받는피해 */
   private readonly buffs = new Map<SelfBuffKind, ActiveBuff>();
-  private invulnerabilityRemaining = 0;
 
   private buffMultiplier(kind: SelfBuffKind, neutral = 1): number {
     return this.buffs.get(kind)?.multiplier ?? neutral;
@@ -44,15 +43,7 @@ export class PlayerCombatState {
   get damageOutMultiplier(): number { return this.buffMultiplier('empower'); }
   /** 받는 피해 배율 (ward 버프). 1=평소, 0=무적 */
   get damageInMultiplier(): number {
-    return this.invulnerabilityRemaining > 0 ? 0 : this.buffMultiplier('ward');
-  }
-
-  /** Buff-independent invulnerability used by committed sequence execution. */
-  applyInvulnerability(seconds: number): void {
-    this.invulnerabilityRemaining = Math.max(
-      this.invulnerabilityRemaining,
-      safePositiveAmount(seconds),
-    );
+    return this.buffMultiplier('ward');
   }
 
   /** 자기 강화 적용 — 같은 종류는 더 강한 효과와 더 긴 시간으로 갱신한다. */
@@ -109,8 +100,6 @@ export class PlayerCombatState {
   update(deltaSeconds: number): void {
     const delta = Math.max(0, deltaSeconds);
     this.cooldownRemaining = Math.max(0, this.cooldownRemaining - delta);
-    this.invulnerabilityRemaining = Math.max(0, this.invulnerabilityRemaining - delta);
-
     for (const [kind, buff] of this.buffs) {
       buff.remaining -= delta;
       if (buff.remaining <= 0) this.buffs.delete(kind);
@@ -188,7 +177,6 @@ export class PlayerCombatState {
     this.mana = this.maxManaValue;
     this.shield = 0;
     this.cooldownRemaining = 0;
-    this.invulnerabilityRemaining = 0;
     this.buffs.clear();
   }
 
@@ -230,9 +218,9 @@ export class PlayerCombatState {
     return { hpDamage, shieldDamage };
   }
 
-  /** 환경 저주 피해: 보호막·ward를 무시하지만 시퀀스 무적 중에는 차단된다. */
+  /** 환경 저주 피해: 보호막·ward를 무시한다. */
   takeEnvironmentalDamage(amount: number): number {
-    if (!this.alive || this.invulnerabilityRemaining > 0) return 0;
+    if (!this.alive) return 0;
     const hpDamage = Math.min(this.hp, safePositiveAmount(amount));
     this.hp -= hpDamage;
     return hpDamage;

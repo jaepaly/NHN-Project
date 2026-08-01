@@ -16,6 +16,10 @@ const DELIVERY_FORM = {
   sweep: 'wave',
 };
 
+// Gemini가 반복적으로 만드는 시각 동의어 중 엔진 enum과 의미가 일대일인 것만 접는다.
+// pulse는 중심에서 퍼지는 맥동이므로 nova로 보존한다. 임의의 미지원 form은 여전히 거부한다.
+const FORM_ALIAS = { pulse: 'nova' };
+
 export function repairExtraMoveBraceJson(raw) {
   if (typeof raw !== 'string') return raw;
   return raw.replace(/(\{"type":"move"[^{}]*?)\}\}(\s*\])/g, '$1}$2');
@@ -44,6 +48,11 @@ function fallbackFormForDelivery(delivery, effect) {
 function normalizeSpecForm(value) {
   if (typeof value !== 'object' || value === null) return false;
   if (FORMS.has(value.form)) return false;
+  const alias = FORM_ALIAS[value.form];
+  if (alias) {
+    value.form = alias;
+    return true;
+  }
   if (typeof value.mechanic !== 'object' || value.mechanic === null) return false;
 
   const rawDelivery = value.mechanic.delivery;
@@ -78,6 +87,24 @@ export function normalizeJudgeOutput(value) {
     }
   }
   return { value, repairs };
+}
+
+/** Enforce the ordinary-incantation budget after model generation. */
+export function capSpellPlanPower(value, maximumPower = 80) {
+  const plan = value?.disposition === 'cast' ? value.spell_plan : null;
+  if (!plan || typeof plan.power !== 'number' || !Number.isFinite(plan.power)) return 0;
+  const cappedPower = Math.min(plan.power, maximumPower);
+  let repairs = 0;
+  if (cappedPower !== plan.power) {
+    plan.power = cappedPower;
+    repairs += 1;
+  }
+  const maximumDurationMs = Math.min(3000, 500 + cappedPower * 25);
+  if (typeof plan.durationMs === 'number' && plan.durationMs > maximumDurationMs) {
+    plan.durationMs = maximumDurationMs;
+    repairs += 1;
+  }
+  return repairs;
 }
 
 /**
@@ -367,6 +394,72 @@ export function hasDamageFormSpellPlan(value) {
       behavior?.type === 'form' && behavior?.spec?.effect === 'damage'
     ))
   ));
+}
+
+export function hasTooManySpellPlanElements(value, maximumElements = 2) {
+  const sequences = value?.spell_plan?.sequences;
+  if (!Array.isArray(sequences)) return false;
+  const elements = new Set();
+  for (const sequence of sequences) {
+    if (!Array.isArray(sequence?.behaviors)) continue;
+    for (const behavior of sequence.behaviors) {
+      if (behavior?.type !== 'form' || !behavior.spec) continue;
+      if (typeof behavior.spec.element_primary === 'string') elements.add(behavior.spec.element_primary);
+      if (typeof behavior.spec.element_secondary === 'string') elements.add(behavior.spec.element_secondary);
+      if (elements.size > maximumElements) return true;
+    }
+  }
+  return false;
+}
+
+/** Final fail-safe after the model has already had a correction attempt. */
+export function limitSpellPlanElements(value, maximumElements = 2) {
+  if (!hasTooManySpellPlanElements(value, maximumElements)) return 0;
+  const sequences = value?.spell_plan?.sequences;
+  if (!Array.isArray(sequences)) return 0;
+
+  const primaryCounts = new Map();
+  const firstSeen = new Map();
+  let order = 0;
+  for (const sequence of sequences) {
+    if (!Array.isArray(sequence?.behaviors)) continue;
+    for (const behavior of sequence.behaviors) {
+      const primary = behavior?.type === 'form' ? behavior?.spec?.element_primary : null;
+      if (typeof primary !== 'string') continue;
+      if (!firstSeen.has(primary)) firstSeen.set(primary, order++);
+      primaryCounts.set(primary, (primaryCounts.get(primary) ?? 0) + 1);
+    }
+  }
+  const allowed = new Set([...primaryCounts.keys()]
+    .sort((left, right) => (
+      (primaryCounts.get(right) - primaryCounts.get(left))
+      || (firstSeen.get(left) - firstSeen.get(right))
+    ))
+    .slice(0, maximumElements));
+
+  let repairs = 0;
+  for (const sequence of sequences) {
+    if (!Array.isArray(sequence?.behaviors)) continue;
+    sequence.behaviors = sequence.behaviors.filter((behavior) => {
+      if (behavior?.type !== 'form') return true;
+      if (!allowed.has(behavior?.spec?.element_primary)) {
+        repairs += 1;
+        return false;
+      }
+      if (
+        typeof behavior.spec.element_secondary === 'string'
+        && !allowed.has(behavior.spec.element_secondary)
+      ) {
+        behavior.spec.element_secondary = null;
+        repairs += 1;
+      }
+      return true;
+    });
+  }
+  value.spell_plan.sequences = sequences.filter((sequence) => (
+    Array.isArray(sequence?.behaviors) && sequence.behaviors.length > 0
+  ));
+  return repairs;
 }
 
 export function hasNonDamageFormSpellPlan(value) {
