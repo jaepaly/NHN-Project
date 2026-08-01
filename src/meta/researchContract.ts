@@ -7,6 +7,19 @@ export const RESEARCH_FIRST_REWARD = 3;
 export const RESEARCH_REPEAT_REWARD = 2;
 export const ELEMENTAL_FOCUS_START_AFFINITY = 0.15;
 export const WARD_STUDY_START_SHIELD = 20;
+/** 연구 행동 자체가 현재 런의 성장으로 이어지게 하는 단계 보상. */
+export const ELEMENTAL_FOCUS_MILESTONE_AFFINITY = 0.05;
+export const WARD_STUDY_MILESTONE_SHIELD = 8;
+/** 원소 연구 진행도마다 대상 원소 주문의 사거리·범위를 10%씩 확장한다. */
+export const ELEMENTAL_FOCUS_SPATIAL_SCALE_PER_STAGE = 0.1;
+/** 원소 연구 완료 뒤 대상 원소 영창 3회마다 낮은 위력의 공명 재시전을 만든다. */
+export const ELEMENTAL_FOCUS_ECHO_EVERY_CASTS = 3;
+export const ELEMENTAL_FOCUS_ECHO_POWER_SCALE = 0.25;
+/** 수호 연구 2단계부터 보호막이 남아 있으면 받는 전투 피해를 줄인다. */
+export const WARD_STUDY_GUARD_DAMAGE_SCALE = 0.85;
+/** 수호 연구 완료 뒤 지원 영창이 밀어내는 결계 파동의 전투 수치. */
+export const WARD_STUDY_PULSE_RADIUS = 190;
+export const WARD_STUDY_PULSE_KNOCKBACK = 110;
 
 export type ResearchContractId = 'elemental-focus' | 'ward-study';
 
@@ -30,7 +43,63 @@ export interface ResearchAdvanceResult {
   justCompleted: boolean;
 }
 
+export interface ResearchMilestoneReward {
+  affinity: number;
+  shield: number;
+  milestones: number;
+}
+
 const WARD_EFFECTS = new Set<SpellSpec['effect']>(['heal', 'shield', 'buff', 'control']);
+
+export function isWardResearchSupportSpell(spec: SpellSpec): boolean {
+  return WARD_EFFECTS.has(spec.effect);
+}
+
+export function spellMatchesElementalResearch(
+  contract: ActiveResearchContract | null,
+  spec: Pick<SpellSpec, 'element_primary' | 'element_secondary'>,
+): boolean {
+  return contract?.id === 'elemental-focus'
+    && contract.element !== null
+    && (spec.element_primary === contract.element || spec.element_secondary === contract.element);
+}
+
+/** 달성한 단계가 즉시 전투 공간에 보이도록 대상 원소 주문의 사거리·범위를 키운다. */
+export function elementalFocusSpatialScale(
+  contract: ActiveResearchContract | null,
+  spec: Pick<SpellSpec, 'element_primary' | 'element_secondary'>,
+): number {
+  if (!contract || !spellMatchesElementalResearch(contract, spec)) return 1;
+  return 1 + contract.progress * ELEMENTAL_FOCUS_SPATIAL_SCALE_PER_STAGE;
+}
+
+export function elementalFocusEchoUnlocked(contract: ActiveResearchContract | null): boolean {
+  return contract?.id === 'elemental-focus' && contract.completed;
+}
+
+export function advanceElementalFocusEchoCharge(charge: number): {
+  charge: number;
+  triggered: boolean;
+} {
+  const safeCharge = Number.isFinite(charge) ? Math.max(0, Math.floor(charge)) : 0;
+  const next = safeCharge + 1;
+  return next >= ELEMENTAL_FOCUS_ECHO_EVERY_CASTS
+    ? { charge: 0, triggered: true }
+    : { charge: next, triggered: false };
+}
+
+export function wardStudyIncomingDamageScale(
+  contract: ActiveResearchContract | null,
+  shield: number,
+): number {
+  return contract?.id === 'ward-study' && contract.progress >= 2 && shield > 0
+    ? WARD_STUDY_GUARD_DAMAGE_SCALE
+    : 1;
+}
+
+export function wardStudyPulseUnlocked(contract: ActiveResearchContract | null): boolean {
+  return contract?.id === 'ward-study' && contract.completed;
+}
 
 export function availableBasicResearchContracts(
   profile: Pick<MetaProfileV1, 'insight' | 'totalRuns'>,
@@ -96,4 +165,33 @@ export function advanceResearchContract(
     changed: true,
     justCompleted: completed && !contract.completed,
   };
+}
+
+/**
+ * 직전 상태와 현재 상태 사이에서 새로 달성한 단계만 런 내 보상으로 바꾼다.
+ * 호출이 중복되거나 완료 상태를 다시 보고해도 보상이 생기지 않는다.
+ */
+export function researchMilestoneReward(
+  previous: ActiveResearchContract | null,
+  current: ActiveResearchContract,
+): ResearchMilestoneReward {
+  if (!previous || previous.id !== current.id) {
+    return { affinity: 0, shield: 0, milestones: 0 };
+  }
+  const milestones = Math.max(0, current.progress - previous.progress);
+  return {
+    affinity: current.id === 'elemental-focus'
+      ? milestones * ELEMENTAL_FOCUS_MILESTONE_AFFINITY
+      : 0,
+    shield: current.id === 'ward-study'
+      ? milestones * WARD_STUDY_MILESTONE_SHIELD
+      : 0,
+    milestones,
+  };
+}
+
+/** HUD에서 목표와 남은 단계를 한눈에 읽게 하는 고정 폭 트래커. */
+export function researchProgressSlots(contract: ActiveResearchContract): string {
+  const filled = Math.min(contract.goal, Math.max(0, contract.progress));
+  return `${'●'.repeat(filled)}${'○'.repeat(Math.max(0, contract.goal - filled))}`;
 }

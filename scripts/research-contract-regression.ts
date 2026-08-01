@@ -6,12 +6,24 @@ import { RUN_REWARD_CONFIG } from '../src/combat-core/run/rewardConfig';
 import { RunResearchTracker } from '../src/meta/runResearchTracker';
 import { applyMetaRunOutcome, EMPTY_META_PROFILE } from '../src/meta/metaProfile';
 import {
+  advanceElementalFocusEchoCharge,
   advanceResearchContract,
   availableBasicResearchContracts,
+  elementalFocusEchoUnlocked,
+  elementalFocusSpatialScale,
   ELEMENTAL_FOCUS_START_AFFINITY,
+  ELEMENTAL_FOCUS_MILESTONE_AFFINITY,
+  isWardResearchSupportSpell,
   RESEARCH_FIRST_REWARD,
   RESEARCH_REPEAT_REWARD,
+  researchMilestoneReward,
+  researchProgressSlots,
+  spellMatchesElementalResearch,
   startResearchContract,
+  wardStudyIncomingDamageScale,
+  wardStudyPulseUnlocked,
+  WARD_STUDY_GUARD_DAMAGE_SCALE,
+  WARD_STUDY_MILESTONE_SHIELD,
   WARD_STUDY_START_SHIELD,
 } from '../src/meta/researchContract';
 import type { ResolvedSpellPlan } from '../src/spell/sequencePlan';
@@ -55,11 +67,23 @@ const firstFocus = startResearchContract({ id: 'elemental-focus', element: 'fire
 const repeatFocus = startResearchContract({ id: 'elemental-focus', element: 'fire' }, ['elemental-focus']);
 assert.equal(firstFocus.rewardInsight, RESEARCH_FIRST_REWARD);
 assert.equal(repeatFocus.rewardInsight, RESEARCH_REPEAT_REWARD);
+assert.equal(researchProgressSlots(firstFocus), '○○○');
 
 // 원소 심화는 대상 원소가 들어간 서로 다른 form만 센다.
 let focus = advanceResearchContract(firstFocus, [spell('damage', 'bolt', 'water')]).contract;
 assert.equal(focus.progress, 0);
 focus = advanceResearchContract(focus, [spell('damage', 'bolt', 'fire')]).contract;
+const focusFirstReward = researchMilestoneReward(firstFocus, focus);
+assert.deepEqual(focusFirstReward, {
+  affinity: ELEMENTAL_FOCUS_MILESTONE_AFFINITY,
+  shield: 0,
+  milestones: 1,
+});
+assert.equal(elementalFocusSpatialScale(focus, spell('damage', 'bolt', 'fire')), 1.1);
+assert.equal(elementalFocusSpatialScale(focus, spell('damage', 'bolt', 'water', 'fire')), 1.1);
+assert.equal(elementalFocusSpatialScale(focus, spell('damage', 'bolt', 'water')), 1);
+assert.equal(spellMatchesElementalResearch(focus, spell('damage', 'bolt', 'water', 'fire')), true);
+assert.equal(elementalFocusEchoUnlocked(focus), false);
 focus = advanceResearchContract(focus, [spell('damage', 'bolt', 'water', 'fire')]).contract;
 assert.equal(focus.progress, 1, '같은 form 재사용은 중복 집계하지 않음');
 focus = advanceResearchContract(focus, [
@@ -68,20 +92,43 @@ focus = advanceResearchContract(focus, [
 ]).contract;
 assert.equal(focus.progress, 3);
 assert.equal(focus.completed, true);
+assert.ok(Math.abs(elementalFocusSpatialScale(focus, spell('damage', 'nova', 'fire')) - 1.3) < 1e-9);
+assert.equal(elementalFocusEchoUnlocked(focus), true);
+assert.deepEqual(advanceElementalFocusEchoCharge(0), { charge: 1, triggered: false });
+assert.deepEqual(advanceElementalFocusEchoCharge(1), { charge: 2, triggered: false });
+assert.deepEqual(advanceElementalFocusEchoCharge(2), { charge: 0, triggered: true });
+assert.equal(researchProgressSlots(focus), '●●●');
+assert.deepEqual(researchMilestoneReward(focus, focus), {
+  affinity: 0,
+  shield: 0,
+  milestones: 0,
+}, '같은 상태를 재보고하면 단계 보상을 중복 지급하지 않음');
 
 // 수호 연구는 한 영창 안 지원 behavior 수와 무관하게 최대 +1.
 let ward = startResearchContract({ id: 'ward-study' }, []);
+const wardStart = ward;
 ward = advanceResearchContract(ward, [
   spell('heal', 'nova', 'light'),
   spell('shield', 'wall', 'earth'),
   spell('control', 'cage', 'ice'),
 ]).contract;
 assert.equal(ward.progress, 1);
+assert.deepEqual(researchMilestoneReward(wardStart, ward), {
+  affinity: 0,
+  shield: WARD_STUDY_MILESTONE_SHIELD,
+  milestones: 1,
+});
+assert.equal(isWardResearchSupportSpell(spell('heal', 'nova', 'light')), true);
+assert.equal(isWardResearchSupportSpell(spell('damage', 'bolt', 'fire')), false);
+assert.equal(wardStudyIncomingDamageScale(ward, 20), 1, '수호 1단계에는 피해 감소 없음');
 ward = advanceResearchContract(ward, [spell('damage', 'bolt', 'fire')]).contract;
 assert.equal(ward.progress, 1);
 ward = advanceResearchContract(ward, [spell('buff', 'buff', 'wind')]).contract;
+assert.equal(wardStudyIncomingDamageScale(ward, 20), WARD_STUDY_GUARD_DAMAGE_SCALE);
+assert.equal(wardStudyIncomingDamageScale(ward, 0), 1, '보호막이 없으면 수호 감소 미적용');
 ward = advanceResearchContract(ward, [spell('control', 'zone', 'dark')]).contract;
 assert.equal(ward.completed, true);
+assert.equal(wardStudyPulseUnlocked(ward), true);
 
 // Tracker는 필살영창을 연구에서 제외하고 완료 보상을 결과에 한 번만 싣는다.
 const tracker = new RunResearchTracker();
@@ -141,6 +188,11 @@ assert.ok(sceneSource.includes('availableBasicResearchContracts('), '첫 런·�
 assert.ok(sceneSource.includes('grantStartingAffinity('), '원소 심화 시작 보너스 배선');
 assert.ok(sceneSource.includes('addShield(WARD_STUDY_START_SHIELD)'), '수호 연구 시작 보너스 배선');
 assert.ok(sceneSource.includes('reportResearchAdvance(previousResearch)'), '일반 단일·시퀀스 진행 피드백 배선');
+assert.ok(sceneSource.includes('researchMilestoneReward(previous, current)'), '단계별 즉시 보상 배선');
+assert.ok(sceneSource.includes('researchProgressSlots(research)'), '상시 연구 진행 슬롯 HUD 배선');
+assert.ok(sceneSource.includes('scheduleElementalResearchEcho(executedSpecs)'), '시퀀스 공명 재시전 배선');
+assert.ok(sceneSource.includes('applyWardResearchCastPerks(previousResearch'), '수호 지속 특성 배선');
+assert.ok(sceneSource.includes('wardStudyIncomingDamageScale('), '수호 피해 감소 배선');
 assert.ok(sceneSource.includes("actionState = 'RESEARCH SELECT'"), '연구 선택 중 전투 정지 HUD');
 assert.equal(
   (sceneSource.match(/offerRunStartChoices\(\)/g) ?? []).length,

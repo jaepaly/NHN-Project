@@ -153,7 +153,11 @@ ${ornamentCss(WRAP_ID)}
   font-size: 17px; font-weight: 700; font-family: ${UI_FONT.serif};
   letter-spacing: 0.03em; color: ${UI_COLOR.textBright};
 }
-#${WRAP_ID} .card-desc { margin-top: 8px; font-size: 13px; line-height: 1.5; color: #a9b4e6; }
+#${WRAP_ID} .card-desc {
+  margin-top: 8px; font-size: 13px; line-height: 1.5; color: #a9b4e6;
+  /* 설명의 의도된 구획(시작/목표/단계)을 카드에서도 보존한다. */
+  white-space: pre-line;
+}
 #${WRAP_ID} .card-kind {
   position: absolute; left: 0; right: 0; bottom: 14px;
   font-size: 11px; letter-spacing: 0.18em; color: var(--card-core); opacity: 0.9;
