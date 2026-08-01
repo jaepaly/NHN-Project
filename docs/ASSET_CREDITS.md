@@ -8,7 +8,7 @@ INCANT에 포함된 외부·AI 생성 에셋의 출처와 선정 근거를 기�
 
 - 효과음 생성 도구: Adobe Firefly — Generate Sound Effects
 - BGM 생성 도구: Adobe Firefly — Generate Soundtrack (Beta)
-- 생성일: Phase 3 에셋 2026-07-16, 보스 BGM 2026-07-19
+- 생성일: Phase 3 에셋 2026-07-16, 보스 BGM 2026-07-19, Phase 5 SFX 2026-08-01
 - 생성 설정: 효과음 후보 Duration 1~2초, BGM Duration 90초, WAV 48 kHz stereo
 - 이용 조건 확인일: 2026-07-17
 - 이용 조건: Adobe 공식 안내에서 Generate Soundtrack 결과물을 royalty-free·상업적 사용 가능으로 명시하며, Firefly FAQ는 Beta 기능도 제품 내 별도 금지가 없는 한 상업 프로젝트에 사용할 수 있다고 안내한다.
@@ -16,20 +16,21 @@ INCANT에 포함된 외부·AI 생성 에셋의 출처와 선정 근거를 기�
 - 사운드트랙 라이선스 안내: <https://www.adobe.com/products/firefly/features/ai-music-generator.html>
 - Firefly Beta 상업 이용 안내: <https://helpx.adobe.com/firefly/web/get-started/learn-the-basics/adobe-firefly-faq.html>
 - 게임 에셋 경로: `public/assets/audio/`
-- Phaser 로드 기준: `load.setPath(import.meta.env.BASE_URL + 'assets/audio/')` (GitHub Pages 서브경로 대응, `/assets/...` 절대경로 금지)
+- Phaser 로드 기준: 각 URL에 `import.meta.env.BASE_URL + 'assets/audio/'`를 직접 결합 (GitHub Pages 서브경로 대응, loader 전역 `setPath` 오염과 `/assets/...` 절대경로 금지)
 
 ### 공통 후처리
 
 - 도구: 저장소의 `scripts/process-audio-assets.py` (표준 PCM16 WAV 처리)
 - 무음 정리: -50dBFS 이상인 마지막 유효 신호 뒤 75ms를 남기고 후행 무음을 제거했다.
 - 경계 처리: 출력 마지막 20ms에 선형 페이드아웃을 적용해 클릭과 절단감을 방지했다.
-- 피크: 원소 발동·처치·방 클리어·보스 등은 -6dBFS, 타격은 -8dBFS, 불발은 -10dBFS, 영창 진입·보상 선택은 -7dBFS로 조정했다.
+- 피크: 원소 발동·처치·방 클리어·보스 등은 -6dBFS, 타격은 -8dBFS, 불발은 -10dBFS, 영창 진입·보상 선택은 -7dBFS로 조정했다. Phase 5 추가분은 UI 확정·마나 수정 -9dBFS, 플레이어 피격 -8dBFS, 루트 전환·타이틀 시작 -7dBFS다.
 - 형식: WAV 원본 단계에서는 PCM16 stereo 48kHz를 유지했다. 최종 게임 포맷 변환과 인게임 체감 믹싱은 통합 QA에서 확정한다.
 
 - BGM 편집: `scripts/create-bgm-loop.py`로 원본의 본격적인 첫 어택 직전인 10.05~16.81초를 6.76초 인트로로 사용하고, 14.25~75.69초 구간에 2.56초 equal-power 크로스페이드를 적용해 58.88초 길이의 `bgm-combat-loop.wav`를 만들었다.
 - BGM 음량: 인트로와 루프에 동일한 게인을 적용해 피크를 -6dBFS로 맞췄으며, 인트로 종료 뒤 루프 본체가 이어지고 이후에는 루프 파일만 반복한다.
 - 보스 BGM 편집: `boss-bgm_2.wav`의 저역 펄스가 시작되는 6.65~19.50초를 12.85초 인트로로 사용하고, 17.00~73.00초 구간에 2.50초 equal-power 크로스페이드를 적용해 53.50초 루프를 만들었다. 시작·종료 주변 평균 음량 차이는 약 0.02dB이며 피크는 -6dBFS로 맞췄다.
 - 배포 포맷: 채택 WAV를 `scripts/convert-audio-assets.ps1`로 Vorbis OGG 128kbps, stereo 48kHz로 변환했다. WAV 원본은 외부 원본 백업에 보존하고 게임에는 OGG만 포함한다.
+- Phase 5 추가 SFX는 현재 환경에 ffmpeg가 없어 프로젝트 외부에 설치한 `soundfile`/libsndfile로 Vorbis quality 0.4, stereo 48kHz OGG를 생성했다. 프로젝트 의존성에는 추가하지 않았다.
 - 아래 채택 표의 `.wav` 게임 에셋명은 후처리 마스터 이름이며, 실제 `public/assets/audio/` 배포 파일은 같은 basename의 `.ogg`다.
 
 ### 채택 에셋
@@ -49,6 +50,11 @@ INCANT에 포함된 외부·AI 생성 에셋의 출처와 선정 근거를 기�
 | `sfx-fizzle.wav` | `fail_1.wav` (Fizzle 1 — 마력 소진, Duration 2초) | `short failed magic spell fizzle, immediate weak arcane sputter with a few fading sparks and a soft deflating magical puff, dark fantasy arcade game SFX, clearly unsuccessful and subtly comedic, fast natural decay, fully resolved ending, no voice, no music, 0.4 seconds` | 짧고 약한 음압으로 즉시 sputter한 뒤 사라져 성공한 공격과 혼동되지 않으며, 실패를 가볍고 명확하게 전달한다. |
 | `sfx-incant-enter.wav` | `incant_4.wav` (Incant 4 — 마법진 전개, Duration 2초) | `arcane incantation mode activation, a magical circle rapidly unfolds with layered rune energy, rising luminous particles, and a focused shimmering lock at the end, dark fantasy spellcasting game SFX, mysterious and immersive, clear evolving motion, graceful natural decay, fully resolved ending, no heavy impact, no bass thump, no bell melody, no choir, no voice, no music, 1.1 seconds` | 약 1.2초 동안 중간 상승과 완료 후 감쇠 구조가 분명하고, 추가 후보 중 마법적 중고역이 가장 많아 영창 모드 전환의 몰입감을 잘 전달한다. |
 | `sfx-reward-select.wav` | `reward_2.wav` (Reward 1 — 마법 보상 확정, 변형 2, Duration 2초) | `short magical reward selected sound, immediate bright arcane confirmation pulse with a compact sparkling flourish, dark fantasy game interface SFX, satisfying and elegant, fast natural decay, fully resolved ending, no melody, no coin sound, no voice, no music, 0.5 seconds` | 약 -6.9dBFS의 충분한 피크 여유와 선명한 중고역 확인음을 가져, 공격음과 구분되면서 짧고 만족스러운 선택 피드백을 제공한다. |
+| `sfx-ui-confirm.wav` | `ui_confirm_A.wav` (Prompt A, Duration 2초) | `very short magical interface confirmation, immediate clean arcane rune click followed by a compact soft energy lock, dark fantasy game UI SFX, subtle, precise, and responsive, fast natural decay, fully resolved ending, no reward flourish, no coin, no bell, no chime, no glass, no elemental texture, no impact, no voice, no music, 0.3 seconds` | 선택 확정과 보상 획득을 분리하기 위한 중립 UI음이다. 후처리 0.205초·피크 -9dBFS로 짧고 작아 보상 카드와 루트 확정에 반복 사용하기 적합하다. |
+| `sfx-mana-crystal-pickup.wav` | `mana_F.wav` (Prompt F, Duration 2초) | `very short and gentle mana pickup SFX for a frequently repeated game event, immediate soft arcane wisp flows quietly inward and settles with a tiny muted magical glow, dark fantasy action game, smooth, unobtrusive, warm, and easy to hear repeatedly, low loudness, soft middle frequencies, no sharp transient, no crystal ping, no glass, no ice, no coin, no bell, no sparkle burst, no melody, no bass hit, no voice, no music, fast clean decay, fully resolved ending, 0.22 seconds` | 자주 일어나는 획득의 피로도를 줄이는 방향을 사용자가 채택했다. 후처리 0.245초·피크 -9dBFS이며, 실제 마나 수정 흡수에만 연결하고 포션·마나 최대 상태에는 재생하지 않는다. |
+| `sfx-route-transition.wav` | `route-transition_A.wav` (Prompt A, Duration 2초) | `short arcane room transition, immediate magical route seal unlock followed by a focused forward sweep through a dark rune doorway and a soft spatial closure, dark fantasy dungeon game SFX, purposeful and fluid, controlled natural decay, fully resolved ending, no wind spell, no sci-fi teleport, no explosion, no boss impact, no voice, no music, 0.9 seconds` | A/C 비교에서 사용자가 A를 채택했다. 후처리 1.790초·피크 -7dBFS로 선택 확정 뒤 룸 이동의 공간감을 담당하며 방 선택 성공 시 1회 재생한다. |
+| `sfx-player-hit.wav` | `player-hit_E.wav` (Prompt E, Duration 2초) | `quick magical health damage sound for the player, immediate compact arcane connection snap with a brief rough mid-frequency distortion and two tiny fading rune sparks, dark grimoire action game SFX, tense and responsive, distinct from an outgoing attack, controlled high frequencies, minimal energy below 120 Hz, no sub-bass, no bass punch, no weapon hit, no vocal pain, no shield sound, no enemy impact, no fire, no lightning, no glass, no voice, no music, short resolved decay, fully resolved ending, 0.3 seconds` | A의 69Hz 중심·120Hz 이하 98% 편중을 E에서 중심 1.303kHz로 개선했다. 후처리 0.270초·피크 -8dBFS이며 실제 HP 피해에만 90ms 제한으로 재생한다. |
+| `sfx-title-start.wav` | `title_F.wav` (Prompt F, Duration 2초) | `distinctive dark fantasy game start SFX with a clear two-part signature, first an immediate dry arcane ink stroke rapidly draws one glowing rune, then the completed rune releases a swift rising veil of magical air that opens the game world forward, mysterious, elegant, confident, and memorable, crisp middle-frequency detail, strong sense of beginning and motion, no sub-bass, no heavy impact, no generic reward chime, no victory fanfare, no bell melody, no choir, no voice, no music, clean resolved finish, fully resolved ending, 0.85 seconds` | F/G 비교에서 더 간결한 F를 채택했다. 후처리 0.635초·피크 -7dBFS이며 타이틀 시작 입력이 잠긴 직후 재생해 420ms 페이드와 다음 씬을 잇는다. |
 | `sfx-room-clear.wav` | `room_clear_2.wav` (Room Clear 2 — 봉인 해제, Duration 2초) | `short room clear confirmation, immediate release of dark magical tension followed by a radiant arcane bloom and a strong resolved energy finish, dark fantasy combat game SFX, triumphant but restrained, clear rising motion, fully resolved ending, no full song, no orchestral fanfare, no choir, no voice, 1.1 seconds` | 네 후보 중 저역 편중이 가장 낮고 마법적 중역이 가장 풍부해, 보상 선택음보다 크고 단순 충격음과 구분되는 방 클리어 완료감을 전달한다. |
 | `sfx-boss-appear.wav` | `boss_appear_2.wav` (Boss Appear 1 — 고대 봉인 붕괴, 변형 2, Duration 2초) | `short ominous boss appearance stinger, immediate ancient magical seal breaking with a deep arcane impact and a threatening rising energy resonance, dark fantasy combat game SFX, intimidating and dramatic, fully resolved ending, no earthquake, no monster voice, no full music, no choir, 1.2 seconds` | 동일 프롬프트 변형 중 시작이 가장 빠르고 초저역 편중이 가장 낮으며 중저역·위협 질감이 풍부해 보스 출현의 위압감을 가장 명확하게 전달한다. |
 | `bgm-combat-intro.wav`, `bgm-combat-loop.wav` | `combat_bgm_1.wav` (Combat BGM 1 — 다크 아케인 신스웨이브) | Vibe `intense, mysterious, hypnotic, steady`; Style `dark synthwave, electronic, arcane, instrumental`; Purpose `combat game`; Energy `High`; Tempo `Medium`; Duration `90 seconds` | 두 최종 후보의 음악적 품질은 모두 양호하나, 시작과 끝의 음량 차이가 약 0.8dB로 작고 저역 편중도 상대적으로 낮아 반복 재생과 SFX 믹싱에 더 적합하다. 저음량 도입부를 제외하고 첫 강한 어택 직전부터 재생하며, 사용자가 경계 미리듣기를 확인한 58.88초 루프 본체로 편집했다. |

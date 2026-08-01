@@ -11,6 +11,11 @@ export const SFX_NAMES = [
   'reward-select',
   'room-clear',
   'boss-appear',
+  'ui-confirm',
+  'mana-crystal-pickup',
+  'route-transition',
+  'player-hit',
+  'title-start',
 ] as const;
 
 export type SfxName = (typeof SFX_NAMES)[number];
@@ -40,6 +45,26 @@ const SFX_KEYS: Record<SfxName, string> = {
   'reward-select': 'audio-sfx-reward-select',
   'room-clear': 'audio-sfx-room-clear',
   'boss-appear': 'audio-sfx-boss-appear',
+  'ui-confirm': 'audio-sfx-ui-confirm',
+  'mana-crystal-pickup': 'audio-sfx-mana-crystal-pickup',
+  'route-transition': 'audio-sfx-route-transition',
+  'player-hit': 'audio-sfx-player-hit',
+  'title-start': 'audio-sfx-title-start',
+};
+
+interface SfxPolicy {
+  volumeScale: number;
+  cooldownMs: number;
+}
+
+const DEFAULT_SFX_POLICY: SfxPolicy = { volumeScale: 1, cooldownMs: 0 };
+const SFX_POLICY: Partial<Record<SfxName, SfxPolicy>> = {
+  hit: { volumeScale: 0.75, cooldownMs: 35 },
+  'player-hit': { volumeScale: 1, cooldownMs: 90 },
+  'mana-crystal-pickup': { volumeScale: 0.9, cooldownMs: 70 },
+  'ui-confirm': { volumeScale: 0.9, cooldownMs: 80 },
+  'route-transition': { volumeScale: 1, cooldownMs: 250 },
+  'title-start': { volumeScale: 1, cooldownMs: 250 },
 };
 
 export class GameAudio {
@@ -48,22 +73,42 @@ export class GameAudio {
   private loop: Phaser.Sound.BaseSound | null = null;
   private currentBgm: BgmName | null = null;
   private bgmGeneration = 0;
-  private lastHitAt = -Infinity;
+  private readonly lastSfxAt = new Map<SfxName, number>();
   /** 설정의 볼륨 — 일시정지 메뉴에서 조절하면 applySettings로 들어온다 */
   private settings: GameSettings = { ...DEFAULT_SETTINGS };
 
   static preload(scene: Phaser.Scene): void {
-    scene.load.setPath(AUDIO_PATH);
     for (const element of Object.keys(CAST_KEYS) as SpellElement[]) {
-      scene.load.audio(CAST_KEYS[element], `sfx-cast-${element}.ogg`);
+      scene.load.audio(CAST_KEYS[element], `${AUDIO_PATH}sfx-cast-${element}.ogg`);
     }
     for (const name of SFX_NAMES) {
-      scene.load.audio(SFX_KEYS[name], `sfx-${name}.ogg`);
+      this.preloadSfx(scene, name);
     }
-    scene.load.audio('audio-bgm-combat-intro', 'bgm-combat-intro.ogg');
-    scene.load.audio('audio-bgm-combat-loop', 'bgm-combat-loop.ogg');
-    scene.load.audio('audio-bgm-boss-intro', 'bgm-boss-intro.ogg');
-    scene.load.audio('audio-bgm-boss-loop', 'bgm-boss-loop.ogg');
+    scene.load.audio('audio-bgm-combat-intro', `${AUDIO_PATH}bgm-combat-intro.ogg`);
+    scene.load.audio('audio-bgm-combat-loop', `${AUDIO_PATH}bgm-combat-loop.ogg`);
+    scene.load.audio('audio-bgm-boss-intro', `${AUDIO_PATH}bgm-boss-intro.ogg`);
+    scene.load.audio('audio-bgm-boss-loop', `${AUDIO_PATH}bgm-boss-loop.ogg`);
+  }
+
+  /** 타이틀처럼 전체 GameAudio를 만들지 않는 씬에서 필요한 SFX 하나만 준비한다. */
+  static preloadSfx(scene: Phaser.Scene, name: SfxName): void {
+    const key = SFX_KEYS[name];
+    if (scene.cache.audio.exists(key)) return;
+    scene.load.audio(key, `${AUDIO_PATH}sfx-${name}.ogg`);
+  }
+
+  /** 타이틀의 일회성 시작음처럼 GameAudio 인스턴스 밖에서 설정 볼륨을 지켜 재생한다. */
+  static playOneShot(scene: Phaser.Scene, name: SfxName, settings: GameSettings): void {
+    const policy = SFX_POLICY[name] ?? DEFAULT_SFX_POLICY;
+    scene.sound.volume = MASTER_VOLUME;
+    try {
+      scene.sound.mute = localStorage.getItem(MUTE_STORAGE_KEY) === 'true';
+    } catch {
+      // Storage can be unavailable; keep the current in-session mute state.
+    }
+    scene.sound.play(SFX_KEYS[name], {
+      volume: settings.sfxVolume * policy.volumeScale,
+    });
   }
 
   constructor(scene: Phaser.Scene) {
@@ -89,13 +134,13 @@ export class GameAudio {
   }
 
   playSfx(name: SfxName): void {
-    if (name === 'hit') {
-      const now = this.scene.time.now;
-      if (now - this.lastHitAt < 35) return;
-      this.lastHitAt = now;
-    }
+    const policy = SFX_POLICY[name] ?? DEFAULT_SFX_POLICY;
+    const now = this.scene.time.now;
+    const lastAt = this.lastSfxAt.get(name) ?? -Infinity;
+    if (now - lastAt < policy.cooldownMs) return;
+    this.lastSfxAt.set(name, now);
     this.scene.sound.play(SFX_KEYS[name], {
-      volume: MASTER_VOLUME * this.settings.sfxVolume * (name === 'hit' ? 0.75 : 1),
+      volume: MASTER_VOLUME * this.settings.sfxVolume * policy.volumeScale,
     });
   }
 

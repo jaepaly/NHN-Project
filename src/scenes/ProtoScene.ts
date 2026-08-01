@@ -1102,12 +1102,8 @@ export class ProtoScene extends Phaser.Scene {
 
   preload(): void {
     GameAudio.preload(this);
-    // GameAudio.preload가 load.path를 오디오 폴더로 설정하고 되돌리지 않는다. 그래서
-    // 뒤따르는 배경 로드 URL 앞에 그 경로가 붙어(.../assets/audio//NHN-Project/...)
-    // Vite SPA 폴백(index.html)이 200으로 반환되고, Phaser가 그 HTML을 이미지로
-    // 처리하려다 "Failed to process file"로 실패했다(webp·jpg·png 공통 원인).
-    // 경로를 비운 뒤 배경을 싣는다.
-    this.load.setPath('');
+    // 각 오디오 URL에 BASE_URL 전체 경로를 넘겨 이후 loader 경로를 오염시키지 않는다.
+    // 과거 setPath 방식은 배경 URL 앞에 audio 경로가 붙는 원인이었다.
     // 폼 글리프 — 빌드 칩용 텍스처(data URI SVG, 흰색으로 구워 setTint로 원소색을 입힌다).
     // 도감·보상 카드와 같은 어휘라 한 곳(formGlyphs.ts)에서 온다.
     for (const { key, dataUri } of allGlyphTextures()) {
@@ -1594,6 +1590,7 @@ export class ProtoScene extends Phaser.Scene {
         const completedLoops = this.combatRunController.state.loopIndex + 1;
         const nextDamagePct = Math.round(loopDamageScale(completedLoops) * 100);
         void showBossChoice(completedLoops, nextDamagePct).then(async (choice) => {
+          this.audio.playSfx('ui-confirm');
           if (choice === 'continue') {
             // 이어가면 빌드가 비워진다 — 무엇을 들고 갈지 여기서 고른다.
             // 이미 "더 갈까"를 결정한 자리라 한 호흡으로 이어진다.
@@ -1601,7 +1598,11 @@ export class ProtoScene extends Phaser.Scene {
             this.continueToNextLoop(inherit);
           } else {
             void showRunSummaryOverlay(this.buildRunSummary('victory'))
-              .then(() => { this.destroyRunMapUi(); this.scene.start('title'); });
+              .then(() => {
+                this.audio.playSfx('ui-confirm');
+                this.destroyRunMapUi();
+                this.scene.start('title');
+              });
           }
         });
       });
@@ -1615,7 +1616,9 @@ export class ProtoScene extends Phaser.Scene {
       this.runResearchTracker.snapshot().research,
       this.playerState.shield,
     );
-    return this.playerState.takeDamage(amount * scale * researchScale);
+    const result = this.playerState.takeDamage(amount * scale * researchScale);
+    if (result.hpDamage > 0) this.audio.playSfx('player-hit');
+    return result;
   }
 
   /** 사망은 1회만 처리 — 요약 오버레이 → Enter로 새 런 (GDD §2 사망 흐름) */
@@ -1630,7 +1633,10 @@ export class ProtoScene extends Phaser.Scene {
     this.deferTransientCombatCleanup();
     this.time.delayedCall(900, () => {
       void showRunSummaryOverlay(this.buildRunSummary('defeat'))
-        .then(() => this.restartRun());
+        .then(() => {
+          this.audio.playSfx('ui-confirm');
+          this.restartRun();
+        });
     });
   }
 
@@ -1968,6 +1974,7 @@ export class ProtoScene extends Phaser.Scene {
         kicker: 'GRIMOIRE',
         title: '주문서에서 유산을 꺼낸다',
       });
+      this.audio.playSfx('ui-confirm');
       const entry = offers.find((e) => `legacy-${e.normalized}` === chosen.id);
       if (entry) {
         // 후보로 등록한 뒤 각인 — 이후 보상에서 같은 주문 강화 카드도 자연히 이어진다
@@ -2074,6 +2081,7 @@ export class ProtoScene extends Phaser.Scene {
       kicker: 'INHERIT',
       title: '무엇을 남길 것인가',
     });
+    this.audio.playSfx('ui-confirm');
     const picked = candidates.find((c) => `inherit-${c.element}` === chosen.id);
     return picked ? { element: picked.element, value: picked.inherited } : null;
   }
@@ -3571,6 +3579,8 @@ export class ProtoScene extends Phaser.Scene {
         && this.mapGraph.canEnter(selected.nodeId)
         ? selected.nodeId
         : choices[0].id;
+      this.audio.playSfx('ui-confirm');
+      this.audio.playSfx('route-transition');
       this.enterMapNode(selectedId);
     } catch (error) {
       // UI 실패가 런 고착으로 번지지 않게 첫 도달 가능 노드로 진행한다.
@@ -7088,6 +7098,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       },
       mute: { get: () => this.audio.muted, toggle: () => this.audio.toggleMute() },
     });
+    this.audio.playSfx('ui-confirm');
     this.settingsOverlayOpen = false;
     this.settings = next;
     this.audio.applySettings(next);
@@ -7144,6 +7155,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private activatePauseMenuItem(): void {
     const row = PAUSE_MAIN[this.pauseMenuIndex];
     if (!row) return;
+    this.audio.playSfx('ui-confirm');
     switch (row.id) {
       case 'resume':
         this.closeBuildInspect();
@@ -7181,7 +7193,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.stopCastingForRunPause();
     this.deferTransientCombatCleanup();
     void showRunSummaryOverlay(this.buildRunSummary('defeat'))
-      .then(() => { this.destroyRunMapUi(); this.scene.start('title'); });
+      .then(() => {
+        this.audio.playSfx('ui-confirm');
+        this.destroyRunMapUi();
+        this.scene.start('title');
+      });
   }
 
   /** 칩 i의 컨테이너 로컬 중심 (0·1=각인 윗줄, 2·3=정령 아랫줄) */
@@ -9083,6 +9099,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       );
       if (distance <= ACTIVE_MANA_CONFIG.pickupRadius * this.playerState.manaPickupRadiusMultiplier) {
         const restored = this.playerState.restoreMana(crystal.amount);
+        if (restored > 0) this.audio.playSfx('mana-crystal-pickup');
         this.showManaPickupFeedback(crystal.view.x, crystal.view.y, restored);
         crystal.view.destroy(true);
         this.manaCrystals.splice(i, 1);
@@ -9143,6 +9160,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         onComplete: () => {
           if (!crystal.view.active) return;
           const restored = this.playerState.restoreMana(crystal.amount);
+          if (restored > 0) this.audio.playSfx('mana-crystal-pickup');
           this.showManaPickupFeedback(this.player.x, this.player.y, restored);
           crystal.view.destroy(true);
           this.manaCrystals = this.manaCrystals.filter((entry) => entry !== crystal);

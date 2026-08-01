@@ -11,9 +11,14 @@ from pathlib import Path
 
 TARGET_PEAK_DBFS = {
     "sfx-hit.wav": -8.0,
+    "sfx-player-hit.wav": -8.0,
     "sfx-fizzle.wav": -10.0,
     "sfx-incant-enter.wav": -7.0,
     "sfx-reward-select.wav": -7.0,
+    "sfx-ui-confirm.wav": -9.0,
+    "sfx-mana-crystal-pickup.wav": -9.0,
+    "sfx-route-transition.wav": -7.0,
+    "sfx-title-start.wav": -7.0,
 }
 DEFAULT_TARGET_PEAK_DBFS = -6.0
 THRESHOLD_DBFS = -50.0
