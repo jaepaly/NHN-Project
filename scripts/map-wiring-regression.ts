@@ -79,7 +79,15 @@ function bodyOf(startMarker: string, endMarker: string): string {
   );
   assert.ok(
     scene.includes('maxRooms: maximumMapPathRooms(MAP_GRAPH_PRESET_01)'),
-    '컨트롤러 방 수가 그래프 최대 경로와 맞지 않는다 — 중간 노드에서 런이 끝날 수 있다',
+    '컨트롤러의 초기 안전 상한이 프리셋과 맞지 않는다',
+  );
+  assert.ok(
+    scene.includes('this.combatRunController.configureMapRoute(maximumMapPathRooms(definition))'),
+    '새 생성 맵의 최대 경로 길이가 런 컨트롤러에 갱신되지 않는다',
+  );
+  assert.ok(
+    scene.includes("runState.roomCountMode === 'dynamic'"),
+    '분기형 맵 HUD가 확정되지 않은 총방 수를 분모로 표시한다',
   );
 
   const roomBody = bodyOf('private startRoom(', 'private isBossEncounter()');

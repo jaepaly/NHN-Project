@@ -701,18 +701,8 @@ export class ProtoScene extends Phaser.Scene {
       });
     },
     initialRoomIndex: DEBUG_START_ROOM,
-    /**
-     * ⚠️ 컨트롤러의 `maxRooms`는 `readonly`라 런 중에 바꿀 수 없다. 그래서 생성 맵도
-     * **프리셋과 같은 8방이어야** `ROOM x/8` 표시와 보스 판정(`roomIndex >= maxRooms`)이
-     * 맞는다. #272에서 미니맵·포탈 라벨이 상수 2칸 어긋난 것과 같은 종류의 결합이다.
-     *
-     * 생성기는 파티션 예산이 `1 + 2 + 1 + 3 + 1`로 고정이고 한 파티션의 모든 분기가
-     * 같은 길이를 갖기 때문에 **모든 경로가 정확히 8방**이다. 실측 500시드에서 나타난
-     * 경로 길이는 8 하나뿐이었고 한 맵 안에서 길이가 갈린 경우도 0이었다.
-     *
-     * 우연이 아니라 구조적 성질이지만, 예산을 건드리면 조용히 깨진다 —
-     * `map-generator-regression`이 이 일치를 못박는다.
-     */
+    // 생성 맵 설치 전의 초기 안전 상한이다. resetMapGraph가 런/루프마다 실제 생성된
+    // 그래프의 최대 경로 길이로 갱신하며, 분기형 맵의 표시용 총방 수로는 사용하지 않는다.
     maxRooms: maximumMapPathRooms(MAP_GRAPH_PRESET_01),
     encounterProvider: (roomIndex) => this.mapEncounterForRoom(roomIndex),
     rewardDraw: (roomIndex) => {
@@ -1654,6 +1644,7 @@ export class ProtoScene extends Phaser.Scene {
       result,
       roomIndex: runState.roomIndex,
       maxRooms: runState.maxRooms,
+      roomCountMode: runState.roomCountMode,
       totalCasts: memory.totalCasts,
       dominantElement: memory.dominantElement,
       dominantForm: memory.dominantForm,
@@ -3507,6 +3498,7 @@ export class ProtoScene extends Phaser.Scene {
     this.pendingRunTransition = null;
     const definition = this.runMapDefinition(initialNodeId === null);
     this.mapGraph = new RunMapGraph(definition, initialNodeId ?? definition.startNodeId);
+    this.combatRunController.configureMapRoute(maximumMapPathRooms(definition));
     this.mapEncounterByRoom.clear();
     this.mapEncounterByRoom.set(roomIndex, encounterFromMapNode(this.mapGraph.current()));
     this.refreshMinimap();
@@ -6859,7 +6851,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.drawHudBars();
     // ROOM은 종전에 별도 DOM 칩(runHud)이었다. 우상단이 3단(칩·패널·미니맵)이 되어
     // 이 패널 첫 줄로 합쳤다 (총괄 지적) — 같은 정보군을 두 판에 나눌 이유가 없다.
-    const roomLine = `ROOM ${runState.roomIndex}/${runState.maxRooms}`;
+    const roomLine = runState.roomCountMode === 'dynamic'
+      ? `ROOM ${runState.roomIndex}`
+      : `ROOM ${runState.roomIndex}/${runState.maxRooms}`;
     // 위험지대 정화 — **지형이 깔린 방에서만** 한 줄 붙는다 (없으면 null).
     // HUD 박스가 아니라 여기인 이유: HUD는 높이가 고정이고 친화 바·쿨다운 바가
     // `HUD.y + HUD.height` 기준이라 행을 늘리면 전부 밀린다(총괄이 제보한 겹침과 같은

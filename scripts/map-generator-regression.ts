@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { generateRunMap, seededRandom } from '../src/run/mapGenerator';
-import { RunMapGraph } from '../src/run/mapGraph';
+import { RunMapGraph, maximumMapPathRooms } from '../src/run/mapGraph';
 import { WAVE_SETS } from '../src/combat-core/waves/waveManager';
+import { PlayerCombatState } from '../src/combat-core/player/playerCombatState';
+import { CombatRunController } from '../src/combat-core/run/runController';
+import { encounterFromMapNode } from '../src/run/mapEncounter';
 import type { MapGraphDefinition } from '../src/run/mapGraph';
 import type { MapNode, MapNodeKind } from '../src/run/mapGraphContract';
 
@@ -31,6 +34,53 @@ function pathsTo(definition: MapGraphDefinition, endId: string): MapNode[][] {
   return paths;
 }
 
+function assertPlayablePath(definition: MapGraphDefinition, path: readonly MapNode[]): void {
+  const graph = new RunMapGraph(definition);
+  const encounterByRoom = new Map([[1, encounterFromMapNode(graph.current())]]);
+  let transition: (() => void) | null = null;
+  let completed = 0;
+  const controller = new CombatRunController({
+    playerState: new PlayerCombatState(),
+    maxRooms: 8,
+    encounterProvider: (roomIndex) => {
+      const encounter = encounterByRoom.get(roomIndex);
+      if (!encounter) throw new Error(`missing encounter for room ${roomIndex}`);
+      return encounter;
+    },
+    rewardDraw: (roomIndex) => [{
+      id: `room-${roomIndex}-hp`, kind: 'max-hp', title: 'HP', description: 'test',
+    }],
+    scheduleTransition: (_delay, callback) => { transition = callback; },
+  });
+  controller.configureMapRoute(maximumMapPathRooms(definition));
+  controller.on('run-completed', () => { completed += 1; });
+
+  assert.equal(controller.state.roomCountMode, 'dynamic');
+  assert.equal(controller.state.maxRooms, maximumMapPathRooms(definition));
+  for (let index = 0; index < path.length; index += 1) {
+    const node = graph.current();
+    assert.equal(node.id, path[index].id, 'selected MapNode must drive the encounter');
+    assert.equal(controller.state.encounterId, node.id, 'encounter id must match MapNode id');
+    controller.notifyRoomCleared();
+
+    if (node.kind === 'memory-boss') {
+      assert.equal(controller.state.phase, 'run-over');
+      assert.equal(completed, 1, 'memory-boss must complete the run exactly once');
+      controller.notifyRoomCleared();
+      assert.equal(completed, 1, 'run completion must not repeat');
+      continue;
+    }
+
+    assert.notEqual(controller.state.phase, 'run-over', `room ${index + 1} must not end early`);
+    const nextNode = graph.enter(path[index + 1].id);
+    encounterByRoom.set(controller.state.roomIndex + 1, encounterFromMapNode(nextNode));
+    controller.chooseReward(`room-${controller.state.roomIndex}-hp`);
+    assert.ok(transition, `room ${index + 1} must schedule its next encounter`);
+    transition();
+    transition = null;
+  }
+}
+
 const generated: MapGraphDefinition[] = [];
 for (let seed = 1; seed <= 500; seed += 1) {
   const result = generateRunMap(seed);
@@ -46,7 +96,10 @@ for (const definition of generated) {
   assert.ok(finalBoss && stageBoss, 'both bosses must exist');
   const paths = pathsTo(definition, finalBoss.id);
   assert.ok(paths.length > 0, 'a start-to-final-boss path must exist');
-  for (const path of paths) totalLengths.add(path.length);
+  for (const path of paths) {
+    totalLengths.add(path.length);
+    assertPlayablePath(definition, path);
+  }
 
   // 0. all selectable routes have distinct room sequences.
   const signatures = paths.map((path) => path.map((node) => node.kind).join(','));

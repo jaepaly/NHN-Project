@@ -31,6 +31,25 @@
 
 ---
 
+## [R1] PR #312 동적 MapGraph 완주 계약 보완 (2026-08-01)
+
+- 최신 `main` 위로 #312를 리베이스하고 #319~#322 코드와 양쪽 작업 로그, 기존 세션·Worker 인수인계 문서를 보존했다.
+- 생성형 MapGraph의 `maxRooms`를 고정 8방 종료 조건에서 분리했다. 새 런·이어가기에서 생성된 정의의 최대 경로 길이를 컨트롤러 안전 상한으로 갱신하지만, `encounterProvider` 경로의 완주는 숫자 상한이 아니라 실제 `memory-boss` 처치로만 판정한다.
+- 분기 선택 전에는 실제 총방 수를 확정할 수 없으므로 동적 경로 스냅샷에 `roomCountMode='dynamic'`을 노출하고 전투 HUD·DOM HUD·패배 결산은 `ROOM x`만 표시한다. 레거시 고정 런은 기존 `ROOM x/y`를 유지한다.
+- 500시드의 모든 시작→최종 보스 경로를 `RunMapGraph → encounterFromMapNode → CombatRunController`로 실제 진행하는 회귀를 추가했다. 각 방의 MapNode/encounter ID 일치, 방 번호별 조우 존재, 중간 방 조기 종료 금지, memory-boss 완주 정확히 1회, 런별 최대 경로 상한 갱신을 단언한다.
+
+### 검증
+
+- [x] `npm run test:mapgen` — 500시드, 경로 길이 10·11·12, 모든 선택 경로 완주
+- [x] `npm run test:mapwiring`
+- [x] `npm run test:run`
+- [x] `npm test` — 전체 회귀 91종 통과
+- [x] `npm run build` — TypeScript 및 production build 통과
+- [x] `git diff --check`
+- [ ] 길이가 다른 생성 시드 최소 2개의 수동 인게임 완주 확인
+
+---
+
 ## [R1] 2026-07-31 세션 인수인계 정리
 
 - R1 전체 진행도와 맵 생성기·전투/지형·영창·Worker 협업 상태를 `R1_SESSION_HANDOFF_2026-07-31.md`에 정리했다.

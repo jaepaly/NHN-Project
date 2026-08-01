@@ -95,7 +95,10 @@ function positionOverGameHud(wrap: HTMLElement): void {
 /** 런 상태를 HUD에 반영한다. 매 프레임이 아니라 상태 변화 시에만 호출하면 된다. */
 export function updateRunHud(state: RunStateSnapshot): void {
   const wrap = ensureDom();
-  wrap.innerHTML = `<div class="run-room">ROOM ${state.roomIndex}/${state.maxRooms}</div>`;
+  const roomLabel = state.roomCountMode === 'dynamic'
+    ? `ROOM ${state.roomIndex}`
+    : `ROOM ${state.roomIndex}/${state.maxRooms}`;
+  wrap.innerHTML = `<div class="run-room">${roomLabel}</div>`;
   positionOverGameHud(wrap);
 }
 

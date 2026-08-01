@@ -142,6 +142,8 @@ export interface RunStateSnapshot {
   /** 1부터 시작 */
   roomIndex: number;
   maxRooms: number;
+  /** Fixed runs may show a denominator; branching maps cannot know it before choices resolve. */
+  roomCountMode?: 'fixed' | 'dynamic';
   stage: 1 | 2;
   encounterId: string;
   encounterKind: EncounterKind;

@@ -60,7 +60,7 @@ function mulberry32(seed: number): () => number {
 /** PR #12의 R1↔R3 계약을 구현하는 런·방·보상 상태 관리자. */
 export class CombatRunController implements RunController {
   private readonly playerState: PlayerCombatState;
-  private readonly maxRooms: number;
+  private maxRooms: number;
   private readonly encounterDefinitions: readonly EncounterDefinition[];
   private readonly encounterProvider?: EncounterProvider;
   private encounters: ResolvedEncounter[];
@@ -111,6 +111,13 @@ export class CombatRunController implements RunController {
     return this.snapshot();
   }
 
+  /** Update the safety bound when a new generated MapGraph is installed. */
+  configureMapRoute(maxRooms: number): void {
+    if (!this.encounterProvider) return;
+    this.maxRooms = positiveInteger(maxRooms);
+    this.roomIndex = clampRoomIndex(this.roomIndex, this.maxRooms);
+  }
+
   /**
    * 사용 기반 친화 성장 (useAffinity.ts) — 수동 시전이 그 원소 친화를 소프트캡 안에서
    * 조금 올린다. 카드 친화와 같은 맵에 더하므로 데미지·VFX 격상이 함께 따라온다.
@@ -150,7 +157,8 @@ export class CombatRunController implements RunController {
     if (this.phase !== 'combat') return;
 
     const encounter = this.currentEncounter();
-    if (encounter.kind === 'memory-boss' || this.roomIndex >= this.maxRooms) {
+    if (encounter.kind === 'memory-boss'
+      || (!this.encounterProvider && this.roomIndex >= this.maxRooms)) {
       this.phase = 'run-over';
       this.rewardOptions = [];
       this.emit('run-completed', this.snapshot());
@@ -328,6 +336,7 @@ export class CombatRunController implements RunController {
     return {
       roomIndex: this.roomIndex,
       maxRooms: this.maxRooms,
+      roomCountMode: this.encounterProvider ? 'dynamic' : 'fixed',
       stage: encounter.stage,
       encounterId: encounter.id,
       encounterKind: encounter.kind,
