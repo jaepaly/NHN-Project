@@ -318,8 +318,24 @@ import { applyMetaRunOutcome, loadMetaProfile, saveMetaProfile } from '../meta/m
 import { buildMetaRunSummary } from '../meta/metaRunSummary';
 import { RunResearchTracker } from '../meta/runResearchTracker';
 import {
+  advanceElementalFocusEchoCharge,
   availableBasicResearchContracts,
+  elementalFocusEchoUnlocked,
+  elementalFocusSpatialScale,
+  ELEMENTAL_FOCUS_ECHO_EVERY_CASTS,
+  ELEMENTAL_FOCUS_ECHO_POWER_SCALE,
+  ELEMENTAL_FOCUS_MILESTONE_AFFINITY,
   ELEMENTAL_FOCUS_START_AFFINITY,
+  isWardResearchSupportSpell,
+  researchMilestoneReward,
+  researchProgressSlots,
+  spellMatchesElementalResearch,
+  wardStudyIncomingDamageScale,
+  wardStudyPulseUnlocked,
+  WARD_STUDY_GUARD_DAMAGE_SCALE,
+  WARD_STUDY_MILESTONE_SHIELD,
+  WARD_STUDY_PULSE_KNOCKBACK,
+  WARD_STUDY_PULSE_RADIUS,
   WARD_STUDY_START_SHIELD,
   type ActiveResearchContract,
   type ResearchContractSelection,
@@ -975,6 +991,8 @@ export class ProtoScene extends Phaser.Scene {
   private legacySelecting = false;
   /** 메타 연구 선택 중 — 유산 선택과 같은 방식으로 전투를 멈춘다. */
   private researchSelecting = false;
+  /** 원소 심화 완료 뒤 공명 재시전을 결정하는 수동 영창 카운터. */
+  private elementalResearchEchoCharge = 0;
   /** 시연 런("각성한 영창가로 시작")인가 — 유산 선택을 건너뛰는 데 쓴다 */
   private demoRun = false;
   /** #214 선행 개발 프리뷰 전용 (DEV 콘솔 훅이 생성) — 본 게임 경로 미배선 */
@@ -1602,7 +1620,11 @@ export class ProtoScene extends Phaser.Scene {
   /** 적이 주는 피해 — 이어가기 루프 난이도(loopDamageScale)를 반영해 감쇠 전 원본에 곱한다 */
   private damagePlayer(amount: number): { hpDamage: number; shieldDamage: number } {
     const scale = loopDamageScale(this.combatRunController.state.loopIndex);
-    return this.playerState.takeDamage(amount * scale);
+    const researchScale = wardStudyIncomingDamageScale(
+      this.runResearchTracker.snapshot().research,
+      this.playerState.shield,
+    );
+    return this.playerState.takeDamage(amount * scale * researchScale);
   }
 
   /** 사망은 1회만 처리 — 요약 오버레이 → Enter로 새 런 (GDD §2 사망 흐름) */
@@ -1658,15 +1680,19 @@ export class ProtoScene extends Phaser.Scene {
           kind: 'affinity' as const,
           element: contract.element,
           title: `원소 심화 · ${ELEMENT_LABELS[contract.element]}`,
-          description: `${ELEMENT_LABELS[contract.element]} 친화 +15%로 시작\n`
-            + `목표 · ${ELEMENT_LABELS[contract.element]}의 서로 다른 형태 3종 시전`,
+          description: `시작 · ${ELEMENT_LABELS[contract.element]} 친화 +15%\n`
+            + `목표 · 서로 다른 ${ELEMENT_LABELS[contract.element]} 형태 3종\n`
+            + `단계 · 새 형태마다 친화 +${Math.round(ELEMENTAL_FOCUS_MILESTONE_AFFINITY * 100)}% · 주문 범위 +10%\n`
+            + `완료 · ${ELEMENTAL_FOCUS_ECHO_EVERY_CASTS}회마다 ${Math.round(ELEMENTAL_FOCUS_ECHO_POWER_SCALE * 100)}% 공명 재시전`,
         }
         : {
           id: `research-${contract.id}`,
           kind: 'ward-start' as const,
           title: '수호 연구',
-          description: `보호막 +${WARD_STUDY_START_SHIELD}로 시작\n`
-            + '목표 · 회복·보호막·강화·제어 영창 3회 성공',
+          description: `시작 · 보호막 +${WARD_STUDY_START_SHIELD}\n`
+            + '목표 · 지원 영창 3회\n'
+            + `단계 · 인정마다 보호막 +${WARD_STUDY_MILESTONE_SHIELD} · 2단계부터 피해 -${Math.round((1 - WARD_STUDY_GUARD_DAMAGE_SCALE) * 100)}%\n`
+            + '완료 · 지원 영창마다 보호막 보충·결계 파동',
         }
     ));
 
@@ -1722,23 +1748,156 @@ export class ProtoScene extends Phaser.Scene {
       : `회복·보호막·강화·제어 영창 ${contract.goal}회 성공`;
   }
 
+  private researchPerkSummary(contract: ActiveResearchContract): string {
+    if (contract.id === 'elemental-focus') {
+      const spatialPct = Math.round((elementalFocusSpatialScale(contract, {
+        element_primary: contract.element ?? 'light',
+        element_secondary: null,
+      }) - 1) * 100);
+      return contract.completed
+        ? `대상 원소 범위 +${spatialPct}% · 공명 ${this.elementalResearchEchoCharge}/${ELEMENTAL_FOCUS_ECHO_EVERY_CASTS}`
+        : `대상 원소 범위 +${spatialPct}%`;
+    }
+    if (contract.completed) return `지원 영창 보호막 +${WARD_STUDY_MILESTONE_SHIELD} · 결계 파동`;
+    if (contract.progress >= 2) {
+      return `보호막 중 피해 -${Math.round((1 - WARD_STUDY_GUARD_DAMAGE_SCALE) * 100)}%`;
+    }
+    return contract.progress > 0 ? '다음 단계 · 보호막 중 피해 감소' : '첫 단계 · 보호막 즉시 보충';
+  }
+
   private reportResearchAdvance(previous: ActiveResearchContract | null): void {
     const current = this.runResearchTracker.snapshot().research;
     if (!current || current.progress === previous?.progress) return;
+    const reward = researchMilestoneReward(previous, current);
+    const newForms = current.id === 'elemental-focus'
+      ? current.usedForms.filter((form) => !previous?.usedForms.includes(form))
+      : [];
+    let rewardLine = '';
+    if (current.id === 'elemental-focus' && current.element && reward.affinity > 0) {
+      const result = this.combatRunController.grantStartingAffinity(current.element, reward.affinity);
+      this.growthMarks.sync(
+        this.combatRunController.state.rewards.length,
+        this.combatRunController.state.elementalAffinity,
+        this.player.x,
+        this.player.y,
+      );
+      rewardLine = `${ELEMENT_LABELS[current.element]} 친화 +${Math.round(reward.affinity * 100)}% · 총 ${Math.round(result.total * 100)}%`;
+    } else if (current.id === 'ward-study' && reward.shield > 0) {
+      const added = this.playerState.addShield(reward.shield);
+      rewardLine = `연구 보호막 +${Math.round(added)}${added < reward.shield ? ' · 최대치 도달' : ''}`;
+    }
+    const progressSubject = newForms.length > 0
+      ? `${newForms.map((form) => FORM_LABELS[form]).join('·')} 형태 발견`
+      : '지원 영창 인정';
+    const perkLine = `연구 특성 · ${this.researchPerkSummary(current)}`;
     if (current.completed && !previous?.completed) {
       this.announceBanner({
         title: `연구 완료 · ${this.researchTitle(current)}`,
-        lines: [`통찰 +${current.rewardInsight} · 런 결산에 기록`],
+        lines: [
+          `${progressSubject} · ${researchProgressSlots(current)}`,
+          ...(rewardLine ? [rewardLine] : []),
+          perkLine,
+          `돌파 보상 · 통찰 +${current.rewardInsight} · 런 결산에 기록`,
+        ],
         color: 0x72f1b8,
-        holdMs: 2600,
+        holdMs: 3400,
       });
       return;
     }
     this.announceSystemMessage(
-      `연구 · ${this.researchTitle(current)} ${current.progress}/${current.goal}`,
+      `연구 · ${progressSubject} ${researchProgressSlots(current)} ${current.progress}/${current.goal}`
+        + (rewardLine ? ` · ${rewardLine}` : '')
+        + ` · ${this.researchPerkSummary(current)}`,
       '#8fa4ff',
-      1800,
+      2600,
     );
+  }
+
+  /** 완료된 수호 연구를 일회성 체크리스트가 아니라 남은 런의 전투 규칙으로 유지한다. */
+  private applyWardResearchCastPerks(
+    previous: ActiveResearchContract | null,
+    specs: readonly SpellSpec[],
+  ): void {
+    const current = this.runResearchTracker.snapshot().research;
+    if (!wardStudyPulseUnlocked(current) || !specs.some(isWardResearchSupportSpell)) return;
+
+    // 완료를 만든 세 번째 영창은 reportResearchAdvance에서 단계 보호막을 이미 받는다.
+    // 완료 이후 영창부터 같은 양을 계속 보충해 연구 선택이 런의 플레이 패턴으로 남는다.
+    if (previous?.completed) {
+      const added = this.playerState.addShield(WARD_STUDY_MILESTONE_SHIELD);
+      this.announceSystemMessage(
+        `수호 공명 · 보호막 +${Math.round(added)} · 결계 파동`,
+        UI_SEMANTIC.shield,
+        2200,
+      );
+    }
+    this.playWardResearchPulse();
+  }
+
+  private playWardResearchPulse(): void {
+    if (!this.isCombatActive()) return;
+    const x = this.player.x;
+    const y = this.player.y - 12;
+    const ring = this.add.circle(x, y, WARD_STUDY_PULSE_RADIUS, 0x72f1b8, 0.08)
+      .setStrokeStyle(4, 0x8fa4ff, 0.9)
+      .setScale(0.24)
+      .setDepth(28);
+    this.tweens.add({
+      targets: ring,
+      scale: 1,
+      alpha: 0,
+      duration: 360,
+      ease: 'Cubic.easeOut',
+      onComplete: () => ring.destroy(),
+    });
+    for (const enemy of this.enemies) {
+      if (!enemy.alive || enemy.kind === 'boss') continue;
+      if (Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y) > WARD_STUDY_PULSE_RADIUS) continue;
+      const direction = new Phaser.Math.Vector2(enemy.x - x, enemy.y - y);
+      if (direction.lengthSq() === 0) direction.set(0, -1);
+      direction.normalize();
+      this.requestEnemyKnockback(
+        enemy,
+        direction.x,
+        direction.y,
+        WARD_STUDY_PULSE_KNOCKBACK,
+      );
+    }
+  }
+
+  /** 완료 뒤 대상 원소 수동 영창 세 번마다 가장 강한 폼 하나를 낮은 위력으로 되울린다. */
+  private scheduleElementalResearchEcho(specs: readonly SpellSpec[]): void {
+    const research = this.runResearchTracker.snapshot().research;
+    if (!research || !elementalFocusEchoUnlocked(research) || !research.element) return;
+    const spec = specs
+      .filter((candidate) => spellMatchesElementalResearch(research, candidate))
+      .sort((a, b) => b.power - a.power)[0];
+    if (!spec) return;
+
+    const echoCharge = advanceElementalFocusEchoCharge(this.elementalResearchEchoCharge);
+    this.elementalResearchEchoCharge = echoCharge.charge;
+    if (!echoCharge.triggered) return;
+    const spatialScale = elementalFocusSpatialScale(research, spec);
+    this.announceSystemMessage(
+      `원소 공명 · ${ELEMENT_LABELS[research.element]} 주문 재시전`,
+      '#8fa4ff',
+      2200,
+    );
+    this.time.delayedCall(320, () => {
+      if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
+      const echoSpec: SpellSpec = {
+        ...spec,
+        status: [...spec.status],
+        power: Math.max(1, Math.round(spec.power * ELEMENTAL_FOCUS_ECHO_POWER_SCALE)),
+      };
+      this.applySpellPalette(echoSpec);
+      this.audio.playCast(echoSpec.element_primary);
+      this.applySpellEffect(echoSpec, undefined, false, 1, {
+        rangeScale: spatialScale,
+        radiusScale: spatialScale,
+        decorVfxScale: 0.78,
+      });
+    });
   }
 
   /** 런 간 기억 저장 (GDD §4.2) — 요약은 리셋 전 히스토리 기준, 다음 런 보스가 소비 */
@@ -1999,6 +2158,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private resetRunResearchTracking(): void {
+    this.elementalResearchEchoCharge = 0;
     this.metaProfile = loadMetaProfile();
     this.runResearchTracker.reset(
       this.metaProfile.discoveredSignatures,
@@ -2007,6 +2167,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private continueRunResearchTracking(): void {
+    this.elementalResearchEchoCharge = 0;
     this.metaProfile = loadMetaProfile();
     this.runResearchTracker.beginContinuedLoop(
       this.metaProfile.discoveredSignatures,
@@ -5176,10 +5337,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceManaShortage(plan.manaCost);
       return;
     }
+    const formSpecs = plan.sequences.flatMap((sequence) => sequence.behaviors.flatMap((behavior) => (
+      behavior.type === 'form' ? [behavior.spec] : []
+    )));
     if (!ultimate) {
       const previousResearch = this.runResearchTracker.snapshot().research;
       this.runResearchTracker.recordNormalPlan(plan);
       this.reportResearchAdvance(previousResearch);
+      this.applyWardResearchCastPerks(previousResearch, formSpecs);
     }
     if (import.meta.env.DEV) {
       void postPlayLog({
@@ -5202,9 +5367,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       });
     }
     // 융합 게이지 — 시퀀스도 수동 영창이므로 충전한다 (방출 격상은 v1에선 단일 주문만)
-    const formSpecs = plan.sequences.flatMap((sequence) => sequence.behaviors.flatMap((behavior) => (
-      behavior.type === 'form' ? [behavior.spec] : []
-    )));
     const sequenceElements = [...new Set(plan.sequences.flatMap((sequence) => (
       sequence.behaviors.flatMap(behaviorElements)
     )))];
@@ -5321,6 +5483,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const previousResearch = this.runResearchTracker.snapshot().research;
         this.runResearchTracker.recordNormalSpell(spec);
         this.reportResearchAdvance(previousResearch);
+        this.applyWardResearchCastPerks(previousResearch, [spec]);
       }
 
       if (!fusedSpec && this.fusionGauge.charge(castPlan.spend, {
@@ -5458,6 +5621,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.audio.playCast(effectiveSpec.element_primary);
       this.applySpellPalette(effectiveSpec);
       this.announceSpell(effectiveSpec);
+      const fusionOptions = fusedSpec ? { fusionRelease: true } : undefined;
+      const researchSpatialScale = fusedSpec
+        ? 1
+        : elementalFocusSpatialScale(
+          this.runResearchTracker.snapshot().research,
+          effectiveSpec,
+        );
       // 필살기면 친화 연출이 보조 원소까지 순차로 그린다 (총괄 지시).
       // 에코·파문은 넘기지 않는다 — 그 둘은 같은 시전의 **반복**이라 여기까지 두
       // 원소를 뿌리면 한 번의 필살기로 연출이 4개가 된다.
@@ -5466,8 +5636,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         undefined,
         false,
         0,
-        fusedSpec ? { fusionRelease: true } : undefined,
+        fusionOptions ?? {
+          rangeScale: researchSpatialScale,
+          radiusScale: researchSpatialScale,
+        },
       );
+      if (castMode === 'normal' && !fusedSpec) {
+        this.scheduleElementalResearchEcho([effectiveSpec]);
+      }
       this.scheduleSpellEcho(effectiveSpec);
       this.scheduleSpellRipple(effectiveSpec);
       this.playerState.startCastLock(); // 신속 영창 감소분 반영된 입력락
@@ -5639,6 +5815,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.beginSequenceProgress(plan, timeline);
     let blackoutIlluminated = false;
     let heatwaveCooled = false;
+    const executedSpecs: SpellSpec[] = [];
 
     for (const [sequenceIndex, sequence] of plan.sequences.entries()) {
       if (!this.playerState.alive || !this.isCombatActive()) break;
@@ -5660,12 +5837,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           heatwaveCooled = this.tryApplyHeatwaveCooling(behaviorElements(behavior));
         }
         if (behavior.type === 'form') {
-          this.executeSequenceForm(
+          const executed = this.executeSequenceForm(
             behavior,
             targetState,
             repeatPowerScale,
             plan.castMode === 'ultimate',
+            plan.castMode === 'normal',
           );
+          executedSpecs.push(executed);
         }
       }
       const waitMs = timeline.waitsMs[sequenceIndex];
@@ -5677,6 +5856,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
 
     this.clearSequenceProgress();
+    if (plan.castMode === 'normal') this.scheduleElementalResearchEcho(executedSpecs);
   }
 
   private beginSequenceProgress(plan: ResolvedSpellPlan, timeline: SequenceFlowTimeline): void {
@@ -5749,7 +5929,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     targetState: SequenceTargetState,
     repeatPowerScale: number,
     stackPersistentForms = false,
-  ): void {
+    researchEligible = true,
+  ): SpellSpec {
     const { spec: baseSpec, tuning } = behavior;
     const priorUsages = this.spellHistory.allBehaviorUsages;
     const affinityBonus = this.combatRunController.state
@@ -5771,6 +5952,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         * this.playerState.damageOutMultiplier,
       ),
     };
+    const researchSpatialScale = researchEligible
+      ? elementalFocusSpatialScale(this.runResearchTracker.snapshot().research, spec)
+      : 1;
     this.spellHistory.recordBehaviorUsage(baseSpec, Date.now());
     if (escalationWeaken < 1 && !this.escalationNoticed.has(baseSpec.form)) {
       this.escalationNoticed.add(baseSpec.form);
@@ -5784,8 +5968,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const options: SpellExecutionOptions = {
       sequenceTarget: targetState,
       damageScale: tuningScale(tuning, 'damage'),
-      rangeScale: tuningScale(tuning, 'range'),
-      radiusScale: tuningScale(tuning, 'radius'),
+      rangeScale: tuningScale(tuning, 'range') * researchSpatialScale,
+      radiusScale: tuningScale(tuning, 'radius') * researchSpatialScale,
       controlDurationScale: tuningScale(tuning, 'duration'),
       controlStrengthScale: tuningScale(tuning, 'strength'),
       shieldAmountScale: tuningScale(tuning, 'amount'),
@@ -5797,6 +5981,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       },
     };
     this.applySpellEffect(spec, undefined, false, 0, options);
+    return spec;
   }
 
   private applySpellEffect(
@@ -6630,12 +6815,20 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.presentFloorHazardKinds(),
     );
     const research = this.runResearchTracker.snapshot().research;
-    const researchLine = research
-      ? `연구 · ${this.researchTitle(research)} ${research.completed ? '완료' : `${research.progress}/${research.goal}`}`
-      : null;
+    const researchLines = research
+      ? [
+        `RESEARCH · ${this.researchTitle(research)}`,
+        research.completed
+          ? `${researchProgressSlots(research)} ${this.researchPerkSummary(research)} · 통찰 +${research.rewardInsight}`
+          : `${researchProgressSlots(research)} ${research.progress}/${research.goal} · ${this.researchGoal(research)}`,
+        ...(!research.completed && research.progress > 0
+          ? [`효과 · ${this.researchPerkSummary(research)}`]
+          : []),
+      ]
+      : [];
     const withCleanse = (lines: readonly string[]): string => [
       ...lines,
-      ...(researchLine ? [researchLine] : []),
+      ...researchLines,
       ...(cleanseLine ? [cleanseLine] : []),
     ].join('\n');
     if (runState.phase === 'run-over') {

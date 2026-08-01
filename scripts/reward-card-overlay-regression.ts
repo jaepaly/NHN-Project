@@ -10,6 +10,7 @@ assert.equal(rewardCardFocusDirection({ code: 'KeyW' }), 0, '세로 이동 키�
 assert.equal(rewardCardFocusDirection({ code: 'KeyS' }), 0, '세로 이동 키는 보상 카드에서 무시한다');
 
 const source = readFileSync('src/ui/rewardCardOverlay.ts', 'utf8');
+assert.ok(source.includes('white-space: pre-line'), '카드 설명의 명시적 줄바꿈 보존');
 for (const key of ['KeyA', 'KeyD', 'Enter']) {
   assert.ok(source.includes(`'${key}'`), `${key} 입력`);
 }
