@@ -2,6 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { UI_COLOR, UI_HEX, UI_MATERIAL, UI_SEMANTIC, hex } from '../src/ui/uiTokens';
 import { FRAME_CONFIG, deckledPoints } from '../src/render/grimoireFrameGeometry';
+import {
+  AFFINITY_PANEL_LAYOUT,
+  affinityBarY,
+  affinityLabelY,
+  affinityPanelGeometry,
+} from '../src/ui/combatHudLayout';
 
 /**
  * UI 팔레트 통일 회귀 (총괄 지시: "이 스타일에 맞게 다른 UI도 다 통일시켜야 하지 않을까?").
@@ -530,6 +536,29 @@ import { FRAME_CONFIG, deckledPoints } from '../src/render/grimoireFrameGeometry
   assert.ok(
     !/tweens\.add|time\.now|Date\.now|performance\.now/.test(frame),
     'HUD 판은 정지해 있어야 한다 — 늘 떠 있는 물체의 깜빡임은 누적 피로가 된다(#220)',
+  );
+
+  // 친화도는 전투 HUD 바깥의 독립된 판이다. 장식 갈고리가 외곽을 조금 넘기 때문에
+  // 텍스트만 6px 아래에 붙이면 화면에서는 두 창이 겹쳐 보인다(총괄 제보).
+  const hud = { y: 18, height: 130 };
+  const affinity = affinityPanelGeometry(hud.y, hud.height, 3);
+  assert.ok(
+    affinity.top - (hud.y + hud.height) >= 12,
+    `전투 HUD와 친화도 패널 간격이 너무 좁다 (${AFFINITY_PANEL_LAYOUT.gap}px)`,
+  );
+  for (let index = 0; index < 3; index += 1) {
+    const labelY = affinityLabelY(affinity.top, index);
+    const barY = affinityBarY(affinity.top, index);
+    assert.ok(labelY >= affinity.top, `${index}행 라벨이 패널 위로 나갔다`);
+    assert.ok(barY > labelY, `${index}행 바가 라벨과 겹친다`);
+    assert.ok(
+      barY + AFFINITY_PANEL_LAYOUT.primaryBarHeight <= affinity.top + affinity.height,
+      `${index}행 바가 패널 아래로 나갔다`,
+    );
+  }
+  assert.ok(
+    /drawGrimoirePanel\(g, HUD\.x, panel\.top, HUD\.width, panel\.height/.test(scene),
+    '친화도 행은 좌표만 떨어뜨리지 말고 독립된 마도서 판 안에 있어야 한다',
   );
 }
 

@@ -391,9 +391,24 @@ for (const kind of TERRAIN_KINDS) {
     shared >= 2,
     `적 투사체와 플레이어 주문이 같은 차단 판정을 써야 한다 (현재 ${shared}건)`,
   );
+
+  // 기본 평타는 SpellRenderer가 아니라 friendlyMissiles 유도탄 루프를 탄다. 주문 경로만
+  // 잠그면 평타가 여전히 벽을 뚫으므로, 이동 전 위치→다음 위치 스윕이 적중보다 먼저다.
+  const friendlyAt = scene.indexOf('private updateFriendlyMissiles(');
+  const friendlyEnd = scene.indexOf('private destroyFriendlyMissile(', friendlyAt);
+  const friendly = scene.slice(friendlyAt, friendlyEnd);
+  assert.ok(
+    /segmentBlocked\(previous, next, this\.terrainBarriers, 5\)/.test(friendly),
+    '기본 평타·아군 유도탄이 지형 구조물 스윕 판정을 거쳐야 한다',
+  );
+  assert.ok(
+    friendly.indexOf('segmentBlocked(previous, next')
+      < friendly.indexOf('distance <= missile.hitDistance + travelDistance'),
+    '구조물 차단이 목표 적중보다 먼저여야 마지막 프레임 관통 피해가 없다',
+  );
 }
 
 console.log(
   'room terrain regression: 좌표일치·배선·keep-out·통행·구조물규약·의도적공백'
-  + '·스테이지분기·밀어내기·스폰겹침·계약변환·전맵통행·주문차단 12군 통과',
+  + '·스테이지분기·밀어내기·스폰겹침·계약변환·전맵통행·주문·평타차단 12군 통과',
 );

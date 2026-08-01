@@ -99,6 +99,12 @@ import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomReward
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { showRoomChoices } from '../ui/roomChoiceOverlay';
 import { UI_COLOR, UI_HEX, UI_SEMANTIC, hex } from '../ui/uiTokens';
+import {
+  AFFINITY_PANEL_LAYOUT,
+  affinityBarY,
+  affinityLabelY,
+  affinityPanelGeometry,
+} from '../ui/combatHudLayout';
 import { drawGrimoirePanel, drawSectionRule, drawTitleSigil } from '../render/grimoireFrame';
 import type { GameSettings } from '../run/gameSettings';
 import { DEFAULT_SETTINGS, loadSettings } from '../run/gameSettings';
@@ -444,9 +450,6 @@ const BUILD_CHIP = {
 
 /** 친화 경험치 바가 채워지는 이정표 — 각성 임계(MASTERY_REDESIGN §5-b, 친화 0.9). */
 const AFFINITY_BAR_MILESTONE = 0.9;
-
-/** 친화 바 한 행(라벨+바)의 세로 간격 — 3행이면 HUD 아래 ~66px를 쓴다 */
-const AFFINITY_ROW_HEIGHT = 22;
 
 /**
  * 미러 캐스트 판정용 플레이어 히트 반경(px). 적 탄환 판정(bulletHitDistance 14)과
@@ -2395,15 +2398,21 @@ export class ProtoScene extends Phaser.Scene {
       fontStyle: 'bold',
       color: UI_SEMANTIC.buff,
     }).setScrollFactor(0).setDepth(100);
-    // 친화 경험치 바 라벨 — 메인 HUD 박스 아래. 원소별로 1행씩(주력이 맨 위) 세워
-    // "다른 원소도 오르고 있다"가 보이게 한다 (사용 성장 #166 체감 · 총괄 제보)
+    // 친화 경험치 바 라벨 — 메인 HUD와 장식 여백을 둔 별도 패널 안에 세운다.
+    // 6px만 띄웠을 때는 마도서 판의 하단 갈고리와 첫 행이 겹쳐 한 창처럼 보였다.
+    const affinityPanel = affinityPanelGeometry(HUD.y, HUD.height, AFFINITY_ROWS);
     this.affinityLabelTexts = Array.from({ length: AFFINITY_ROWS }, (_, i) =>
-      this.add.text(HUD.x + 6, HUD.y + HUD.height + 6 + i * AFFINITY_ROW_HEIGHT, '', {
+      this.add.text(
+        HUD.x + AFFINITY_PANEL_LAYOUT.padX,
+        affinityLabelY(affinityPanel.top, i),
+        '',
+        {
         fontFamily: '"Noto Serif KR", Consolas, monospace',
         fontSize: i === 0 ? '11px' : '10px',
         fontStyle: 'bold',
         color: '#8fa4ff',
-      }).setScrollFactor(0).setDepth(100));
+        },
+      ).setScrollFactor(0).setDepth(100));
     // 필살기(융합) 미터 라벨 — 하단 중앙, 궁극기 게이지처럼 항상 노출해 존재를 가르친다
     this.fusionLabelText = this.add.text(width / 2, height - 62, '', {
       fontFamily: '"Noto Serif KR", Consolas, monospace',
@@ -4574,6 +4583,21 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       );
       const distance = direction.length();
       const travelDistance = missile.speed * deltaSeconds;
+      const previous = { x: missile.body.x, y: missile.body.y };
+      const stepDistance = Math.min(distance, travelDistance);
+      if (distance > 0) direction.normalize().scale(stepDistance);
+      const next = {
+        x: previous.x + direction.x,
+        y: previous.y + direction.y,
+      };
+
+      // 기본 평타·정령·소환체 투사체도 지형 구조물에 막힌다. 주문 적중과 적 탄환은
+      // 이미 같은 segmentBlocked 기하를 썼지만, 별도 유도탄 루프만 빠져 있었다.
+      // 목표 도달 판정보다 먼저 검사해야 마지막 프레임에 벽을 건너 바로 피해를 주지 않는다.
+      if (segmentBlocked(previous, next, this.terrainBarriers, 5)) {
+        this.destroyFriendlyMissile(missile);
+        continue;
+      }
       if (distance <= missile.hitDistance + travelDistance) {
         const sourceX = missile.body.x;
         const sourceY = missile.body.y;
@@ -4595,9 +4619,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         continue;
       }
 
-      direction.normalize().scale(travelDistance);
-      missile.body.x += direction.x;
-      missile.body.y += direction.y;
+      missile.body.setPosition(next.x, next.y);
       missile.halo.setPosition(missile.body.x, missile.body.y);
       active.push(missile);
     }
@@ -7005,8 +7027,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
    */
   private drawAffinityBar(g: Phaser.GameObjects.Graphics): void {
     const rows = rankAffinities<SpellElement>(this.combatRunController.state.elementalAffinity);
-    const barX = HUD.x + 6;
-    const fullW = HUD.width - 12;
+    const panel = affinityPanelGeometry(HUD.y, HUD.height, rows.length);
+    const barX = HUD.x + AFFINITY_PANEL_LAYOUT.padX;
+    const fullW = HUD.width - AFFINITY_PANEL_LAYOUT.padX * 2;
+
+    if (rows.length > 0) {
+      drawGrimoirePanel(g, HUD.x, panel.top, HUD.width, panel.height, 0.82);
+    }
 
     for (let i = 0; i < this.affinityLabelTexts.length; i += 1) {
       const label = this.affinityLabelTexts[i];
@@ -7020,9 +7047,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       // 주력(0행)만 폭·불투명도가 100%. 아래는 좁고 흐려 서열이 한눈에 보인다.
       const main = i === 0;
       const barW = main ? fullW : fullW * 0.62;
-      const barH = main ? 6 : 4;
+      const barH = main
+        ? AFFINITY_PANEL_LAYOUT.primaryBarHeight
+        : AFFINITY_PANEL_LAYOUT.secondaryBarHeight;
       const alpha = main ? 1 : 0.55;
-      const barY = HUD.y + HUD.height + 22 + i * AFFINITY_ROW_HEIGHT;
+      const barY = affinityBarY(panel.top, i);
 
       g.fillStyle(UI_HEX.track, alpha);
       g.fillRoundedRect(barX, barY, barW, barH, barH / 2);
