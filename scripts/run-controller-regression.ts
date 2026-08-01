@@ -200,7 +200,17 @@ assert.equal(spellPowerWithAffinity(Number.NaN, 0.15), 0, '비정상 power 방�
   }
   assert.notDeepEqual(kindsC.slice(0, seqA.length), seqA, '다른 시드 = 다른 순열');
 
-  // 7-c. 신속 영창: 입력락 감소 + 하한 (C 경제 대체 — GATE_DECISION_0728 #67)
+  // 7-c. 신속 영창은 all-plan 경로에서 효용이 없어 재설계 전까지 추첨 제외.
+  // 상수 난수를 0~0.99까지 훑어 풀의 어느 위치에서도 다시 노출되지 않음을 검증한다.
+  for (let step = 0; step < 100; step += 1) {
+    const options = drawRewardOptions(1, () => step / 100);
+    assert.ok(
+      options.every((option) => option.kind !== 'swift-incant'),
+      `신속 영창이 보상 풀에 노출됨 (rand=${step / 100})`,
+    );
+  }
+
+  // 7-d. 기존 런 기록 호환: 신속 영창 적용 시 입력락 감소 + 하한
   const swift = new PlayerCombatState();
   swift.addCastLockReduction(RUN_REWARD_CONFIG.swiftIncantLockReduction);
   assert.equal(
@@ -216,7 +226,7 @@ assert.equal(spellPowerWithAffinity(Number.NaN, 0.15), 0, '비정상 power 방�
   swift.startCastLock();
   assert.equal(swift.cooldownRemaining, PLAYER_COMBAT_CONFIG.castInputLockFloorSeconds);
 
-  // 7-d. 마나 격류: 재생 배율
+  // 7-e. 마나 격류: 재생 배율
   const surge = new PlayerCombatState();
   surge.trySpendMana(100);
   surge.addManaGainMultiplier(RUN_REWARD_CONFIG.manaSurgeGainBonus);
