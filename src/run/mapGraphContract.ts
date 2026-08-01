@@ -29,9 +29,11 @@ export interface MinimapNode {
   id: string;
   kind: MapNodeKind;
   status: MapNodeStatus;
+  /** Stage-local lane normalization boundary. Older fixed models default to stage 1. */
+  stage?: number;
   /** 진행 축 (0 = 시작, 클수록 보스에 가까움) — 미니맵 가로 배치 기준 */
   layer: number;
-  /** 같은 layer 안의 분기 위치 (0..laneCount-1) — 미니맵 세로 배치 기준 */
+  /** 생성기가 부여한 연속 분기 위치 — 같은 stage의 전체 lane 범위로 세로 배치 */
   lane: number;
 }
 

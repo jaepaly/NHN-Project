@@ -7,6 +7,8 @@ import { CombatRunController } from '../src/combat-core/run/runController';
 import { encounterFromMapNode } from '../src/run/mapEncounter';
 import type { MapGraphDefinition } from '../src/run/mapGraph';
 import type { MapNode, MapNodeKind } from '../src/run/mapGraphContract';
+import { MINIMAP_CONFIG, minimapLayout } from '../src/ui/minimapLayout';
+import { toMinimapModel } from '../src/run/mapGraph';
 
 /** #240의 맵 경로 비교용 상대값. 실제 roomRewardScale과 의도적으로 분리한다. */
 const risk: Record<MapNodeKind, number> = {
@@ -88,9 +90,39 @@ for (let seed = 1; seed <= 500; seed += 1) {
   generated.push(result.definition);
 }
 
+// 붉은 원형 위험지대는 trapProfile='hazard'의 함정방 전용이다. 과거 고정 런의
+// stage 2 일반방 변형 `room-c-hazard`가 생성 맵 풀에 남아 방 표기와 기믹이 충돌했다.
+for (let seed = 1; seed <= 500; seed += 1) {
+  const result = generateRunMap(seed)!;
+  for (const node of result.definition.nodes) {
+    assert.notEqual(
+      node.waveSetId,
+      'room-c-hazard',
+      `seed ${seed}: ${node.kind} ${node.id} must not use the legacy hazard combat wave`,
+    );
+  }
+}
+const reportedHazardSeed = generateRunMap(3_934_948_004)!;
+assert.ok(
+  reportedHazardSeed.definition.nodes.every(node => node.waveSetId !== 'room-c-hazard'),
+  'reported seed 3934948004 must not create a red hazard combat room',
+);
+
 const totalLengths = new Set<number>();
 for (const definition of generated) {
-  assert.doesNotThrow(() => new RunMapGraph(definition), 'MapGraph contract must accept generated maps');
+  const acceptedGraph = new RunMapGraph(definition);
+  assert.doesNotThrow(() => acceptedGraph, 'MapGraph contract must accept generated maps');
+  const minimapPoints = minimapLayout(toMinimapModel(acceptedGraph.snapshot()));
+  for (let i = 0; i < minimapPoints.length; i += 1) for (let j = i + 1; j < minimapPoints.length; j += 1) {
+    const distance = Math.hypot(
+      minimapPoints[i].x - minimapPoints[j].x,
+      minimapPoints[i].y - minimapPoints[j].y,
+    );
+    assert.ok(
+      distance >= MINIMAP_CONFIG.nodeRadius * 2,
+      `generated minimap nodes overlap: ${minimapPoints[i].id}/${minimapPoints[j].id}`,
+    );
+  }
   const finalBoss = definition.nodes.find((node) => node.kind === 'memory-boss');
   const stageBoss = definition.nodes.find((node) => node.kind === 'stage-boss');
   assert.ok(finalBoss && stageBoss, 'both bosses must exist');
@@ -119,13 +151,21 @@ for (const definition of generated) {
       && (node.kind === 'treasure' || node.kind === 'altar')), `stage ${stage} reward minimum`);
   }
 
-  // 3. no complete route may be strictly riskier and less rewarding.
-  const scores = paths.map((path) => path.reduce((score, node) => ({
-    risk: score.risk + risk[node.kind], reward: score.reward + reward[node.kind],
-  }), { risk: 0, reward: 0 }));
-  for (let i = 0; i < scores.length; i += 1) for (let j = i + 1; j < scores.length; j += 1) {
-    assert.ok(!(scores[i].risk > scores[j].risk && scores[i].reward < scores[j].reward), 'route dominance');
-    assert.ok(!(scores[j].risk > scores[i].risk && scores[j].reward < scores[i].reward), 'route dominance');
+  // 3. #240 compares alternatives inside each stage. Combining two valid
+  // stage choices into a Cartesian whole-run set is not an additional design
+  // constraint in the approved HTML generator.
+  for (const stage of [1, 2]) {
+    const stagePaths = [...new Map(paths.map(path => {
+      const nodes = path.filter(node => node.stage === stage && node.kind !== 'stage-boss' && node.kind !== 'memory-boss');
+      return [nodes.map(node => node.kind).join(','), nodes] as const;
+    })).values()];
+    const scores = stagePaths.map(path => path.reduce((score, node) => ({
+      risk: score.risk + risk[node.kind], reward: score.reward + reward[node.kind],
+    }), { risk: 0, reward: 0 }));
+    for (let i = 0; i < scores.length; i += 1) for (let j = i + 1; j < scores.length; j += 1) {
+      assert.ok(!(scores[i].risk > scores[j].risk && scores[i].reward < scores[j].reward), `stage ${stage} route dominance`);
+      assert.ok(!(scores[j].risk > scores[i].risk && scores[j].reward < scores[i].reward), `stage ${stage} route dominance`);
+    }
   }
 
   for (const node of definition.nodes) {

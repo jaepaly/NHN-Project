@@ -117,4 +117,34 @@ const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   );
 }
 
-console.log('pause key regression: ESC토글·TAB해제·캡처유지·이중닫힘방지·안내일치·영창가드 6군 통과');
+// ── 7) 실제 게임의 맵 시드를 표시한다 ───────────────────────────────────────
+{
+  assert.ok(
+    /private currentMapSeed: number \| null = null;/.test(scene),
+    '현재 런의 맵 시드를 씬 상태로 보관해야 한다',
+  );
+  const generatorAt = scene.indexOf('private runMapDefinition');
+  const generatorBlock = scene.slice(generatorAt, generatorAt + 1_300);
+  assert.ok(
+    /this\.currentMapSeed = generated\.seed;/.test(generatorBlock),
+    '생성에 실제 사용된 시드를 보관해야 한다',
+  );
+  const renderAt = scene.indexOf('private renderPauseMenu');
+  const renderBlock = scene.slice(renderAt, renderAt + 1_500);
+  assert.ok(
+    /맵 시드/.test(renderBlock) && /this\.currentMapSeed/.test(renderBlock),
+    'ESC 일시정지 메뉴가 현재 맵 시드를 표시해야 한다',
+  );
+  assert.ok(
+    /맵 시드  고정 프리셋/.test(renderBlock),
+    '시연·생성 실패 프리셋을 임의 숫자 시드처럼 표시하면 안 된다',
+  );
+  const hudAt = scene.indexOf('private drawHudBars()');
+  const hudBlock = scene.slice(hudAt, hudAt + 4_500);
+  assert.ok(
+    /minimapTop \+ MINIMAP_CONFIG\.height \+ 7/.test(hudBlock),
+    '맵 시드는 중앙 메뉴가 아니라 미니맵 바로 아래에 배치해야 한다',
+  );
+}
+
+console.log('pause key regression: ESC토글·TAB해제·캡처유지·이중닫힘방지·안내일치·영창가드·맵시드 7군 통과');

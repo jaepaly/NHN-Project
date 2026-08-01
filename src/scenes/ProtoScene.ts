@@ -246,6 +246,7 @@ import { EMPTY_RUN_MEMORY } from '../spell/runMemory';
 import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { showRewardCards } from '../ui/rewardCardOverlay';
 import { MinimapHud } from '../ui/minimapHud';
+import { MINIMAP_CONFIG } from '../ui/minimapLayout';
 import { pushOutOfBlocks, segmentBlocked } from '../combat-core/combat/terrainBlock';
 import type { TerrainBlock } from '../combat-core/combat/terrainBlock';
 import {
@@ -820,6 +821,11 @@ export class ProtoScene extends Phaser.Scene {
   private pauseMenuPlate!: Phaser.GameObjects.Graphics;
 
   private pauseMenuTitle!: Phaser.GameObjects.Text;
+
+  /** 현재 런의 재현용 맵 시드. 생성 맵이 아닌 시연·폴백은 null이다. */
+  private currentMapSeed: number | null = null;
+
+  private pauseMapSeedText!: Phaser.GameObjects.Text;
 
   private pauseMenuItems: Phaser.GameObjects.Text[] = [];
 
@@ -3471,13 +3477,16 @@ export class ProtoScene extends Phaser.Scene {
    *     600시드에서 0%였지만 **폴백이 없으면 런이 시작되지 않는다**. 안전망은 남긴다.
    */
   private runMapDefinition(useGenerator: boolean): MapGraphDefinition {
+    this.currentMapSeed = null;
     if (!useGenerator) return MAP_GRAPH_PRESET_01;
-    const generated = generateRunMap((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
+    const seed = (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0;
+    const generated = generateRunMap(seed);
     if (!generated) {
       // 조용히 넘어가면 "왜 항상 같은 맵이지"를 아무도 모른다
       console.warn('[map] 생성 상한 초과 — 고정 프리셋으로 폴백');
       return MAP_GRAPH_PRESET_01;
     }
+    this.currentMapSeed = generated.seed;
     return generated.definition;
   }
 
@@ -7026,6 +7035,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       letterSpacing: 6,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(106).setVisible(false);
 
+    this.pauseMapSeedText = this.add.text(width - 162, 0, '', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '12px',
+      color: UI_COLOR.textMuted,
+      letterSpacing: 1,
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100).setVisible(false);
+
 
     this.pauseMenuItems = PAUSE_MAIN.map((_, i) => this.add.text(
       width / 2,
@@ -7105,11 +7121,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.pauseDim.setVisible(visible);
     this.pauseMenuPlate.setVisible(visible);
     this.pauseMenuTitle.setVisible(visible);
+    this.pauseMapSeedText.setVisible(visible);
     this.pauseMenuItems.forEach((t) => t.setVisible(false));
     if (!visible) return;
 
     const { width } = this.scale;
     this.pauseMenuTitle.setText('일시정지');
+    this.pauseMapSeedText.setText(this.currentMapSeed === null
+      ? '맵 시드  고정 프리셋'
+      : `맵 시드  ${this.currentMapSeed}`);
     PAUSE_MAIN.forEach((row, i) => {
       const selected = i === this.pauseMenuIndex;
       const label = row.id === 'quit' && this.quitArmed ? '정말 나갈까? 한 번 더' : row.label;
@@ -7429,7 +7449,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       drawSectionRule(g, width - 306, RIGHT_PANEL.y + RIGHT_PANEL.padTop + 18, 288);
     }
     // 미니맵을 패널 아래로 — 높이가 바뀔 때만 옮긴다 (setTop이 동일 y면 no-op)
-    this.runMinimap?.setTop(RIGHT_PANEL.y + panelHeight + RIGHT_PANEL.gap);
+    const minimapTop = RIGHT_PANEL.y + panelHeight + RIGHT_PANEL.gap;
+    this.runMinimap?.setTop(minimapTop);
+    this.pauseMapSeedText?.setPosition(width - 162, minimapTop + MINIMAP_CONFIG.height + 7);
   }
 
   /**
