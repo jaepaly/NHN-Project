@@ -3,6 +3,7 @@ import { GeminiJudge, JUDGE_PROMPT_VERSION, JUDGE_SCHEMA_VERSION } from '../src/
 import { MockJudge } from '../src/spell/mockJudge';
 import type { UltimateResonanceContext } from '../src/spell/judge';
 import type { SpellJudgement } from '../src/spell/types';
+import { readFileSync } from 'node:fs';
 
 class MemoryStorage {
   private readonly values = new Map<string, string>();
@@ -69,8 +70,25 @@ try {
   assert.equal(castJudge.lastFallbackReason, undefined);
   assert.equal(fetchCount, 1);
 
-  // 3) 같은 필살영창이라도 현재 게이지 공명이 다르면 요청과 캐시를 분리한다.
+  // 3) Mock 폴백도 필살영창 계약(4막·6폼·4~6초·100 출력)을 지킨다.
+  const mockUltimate = await mock.judge('달이 바다에 추락하고 번개 폭풍이 솟구친다', {
+    castMode: 'ultimate',
+  });
+  assert.equal(mockUltimate.disposition, 'cast');
+  if (mockUltimate.disposition === 'cast') {
+    assert.equal(mockUltimate.plan?.castMode, 'ultimate');
+    assert.equal(mockUltimate.plan?.power, 100);
+    assert.equal(mockUltimate.plan?.sequences.length, 4);
+    assert.equal(mockUltimate.plan?.sequences.flatMap((sequence) => (
+      sequence.behaviors.filter((behavior) => behavior.type === 'form')
+    )).length, 6);
+    assert.ok((mockUltimate.plan?.durationMs ?? 0) >= 4000);
+    assert.ok((mockUltimate.plan?.durationMs ?? 0) <= 6000);
+  }
+
+  // 4) 같은 필살영창이라도 현재 게이지 공명이 다르면 요청과 캐시를 분리한다.
   storage.clear();
+  remotePayload = mockUltimate;
   const resonanceJudge = new GeminiJudge('https://proxy.invalid');
   const fireResonance: UltimateResonanceContext = {
     elements: ['fire'], forms: ['bolt'], effects: ['damage'], recentNames: ['화염구'],
@@ -87,7 +105,29 @@ try {
   await resonanceJudge.judge('모든 것을 끝내라', { castMode: 'ultimate', resonance: iceResonance });
   assert.equal(fetchCount, beforeResonance + 2, '동일 공명은 캐시를 재사용한다');
 
-  // 4) 모델이 의미 있는 짧은 주문을 fizzle해도 Mock이 발동으로 복구하고 캐시하지 않는다.
+  // 5) 필살 요청에 단일 주문이 오면 캐시하지 않고 필살 Mock으로 복구한다.
+  storage.clear();
+  remotePayload = await mock.judge('화염구');
+  const mismatchedJudge = new GeminiJudge('https://proxy.invalid');
+  const beforeMismatch = fetchCount;
+  const recoveredUltimate = await mismatchedJudge.judge('모든 것을 끝내라', {
+    castMode: 'ultimate',
+    resonance: fireResonance,
+  });
+  assert.equal(recoveredUltimate.disposition, 'cast');
+  if (recoveredUltimate.disposition === 'cast') {
+    assert.equal(recoveredUltimate.plan?.castMode, 'ultimate');
+  }
+  assert.equal(mismatchedJudge.lastSource, 'fallback');
+  assert.equal(mismatchedJudge.lastFallbackReason, 'invalid_response');
+  assert.equal(storage.length, 0, '모드가 틀린 응답은 캐시 금지');
+  await mismatchedJudge.judge('모든 것을 끝내라', {
+    castMode: 'ultimate',
+    resonance: fireResonance,
+  });
+  assert.equal(fetchCount, beforeMismatch + 2, '모드 불일치는 다음 호출에서 원격 재시도');
+
+  // 6) 모델이 의미 있는 짧은 주문을 fizzle해도 Mock이 발동으로 복구하고 캐시하지 않는다.
   storage.clear();
   remotePayload = {
     schema_version: 2,
@@ -167,6 +207,12 @@ try {
   assert.equal(networkJudge.lastFallbackReason, 'network_error');
 
   assert.equal(JUDGE_PROMPT_VERSION, 'meaning-v2.31-ultimate-resonance-echo');
+
+  const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+  assert.ok(
+    /judgement\.plan && \(this\.sequenceJudgeEnabled \|\| castMode === 'ultimate'\)/.test(scene),
+    '필살영창은 일반 시퀀스 플래그가 꺼져도 단일 주문 경로로 떨어지지 않는다',
+  );
 } finally {
   globalThis.fetch = originalFetch;
 }

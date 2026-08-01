@@ -113,4 +113,20 @@ const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   );
 }
 
-console.log('slowmo scope regression: 차단공통화·연쇄·고정대상·낙하예외·배율3축·플레이어이동·직접대입금지·복귀 8군 통과');
+// ── ③ DOM 영창 입력 전환이 눌린 이동키를 남기지 않는가 ──────────────────
+//
+// D를 누른 채 Enter로 input에 포커스를 넘기면 브라우저 keyup을 Phaser가 놓칠 수 있다.
+// 진입·판정·취소·완료 경계마다 Key 상태를 초기화해 자동 우측 이동을 막는다.
+{
+  const resetAt = scene.indexOf('private resetMovementKeys()');
+  assert.ok(resetAt > 0, '이동키 상태 초기화 함수를 둔다');
+  const resetBody = scene.slice(resetAt, resetAt + 300);
+  assert.ok(/Object\.values\(this\.moveKeys\)/.test(resetBody), 'WASD 네 방향을 모두 초기화한다');
+  assert.ok(/key\.reset\(\)/.test(resetBody), 'Phaser Key의 isDown 상태까지 초기화한다');
+  assert.ok(
+    (scene.match(/this\.resetMovementKeys\(\)/g) ?? []).length >= 4,
+    '영창 진입·판정·취소·완료 네 경계에서 이동키를 초기화한다',
+  );
+}
+
+console.log('slowmo scope regression: 차단·슬로모션·DOM 포커스 이동키 초기화 9군 통과');

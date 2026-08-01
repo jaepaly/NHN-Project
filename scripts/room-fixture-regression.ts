@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   ROOM_FIXTURE_CONFIG,
   ROOM_FIXTURE_GUIDE,
@@ -88,4 +89,25 @@ assert.equal(
   '도착 지점에서 설치물 안내가 보여야 직접 다가갈 이유를 안다',
 );
 
-console.log('room fixture regression: 사거리·방어·포탈대비·안내반경·무장지연·문구·도착격리 7군 통과');
+// 8) 보물/제단 입장 배너는 방 수명에 묶여 다음 방까지 남지 않는다.
+const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+const startRoomAt = scene.indexOf('private startRoom(');
+const startRoomBody = scene.slice(startRoomAt, startRoomAt + 350);
+assert.ok(
+  startRoomBody.includes('this.beginBannerRoomScope();'),
+  '새 방 시작 시 이전 방 배너를 즉시 정리한다',
+);
+const rewardlessAt = scene.indexOf("private startRewardlessRoom(kind: 'treasure' | 'altar')");
+const rewardlessBody = scene.slice(rewardlessAt, rewardlessAt + 1300);
+assert.equal(
+  (rewardlessBody.match(/scope: 'room'/g) ?? []).length,
+  2,
+  '보물방과 제단 입장 안내를 모두 방 범위로 표시한다',
+);
+const scopeAt = scene.indexOf('private beginBannerRoomScope()');
+const scopeBody = scene.slice(scopeAt, scopeAt + 800);
+assert.ok(/bannerRoomGeneration \+= 1/.test(scopeBody), '방 세대를 전환한다');
+assert.ok(/roomGeneration === null/.test(scopeBody), '전역 사건 배너는 큐에 보존한다');
+assert.ok(/activeBanner\.destroy\(true\)/.test(scopeBody), '이전 방의 활성 배너를 즉시 제거한다');
+
+console.log('room fixture regression: 사거리·방어·포탈대비·안내·도착격리·방 배너 수명 8군 통과');

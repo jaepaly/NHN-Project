@@ -597,6 +597,11 @@ interface ManaPotion {
   fullNoticeShown: boolean;
 }
 
+interface QueuedSystemBanner {
+  copy: SystemBannerCopy;
+  roomGeneration: number | null;
+}
+
 /**
  * 기술검증 프로토타입 씬 — W1 목표 (SUBMISSION_PLAN W1)
  * 검증 대상: 입력 → 판정(SpellJudge) → JSON → 파츠 조합 렌더링 1사이클
@@ -757,9 +762,11 @@ export class ProtoScene extends Phaser.Scene {
    * 주요 공지 큐 — 판 있는 배너는 **한 번에 하나만** 띄운다. 겹쳐 띄우면 판끼리
    * 포개져 오히려 못 읽는다. 진화·각성처럼 연달아 터지는 순간이 실제로 있다.
    */
-  private bannerQueue: SystemBannerCopy[] = [];
+  private bannerQueue: QueuedSystemBanner[] = [];
 
   private activeBanner: Phaser.GameObjects.Container | null = null;
+  private activeBannerRoomGeneration: number | null = null;
+  private bannerRoomGeneration = 0;
   private enemyProjectiles: EnemyProjectile[] = [];
   private hazardZones: HazardZone[] = [];
   private hazardDecorations: Phaser.GameObjects.GameObject[] = [];
@@ -2048,6 +2055,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private startRoom(roomIndex: number): void {
+    this.beginBannerRoomScope();
     const encounter = this.combatRunController.state;
     this.enemyHitStop.clear();
     this.enemyKnockbacks.clear();
@@ -3413,6 +3421,7 @@ export class ProtoScene extends Phaser.Scene {
         lines: ['생명을 내어주고 힘을 산다 · 거절할 수도 있다', ROOM_FIXTURE_GUIDE.altar],
         color: 0xd0a8ff,
         holdMs: 2800,
+        scope: 'room',
       });
     } else {
       this.announceBanner({
@@ -3420,6 +3429,7 @@ export class ProtoScene extends Phaser.Scene {
         lines: ['싸우지 않고 얻는다', ROOM_FIXTURE_GUIDE.treasure],
         color: 0xffd166,
         holdMs: 2600,
+        scope: 'room',
       });
     }
     // ⚠️ `방 N`과 설치물 안내를 따로 띄우지 않는다 (총괄 제보: "중앙에 뜨는 창이 중복으로
@@ -4915,8 +4925,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.announceSystemMessage(`마나 부족 · 비용 ${cost} / 보유 ${held}`, '#ffd166');
   }
 
+  /** DOM 입력으로 포커스를 넘길 때 Phaser가 놓친 keyup이 이동 상태에 남지 않게 한다. */
+  private resetMovementKeys(): void {
+    Object.values(this.moveKeys).forEach((key) => key.reset());
+  }
+
   private openIncant(castMode: 'normal' | 'ultimate' = 'normal'): void {
     this.audio.playSfx('incant-enter');
+    this.resetMovementKeys();
     this.incanting = true;
     this.incantCastMode = castMode;
     this.setTimeScale(0.1); // 슬로모션
@@ -4957,6 +4973,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private closeIncant(): void {
+    this.resetMovementKeys();
     this.incanting = false;
     this.incantCastMode = 'normal';
     this.setTimeScale(1);
@@ -5026,8 +5043,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       return;
     }
     if (this.activeBanner?.active) {
+      this.tweens.killTweensOf(this.activeBanner);
       this.activeBanner.destroy();
       this.activeBanner = null;
+      this.activeBannerRoomGeneration = null;
     }
     const title = document.createElement('div');
     title.className = 'incant-guide-title';
@@ -5099,6 +5118,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private beginJudging(): void {
+    this.resetMovementKeys();
     this.incanting = false;
     this.casting = true;
     this.setTimeScale(0.15);
@@ -5112,6 +5132,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private finishCastingUx(): void {
+    this.resetMovementKeys();
     this.casting = false;
     this.clearSequenceProgress();
     this.setTimeScale(1);
@@ -5259,9 +5280,21 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         return;
       }
 
+      // 판정기 구현이 잘못된 단일 주문을 반환해도 필살 게이지/마나를 일반 주문처럼
+      // 소비하지 않는다. 필살영창은 검증된 ultimate plan으로만 실행한다.
+      if (castMode === 'ultimate' && judgement.plan?.castMode !== 'ultimate') {
+        this.audio.playSfx('fizzle');
+        this.announceSystemMessage(
+          '필살영창 해석에 실패했습니다. 게이지는 보존됩니다.',
+          '#ffd166',
+          2600,
+        );
+        return;
+      }
+
       // 영창 시퀀스(복합 주문) — 판정이 plan을 실었고 기능 플래그가 켜져 있으면 시퀀스 런타임으로.
       // 플래그(VITE_SEQUENCE_JUDGE=0)로 언제든 v2 단일 경로로 즉시 복귀할 수 있다.
-      if (this.sequenceJudgeEnabled && judgement.plan) {
+      if (judgement.plan && (this.sequenceJudgeEnabled || castMode === 'ultimate')) {
         await this.runSequenceCast(judgement.plan, text, this.currentJudgeSource());
         return;
       }
@@ -7327,7 +7360,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
    */
   private announceBanner(copy: SystemBannerCopy): void {
     if (!this.scene?.isActive?.()) return;
-    this.bannerQueue.push(copy);
+    this.bannerQueue.push({
+      copy,
+      roomGeneration: copy.scope === 'room' ? this.bannerRoomGeneration : null,
+    });
     this.drainBannerQueue();
   }
 
@@ -7335,14 +7371,35 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (this.activeBanner?.active) return;
     const next = this.bannerQueue.shift();
     if (!next) return;
-    const banner = showSystemBanner(this, next);
+    if (next.roomGeneration !== null && next.roomGeneration !== this.bannerRoomGeneration) {
+      this.drainBannerQueue();
+      return;
+    }
+    const banner = showSystemBanner(this, next.copy);
     this.activeBanner = banner;
+    this.activeBannerRoomGeneration = next.roomGeneration;
     // 배너가 스스로 사라지면 다음 것을 꺼낸다 (등장 260 + 유지 + 퇴장 520)
-    const total = 260 + (next.holdMs ?? 2200) + 520;
+    const total = 260 + (next.copy.holdMs ?? 2200) + 520;
     this.time.delayedCall(total + 40, () => {
-      if (this.activeBanner === banner) this.activeBanner = null;
+      if (this.activeBanner === banner) {
+        this.activeBanner = null;
+        this.activeBannerRoomGeneration = null;
+      }
       this.drainBannerQueue();
     });
+  }
+
+  /** 새 방에 들어가면 이전 방 입장 안내만 즉시 폐기하고 전역 사건 배너는 보존한다. */
+  private beginBannerRoomScope(): void {
+    this.bannerRoomGeneration += 1;
+    this.bannerQueue = this.bannerQueue.filter((queued) => queued.roomGeneration === null);
+    if (this.activeBanner && this.activeBannerRoomGeneration !== null) {
+      this.tweens.killTweensOf(this.activeBanner);
+      if (this.activeBanner.active) this.activeBanner.destroy(true);
+      this.activeBanner = null;
+      this.activeBannerRoomGeneration = null;
+    }
+    this.drainBannerQueue();
   }
 
   private repositionAnnouncements(): void {
