@@ -1,4 +1,4 @@
-import type { SpellJudge } from './judge';
+import type { JudgeOptions, SpellJudge } from './judge';
 import type {
   SpellEffect,
   SpellElement,
@@ -364,18 +364,62 @@ function hash(text: string): number {
 export class MockJudge implements SpellJudge {
   readonly name = 'MockJudge(meaning-v2)';
 
-  async judge(text: string): Promise<SpellJudgement> {
+  async judge(text: string, options: JudgeOptions = {}): Promise<SpellJudgement> {
     const t = text.trim().toLowerCase();
     const prechecked = precheckText(t);
     if (prechecked) return prechecked;
 
     const spec = this.buildSpec(text, t);
     if (!spec) return FIZZLE_JUDGEMENT;
+    if (options.castMode === 'ultimate') {
+      const ultimatePlan = this.buildUltimatePlan(text, spec);
+      return ultimatePlan
+        ? { schema_version: 2, disposition: 'cast', spell: spec, plan: ultimatePlan }
+        : FIZZLE_JUDGEMENT;
+    }
     // 명시적 순차 마커가 있으면 복합 영창 plan을 함께 싣는다. spec은 폴백·기록용 대표.
     const plan = this.buildSequencePlan(text);
     return plan
       ? { schema_version: 2, disposition: 'cast', spell: spec, plan }
       : { schema_version: 2, disposition: 'cast', spell: spec };
+  }
+
+  /**
+   * 원격 판정 실패 시에도 필살영창의 계약(4막·6폼·4~6초·무마나)을 보존한다.
+   * 기본 주문의 의미를 유지하면서 효과별로 다른 연출 문법을 결정론적으로 조합한다.
+   */
+  private buildUltimatePlan(text: string, base: SpellSpec): SpellPlan | null {
+    const formsByEffect: Record<SpellEffect, readonly SpellForm[]> = {
+      damage: [base.form, 'wave', 'orbit', 'rain', 'chain', 'nova'],
+      heal: [base.form, 'buff', 'wall', 'zone', 'orbit', 'nova'],
+      shield: [base.form, 'wall', 'orbit', 'zone', 'chain', 'nova'],
+      buff: [base.form, 'buff', 'wall', 'zone', 'orbit', 'nova'],
+      control: [base.form, 'cage', 'zone', 'wall', 'chain', 'nova'],
+      summon: [base.form, 'summon', 'orbit', 'chain', 'wave', 'nova'],
+    };
+    const forms = formsByEffect[base.effect];
+    const specs = forms.map((form, index): SpellSpec => ({
+      ...base,
+      name: `${base.name} · ${index + 1}막`,
+      form,
+      target: form === 'buff' ? 'self' : form === 'nova' ? 'area' : base.target,
+      size: 'huge',
+      speed: 'normal',
+      power: 100,
+      cost: 0,
+    }));
+    return validateSpellPlan({
+      name: text.trim(),
+      castMode: 'ultimate',
+      power: 100,
+      durationMs: 4800,
+      sequences: [
+        { durationWeight: 1, behaviors: [{ type: 'form', spec: specs[0], powerWeight: 1 }] },
+        { durationWeight: 1, behaviors: specs.slice(1, 3).map((spec) => ({ type: 'form' as const, spec, powerWeight: 1 })) },
+        { durationWeight: 1, behaviors: specs.slice(3, 5).map((spec) => ({ type: 'form' as const, spec, powerWeight: 1 })) },
+        { durationWeight: 1, behaviors: [{ type: 'form', spec: specs[5], powerWeight: 1 }] },
+      ],
+    });
   }
 
   /**

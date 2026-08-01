@@ -94,7 +94,14 @@ export class GeminiJudge implements SpellJudge {
     // 2~3) 프록시 요청 + 스키마 재검증
     try {
       const raw = await this.fetchWithTimeout(key, castMode, resonance);
-      const judgement = validateJudgement(raw);
+      const validated = validateJudgement(raw);
+      // 필살영창 요청에 단일 주문이 돌아오면 일반 주문으로 자원을 소비시키지 않는다.
+      // 모드 계약이 맞는 plan만 캐시하고, 나머지는 필살영창 Mock 폴백으로 복구한다.
+      const judgement = validated?.disposition === 'cast'
+        && castMode === 'ultimate'
+        && validated.plan?.castMode !== 'ultimate'
+        ? null
+        : validated;
       if (judgement && judgement.disposition !== 'fizzle') {
         // cast/blocked만 캐시한다. 모델 드리프트가 만든 fizzle은 캐시에 고착시키지 않는다.
         this.writeCache(cacheKey, judgement);
@@ -111,9 +118,6 @@ export class GeminiJudge implements SpellJudge {
     // 4) 폴백 — 로컬 사전검사를 통과한 입력은 원격 fizzle도 모델 오류로 간주한다.
     // 명백한 키보드 매시·금칙어는 위 precheckText에서 이미 fizzle/blocked 처리됐다.
     this.lastSource = 'fallback';
-    if (castMode === 'ultimate') {
-      return { schema_version: 2, disposition: 'fizzle', reason: 'nonsense', message: '필살영창 해석에 실패했습니다. 게이지는 보존됩니다.' };
-    }
     return this.fallback.judge(text, options);
   }
 

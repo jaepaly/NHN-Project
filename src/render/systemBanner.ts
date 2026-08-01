@@ -22,6 +22,8 @@ export interface SystemBannerCopy {
   color: number;
   /** 표시 유지 시간(ms). 목록이 길면 읽을 시간을 더 준다. */
   holdMs?: number;
+  /** 방을 벗어나면 즉시 폐기해야 하는 입장 안내인지 여부. */
+  scope?: 'room';
 }
 
 const BANNER = {
