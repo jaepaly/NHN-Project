@@ -1571,6 +1571,7 @@ export class ProtoScene extends Phaser.Scene {
       if (this.deathHandled) return;
       const finalNode = this.mapGraph.current();
       this.runResearchTracker.recordRoomCleared(finalNode.id, finalNode.kind);
+      this.audio.playSfx('run-complete');
       if (import.meta.env.DEV) {
         void postPlayLog({
           type: 'run_completed',
@@ -3610,7 +3611,7 @@ export class ProtoScene extends Phaser.Scene {
     // WaveManager는 빈 정의에 예외를 던진다. 적 0인 웨이브 하나를 두되 start()를 부르지
     // 않는다 — waveIndex가 -1이라 update()도 아무것도 스폰하지 않는다.
     this.waveManager = new WaveManager([{ chaserCount: 0, shooterCount: 0, splitterCount: 0 }]);
-    this.audio.playBgm('combat');
+    this.audio.playBgm(kind === 'altar' ? 'altar' : 'reward');
     if (kind === 'altar') {
       // ⚠️ 여기서 걷지 않는다 — 대가는 **카드를 고를 때** 치른다(reward-applied).
       // 방에 들어선 것만으로 징수하면 거절권이 사라져 선택이 아니라 함정이 된다.

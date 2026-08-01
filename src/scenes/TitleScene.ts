@@ -21,6 +21,7 @@ const TITLE_COLORS = {
 
 export class TitleScene extends Phaser.Scene {
   private starting = false;
+  private audio!: GameAudio;
 
   /** 도감·설정이 열려 있는 동안 시작 트리거(클릭·Enter)를 막는다 */
   private codexOpen = false;
@@ -35,6 +36,7 @@ export class TitleScene extends Phaser.Scene {
   preload(): void {
     GameAudio.preloadSfx(this, 'title-start');
     GameAudio.preloadSfx(this, 'ui-confirm');
+    GameAudio.preloadBgm(this, 'title');
   }
 
   create(): void {
@@ -60,6 +62,9 @@ export class TitleScene extends Phaser.Scene {
     // 이펙트 밝기도 여기서 반영한다 — 타이틀에서 조절하고 바로 시작하면
     // 전투 씬이 loadSettings로 다시 읽지만, 그 사이 타이틀 연출은 이미 이 값을 쓴다
     const saved = loadSettings(window.localStorage);
+    this.audio = new GameAudio(this);
+    this.audio.applySettings(saved);
+    this.audio.playBgm('title');
     setVfxBrightness(saved.vfxBrightness);
     this.applyBrightness(saved.brightness);
 
@@ -112,7 +117,9 @@ export class TitleScene extends Phaser.Scene {
           // 설정을 닫고 바로 시작했을 때 첫 시전부터 적용된다
           setVfxBrightness(settings.vfxBrightness);
           this.applyBrightness(settings.brightness);
+          this.audio.applySettings(settings);
         },
+        mute: { get: () => this.audio.muted, toggle: () => this.audio.toggleMute() },
       });
       GameAudio.playOneShot(this, 'ui-confirm', loadSettings(window.localStorage));
     } finally {

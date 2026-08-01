@@ -19,6 +19,7 @@ TARGET_PEAK_DBFS = {
     "sfx-mana-crystal-pickup.wav": -9.0,
     "sfx-route-transition.wav": -7.0,
     "sfx-title-start.wav": -7.0,
+    "sfx-run-complete.wav": -7.0,
 }
 DEFAULT_TARGET_PEAK_DBFS = -6.0
 THRESHOLD_DBFS = -50.0

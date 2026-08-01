@@ -125,7 +125,7 @@ export interface SettingsOverlayOptions {
   audioNote?: string;
   /**
    * 음소거 토글 — 오디오를 가진 화면(전투)만 넘긴다. 없으면 행 자체를 안 그린다.
-   * 타이틀엔 GameAudio가 없어 토글할 대상이 없다.
+   * 오디오 인스턴스를 가진 화면만 넘기며, 없으면 행 자체를 그리지 않는다.
    */
   mute?: { get: () => boolean; toggle: () => boolean };
 }

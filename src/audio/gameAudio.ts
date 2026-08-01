@@ -16,10 +16,11 @@ export const SFX_NAMES = [
   'route-transition',
   'player-hit',
   'title-start',
+  'run-complete',
 ] as const;
 
 export type SfxName = (typeof SFX_NAMES)[number];
-export type BgmName = 'combat' | 'boss';
+export type BgmName = 'combat' | 'boss' | 'title' | 'reward' | 'altar';
 
 /** 마스터 — 설정의 효과음·배경음악 크기가 이 위에 곱해진다 */
 const MASTER_VOLUME = 0.5;
@@ -50,6 +51,7 @@ const SFX_KEYS: Record<SfxName, string> = {
   'route-transition': 'audio-sfx-route-transition',
   'player-hit': 'audio-sfx-player-hit',
   'title-start': 'audio-sfx-title-start',
+  'run-complete': 'audio-sfx-run-complete',
 };
 
 interface SfxPolicy {
@@ -65,6 +67,7 @@ const SFX_POLICY: Partial<Record<SfxName, SfxPolicy>> = {
   'ui-confirm': { volumeScale: 0.9, cooldownMs: 80 },
   'route-transition': { volumeScale: 1, cooldownMs: 250 },
   'title-start': { volumeScale: 1, cooldownMs: 250 },
+  'run-complete': { volumeScale: 1, cooldownMs: 500 },
 };
 
 export class GameAudio {
@@ -84,10 +87,9 @@ export class GameAudio {
     for (const name of SFX_NAMES) {
       this.preloadSfx(scene, name);
     }
-    scene.load.audio('audio-bgm-combat-intro', `${AUDIO_PATH}bgm-combat-intro.ogg`);
-    scene.load.audio('audio-bgm-combat-loop', `${AUDIO_PATH}bgm-combat-loop.ogg`);
-    scene.load.audio('audio-bgm-boss-intro', `${AUDIO_PATH}bgm-boss-intro.ogg`);
-    scene.load.audio('audio-bgm-boss-loop', `${AUDIO_PATH}bgm-boss-loop.ogg`);
+    for (const name of ['combat', 'boss', 'reward', 'altar'] as BgmName[]) {
+      this.preloadBgm(scene, name);
+    }
   }
 
   /** 타이틀처럼 전체 GameAudio를 만들지 않는 씬에서 필요한 SFX 하나만 준비한다. */
@@ -95,6 +97,18 @@ export class GameAudio {
     const key = SFX_KEYS[name];
     if (scene.cache.audio.exists(key)) return;
     scene.load.audio(key, `${AUDIO_PATH}sfx-${name}.ogg`);
+  }
+
+  /** 타이틀 등 필요한 트랙만 싣는 씬과 전체 전투 preload가 공유하는 BGM 로더. */
+  static preloadBgm(scene: Phaser.Scene, name: BgmName): void {
+    const introKey = `audio-bgm-${name}-intro`;
+    const loopKey = `audio-bgm-${name}-loop`;
+    if (!scene.cache.audio.exists(introKey)) {
+      scene.load.audio(introKey, `${AUDIO_PATH}bgm-${name}-intro.ogg`);
+    }
+    if (!scene.cache.audio.exists(loopKey)) {
+      scene.load.audio(loopKey, `${AUDIO_PATH}bgm-${name}-loop.ogg`);
+    }
   }
 
   /** 타이틀의 일회성 시작음처럼 GameAudio 인스턴스 밖에서 설정 볼륨을 지켜 재생한다. */

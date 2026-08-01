@@ -13,6 +13,7 @@ const names = [
   'route-transition',
   'player-hit',
   'title-start',
+  'run-complete',
 ] as const;
 
 for (const name of names) {
@@ -25,6 +26,8 @@ assert.match(audio, /'mana-crystal-pickup': \{ volumeScale: 0\.9, cooldownMs: 70
 assert.match(title, /GameAudio\.preloadSfx\(this, 'title-start'\)/);
 assert.match(title, /GameAudio\.playOneShot\(this, 'title-start'/);
 assert.match(title, /GameAudio\.preloadSfx\(this, 'ui-confirm'\)/);
+assert.match(title, /GameAudio\.preloadBgm\(this, 'title'\)/);
+assert.match(title, /this\.audio\.playBgm\('title'\)/);
 assert.equal(
   [...title.matchAll(/GameAudio\.playOneShot\(this, 'ui-confirm'/g)].length,
   2,
@@ -33,6 +36,8 @@ assert.equal(
 assert.doesNotMatch(binding, /confirmSelection/, 'standard rewards use reward-select without ui-confirm');
 assert.doesNotMatch(main, /confirmSelection/, 'reward binding must not inject ui-confirm');
 assert.match(proto, /this\.audio\.playSfx\('route-transition'\)/);
+assert.match(proto, /this\.audio\.playSfx\('run-complete'\)/);
+assert.match(proto, /playBgm\(kind === 'altar' \? 'altar' : 'reward'\)/);
 assert.match(proto, /showBossChoice[\s\S]*?this\.audio\.playSfx\('ui-confirm'\)/);
 assert.match(proto, /chooseInheritedAffinity[\s\S]*?this\.audio\.playSfx\('ui-confirm'\)/);
 assert.match(proto, /activatePauseMenuItem[\s\S]*?this\.audio\.playSfx\('ui-confirm'\)/);
@@ -43,5 +48,10 @@ assert.equal(
   2,
   'normal and room-clear sweep crystal pickup paths',
 );
+
+for (const name of ['title', 'reward', 'altar']) {
+  assert.ok(existsSync(`public/assets/audio/bgm-${name}-intro.ogg`), `${name}: intro OGG`);
+  assert.ok(existsSync(`public/assets/audio/bgm-${name}-loop.ogg`), `${name}: loop OGG`);
+}
 
 console.log('audio integration regression: ok');
