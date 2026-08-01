@@ -14,8 +14,6 @@ export const SEQUENCE_PLAN_LIMITS = {
   maxDurationMs: 3000,
   baseDurationMs: 500,
   durationMsPerPower: 25,
-  movePowerRatio: 0.1,
-  maxDirectionalMoveDistance: 420,
 } as const;
 
 /** Future judge contract: requested duration is clamped locally from total power. */
@@ -26,41 +24,6 @@ export function maxSequenceDurationMs(power: number): number {
     SEQUENCE_PLAN_LIMITS.baseDurationMs
       + safePower * SEQUENCE_PLAN_LIMITS.durationMsPerPower,
   );
-}
-
-/** 이동 목적지 화이트리스트 — 검증기(validateSpellPlan)와 런타임이 공유하는 단일 출처. */
-export const MOVE_DESTINATIONS = [
-  'cast-point',
-  'cast-direction',
-  'target-direction',
-  'away-from-target',
-  'random-direction',
-  'custom-vector',
-  'random-enemy',
-  'arena-center',
-] as const;
-
-export type MoveDestination = (typeof MOVE_DESTINATIONS)[number];
-
-export interface MoveBehavior {
-  type: 'move';
-  /** Future judge-schema enum; `away-from-target` retreats opposite the live local target. */
-  destination: MoveDestination;
-  /** Movement is still a magical behavior and must carry its own element identity. */
-  element: SpellElement;
-  distance?: number;
-  angle?: number;
-}
-
-/**
- * 화면 절대 방향 각도(도 단위, **화면 위=0 기준 시계방향**)를 단위 방향 벡터로 변환한다.
- *   위 0 → (0,-1) · 오른쪽 90 → (1,0) · 아래 180 → (0,1) · 왼쪽 -90 → (-1,0)
- * custom-vector 이동이 표적 위치와 **무관하게** 플레이어가 말한 화면 방향으로 가도록 한다.
- * (기존엔 표적 방향 기준 상대각이라 "왼쪽"이 적 위치에 따라 엉뚱한 화면 방향으로 갔다.)
- */
-export function screenDirectionFromAngle(angleDeg: number): { x: number; y: number } {
-  const rad = (angleDeg * Math.PI) / 180;
-  return { x: Math.sin(rad), y: -Math.cos(rad) };
 }
 
 export interface WaitBehavior {
@@ -83,12 +46,11 @@ export interface FormBehavior {
   tuning?: BehaviorTuning;
 }
 
-export type SpellBehavior = MoveBehavior | WaitBehavior | FormBehavior;
+export type SpellBehavior = WaitBehavior | FormBehavior;
 
 /** 실제 behavior가 사용하는 원소 집합. wait은 비원소이며 form은 보조 원소까지 포함한다. */
 export function behaviorElements(behavior: SpellBehavior): SpellElement[] {
   if (behavior.type === 'wait') return [];
-  if (behavior.type === 'move') return [behavior.element];
   return behavior.spec.element_secondary != null
     ? [behavior.spec.element_primary, behavior.spec.element_secondary]
     : [behavior.spec.element_primary];
@@ -110,6 +72,7 @@ export interface SpellSequence {
 
 export interface SpellPlan {
   name: string;
+  castMode?: 'normal' | 'ultimate';
   power: number;
   durationMs: number;
   sequences: SpellSequence[];
@@ -122,6 +85,7 @@ export interface ResolvedSpellSequence {
 
 export interface ResolvedSpellPlan {
   name: string;
+  castMode: 'normal' | 'ultimate';
   power: number;
   manaCost: number;
   sequences: ResolvedSpellSequence[];
@@ -190,7 +154,7 @@ function normalizeBehaviors(behaviors: readonly SpellBehavior[]): SpellBehavior[
  * - **wait 전용 시퀀스는 오버랩하지 않는다** — "심장이 두 번 뛰는 동안"처럼
  *   간격 자체가 내용인 행동을 당기면 의미가 죽는다.
  * - **마지막 시퀀스는 온전히 기다린다** — 겹칠 다음이 없고, 여기서 줄이면
- *   무적·진행바가 마지막 연출보다 먼저 끝난다.
+ *   진행바가 마지막 연출보다 먼저 끝난다.
  */
 export const SEQUENCE_FLOW_CONFIG = {
   /** 다음 시퀀스가 발동되는 이전 시퀀스 진행률 (0.7 = 70% 시점) */
@@ -206,7 +170,7 @@ const SUSTAINED_FINAL_FORMS = new Set<SpellForm>([
 export interface SequenceFlowTimeline {
   /** 시퀀스 i 발동 후 다음 발동까지 실제로 기다릴 ms */
   waitsMs: number[];
-  /** 실효 총 실행 시간(ms) — 무적·진행바가 이걸 쓴다 */
+  /** 실효 총 실행 시간(ms) — 진행바가 이 값을 쓴다 */
   totalMs: number;
   /** 진행바 경계(0~1) — 각 시퀀스 **발동 시점** 기준. 화면과 실제 발동이 일치한다 */
   boundaries: number[];
@@ -219,7 +183,6 @@ function isWaitOnly(sequence: ResolvedSpellSequence): boolean {
 function finalSequenceWaitMs(sequence: ResolvedSpellSequence): number {
   const duration = Math.max(0, sequence.durationMs);
   if (isWaitOnly(sequence)) return 0;
-  if (sequence.behaviors.some((behavior) => behavior.type === 'move')) return duration;
   const hasSustainedForm = sequence.behaviors.some((behavior) => (
     behavior.type === 'form' && SUSTAINED_FINAL_FORMS.has(behavior.spec.form)
   ));
@@ -247,48 +210,11 @@ export function sequenceFlowTimeline(
   return { waitsMs, totalMs, boundaries };
 }
 
-/**
- * move 체인 역할 — 연속된 이동이 "감속-정지-재가속" 없이 이어지게 하는 이징 힌트
- * (총괄 피드백 2차: "아직도 완전 스무스하지 않다").
- *
- * 오버랩(70% 발동)만으로는 부족했다. 모든 move가 easeInOut이라 끝에서 완전
- * 정지하고, 다음 move가 이전 트윈을 끊고 속도 0에서 재가속했다 — "슥—뚝—슥".
- *
- * 해법: 이동이 이어질 자리는 끝에서 멈추지 않는다.
- * - solo: 앞뒤에 move 없음 → easeInOut (혼자면 부드럽게 출발·도착)
- * - lead: 뒤에 move가 이어짐 → easeIn (최고속으로 다음에 인계)
- * - mid : 앞뒤 모두 move → Linear (등속 연결)
- * - tail: 앞에서 이어받음 → easeOut (관성을 받아 감속 마무리)
- * wait 전용 시퀀스는 체인을 끊는다 — 정지가 의도인 자리다.
- */
-export type MoveChainRole = 'solo' | 'lead' | 'mid' | 'tail';
-
-export function moveChainRoles(
-  sequences: readonly ResolvedSpellSequence[],
-): (MoveChainRole | null)[] {
-  const hasMove = sequences.map((sequence) => (
-    sequence.behaviors.some((behavior) => behavior.type === 'move')
-  ));
-  const waitOnly = sequences.map((sequence) => (
-    sequence.behaviors.every((behavior) => behavior.type === 'wait')
-  ));
-  return sequences.map((_, index) => {
-    if (!hasMove[index]) return null;
-    // wait가 끼면 체인이 끊긴다 — 인접 판정에서 wait 너머는 보지 않는다.
-    const prevLinked = index > 0 && hasMove[index - 1] && !waitOnly[index - 1];
-    const nextLinked = index < sequences.length - 1
-      && hasMove[index + 1] && !waitOnly[index + 1];
-    if (prevLinked && nextLinked) return 'mid';
-    if (nextLinked) return 'lead';
-    if (prevLinked) return 'tail';
-    return 'solo';
-  });
-}
-
 export function resolveSpellPlan(plan: SpellPlan): ResolvedSpellPlan {
+  const ultimate = plan.castMode === 'ultimate';
   const power = Math.max(0, Math.min(100, finiteNonNegative(plan.power, 0)));
   const durationMs = Math.min(
-    maxSequenceDurationMs(power),
+    ultimate ? 6000 : maxSequenceDurationMs(power),
     finiteNonNegative(plan.durationMs, 0),
   );
   const sequences = plan.sequences
@@ -303,7 +229,7 @@ export function resolveSpellPlan(plan: SpellPlan): ResolvedSpellPlan {
       && sequence.behaviors.every((behavior) => behavior.type === 'wait')
     ));
   // wait은 사건 사이의 간격이다. 뒤따르는 사건이 없는 trailing wait은 의미가 없고
-  // 진행바·무적·다음 입력만 늦추므로 입력 출처와 무관하게 로컬에서 제거한다.
+  // 진행바·다음 입력만 늦추므로 입력 출처와 무관하게 로컬에서 제거한다.
   while (sequences.length > 0 && sequences.at(-1)!.behaviors.every(
     (behavior) => behavior.type === 'wait',
   )) {
@@ -317,15 +243,6 @@ export function resolveSpellPlan(plan: SpellPlan): ResolvedSpellPlan {
   const normalizedDurationWeight = totalDurationWeight > 0
     ? totalDurationWeight
     : Math.max(1, sequences.length);
-  const moveCount = sequences.reduce(
-    (count, sequence) => count
-      + sequence.behaviors.filter((behavior) => behavior.type === 'move').length,
-    0,
-  );
-  const effectPower = Math.max(
-    0,
-    power - power * SEQUENCE_PLAN_LIMITS.movePowerRatio * moveCount,
-  );
   const formBehaviors = sequences.flatMap((sequence) => (
     sequence.behaviors.filter((behavior): behavior is FormBehavior => behavior.type === 'form')
   ));
@@ -336,8 +253,9 @@ export function resolveSpellPlan(plan: SpellPlan): ResolvedSpellPlan {
 
   return {
     name: plan.name,
+    castMode: ultimate ? 'ultimate' : 'normal',
     power,
-    manaCost: Math.max(5, Math.round(power * 0.6)),
+    manaCost: ultimate ? 0 : Math.max(5, Math.round(power * 0.6)),
     sequences: sequences.map((sequence) => ({
       durationMs: durationMs * (
         totalDurationWeight > 0 ? sequence.durationWeight : 1
@@ -346,7 +264,7 @@ export function resolveSpellPlan(plan: SpellPlan): ResolvedSpellPlan {
         if (behavior.type !== 'form') return behavior;
         const weight = finiteNonNegative(behavior.powerWeight, 1);
         const allocatedPower = totalPowerWeight > 0
-          ? effectPower * weight / totalPowerWeight
+          ? power * weight / totalPowerWeight
           : 0;
         return {
           ...behavior,
@@ -422,9 +340,6 @@ export function debugSpellPlan(keyword: string): SpellPlan | null {
       return {
         name: '돌진 폭발', power: 75, durationMs: 1500,
         sequences: [
-          { durationWeight: 2, behaviors: [
-            { type: 'move', destination: 'target-direction', element: 'fire', distance: 190 },
-          ] },
           { durationWeight: 1, behaviors: [
             form(spell('돌진 폭발', 'nova', 'fire'), 1),
           ] },
@@ -435,7 +350,6 @@ export function debugSpellPlan(keyword: string): SpellPlan | null {
         name: '광휘 돌진 감금', power: 82, durationMs: 1900,
         sequences: [
           { durationWeight: 2, behaviors: [
-            { type: 'move', destination: 'custom-vector', element: 'light', distance: 150, angle: -25 },
             form(spell('광휘 돌진', 'beam', 'light'), 2, { range: 3, damage: 1 }),
           ] },
           { durationWeight: 1, behaviors: [
@@ -470,12 +384,10 @@ export function debugSpellPlan(keyword: string): SpellPlan | null {
         name: '꽃잎 댄스', power: 78, durationMs: 3000,
         sequences: [
           { durationWeight: 2, behaviors: [
-            { type: 'move', destination: 'custom-vector', element: 'wind', distance: 145, angle: -50 },
             form(spell('꽃잎 윤무', 'orbit', 'wind'), 2),
           ] },
           { durationWeight: 1, behaviors: [{ type: 'wait' }] },
           { durationWeight: 2, behaviors: [
-            { type: 'move', destination: 'custom-vector', element: 'wind', distance: 145, angle: 70 },
             form(spell('꽃잎 파동', 'wave', 'wind'), 2),
           ] },
         ],
@@ -488,13 +400,14 @@ export function debugSpellPlan(keyword: string): SpellPlan | null {
             { amount: 3, duration: 1 }),
         ] }],
       };
-    case 'movement-only':
+    case 'self-buff-only':
+    case 'movement-only': // 이전 DEV 키 호환 별칭
       return {
         name: '삼연보', power: 60, durationMs: 2100,
         sequences: [
-          { durationWeight: 1, behaviors: [{ type: 'move', destination: 'custom-vector', element: 'wind', distance: 150, angle: -45 }] },
-          { durationWeight: 1, behaviors: [{ type: 'move', destination: 'custom-vector', element: 'wind', distance: 170, angle: 45 }] },
-          { durationWeight: 1, behaviors: [{ type: 'move', destination: 'target-direction', element: 'wind', distance: 190 }] },
+          { durationWeight: 1, behaviors: [form(spell('첫 바람 자취', 'wave', 'wind'), 1)] },
+          { durationWeight: 1, behaviors: [{ type: 'wait' }] },
+          { durationWeight: 1, behaviors: [form(spell('마지막 바람 자취', 'nova', 'wind'), 1)] },
         ],
       };
     case 'phoenix-dive':
@@ -502,7 +415,6 @@ export function debugSpellPlan(keyword: string): SpellPlan | null {
         name: '불사조의 낙화', power: 88, durationMs: 2700,
         sequences: [
           { durationWeight: 2, behaviors: [
-            { type: 'move', destination: 'target-direction', element: 'fire', distance: 220 },
             form(spell('불사조의 궤적', 'wave', 'fire'), 2, { range: 3, damage: 2 }),
           ] },
           { durationWeight: 1, behaviors: [{ type: 'wait' }] },
@@ -518,9 +430,7 @@ export function debugSpellPlan(keyword: string): SpellPlan | null {
           { durationWeight: 1, behaviors: [
             form(spell('뇌광 표식', 'bolt', 'lightning'), 1),
           ] },
-          { durationWeight: 1, behaviors: [
-            { type: 'move', destination: 'random-enemy', element: 'lightning', distance: 180 },
-          ] },
+          { durationWeight: 1, behaviors: [{ type: 'wait' }] },
           { durationWeight: 2, behaviors: [
             form(spell('추적 낙뢰', 'chain', 'lightning'), 3, { range: 3, damage: 2 }),
           ] },
@@ -546,12 +456,10 @@ export function debugSpellPlan(keyword: string): SpellPlan | null {
         name: '일식의 왈츠', power: 92, durationMs: 2800,
         sequences: [
           { durationWeight: 2, behaviors: [
-            { type: 'move', destination: 'custom-vector', element: 'dark', distance: 170, angle: -55 },
             form(spell('그림자 선회', 'orbit', 'dark'), 2, { radius: 2, damage: 1 }),
           ] },
           { durationWeight: 1, behaviors: [{ type: 'wait' }] },
           { durationWeight: 2, behaviors: [
-            { type: 'move', destination: 'custom-vector', element: 'light', distance: 170, angle: 75 },
             form(spell('개기일식', 'beam', 'light'), 3, { range: 3, damage: 2 }),
           ] },
         ],
@@ -575,7 +483,6 @@ export function debugSpellPlan(keyword: string): SpellPlan | null {
         name: '해일의 역류', power: 82, durationMs: 2300,
         sequences: [
           { durationWeight: 2, behaviors: [
-            { type: 'move', destination: 'away-from-target', element: 'water', distance: 210 },
             form(spell('밀어내는 해류', 'wave', 'water', 'control', 'area', ['knockback']), 2,
               { range: 3, strength: 2 }),
           ] },
@@ -595,9 +502,7 @@ export function debugSpellPlan(keyword: string): SpellPlan | null {
             form(spell('폭풍 고리', 'orbit', 'lightning'), 2,
               { radius: 2, damage: 2 }),
           ] },
-          { durationWeight: 1, behaviors: [
-            { type: 'move', destination: 'random-direction', element: 'wind', distance: 150 },
-          ] },
+          { durationWeight: 1, behaviors: [{ type: 'wait' }] },
           { durationWeight: 2, behaviors: [
             form(spell('낙뢰의 가지', 'chain', 'lightning', 'damage', 'enemy', ['shock']), 3,
               { range: 3, damage: 2 }),
@@ -626,7 +531,6 @@ export function debugSpellPlan(keyword: string): SpellPlan | null {
         name: '새벽의 순례', power: 76, durationMs: 2100,
         sequences: [
           { durationWeight: 2, behaviors: [
-            { type: 'move', destination: 'arena-center', element: 'light', distance: 0 },
             form(spell('새벽의 치유', 'buff', 'light', 'heal', 'self'), 2,
               { amount: 3, duration: 1 }),
           ] },
@@ -640,18 +544,10 @@ export function debugSpellPlan(keyword: string): SpellPlan | null {
       return {
         name: '허공답보', power: 72, durationMs: 2200,
         sequences: [
-          { durationWeight: 1, behaviors: [
-            { type: 'move', destination: 'away-from-target', element: 'dark', distance: 160 },
-          ] },
-          { durationWeight: 1, behaviors: [
-            { type: 'move', destination: 'custom-vector', element: 'dark', distance: 150, angle: 90 },
-          ] },
-          { durationWeight: 1, behaviors: [
-            { type: 'move', destination: 'random-enemy', element: 'dark', distance: 180 },
-          ] },
-          { durationWeight: 1, behaviors: [
-            { type: 'move', destination: 'arena-center', element: 'dark', distance: 0 },
-          ] },
+          { durationWeight: 1, behaviors: [form(spell('첫 공허 잔상', 'orbit', 'dark'), 1)] },
+          { durationWeight: 1, behaviors: [{ type: 'wait' }] },
+          { durationWeight: 1, behaviors: [form(spell('두 번째 공허 잔상', 'wave', 'dark'), 1)] },
+          { durationWeight: 1, behaviors: [{ type: 'wait' }] },
         ],
       };
     case 'glass-star-shot':
@@ -662,7 +558,6 @@ export function debugSpellPlan(keyword: string): SpellPlan | null {
             form(spell('유리별 조각', 'bolt', 'ice', 'damage', 'enemy', ['freeze']), 1),
           ] },
           { durationWeight: 1, behaviors: [
-            { type: 'move', destination: 'cast-direction', element: 'light', distance: 140 },
             form(spell('굴절광', 'beam', 'light'), 2, { range: 3, damage: 1 }),
           ] },
           { durationWeight: 2, behaviors: [

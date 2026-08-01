@@ -52,6 +52,12 @@ assert.equal(gauge.ready, false, '방출이 게이지를 비운다');
 assert.equal(gauge.ratio, 0);
 assert.equal(gauge.tryRelease(dual), null, '빈 게이지는 방출 불가');
 
+const ultimateGauge = new FusionGauge();
+ultimateGauge.charge(FUSION_CONFIG.fullCharge);
+assert.equal(ultimateGauge.consumeUltimate(), true, '만충 게이지는 필살영창에 소비된다');
+assert.equal(ultimateGauge.ready, false, '필살영창 소비 후 게이지는 비워진다');
+assert.equal(ultimateGauge.consumeUltimate(), false, '빈 게이지는 다시 소비할 수 없다');
+
 // 5) 기존 상태이상과 합집합 — 중복 없이
 const g2 = new FusionGauge();
 g2.charge(FUSION_CONFIG.fullCharge);
@@ -89,4 +95,39 @@ assert.ok(FUSION_CONFIG.fullCharge >= 90, '만충 기준이 중형 주문 3발 �
     '방출 시전이 마나를 낸다 — 필살기는 마나 무소모(spend 0)여야 한다');
 }
 
-console.log('fusion gauge regression: 충전·방출게이트·격상내용·소모/보존·합집합·리셋·마나무소모 8군 통과');
+// 9) 필살영창 공명은 현재 게이지에 실제로 기여한 주문만, 기여 마나만큼 누적한다.
+{
+  const resonanceGauge = new FusionGauge();
+  resonanceGauge.charge(100, {
+    name: '화염구', elements: ['fire'], forms: ['bolt'], effects: ['damage'],
+  });
+  resonanceGauge.charge(50, {
+    name: '얼음 장벽', elements: ['ice'], forms: ['wall'], effects: ['shield'],
+  });
+  resonanceGauge.charge(30, {
+    name: '만충 뒤 암흑', elements: ['dark'], forms: ['nova'], effects: ['damage'],
+  });
+  assert.deepEqual(resonanceGauge.resonance.elements, ['fire', 'ice'],
+    '마지막 주문은 남은 20만 기여하고 만충 뒤 주문은 기록하지 않는다');
+  assert.deepEqual(resonanceGauge.resonance.forms, ['bolt', 'wall']);
+  assert.deepEqual(resonanceGauge.resonance.effects, ['damage', 'shield']);
+  assert.deepEqual(resonanceGauge.resonance.recentNames, ['화염구', '얼음 장벽']);
+
+  assert.equal(resonanceGauge.consumeUltimate(), true);
+  assert.deepEqual(resonanceGauge.resonance, {
+    elements: [], forms: [], effects: [], recentNames: [],
+  }, '유효한 필살영창 소비 시 공명도 함께 초기화한다');
+
+  const failedGauge = new FusionGauge();
+  failedGauge.charge(30, {
+    name: '바람 칼날', elements: ['wind'], forms: ['slash'], effects: ['damage'],
+  });
+  assert.equal(failedGauge.consumeUltimate(), false);
+  assert.deepEqual(failedGauge.resonance, {
+    elements: ['wind'], forms: ['slash'], effects: ['damage'], recentNames: ['바람 칼날'],
+  }, '게이지 미충족/판정 실패 경로는 공명을 보존한다');
+  failedGauge.reset();
+  assert.equal(failedGauge.resonance.recentNames.length, 0, '명시적 reset은 공명도 비운다');
+}
+
+console.log('fusion gauge regression: 9개 그룹 통과');

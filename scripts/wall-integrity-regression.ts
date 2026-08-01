@@ -197,8 +197,8 @@ import { WALL_CONFIG } from '../src/combat-core/combat/persistentFormConfig';
 
   // 부서지면 실제로 사라진다
   assert.ok(
-    /if \(broke\) \{\s*this\.clearActiveWall\(\);/.test(scene),
-    '내구도가 다하면 벽이 사라져야 한다',
+    /if \(broke\) \{\s*this\.clearActiveWall\(wall\);/.test(scene),
+    '내구도가 다하면 부서진 해당 벽만 사라져야 한다',
   );
   // 렌더가 친화도를 읽는다 — 종전엔 상수라 친화가 화면에 닿지 않았다
   assert.ok(

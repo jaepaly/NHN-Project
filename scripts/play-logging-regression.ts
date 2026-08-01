@@ -47,7 +47,7 @@ const sequence: SpellJudgement = {
     sequences: [
       {
         behaviors: [
-          { type: 'move', destination: 'away-from-target', element: 'light', distance: 120 },
+          { type: 'form', spec: { ...spell, effect: 'buff', target: 'self', form: 'buff', power: 0, cost: 0 } },
           { type: 'wait' },
         ],
       },

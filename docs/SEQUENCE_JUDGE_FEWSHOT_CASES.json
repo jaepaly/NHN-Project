@@ -25,9 +25,9 @@
       }
     },
     {
-      "id": "embodied-motion-parallel-plan",
+      "id": "embodied-motion-form-plan",
       "input": "내가 번개가 되어 파고들며 벤다",
-      "boundary": "플레이어 체현 이동과 참격이 동시에 일어나므로 한 sequence의 move+form이다.",
+      "boundary": "체현 이동의 방향감은 참격 form의 속도와 사거리로 표현하며 플레이어 좌표는 바꾸지 않는다.",
       "expected": {
         "schema_version": 2,
         "disposition": "cast",
@@ -39,11 +39,6 @@
             {
               "durationWeight": 2,
               "behaviors": [
-                {
-                  "type": "move",
-                  "destination": "target-direction",
-                  "element": "lightning"
-                },
                 {
                   "type": "form",
                   "powerWeight": 2,
@@ -225,9 +220,9 @@
       }
     },
     {
-      "id": "sequential-move-then-form-plan",
+      "id": "movement-word-then-form-plan",
       "input": "뒤로 물러선 다음 화염 폭풍을 일으킨다",
-      "boundary": "플레이어 이동이 완료된 뒤 공격하므로 move와 form을 별도 sequence로 나눈다.",
+      "boundary": "이동 동사는 좌표 이동으로 출력하지 않되 '다음'의 시간 관계는 wait 뒤 form으로 보존한다.",
       "expected": {
         "schema_version": 2,
         "disposition": "cast",
@@ -238,13 +233,7 @@
           "sequences": [
             {
               "durationWeight": 1,
-              "behaviors": [
-                {
-                  "type": "move",
-                  "destination": "away-from-target",
-                  "element": "fire"
-                }
-              ]
+              "behaviors": [{ "type": "wait" }]
             },
             {
               "durationWeight": 2,
@@ -351,9 +340,9 @@
       }
     },
     {
-      "id": "pure-movement-plan",
+      "id": "movement-imagery-form-plan",
       "input": "바람을 딛고 왼쪽과 오른쪽으로 연달아 도약한다",
-      "boundary": "플레이어의 연속 이동 자체가 효과다. form이나 buff를 만들지 않고 move 단계만 사용한다.",
+      "boundary": "이동 표현은 플레이어 좌표를 바꾸지 않고 바람 form의 방향감과 시간차로 해석한다.",
       "expected": {
         "schema_version": 2,
         "disposition": "cast",
@@ -364,27 +353,31 @@
           "sequences": [
             {
               "durationWeight": 1,
-              "behaviors": [
-                {
-                  "type": "move",
-                  "destination": "custom-vector",
-                  "element": "wind",
-                  "angle": -90,
-                  "distance": 150
-                }
-              ]
+                "behaviors": [{
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "왼바람 자취", "effect": "damage", "target": "area",
+                    "element_primary": "wind", "element_secondary": null, "form": "wave",
+                    "size": "medium", "speed": "fast", "status": [], "power": 0, "cost": 0
+                  }
+                }]
             },
             {
               "durationWeight": 1,
-              "behaviors": [
-                {
-                  "type": "move",
-                  "destination": "custom-vector",
-                  "element": "wind",
-                  "angle": 90,
-                  "distance": 150
-                }
-              ]
+                "behaviors": [{ "type": "wait" }]
+              },
+              {
+                "durationWeight": 1,
+                "behaviors": [{
+                  "type": "form",
+                  "powerWeight": 1,
+                  "spec": {
+                    "name": "오른바람 자취", "effect": "damage", "target": "area",
+                    "element_primary": "wind", "element_secondary": null, "form": "wave",
+                    "size": "medium", "speed": "fast", "status": [], "power": 0, "cost": 0
+                  }
+                }]
             }
           ]
         }

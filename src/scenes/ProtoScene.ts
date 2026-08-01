@@ -298,16 +298,11 @@ import {
   behaviorElements,
   behaviorUsesAnyElement,
   resolveSpellPlan,
-  moveChainRoles,
-  screenDirectionFromAngle,
-  SEQUENCE_PLAN_LIMITS,
   sequenceFlowTimeline,
   tuningScale,
 } from '../spell/sequencePlan';
 import type {
   FormBehavior,
-  MoveBehavior,
-  MoveChainRole,
   SequenceFlowTimeline,
   ResolvedSpellPlan,
   SpellPlan,
@@ -506,6 +501,8 @@ interface SpellExecutionOptions {
    * 나오는 드문 시전이라 여기만 특별하게 둔다.
    */
   fusionRelease?: boolean;
+  /** 같은 필살영창 plan 안의 지속 form은 서로 교체하지 않고 함께 유지한다. */
+  stackPersistentForms?: boolean;
 }
 
 interface EnemyKnockbackState {
@@ -871,6 +868,8 @@ export class ProtoScene extends Phaser.Scene {
   private incantGuide: { title: string; lines: string[] } | null = null;
   private incanting = false;
   private casting = false;
+  /** 입력창을 열 때 확정한다. 제출 순간 Shift 상태에 의존하지 않는다. */
+  private incantCastMode: 'normal' | 'ultimate' = 'normal';
   /**
    * 영창 바 리스너 — #incant-bar는 씬 밖 영속 DOM이라, 익명 등록은 씬 재진입
    * (런 종료→타이틀→새 런)마다 누적돼 Enter 한 번에 영창이 겹으로 나갔다
@@ -893,8 +892,18 @@ export class ProtoScene extends Phaser.Scene {
         this.blockWordLimitCast();
         return;
       }
+      const forceUltimate = import.meta.env.DEV && (
+        import.meta.env.VITE_FORCE_ULTIMATE === '1' || window.location.hash === '#ult'
+      );
+      const castMode = forceUltimate ? 'ultimate' : this.incantCastMode;
+      if (castMode === 'ultimate' && !forceUltimate && !this.fusionGauge.ready) {
+        this.audio.playSfx('fizzle');
+        this.announceSystemMessage('필살영창 게이지가 부족합니다.', '#e2b7ff', 2200);
+        this.focusIncantBar();
+        return;
+      }
       this.beginJudging();
-      void this.castFromText(text);
+      void this.castFromText(text, castMode);
     } else if (e.key === 'Escape') {
       this.closeIncant();
     }
@@ -902,15 +911,6 @@ export class ProtoScene extends Phaser.Scene {
 
   /** setupRunFlow 1회 가드 — 컨트롤러도 씬 필드로 영속이라 재진입마다 on()을 걸면 겹알림 */
   private runFlowBound = false;
-  /**
-   * 시퀀스 이동 트윈들 — **이전 트윈을 멈추지 않는다.**
-   * tweens.add는 다음 틱부터 움직이는데 이전 것을 같은 프레임에 stop하면
-   * 인계 프레임이 1프레임 정지(속도 0)됐다가 다음 프레임에 2프레임치를 몰아
-   * 이동한다(실측: 인계마다 0 → 스파이크). 이전 트윈을 살려두면 그 프레임을
-   * 이전 경로가 채우고, 새 트윈이 첫 틱에 현재 위치를 캡처해 자연 인계된다
-   * (같은 속성은 나중 add가 덮어쓴다). 배열은 시퀀스 종료 시 일괄 정리용.
-   */
-  private sequenceMoveTweens: Phaser.Tweens.Tween[] = [];
   /** 영창 연 횟수 — 온보딩 예시 placeholder를 순환시키는 인덱스 */
   private incantOpenCount = 0;
   /** 첫 영창 안내를 이미 띄웠는지 (localStorage로 재플레이엔 생략) */
@@ -942,8 +942,8 @@ export class ProtoScene extends Phaser.Scene {
   /** 활성 소환체들 — 분신 1 / 군체 N / 포탑 1 / 기본 오브 1 (#97 ②) */
   private activeSummons: SummonedOrb[] = [];
   private activeSummonKnockbackDistance = 0;
-  private activeWall: ActiveWall | null = null;
-  private activeOrbit: ActiveOrbit | null = null;
+  private activeWalls: ActiveWall[] = [];
+  private activeOrbits: ActiveOrbit[] = [];
   /** 성장 누적 표식 (룬 링·친화 오라) — 보상 선택 때 갱신, 매 프레임 플레이어 추종 */
   private growthMarks!: GrowthMarks;
   /** 주문서 유산 선택 중 — 카드가 키를 캡처하는 동안 전투를 멈춘다 */
@@ -1249,10 +1249,12 @@ export class ProtoScene extends Phaser.Scene {
     this.updateStatusText();
 
     this.setupIncantBar();
-    this.input.keyboard!.on('keydown-ENTER', () => {
+    this.input.keyboard!.on('keydown-ENTER', (event: KeyboardEvent) => {
       // 일시정지 중엔 Enter가 메뉴 선택 — 영창 열기보다 우선한다
       if (this.buildInspectOpen) { this.activatePauseMenuItem(); return; }
-      if (!this.incanting && !this.casting) this.tryOpenIncant();
+      if (!this.incanting && !this.casting) {
+        this.tryOpenIncant(event.shiftKey ? 'ultimate' : 'normal');
+      }
     });
     this.input.keyboard!.on('keydown-UP', () => {
       if (this.buildInspectOpen) this.movePauseMenu(-1);
@@ -1332,7 +1334,7 @@ export class ProtoScene extends Phaser.Scene {
       const d = (delta / 1000) * this.timeScale;
       this.playerState.update(d);
       this.basicAttackCooldownRemaining = Math.max(0, this.basicAttackCooldownRemaining - d);
-      this.updatePlayerMovement(delta / 1000);
+      this.updatePlayerMovement(d);
       this.updateRoomCurse(delta / 1000, d);
       this.updatePlayerAura(d);
       this.updateEnemyControls(d);
@@ -1359,7 +1361,7 @@ export class ProtoScene extends Phaser.Scene {
       // 설치물 단계에서는 **이동만** 허용한다 — 전투는 멈춘 채 직접 다가간다.
       // 이게 없으면 무전투 방에서 조작이 잠겨 설치물을 열 수 없다(런이 갇힌다).
       const d = (delta / 1000) * this.timeScale;
-      this.updatePlayerMovement(delta / 1000);
+      this.updatePlayerMovement(d);
       // ⚠️ **따라다니는 것들은 여기서도 갱신해야 한다** (총괄 제보: "보상 선택시 정령이
       // 갑자기 거기에 멈추는 버그").
       //
@@ -1680,8 +1682,8 @@ export class ProtoScene extends Phaser.Scene {
     this.hazardZones = [];
     this.activeSummons = [];
     this.hazardDecorations = [];
-    this.activeWall = null;
-    this.activeOrbit = null;
+    this.activeWalls = [];
+    this.activeOrbits = [];
   }
   /** 오토 비중 스냅샷 — 콘솔 리포트·재측정(window.__autoShare)용 */
   private autoShareSnapshot(): Record<DamageSource, number> & { autoSharePercent: number } {
@@ -2455,7 +2457,9 @@ export class ProtoScene extends Phaser.Scene {
   /** 다음 런 저주 후보 가중치에 사용할 실제 WASD 이동 거리. */
   private runMovementDistance = 0;
   private updatePlayerMovement(deltaSeconds: number): void {
-    if (this.incanting || this.casting || !this.playerState.alive) return;
+    // 판정·시퀀스 영창 중에도 플레이어 위치는 계속 갱신된다.
+    // 각 행동은 발동 시점의 실제 위치를 기준으로 실행한다.
+    if (this.incanting || !this.playerState.alive) return;
 
     const direction = new Phaser.Math.Vector2(
       Number(this.moveKeys.right.isDown) - Number(this.moveKeys.left.isDown),
@@ -4438,13 +4442,13 @@ if (applied) this.playPlayerHit(
         continue;
       }
 
-      const wall = this.activeWall;
-      if (wall && sweepIntersectsPolyline(
+      const blockedByWall = this.activeWalls.some((wall) => sweepIntersectsPolyline(
         previous,
         { x: projectile.body.x, y: projectile.body.y },
         5 + WALL_CONFIG.thickness / 2,
         wall.points,
-      )) {
+      ));
+      if (blockedByWall) {
         this.destroyEnemyProjectile(projectile);
         continue;
       }
@@ -4635,7 +4639,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.incantBar.addEventListener('keydown', this.onIncantKeydown);
   }
 
-  private tryOpenIncant(): void {
+  private tryOpenIncant(requestedMode: 'normal' | 'ultimate' = 'normal'): void {
     if (!this.isCombatActive()) {
       this.announceSystemMessage('전투 대기');
       return;
@@ -4662,7 +4666,16 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       );
       return;
     }
-    this.openIncant();
+    const forceUltimate = import.meta.env.DEV && (
+      import.meta.env.VITE_FORCE_ULTIMATE === '1' || window.location.hash === '#ult'
+    );
+    const castMode = forceUltimate ? 'ultimate' : requestedMode;
+    if (castMode === 'ultimate' && !forceUltimate && !this.fusionGauge.ready) {
+      this.audio.playSfx('fizzle');
+      this.announceSystemMessage('필살영창 게이지가 부족합니다.', '#e2b7ff', 2200);
+      return;
+    }
+    this.openIncant(castMode);
   }
 
   /**
@@ -4729,9 +4742,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.announceSystemMessage(`마나 부족 · 비용 ${cost} / 보유 ${held}`, '#ffd166');
   }
 
-  private openIncant(): void {
+  private openIncant(castMode: 'normal' | 'ultimate' = 'normal'): void {
     this.audio.playSfx('incant-enter');
     this.incanting = true;
+    this.incantCastMode = castMode;
     this.setTimeScale(0.1); // 슬로모션
     this.input.keyboard!.disableGlobalCapture();
     this.incantWrap.classList.add('active');
@@ -4749,8 +4763,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 위계: 마나(예산) → 입력 → 대역(선택지) → 조작 안내. 종전에는 요금표와 조작 안내가
     // 12px 회색 한 줄에 뭉쳐 있어 둘 다 안 읽혔다 — 이제 요금표는 대역 칩이 맡는다.
     this.incantHint.textContent = this.activeRoomCurse?.kind === 'word-limit'
-      ? '한글 6자 · 영문 10자 상당 — Enter 발동 · Esc 취소'
-      : 'Enter 발동 · Esc 취소';
+      ? `한글 6자 · 영문 10자 상당 — Enter ${castMode === 'ultimate' ? '필살영창 ' : ''}발동 · Esc 취소`
+      : castMode === 'ultimate'
+        ? '필살영창 입력 · Enter 발동 · Esc 취소'
+        : this.fusionGauge.ready
+          ? 'Enter 발동 · Shift+Enter로 필살영창 진입 · Esc 취소'
+          : 'Enter 발동 · Esc 취소';
     this.incantChargeLabel.textContent = '시간 흐름 10%';
     this.renderIncantGuide();
     this.updateIncantCharge();
@@ -4767,6 +4785,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
   private closeIncant(): void {
     this.incanting = false;
+    this.incantCastMode = 'normal';
     this.setTimeScale(1);
     this.input.keyboard!.enableGlobalCapture();
     this.incantWrap.classList.remove(
@@ -4784,7 +4803,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
   private updateIncantCharge(): void {
     // 마나는 두 경로 공통 — 금언 방에서도 예산은 마나다 (금언은 그 위에 얹힌 제약)
-    this.incantState.textContent = `마나 ${Math.floor(this.playerState.mana)}`;
+    this.incantState.textContent = this.incantCastMode === 'ultimate'
+      ? '필살영창 · 준비 완료'
+      : `마나 ${Math.floor(this.playerState.mana)}`;
     this.incantWrap.classList.toggle(
       'mana-dry', reachableBand(Math.floor(this.playerState.mana)) === null,
     );
@@ -4798,7 +4819,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.incantWrap.style.setProperty('--charge', `${percent}%`);
       this.incantWrap.classList.remove('word-limit-blocked');
       this.incantWrap.classList.toggle('word-limit-over', overBudget);
-      this.incantHint.textContent = '한글 6자 · 영문 10자 상당 — Enter 발동 · Esc 취소';
+      this.incantHint.textContent = `한글 6자 · 영문 10자 상당 — Enter ${this.incantCastMode === 'ultimate' ? '필살영창 ' : ''}발동 · Esc 취소`;
       this.incantCount.textContent = `금언 ${cost} / ${WORD_LIMIT_CURSE_CONFIG.budget}`;
       this.incantChargeLabel.textContent = cost === 0
         ? '언령 대기'
@@ -4936,7 +4957,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
   /**
    * 검증된 SpellPlan을 실행한다 — DEV 쇼케이스와 실판정 시퀀스의 공통 경로.
-   * 마나(plan 단위 1회)·시퀀스 기록·각인 대표 투영·반복 페널티·무적/UX·실행을 한 번에.
+   * 마나(plan 단위 1회)·시퀀스 기록·각인 대표 투영·반복 페널티·UX·실행을 한 번에.
    */
   private async runSequenceCast(
     rawPlan: SpellPlan,
@@ -4944,7 +4965,19 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     source: JudgeSource,
   ): Promise<void> {
     const plan = resolveSpellPlan(rawPlan);
-    if (!this.playerState.trySpendMana(plan.manaCost)) {
+    const ultimate = plan.castMode === 'ultimate';
+    const resonanceNames = ultimate
+      ? this.fusionGauge.resonance.recentNames.slice(-2)
+      : [];
+    const devForcedUltimate = import.meta.env.DEV && (
+      import.meta.env.VITE_FORCE_ULTIMATE === '1' || window.location.hash === '#ult'
+    );
+    if (ultimate && !devForcedUltimate && !this.fusionGauge.consumeUltimate()) {
+      this.audio.playSfx('fizzle');
+      this.announceSystemMessage('필살영창 게이지가 부족합니다.', '#e2b7ff', 2200);
+      return;
+    }
+    if (!ultimate && !this.playerState.trySpendMana(plan.manaCost)) {
       this.audio.playSfx('fizzle');
       this.announceManaShortage(plan.manaCost);
       return;
@@ -4970,12 +5003,20 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       });
     }
     // 융합 게이지 — 시퀀스도 수동 영창이므로 충전한다 (방출 격상은 v1에선 단일 주문만)
-    if (this.fusionGauge.charge(plan.manaCost)) {
-      this.announceSystemMessage('융합의 힘이 응축됐다 — 두 원소를 담아 영창하라 (마나 무소모)', '#e2b7ff', 3400);
-    }
+    const formSpecs = plan.sequences.flatMap((sequence) => sequence.behaviors.flatMap((behavior) => (
+      behavior.type === 'form' ? [behavior.spec] : []
+    )));
     const sequenceElements = [...new Set(plan.sequences.flatMap((sequence) => (
       sequence.behaviors.flatMap(behaviorElements)
     )))];
+    if (!ultimate && this.fusionGauge.charge(plan.manaCost, {
+      name: plan.name,
+      elements: sequenceElements,
+      forms: formSpecs.map((spec) => spec.form),
+      effects: formSpecs.map((spec) => spec.effect),
+    })) {
+      this.announceSystemMessage('융합의 힘이 응축됐다 — 두 원소를 담아 영창하라 (마나 무소모)', '#e2b7ff', 3400);
+    }
     // 사용 기반 친화 성장 — 시퀀스도 수동 영창. 대표(첫) 원소만 올려 다원소 폭증 방지.
     if (sequenceElements[0]) {
       const grown = this.combatRunController.growAffinityFromUse(sequenceElements[0]);
@@ -5004,7 +5045,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
     this.markOnboarded();
     this.clearIncantGuide();
-    this.beginSequenceExecutionUx(plan);
+    this.beginSequenceExecutionUx(plan, resonanceNames);
     if (sequenceHistoryEntry.power < sequenceHistoryEntry.basePower) {
       const penaltyPct = Math.round(
         (1 - sequenceHistoryEntry.power / sequenceHistoryEntry.basePower) * 100,
@@ -5021,10 +5062,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   // ── 판정 → 렌더링 사이클 ────────────────────────────────────
-  private async castFromText(text: string): Promise<void> {
+  private async castFromText(text: string, castMode: 'normal' | 'ultimate' = 'normal'): Promise<void> {
     this.casting = true;
     try {
-      const judgement = await this.judge.judge(text);
+      const judgement = await this.judge.judge(text, {
+        castMode,
+        ...(castMode === 'ultimate' ? { resonance: this.fusionGauge.resonance } : {}),
+      });
       if (!this.playerState.alive || !this.isCombatActive()) {
         this.announceSystemMessage('행동 불가');
         return;
@@ -5063,7 +5107,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
       this.playerState.trySpendMana(castPlan.spend);
 
-      if (!fusedSpec && this.fusionGauge.charge(castPlan.spend)) {
+      if (!fusedSpec && this.fusionGauge.charge(castPlan.spend, {
+        name: spec.name,
+        elements: [spec.element_primary, ...(spec.element_secondary ? [spec.element_secondary] : [])],
+        forms: [spec.form],
+        effects: [spec.effect],
+      })) {
         this.announceSystemMessage(
           '융합의 힘이 응축됐다 — 두 원소를 담아 영창하라 (마나 무소모)',
           '#e2b7ff',
@@ -5296,18 +5345,18 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (count > 1) this.announceSystemMessage('메아리가 세 겹으로 울렸다', '#d0a8ff', 1800);
   }
 
-  private beginSequenceExecutionUx(plan: ResolvedSpellPlan): void {
+  private beginSequenceExecutionUx(plan: ResolvedSpellPlan, resonanceNames: string[] = []): void {
     this.setTimeScale(1);
     this.input.keyboard!.enableGlobalCapture();
     this.incantWrap.classList.remove('active', 'judging');
     this.incantWrap.setAttribute('aria-hidden', 'true');
     this.incantBar.disabled = false;
     this.incantBar.blur();
-    this.announceSequencePlan(plan);
+    this.announceSequencePlan(plan, resonanceNames);
     this.playCastFlare();
   }
 
-  private announceSequencePlan(plan: ResolvedSpellPlan): void {
+  private announceSequencePlan(plan: ResolvedSpellPlan, resonanceNames: string[] = []): void {
     const forms = plan.sequences.flatMap((sequence) => (
       sequence.behaviors.filter((behavior): behavior is FormBehavior => behavior.type === 'form')
     ));
@@ -5322,7 +5371,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       ? paletteColorToCss(ELEMENT_PALETTES[primary].core)
       : '#b7c8ff';
     const elementLabel = elements.length > 0 ? elements.join('+') : '무속성';
-    const label = this.add.text(width / 2, height * 0.32, plan.name, {
+    const ultimate = plan.castMode === 'ultimate';
+    const label = this.add.text(width / 2, height * 0.32, ultimate ? `필살영창 · ${plan.name}` : plan.name, {
       fontFamily: '"Noto Serif KR", "Malgun Gothic", serif',
       fontSize: '42px',
       fontStyle: 'bold',
@@ -5336,7 +5386,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const meta = this.add.text(
       width / 2,
       height * 0.32 + 36,
-      `${elementLabel} · sequence ${plan.sequences.length} · power ${plan.power}`,
+      ultimate && resonanceNames.length > 0
+        ? `공명 · ${resonanceNames.join(' / ')}`
+        : `${elementLabel} · sequence ${plan.sequences.length} · power ${plan.power}`,
       { fontSize: '14px', color: '#8fa4ff' },
     ).setOrigin(0.5).setAlpha(0).setScrollFactor(0).setDepth(100);
     this.tweens.add({
@@ -5366,11 +5418,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       lastTargetPoint: null,
     };
     // 오버랩 타임라인(총괄 발안): 이전 시퀀스 70% 시점에 다음 발동 — 행동이 끊기지
-    // 않고 이어진다. 무적·진행바도 실효 시간 기준이라 화면·판정·보호가 전부 일치.
+    // 않고 이어진다. 진행바는 실효 시간 기준이며, 플레이어 조작과 피해 판정은 유지한다.
     const timeline = sequenceFlowTimeline(plan.sequences);
-    const chainRoles = moveChainRoles(plan.sequences);
     this.beginSequenceProgress(plan, timeline);
-    this.playerState.applyInvulnerability(timeline.totalMs / 1000);
     let blackoutIlluminated = false;
     let heatwaveCooled = false;
 
@@ -5393,12 +5443,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ) {
           heatwaveCooled = this.tryApplyHeatwaveCooling(behaviorElements(behavior));
         }
-        if (behavior.type === 'move') {
-          this.executeSequenceMove(
-            behavior, sequence.durationMs, targetState, chainRoles[sequenceIndex] ?? 'solo',
+        if (behavior.type === 'form') {
+          this.executeSequenceForm(
+            behavior,
+            targetState,
+            repeatPowerScale,
+            plan.castMode === 'ultimate',
           );
-        } else if (behavior.type === 'form') {
-          this.executeSequenceForm(behavior, targetState, repeatPowerScale);
         }
       }
       const waitMs = timeline.waitsMs[sequenceIndex];
@@ -5409,8 +5460,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
     }
 
-    for (const tween of this.sequenceMoveTweens) tween.stop();
-    this.sequenceMoveTweens = [];
     this.clearSequenceProgress();
   }
 
@@ -5483,6 +5532,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     behavior: FormBehavior,
     targetState: SequenceTargetState,
     repeatPowerScale: number,
+    stackPersistentForms = false,
   ): void {
     const { spec: baseSpec, tuning } = behavior;
     const priorUsages = this.spellHistory.allBehaviorUsages;
@@ -5523,6 +5573,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       controlDurationScale: tuningScale(tuning, 'duration'),
       controlStrengthScale: tuningScale(tuning, 'strength'),
       shieldAmountScale: tuningScale(tuning, 'amount'),
+      stackPersistentForms,
       onAffectEnemy: (enemy) => {
         if (targetState.lockedEnemy?.alive) return;
         targetState.lockedEnemy = enemy;
@@ -5530,110 +5581,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       },
     };
     this.applySpellEffect(spec, undefined, false, 0, options);
-  }
-
-  private executeSequenceMove(
-    behavior: MoveBehavior,
-    durationMs: number,
-    targetState: SequenceTargetState,
-    chainRole: MoveChainRole = 'solo',
-  ): void {
-    const from = new Phaser.Math.Vector2(this.player.x, this.player.y);
-    const livingEnemies = this.enemies.filter((enemy) => enemy.alive);
-    const targetEnemy = targetState.lockedEnemy?.alive
-      ? targetState.lockedEnemy
-      : behavior.destination === 'random-enemy' && livingEnemies.length > 0
-        ? Phaser.Utils.Array.GetRandom(livingEnemies)
-        : this.nearestEnemy();
-    const targetPoint = targetEnemy
-      ? new Phaser.Math.Vector2(targetEnemy.x, targetEnemy.y)
-      : from.clone().add(this.lastMoveDir.clone().scale(180));
-    const baseDirection = targetPoint.clone().subtract(from);
-    if (baseDirection.lengthSq() === 0) baseDirection.copy(this.lastMoveDir);
-    if (baseDirection.lengthSq() === 0) baseDirection.set(0, -1);
-    baseDirection.normalize();
-
-    let destination: Phaser.Math.Vector2;
-    const requestedDistance = Math.min(
-      SEQUENCE_PLAN_LIMITS.maxDirectionalMoveDistance,
-      Math.max(0, behavior.distance ?? 180),
-    );
-    switch (behavior.destination) {
-      case 'cast-point':
-      case 'random-enemy':
-        destination = targetPoint;
-        break;
-      case 'arena-center':
-        destination = new Phaser.Math.Vector2(
-          this.worldBounds.centerX,
-          this.worldBounds.centerY,
-        );
-        break;
-      case 'random-direction':
-        destination = from.clone().add(new Phaser.Math.Vector2(1, 0)
-          .rotate(Phaser.Math.FloatBetween(-Math.PI, Math.PI))
-          .scale(requestedDistance));
-        break;
-      case 'custom-vector': {
-        // 화면 절대 방향(위=0 기준 시계방향). 표적 위치와 무관 — "왼쪽"은 항상 화면 왼쪽.
-        // (기존엔 baseDirection(표적 방향) 기준 상대각이라 적 위치에 따라 방향이 어긋났다.)
-        const dir = screenDirectionFromAngle(behavior.angle ?? 0);
-        destination = from.clone().add(
-          new Phaser.Math.Vector2(dir.x, dir.y).scale(requestedDistance),
-        );
-        break;
-      }
-      case 'away-from-target':
-        destination = from.clone().subtract(baseDirection.clone().scale(requestedDistance));
-        break;
-      case 'cast-direction':
-      case 'target-direction':
-      default:
-        destination = from.clone().add(baseDirection.scale(requestedDistance));
-        break;
-    }
-    destination.set(
-      Phaser.Math.Clamp(destination.x, this.worldBounds.left + 22, this.worldBounds.right - 22),
-      Phaser.Math.Clamp(destination.y, this.worldBounds.top + 22, this.worldBounds.bottom - 22),
-    );
-
-    this.lastMoveDir.copy(destination).subtract(from).normalize();
-
-    if (durationMs <= 0) {
-      // 즉시 이동은 예외적으로 잔여 트윈을 멈춘다 — 안 멈추면 다음 프레임에
-      // 살아 있는 이전 트윈이 순간이동을 도로 덮어쓴다.
-      for (const tween of this.sequenceMoveTweens) tween.stop();
-      this.sequenceMoveTweens = [];
-      this.player.setPosition(destination.x, destination.y);
-      return;
-    }
-    // 체인 이징 — 이동이 이어질 자리는 끝에서 멈추지 않는다 (moveChainRoles 주석 참조).
-    // 인계는 오버랩 70% 시점에 일어나므로, lead/mid는 그 시점에 아직 고속이어야
-    // 다음 move가 속도감을 이어받는다. easeInOut 연쇄는 "슥—뚝—슥"이 된다.
-    const chainEase = chainRole === 'lead'
-      ? 'Sine.easeIn'
-      : chainRole === 'mid'
-        ? 'Linear'
-        : chainRole === 'tail'
-          ? 'Sine.easeOut'
-          : 'Sine.easeInOut';
-    const tween = this.tweens.add({
-      targets: this.player,
-      x: destination.x,
-      y: destination.y,
-      duration: durationMs,
-      ease: chainEase,
-      onUpdate: (activeTween) => {
-        if (!this.playerState.alive || !this.isCombatActive()) activeTween.stop();
-      },
-      onComplete: () => {
-        this.sequenceMoveTweens = this.sequenceMoveTweens.filter((t) => t !== tween);
-      },
-      onStop: () => {
-        this.sequenceMoveTweens = this.sequenceMoveTweens.filter((t) => t !== tween);
-      },
-    });
-    this.sequenceMoveTweens.push(tween);
   }
 
   private applySpellEffect(
@@ -5964,7 +5911,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     spec: SpellSpec,
     options?: SpellExecutionOptions,
   ): void {
-    this.clearActiveWall();
+    if (!options?.stackPersistentForms) this.clearActiveWall();
+    while (this.activeWalls.length >= 6) this.clearActiveWall(this.activeWalls[0]);
     const target = spec.target === 'self'
       ? this.nearestEnemy()
       : densestDirectionalTarget(
@@ -5989,7 +5937,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       .elementalAffinity[spec.element_primary] ?? 0;
     const view = this.add.graphics().setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
     const maxIntegrity = wallMaxIntegrity(affinity);
-    this.activeWall = {
+    const wall: ActiveWall = {
       spec: { ...spec, status: [...spec.status] },
       points,
       view,
@@ -6003,7 +5951,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       maxIntegrity,
       drawnWear: 'intact',
     };
-    this.drawWall(this.activeWall);
+    this.activeWalls.push(wall);
+    this.drawWall(wall);
   }
 
   /**
@@ -6057,7 +6006,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private createOrbit(spec: SpellSpec, options?: SpellExecutionOptions): void {
-    this.clearActiveOrbit();
+    if (!options?.stackPersistentForms) this.clearActiveOrbit();
+    while (this.activeOrbits.length >= 6) this.clearActiveOrbit(this.activeOrbits[0]);
     const palette = ELEMENT_PALETTES[spec.element_primary];
     const count = orbitCount(spec.size);
     const views = Array.from({ length: count }, () => {
@@ -6068,7 +6018,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         .setBlendMode(Phaser.BlendModes.ADD);
       return this.add.container(this.player.x, this.player.y, [halo, core]).setDepth(8);
     });
-    this.activeOrbit = {
+    this.activeOrbits.push({
       spec: { ...spec, status: [...spec.status] },
       views,
       elapsedSeconds: 0,
@@ -6077,75 +6027,83 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       durationSeconds: ORBIT_CONFIG.durationSeconds * (options?.controlDurationScale ?? 1),
       radiusScale: options?.radiusScale ?? 1,
       options,
-    };
-  }
-
-  private updatePersistentForms(deltaSeconds: number): void {
-    const wall = this.activeWall;
-    if (wall) {
-      wall.remainingSeconds -= deltaSeconds;
-      if (wall.remainingSeconds <= 0) this.clearActiveWall();
-    }
-
-    const orbit = this.activeOrbit;
-    if (!orbit) return;
-    orbit.elapsedSeconds += deltaSeconds;
-    if (orbit.elapsedSeconds >= orbit.durationSeconds) {
-      this.clearActiveOrbit();
-      return;
-    }
-    orbit.angle += orbitAngularVelocity(orbit.spec.speed) * deltaSeconds;
-    const center = { x: this.player.x, y: this.player.y - 8 };
-    orbit.views.forEach((view, index) => {
-      const point = orbitPoint(
-        center,
-        orbit.angle,
-        index,
-        orbit.views.length,
-        orbit.radiusScale,
-      );
-      view.setPosition(point.x, point.y);
-      for (const enemy of [...this.enemies]) {
-        if (!enemy.alive) continue;
-        if (Phaser.Math.Distance.Between(point.x, point.y, enemy.x, enemy.y)
-          > ORBIT_CONFIG.contactRadius + enemy.collisionRadius) continue;
-        if (!repeatHitReady(orbit.lastHitAt.get(enemy), orbit.elapsedSeconds)) continue;
-        orbit.lastHitAt.set(enemy, orbit.elapsedSeconds);
-        if (orbit.spec.effect === 'control') {
-          this.applyPersistentControl(
-            enemy,
-            orbit.spec,
-            orbit.options,
-            this.player.x,
-            this.player.y,
-          );
-        } else {
-          const damage = spellImpactDamageFromPower(
-            orbit.spec.power,
-            ORBIT_CONFIG.damageMultiplier * (orbit.options?.damageScale ?? 1),
-          );
-          const damaged = this.damageEnemy(
-            enemy,
-            this.spellDamageAgainst(enemy, orbit.spec, damage),
-            undefined,
-            this.player.x,
-            this.player.y,
-            false,
-            'persistent',
-            orbit.spec.status.includes('knockback')
-              ? knockbackDistanceForForm('orbit')
-              : 0,
-          );
-          if (damaged) orbit.options?.onAffectEnemy?.(enemy);
-          this.applyOnHitStatuses(enemy, orbit.spec);
-        }
-      }
     });
   }
 
+  private updatePersistentForms(deltaSeconds: number): void {
+    for (const wall of [...this.activeWalls]) {
+      wall.remainingSeconds -= deltaSeconds;
+      if (wall.remainingSeconds <= 0) this.clearActiveWall(wall);
+    }
+
+    for (const orbit of [...this.activeOrbits]) {
+      orbit.elapsedSeconds += deltaSeconds;
+      if (orbit.elapsedSeconds >= orbit.durationSeconds) {
+        this.clearActiveOrbit(orbit);
+        continue;
+      }
+      orbit.angle += orbitAngularVelocity(orbit.spec.speed) * deltaSeconds;
+      const center = { x: this.player.x, y: this.player.y - 8 };
+      orbit.views.forEach((view, index) => {
+        const point = orbitPoint(
+          center,
+          orbit.angle,
+          index,
+          orbit.views.length,
+          orbit.radiusScale,
+        );
+        view.setPosition(point.x, point.y);
+        for (const enemy of [...this.enemies]) {
+          if (!enemy.alive) continue;
+          if (Phaser.Math.Distance.Between(point.x, point.y, enemy.x, enemy.y)
+            > ORBIT_CONFIG.contactRadius + enemy.collisionRadius) continue;
+          if (!repeatHitReady(orbit.lastHitAt.get(enemy), orbit.elapsedSeconds)) continue;
+          orbit.lastHitAt.set(enemy, orbit.elapsedSeconds);
+          if (orbit.spec.effect === 'control') {
+            this.applyPersistentControl(
+              enemy,
+              orbit.spec,
+              orbit.options,
+              this.player.x,
+              this.player.y,
+            );
+          } else {
+            const damage = spellImpactDamageFromPower(
+              orbit.spec.power,
+              ORBIT_CONFIG.damageMultiplier * (orbit.options?.damageScale ?? 1),
+            );
+            const damaged = this.damageEnemy(
+              enemy,
+              this.spellDamageAgainst(enemy, orbit.spec, damage),
+              undefined,
+              this.player.x,
+              this.player.y,
+              false,
+              'persistent',
+              orbit.spec.status.includes('knockback')
+                ? knockbackDistanceForForm('orbit')
+                : 0,
+            );
+            if (damaged) orbit.options?.onAffectEnemy?.(enemy);
+            this.applyOnHitStatuses(enemy, orbit.spec);
+          }
+        }
+      });
+    }
+  }
+
   private resolveWallEnemyCollision(enemy: CombatEnemy, previous: FormPoint): void {
-    const wall = this.activeWall;
-    if (!wall || !enemy.alive) return;
+    if (!enemy.alive) return;
+    for (const wall of [...this.activeWalls]) {
+      this.resolveSingleWallEnemyCollision(wall, enemy, previous);
+    }
+  }
+
+  private resolveSingleWallEnemyCollision(
+    wall: ActiveWall,
+    enemy: CombatEnemy,
+    previous: FormPoint,
+  ): void {
     // 두께가 친화도로 변하므로 충돌 반경도 따라간다 — 상수 14를 쓰면 굵은 벽이
     // 눈에만 굵고 실제로는 얇은 판정을 갖는다
     const halfThickness = wallThickness(wall.affinity) / 2;
@@ -6198,7 +6156,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         paletteColorToCss(ELEMENT_PALETTES[wall.spec.element_primary].core),
       );
       if (broke) {
-        this.clearActiveWall();
+        this.clearActiveWall(wall);
         return;
       }
       // 마모 단계가 바뀌었을 때만 다시 그린다 — 매 충돌 재작화는 낭비다
@@ -6259,14 +6217,26 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.applyOnHitStatuses(enemy, wall.spec);
   }
 
-  private clearActiveWall(): void {
-    this.activeWall?.view.destroy();
-    this.activeWall = null;
+  private clearActiveWall(wall?: ActiveWall): void {
+    if (!wall) {
+      for (const active of this.activeWalls) active.view.destroy();
+      this.activeWalls = [];
+      return;
+    }
+    wall.view.destroy();
+    this.activeWalls = this.activeWalls.filter((active) => active !== wall);
   }
 
-  private clearActiveOrbit(): void {
-    for (const view of this.activeOrbit?.views ?? []) view.destroy(true);
-    this.activeOrbit = null;
+  private clearActiveOrbit(orbit?: ActiveOrbit): void {
+    if (!orbit) {
+      for (const active of this.activeOrbits) {
+        for (const view of active.views) view.destroy(true);
+      }
+      this.activeOrbits = [];
+      return;
+    }
+    for (const view of orbit.views) view.destroy(true);
+    this.activeOrbits = this.activeOrbits.filter((active) => active !== orbit);
   }
 
   private spiritName(role: 'attack' | 'heal' | 'guard', element?: SpellElement): string {
@@ -7084,8 +7054,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     this.fusionLabelText
       .setText(ready
-        ? '✦ 필살기 준비 — 이중 원소로 방출 · 마나 무소모 ✦'
-        : `필살기 융합  ${Math.round(ratio * 100)}%`)
+        ? '✦ 필살영창 준비 · Shift+Enter · 마나 무소모 ✦'
+        : `필살영창  ${Math.round(ratio * 100)}%`)
       .setColor(ready ? '#f0d9ff' : '#a99cff')
       .setPosition(width / 2, y - 6);
   }

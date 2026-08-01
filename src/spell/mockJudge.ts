@@ -125,7 +125,7 @@ const ELEMENT_KEYWORDS: Record<SpellElement, string[]> = {
   ],
   earth: [
     // '락'(rock)은 "벼락"에 걸려 번개를 대지로 오판시켰다 — 영문 'rock'만 남긴다
-    '대지', '바위', '돌', '지진', '암석', '가시', '숲', '나무', '자연',
+    '대지', '바위', '돌', '지진', '암석', '가시', '숲', '나무', '자연', '꽃', '꽃잎', '개화', '정원',
     '어스', '스톤', '그라운드', '네이처', '포레스트', '퀘이크',
     'earth', 'rock', 'stone', 'forest', 'nature', 'quake', 'ground',
   ],
@@ -385,7 +385,30 @@ export class MockJudge implements SpellJudge {
    */
   private buildSequencePlan(text: string): SpellPlan | null {
     const clauses = splitSequenceClauses(text);
-    if (clauses.length < 2) return null;
+    if (clauses.length < 2) {
+      // 제목형 안무어는 절 접속사가 없어도 시간적 전개가 핵심이다. 원격 판정이
+      // fizzle/timeout으로 내려왔을 때도 "꽃의 왈츠"를 기본 wind bolt로
+      // 평탄화하지 않고 form → wait → form의 최소 박자로 복원한다.
+      if (!/(왈츠|무도|춤|댄스|선회)/u.test(text)) return null;
+      const base = this.buildSpec(text, text.trim().toLowerCase());
+      if (!base) return null;
+      const opening: SpellSpec = { ...base, form: 'orbit', target: 'area' };
+      const finale: SpellSpec = {
+        ...base,
+        form: base.form === 'bolt' ? 'wave' : base.form,
+        target: 'area',
+      };
+      return validateSpellPlan({
+        name: text.trim(),
+        power: base.power,
+        durationMs: 1000,
+        sequences: [
+          { durationWeight: 1, behaviors: [{ type: 'form', spec: opening, powerWeight: 1 }] },
+          { durationWeight: 1, behaviors: [{ type: 'wait' }] },
+          { durationWeight: 1, behaviors: [{ type: 'form', spec: finale, powerWeight: 1 }] },
+        ],
+      });
+    }
     const specs = clauses
       .map((clause) => this.buildSpec(clause, clause.trim().toLowerCase()))
       .filter((s): s is SpellSpec => s !== null);

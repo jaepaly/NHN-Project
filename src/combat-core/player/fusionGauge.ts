@@ -1,4 +1,5 @@
-import type { SpellElement, SpellSpec, SpellStatus } from '../../spell/types';
+import type { UltimateResonanceContext } from '../../spell/judge';
+import type { SpellEffect, SpellElement, SpellForm, SpellSpec, SpellStatus } from '../../spell/types';
 
 /**
  * 필살기 — 융합 게이지 (게임성 분석 ②: 절정 구조. 총괄 아이디어, backlog 재개).
@@ -39,14 +40,40 @@ export const FUSION_ELEMENT_STATUS: Record<SpellElement, SpellStatus> = {
 
 export class FusionGauge {
   private chargeValue = 0;
+  private readonly elementWeights = new Map<SpellElement, number>();
+  private readonly formWeights = new Map<SpellForm, number>();
+  private readonly effectWeights = new Map<SpellEffect, number>();
+  private readonly recentNames: string[] = [];
 
   /** 방금 만충에 도달했는지 — 안내 1회용 (charge가 true를 돌려준 그 호출에서만) */
-  charge(spentMana: number): boolean {
+  charge(spentMana: number, contribution?: {
+    name: string;
+    elements: readonly SpellElement[];
+    forms: readonly SpellForm[];
+    effects: readonly SpellEffect[];
+  }): boolean {
     const spend = Number.isFinite(spentMana) ? Math.max(0, spentMana) : 0;
     if (spend === 0) return false;
     const before = this.chargeValue;
     this.chargeValue = Math.min(FUSION_CONFIG.fullCharge, this.chargeValue + spend);
+    const accepted = this.chargeValue - before;
+    if (accepted > 0 && contribution) this.recordContribution(contribution, accepted);
     return before < FUSION_CONFIG.fullCharge && this.chargeValue >= FUSION_CONFIG.fullCharge;
+  }
+
+  get resonance(): UltimateResonanceContext {
+    const ranked = <T extends string>(weights: Map<T, number>, limit: number): T[] => (
+      [...weights.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .map(([value]) => value)
+    );
+    return {
+      elements: ranked(this.elementWeights, 4),
+      forms: ranked(this.formWeights, 4),
+      effects: ranked(this.effectWeights, 3),
+      recentNames: [...this.recentNames],
+    };
   }
 
   get ratio(): number {
@@ -57,13 +84,20 @@ export class FusionGauge {
     return this.chargeValue >= FUSION_CONFIG.fullCharge;
   }
 
+  /** A valid ultimate plan consumes the full gauge exactly once. */
+  consumeUltimate(): boolean {
+    if (!this.ready) return false;
+    this.clear();
+    return true;
+  }
+
   /**
    * 방출 시도 — 만충 + 이중 원소 판정일 때만 격상 스펙을 돌려주고 게이지를 비운다.
    * 아니면 null (단일 원소 시전은 게이지를 소모하지 않는다 — 만충이 낭비되지 않게).
    */
   tryRelease(spec: SpellSpec): SpellSpec | null {
     if (!this.ready || !spec.element_secondary) return null;
-    this.chargeValue = 0;
+    this.clear();
     const statuses = [...new Set([
       ...spec.status,
       FUSION_ELEMENT_STATUS[spec.element_primary],
@@ -78,6 +112,35 @@ export class FusionGauge {
   }
 
   reset(): void {
+    this.clear();
+  }
+
+  private recordContribution(contribution: {
+    name: string;
+    elements: readonly SpellElement[];
+    forms: readonly SpellForm[];
+    effects: readonly SpellEffect[];
+  }, weight: number): void {
+    const add = <T extends string>(map: Map<T, number>, values: readonly T[]) => {
+      for (const value of new Set(values)) map.set(value, (map.get(value) ?? 0) + weight);
+    };
+    add(this.elementWeights, contribution.elements);
+    add(this.formWeights, contribution.forms);
+    add(this.effectWeights, contribution.effects);
+    const name = contribution.name.trim();
+    if (name) {
+      const previous = this.recentNames.indexOf(name);
+      if (previous >= 0) this.recentNames.splice(previous, 1);
+      this.recentNames.push(name.slice(0, 30));
+      if (this.recentNames.length > 3) this.recentNames.shift();
+    }
+  }
+
+  private clear(): void {
     this.chargeValue = 0;
+    this.elementWeights.clear();
+    this.formWeights.clear();
+    this.effectWeights.clear();
+    this.recentNames.length = 0;
   }
 }

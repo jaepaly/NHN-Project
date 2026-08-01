@@ -1,4 +1,4 @@
-import type { SpellJudge } from './judge';
+import type { JudgeOptions, SpellJudge } from './judge';
 import type { SpellJudgement } from './types';
 import { postPlayLog } from './playLog';
 
@@ -65,9 +65,9 @@ export class LoggingJudge implements SpellJudge {
     return this.inner.lastFallbackReason;
   }
 
-  async judge(text: string): Promise<SpellJudgement> {
+  async judge(text: string, options?: JudgeOptions): Promise<SpellJudgement> {
     const startedAt = Date.now();
-    const j = await this.inner.judge(text);
+    const j = await this.inner.judge(text, options);
     const src = this.inner.lastSource ?? 'mock';
     const t = Math.round((Date.now() - this.start) / 100) / 10; // 0.1초 단위 상대시각
     void postPlayLog({
