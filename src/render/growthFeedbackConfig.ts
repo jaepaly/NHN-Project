@@ -75,7 +75,15 @@ export function gainLabelFor(option: RewardOption): GainLabel {
         color,
       };
     case 'awaken':
-      return { text: `각성 · ${AWAKENING_LABELS[option.awaken!.awakening]}`, color };
+      // 일반 각성 카드는 갈래(`awaken`)를 싣지만, 제단 각성 카드는 대상 원소만 싣고
+      // 갈래는 선택 뒤 무작위로 정한다. 제단 카드를 일반 카드처럼 단정해 읽으면
+      // 보상 연출에서 예외가 나고 컨트롤러의 방 전환 예약까지 중단된다.
+      return {
+        text: option.awaken
+          ? `각성 · ${AWAKENING_LABELS[option.awaken.awakening]}`
+          : `${option.element ? ELEMENT_LABELS[option.element] : '원소'} 각성`,
+        color,
+      };
     // ── 제단 거래 (#214) ────────────────────────────────────────────────
     case 'all-affinity': {
       const percent = Math.round(ALTAR_OFFER_CONFIG.allAffinityBonus * 100);
