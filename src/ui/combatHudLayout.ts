@@ -11,6 +11,10 @@ export const AFFINITY_PANEL_LAYOUT = {
   gap: 14,
   padX: 8,
   padTop: 9,
+  /** 8원소를 왼쪽 4개·오른쪽 4개로 고정 배치한다. */
+  columns: 2,
+  rowsPerColumn: 4,
+  columnGap: 10,
   labelToBar: 16,
   rowPitch: 27,
   primaryBarHeight: 6,
@@ -30,7 +34,8 @@ export function affinityPanelGeometry(
 ): AffinityPanelGeometry {
   const safeY = Number.isFinite(hudY) ? hudY : 0;
   const safeHeight = Number.isFinite(hudHeight) ? Math.max(0, hudHeight) : 0;
-  const rows = Number.isFinite(rowCount) ? Math.max(0, Math.floor(rowCount)) : 0;
+  const items = Number.isFinite(rowCount) ? Math.max(0, Math.floor(rowCount)) : 0;
+  const rows = Math.min(AFFINITY_PANEL_LAYOUT.rowsPerColumn, items);
   const top = safeY + safeHeight + AFFINITY_PANEL_LAYOUT.gap;
   if (rows === 0) return { top, height: 0 };
   return {
@@ -44,11 +49,32 @@ export function affinityPanelGeometry(
 }
 
 export function affinityLabelY(panelTop: number, index: number): number {
+  const row = Math.max(0, Math.floor(index)) % AFFINITY_PANEL_LAYOUT.rowsPerColumn;
   return panelTop
     + AFFINITY_PANEL_LAYOUT.padTop
-    + Math.max(0, Math.floor(index)) * AFFINITY_PANEL_LAYOUT.rowPitch;
+    + row * AFFINITY_PANEL_LAYOUT.rowPitch;
 }
 
 export function affinityBarY(panelTop: number, index: number): number {
   return affinityLabelY(panelTop, index) + AFFINITY_PANEL_LAYOUT.labelToBar;
+}
+
+/** 패널 폭에서 두 칼럼 사이 간격과 좌우 여백을 뺀 실제 게이지 폭. */
+export function affinityColumnWidth(panelWidth: number): number {
+  const safeWidth = Number.isFinite(panelWidth) ? Math.max(0, panelWidth) : 0;
+  const inner = Math.max(0, safeWidth - AFFINITY_PANEL_LAYOUT.padX * 2);
+  return Math.max(
+    0,
+    (inner - AFFINITY_PANEL_LAYOUT.columnGap) / AFFINITY_PANEL_LAYOUT.columns,
+  );
+}
+
+/** 인덱스 0~3은 왼쪽, 4~7은 오른쪽 칼럼에 놓인다. */
+export function affinityColumnX(panelX: number, panelWidth: number, index: number): number {
+  const column = Math.min(
+    AFFINITY_PANEL_LAYOUT.columns - 1,
+    Math.floor(Math.max(0, index) / AFFINITY_PANEL_LAYOUT.rowsPerColumn),
+  );
+  return panelX + AFFINITY_PANEL_LAYOUT.padX
+    + column * (affinityColumnWidth(panelWidth) + AFFINITY_PANEL_LAYOUT.columnGap);
 }

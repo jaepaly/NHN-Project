@@ -23,8 +23,9 @@ export const WARD_STUDY_GUARD_DAMAGE_SCALE = 0.85;
 export const WARD_STUDY_PULSE_RADIUS = 190;
 export const WARD_STUDY_PULSE_KNOCKBACK = 110;
 export const VARIATION_DIVERSITY_BASE_BONUS = 0.3;
-export const VARIATION_DIVERSITY_BONUS_PER_STAGE = 0.025;
-export const VARIATION_DIVERSITY_MAX_BONUS = 0.4;
+/** 특화 연구와 경쟁할 수 있도록 4단계에 걸쳐 최대 +20%p를 연다. */
+export const VARIATION_DIVERSITY_BONUS_PER_STAGE = 0.05;
+export const VARIATION_DIVERSITY_MAX_BONUS = 0.5;
 
 export type ResearchContractId = 'elemental-focus' | 'ward-study' | 'variation-study';
 

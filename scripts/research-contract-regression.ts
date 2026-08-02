@@ -156,7 +156,7 @@ variation = advanceResearchContract(variation, [
 assert.deepEqual(variation.usedElements, ['fire', 'water']);
 assert.deepEqual(variation.usedForms, ['bolt']);
 assert.equal(variation.progress, 1);
-assert.equal(variationDiversityMaxBonus(variation), 0.325);
+assert.equal(variationDiversityMaxBonus(variation), 0.35);
 variation = advanceResearchContract(variation, [spell('damage', 'beam', 'water')]).contract;
 assert.equal(variation.progress, 2);
 variation = advanceResearchContract(variation, [spell('control', 'wall', 'ice')]).contract;

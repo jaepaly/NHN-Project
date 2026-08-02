@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { AFFINITY_ROWS, rankAffinities } from '../src/combat-core/run/useAffinity';
+import {
+  AFFINITY_ROWS,
+  affinityHudRows,
+  rankAffinities,
+} from '../src/combat-core/run/useAffinity';
 import { CombatRunController } from '../src/combat-core/run/runController';
 import { PlayerCombatState } from '../src/combat-core/player/playerCombatState';
+import { ELEMENTS } from '../src/spell/types';
 
 // ── 제보된 시나리오 그대로: 화염1 → 얼음1 → 얼음1 ────────────────────
 // 총괄 제보: "첫 주문을 화염으로 하면 다음 주문을 다른 속성으로 해도 친화가 안 뜬다."
@@ -23,12 +28,27 @@ import { PlayerCombatState } from '../src/combat-core/player/playerCombatState';
   assert.deepEqual(shown(), ['ice', 'fire'], '더 많이 쓴 쪽이 주력 자리로 올라온다');
 }
 
-// ── 순위: 큰 값부터, 0은 빼고, 상위 N개만 ──────────────────────────
+// ── 순위: 큰 값부터, 0은 빼고, 요청한 상한까지만 ───────────────────
 {
   const rows = rankAffinities({ fire: 0.3, ice: 0.5, wind: 0, dark: 0.1, light: 0.4 });
-  assert.equal(rows.length, AFFINITY_ROWS, '상위 N개만 세운다');
-  assert.deepEqual(rows.map((r) => r.element), ['ice', 'light', 'fire'], '내림차순');
+  assert.equal(rows.length, 4, '양수인 원소를 모두 순위화한다');
+  assert.deepEqual(rows.map((r) => r.element), ['ice', 'light', 'fire', 'dark'], '내림차순');
   assert.ok(!rows.some((r) => r.element === 'wind'), '0인 원소는 줄을 차지하지 않는다');
+  assert.deepEqual(
+    rankAffinities({ fire: 0.3, ice: 0.5, dark: 0.1 }, 2).map((r) => r.element),
+    ['ice', 'fire'],
+    '명시한 상한은 지킨다',
+  );
+}
+
+// ── HUD는 값이 없어도 8원소를 고정 순서로 모두 표시한다 ─────────────
+{
+  const rows = affinityHudRows({ fire: 0.3, dark: Number.NaN });
+  assert.equal(rows.length, AFFINITY_ROWS);
+  assert.deepEqual(rows.map((row) => row.element), [...ELEMENTS], '원소 위치가 고정된다');
+  assert.equal(rows.find((row) => row.element === 'fire')?.value, 0.3);
+  assert.equal(rows.find((row) => row.element === 'dark')?.value, 0, '비정상 값은 0으로 표시');
+  assert.equal(rows.find((row) => row.element === 'ice')?.value, 0, '미사용 원소도 0으로 표시');
 }
 
 // ── 주력 하나만 있어도, 아무것도 없어도 안전 ────────────────────────
@@ -64,7 +84,9 @@ import { PlayerCombatState } from '../src/combat-core/player/playerCombatState';
   assert.ok(!src.includes('topAffinity('),
     'topAffinity(최고치 1개) 경로가 남아 있다 — 다시 한 줄만 보이게 된다');
   assert.ok(src.includes('rankAffinities<SpellElement>'),
-    'drawAffinityBar가 rankAffinities를 쓰지 않는다');
+    'drawAffinityBar가 주력 원소를 판별하지 않는다');
+  assert.ok(src.includes('affinityHudRows(affinity)'),
+    'drawAffinityBar가 8원소 고정 행을 쓰지 않는다');
   const at = src.indexOf('private drawAffinityBar');
   const body = src.slice(at, at + 2000);
   assert.ok(/for \(let i = 0; i < this\.affinityLabelTexts\.length/.test(body),
@@ -72,5 +94,5 @@ import { PlayerCombatState } from '../src/combat-core/player/playerCombatState';
 }
 
 console.log(
-  'Affinity rank regression: 제보시나리오·내림차순·0제외·NaN방어·동점안정·HUD배선 6군 통과',
+  'Affinity rank regression: 제보시나리오·내림차순·8원소고정·NaN방어·동점안정·HUD배선 7군 통과',
 );
