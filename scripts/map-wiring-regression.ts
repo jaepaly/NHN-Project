@@ -112,8 +112,16 @@ function bodyOf(startMarker: string, endMarker: string): string {
 
   const curseBody = bodyOf('private activateRoomCurse(', 'private activateRoomCurseAssignment(');
   assert.ok(
-    curseBody.includes('this.mapGraph.current().trapProfile'),
+    curseBody.includes("node.kind === 'trap' ? node.trapProfile : undefined"),
     '선택한 trap 노드의 프로필을 방 기믹이 소비하지 않는다',
+  );
+  assert.ok(
+    !curseBody.includes('curseForRoom(') && !curseBody.includes('roomCursePlan'),
+    '일반·엘리트·보스 노드가 레거시 방 저주 계획을 소비한다',
+  );
+  assert.ok(
+    curseBody.includes('this.activateRoomCurseAssignment(null)'),
+    'trap이 아닌 MapGraph 노드의 방 저주가 명시적으로 해제되지 않는다',
   );
 
   const rewardlessBody = bodyOf('private rewardlessNodeKind()', 'private startRewardlessRoom(');

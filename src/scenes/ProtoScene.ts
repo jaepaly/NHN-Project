@@ -178,10 +178,8 @@ import {
 } from '../combat-core/waves/waveManager';
 import type { WaveDefinition } from '../combat-core/waves/waveManager';
 import { CombatRunController } from '../combat-core/run/runController';
-import { ELITE_MODIFIERS, RUN_ENCOUNTERS } from '../combat-core/run/encounterConfig';
+import { ELITE_MODIFIERS } from '../combat-core/run/encounterConfig';
 import {
-  createRoomCursePlan,
-  curseForRoom,
   ROOM_CURSE_CONFIG,
   silenceManaDrainPerSecond,
 } from '../combat-core/run/roomCurse';
@@ -199,7 +197,6 @@ import {
 } from '../combat-core/run/wordLimitCurse';
 import type {
   RoomCurseAssignment,
-  RoomCursePlan,
 } from '../combat-core/run/roomCurse';
 import { drawRewardOptions, RUN_REWARD_CONFIG } from '../combat-core/run/rewardConfig';
 import { AFFINITY_ROWS, affinityHudRows, rankAffinities } from '../combat-core/run/useAffinity';
@@ -868,12 +865,6 @@ export class ProtoScene extends Phaser.Scene {
    * 시전마다 loadRunMemory()로 localStorage를 읽지 않도록 런 시작에 1회만 계산한다.
    */
   private runEscalation: RunEscalationProfile = runEscalationProfile(EMPTY_RUN_MEMORY);
-  /** 격상 Tier 3부터 스테이지별 일부 방에 배정되는 결정적 저주 계획. */
-  private roomCursePlan: RoomCursePlan = {
-    selectedKinds: {},
-    curseWeights: { silence: 0.5, blackout: 0.5, heatwave: 0.5, 'word-limit': 0.5 },
-    assignments: [],
-  };
   private activeRoomCurse: RoomCurseAssignment | null = null;
   /** MapGraph 연결 전 함정방 규칙을 검증하기 위한 DEV 전용 첫 방 강제 프로필입니다. */
   private readonly debugTrapProfile = debugTrapProfileFromEnv();
@@ -2246,17 +2237,6 @@ export class ProtoScene extends Phaser.Scene {
     const memory = loadRunMemory();
     this.runEscalation = runEscalationProfile(memory);
     this.escalationNoticed.clear();
-    // 승패 누계 기반 시드: 같은 런 기억에서는 같은 방을 뽑아 재현 가능하고,
-    // 런이 끝나 기억이 갱신되면 다음 계획이 달라진다.
-    const curseSeed = Math.imul(memory.clears + 1, 0x9e3779b1)
-      ^ Math.imul(memory.deaths + 1, 0x85ebca6b);
-    this.roomCursePlan = createRoomCursePlan(
-      RUN_ENCOUNTERS,
-      this.runEscalation.gimmicksUnlocked,
-      createRunRandom(curseSeed),
-      undefined,
-      memory.lastCurseBehavior,
-    );
   }
 
   private startRoom(roomIndex: number): void {
@@ -2472,7 +2452,8 @@ export class ProtoScene extends Phaser.Scene {
       }, this.debugTrapProfile);
       return;
     }
-    const graphProfile = this.mapGraph.current().trapProfile;
+    const node = this.mapGraph.current();
+    const graphProfile = node.kind === 'trap' ? node.trapProfile : undefined;
     if (graphProfile) {
       if (graphProfile.kind === 'hazard') {
         this.activeRoomCurse = null;
@@ -2486,8 +2467,7 @@ export class ProtoScene extends Phaser.Scene {
       }, graphProfile);
       return;
     }
-    const assignment = curseForRoom(this.roomCursePlan, roomIndex);
-    this.activateRoomCurseAssignment(assignment);
+    this.activateRoomCurseAssignment(null);
   }
 
   private activateRoomCurseAssignment(

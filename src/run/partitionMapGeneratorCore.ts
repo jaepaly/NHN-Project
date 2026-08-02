@@ -1,4 +1,3 @@
-// @ts-nocheck
 /*
  * Direct TypeScript port of the algorithm in
  * docs/prototypes/partition-map-generator.html at #240 commit 9d7e311.
@@ -25,9 +24,37 @@ export interface PrototypeNode {
 
 export interface PrototypeGraph {
   nodes: PrototypeNode[];
-  edges: Array<{ from: string; to: string }>;
-  partitions: any[];
+  edges: PrototypeEdge[];
+  partitions: PrototypePartition[];
 }
+
+type Random = () => number;
+type PrototypeProfile = PrototypeNode['profile'];
+type StageRef = PrototypeStage & { index?: number };
+interface PrototypeEdge { from: string; to: string }
+interface PartitionSignature { a: number; b: number; n: number }
+interface PartitionOutputGroup {
+  endId: string;
+  routeIndexes: number[];
+  nodeIds: string[];
+  routes: string[][];
+}
+interface PrototypePartition extends PartitionSignature {
+  stage: number;
+  index: number;
+  signature: string;
+  startId: string;
+  branchSpan: number;
+  outputGroups?: PartitionOutputGroup[];
+}
+interface RouteRecord {
+  previous: PrototypeNode;
+  profile: PrototypeProfile;
+  lane: number;
+  length: number;
+  nodes: PrototypeNode[];
+}
+interface StageCandidate { graph: PrototypeGraph; stage: PrototypeStage }
 
 export interface PrototypeStage {
   start: PrototypeNode;
@@ -56,7 +83,7 @@ export function rngFromSeed(seed: number) {
   };
 }
 
-function pickWeighted(rng, rows) {
+function pickWeighted<T>(rng: Random, rows: Array<{ value: T; weight: number }>): T {
   const total = rows.reduce((sum, row) => sum + row.weight, 0);
   let cursor = rng() * total;
   for (const row of rows) {
@@ -66,7 +93,7 @@ function pickWeighted(rng, rows) {
   return rows[rows.length - 1].value;
 }
 
-function shuffle(rng, values) {
+function shuffle<T>(rng: Random, values: T[]): T[] {
   const copy = values.slice();
   for (let i = copy.length - 1; i > 0; i -= 1) {
     const j = Math.floor(rng() * (i + 1));
@@ -75,29 +102,29 @@ function shuffle(rng, values) {
   return copy;
 }
 
-function branchProfiles(rng, count) {
+function branchProfiles(rng: Random, count: number): PrototypeProfile[] {
   if (count === 1) return ['balanced'];
   if (count === 2) return shuffle(rng, ['stable', 'volatile']);
   return shuffle(rng, ['stable', 'balanced', 'volatile']);
 }
 
-function branchLengths(rng, count, n) {
+function branchLengths(rng: Random, count: number, n: number): number[] {
   if (count === 1) return [n];
   if (n <= 3) return Array(count).fill(n);
   if (count === 2) return rng() < 0.5 ? [n - 1, n] : [n, n + 1];
   return rng() < 0.5 ? [n - 1, n, n] : [n, n, n + 1];
 }
 
-function lengthsByProfile(profiles, lengths) {
+function lengthsByProfile(profiles: PrototypeProfile[], lengths: number[]): number[] {
   const riskOrder = { stable: 0, balanced: 1, volatile: 2 };
   const safestFirst = profiles.slice().sort((left, right) => riskOrder[left] - riskOrder[right]);
   const longestFirst = lengths.slice().sort((left, right) => right - left);
-  const assigned = new Map();
+  const assigned = new Map<PrototypeProfile, number>();
   safestFirst.forEach((profile, index) => assigned.set(profile, longestFirst[index]));
-  return profiles.map(profile => assigned.get(profile));
+  return profiles.map(profile => assigned.get(profile)!);
 }
 
-function chooseSignature(rng, remaining, hardMax, stage) {
+function chooseSignature(rng: Random, remaining: number, hardMax: number, stage: number): PartitionSignature {
   const branchWeights = stage === 2
     ? [{ value: 1, weight: 10 }, { value: 2, weight: 55 }, { value: 3, weight: 35 }]
     : [{ value: 1, weight: 35 }, { value: 2, weight: 55 }, { value: 3, weight: 10 }];
@@ -112,8 +139,8 @@ function chooseSignature(rng, remaining, hardMax, stage) {
   return { a, b, n: Math.min(n, hardMax) };
 }
 
-function contiguousGroups(count, groupCount) {
-  const groups = [];
+function contiguousGroups(count: number, groupCount: number): number[][] {
+  const groups: number[][] = [];
   let cursor = 0;
   for (let i = 0; i < groupCount; i += 1) {
     const remainingItems = count - cursor;
@@ -125,9 +152,9 @@ function contiguousGroups(count, groupCount) {
   return groups;
 }
 
-function roomKind(rng, profile, isEndpoint, progress = 1) {
+function roomKind(rng: Random, profile: PrototypeProfile, isEndpoint: boolean, progress = 1): PrototypeRoomKind {
   if (isEndpoint) return 'combat';
-  const baseRows = profile === 'volatile'
+  const baseRows: Array<{ value: PrototypeRoomKind; weight: number }> = profile === 'volatile'
     ? [{ value: 'combat', weight: 20 }, { value: 'trap', weight: 35 }, { value: 'elite', weight: 25 }, { value: 'treasure', weight: 15 }, { value: 'altar', weight: 5 }]
     : profile === 'stable'
       ? [{ value: 'combat', weight: 75 }, { value: 'trap', weight: 10 }, { value: 'elite', weight: 5 }, { value: 'treasure', weight: 5 }, { value: 'altar', weight: 5 }]
@@ -139,18 +166,18 @@ function roomKind(rng, profile, isEndpoint, progress = 1) {
   })));
 }
 
-function roomRisk(kind) {
+function roomRisk(kind: PrototypeRoomKind): number {
   if (kind === 'treasure') return 0;
   if (kind === 'altar') return 1;
   if (kind === 'elite' || kind === 'trap') return 2;
   return 1;
 }
 
-function roomReward(kind) { return kind === 'treasure' || kind === 'altar' ? 1 : 0; }
+function roomReward(kind: PrototypeRoomKind): number { return kind === 'treasure' || kind === 'altar' ? 1 : 0; }
 
-function contextualRoomKind(graph, stage, rng, profile, progress, isEndpoint) {
+function contextualRoomKind(graph: PrototypeGraph, stage: number, rng: Random, profile: PrototypeProfile, progress: number, isEndpoint: boolean): PrototypeRoomKind {
   if (isEndpoint) return 'combat';
-  const kinds = ['combat', 'elite', 'trap', 'treasure', 'altar'];
+  const kinds: PrototypeRoomKind[] = ['combat', 'elite', 'trap', 'treasure', 'altar'];
   const counts = new Map(kinds.map(kind => [kind, 0]));
   graph.nodes.filter(node => node.stage === stage)
     .forEach(node => counts.set(node.kind, (counts.get(node.kind) || 0) + 1));
@@ -159,28 +186,28 @@ function contextualRoomKind(graph, stage, rng, profile, progress, isEndpoint) {
   return roomKind(rng, profile, false, progress);
 }
 
-function addNode(graph, data) {
+function addNode(graph: PrototypeGraph, data: Omit<PrototypeNode, 'id'>): PrototypeNode {
   const node = { id: 's' + data.stage + 'n' + graph.nodes.length, ...data };
   graph.nodes.push(node);
   return node;
 }
 
-function addEdge(graph, from, to) {
+function addEdge(graph: PrototypeGraph, from: PrototypeNode | undefined, to: PrototypeNode | undefined): void {
   if (!from || !to) return;
   if (!graph.edges.some(edge => edge.from === from.id && edge.to === to.id)) {
     graph.edges.push({ from: from.id, to: to.id });
   }
 }
 
-function routeSignature(route) { return route.length + ':' + route.nodes.map(node => node.kind).join(','); }
+function routeSignature(route: RouteRecord): string { return route.length + ':' + route.nodes.map(node => node.kind).join(','); }
 
-function ensureDistinctRoutes(routes) {
+function ensureDistinctRoutes(routes: RouteRecord[]): void {
   if (routes.length <= 1) return;
   const riskOrder = { stable: 0, balanced: 1, volatile: 2 };
-  const fallbackKinds = {
+  const fallbackKinds: Record<PrototypeProfile, PrototypeRoomKind[]> = {
     stable: ['combat'], balanced: ['combat', 'altar', 'elite'], volatile: ['elite', 'trap', 'combat'],
   };
-  const allKinds = ['combat', 'trap', 'elite', 'treasure', 'altar'];
+  const allKinds: PrototypeRoomKind[] = ['combat', 'trap', 'elite', 'treasure', 'altar'];
   const ordered = routes.slice().sort((left, right) => riskOrder[left.profile] - riskOrder[right.profile]);
   const used = new Set();
   ordered.forEach(route => {
@@ -197,7 +224,7 @@ function ensureDistinctRoutes(routes) {
   });
 }
 
-function buildPartition(graph, rng, sourceNodes, signature, stage, partitionIndex, routeLanes, hardMax) {
+function buildPartition(graph: PrototypeGraph, rng: Random, sourceNodes: PrototypeNode[], signature: PartitionSignature, stage: number, partitionIndex: number, routeLanes: number[], hardMax: number): PrototypeNode[] {
   const startDepth = sourceNodes.length ? Math.max(...sourceNodes.map(node => node.depth)) + 1 : 0;
   const sourceLane = sourceNodes.length
     ? sourceNodes.reduce((sum, node) => sum + node.lane, 0) / sourceNodes.length : 0.5;
@@ -210,13 +237,13 @@ function buildPartition(graph, rng, sourceNodes, signature, stage, partitionInde
     graph.partitions.push({ stage, index: partitionIndex, signature: signature.a + '>' + signature.b + '(' + signature.n + ')', startId: start.id, a: signature.a, b: signature.b, n: signature.n, branchSpan: 0 });
     return [start];
   }
-  const routeLastNodes = [];
+  const routeLastNodes: RouteRecord[] = [];
   for (let routeIndex = 0; routeIndex < signature.a; routeIndex += 1) {
     const length = lengths[routeIndex];
     const profile = profiles[routeIndex];
     const lane = routeLanes[routeIndex];
     let previous = start;
-    const routeNodes = [];
+    const routeNodes: PrototypeNode[] = [];
     const interiorCount = Math.max(0, length - 2);
     for (let i = 0; i < interiorCount; i += 1) {
       const progress = (i + 1) / Math.max(1, length - 1);
@@ -230,8 +257,8 @@ function buildPartition(graph, rng, sourceNodes, signature, stage, partitionInde
   }
   ensureDistinctRoutes(routeLastNodes);
   const groups = contiguousGroups(signature.a, signature.b);
-  const outputs = [];
-  const outputGroups = [];
+  const outputs: PrototypeNode[] = [];
+  const outputGroups: PartitionOutputGroup[] = [];
   for (const routeGroup of groups) {
     const members = routeGroup.map(index => routeLastNodes[index]);
     const lane = members.reduce((sum, member) => sum + member.lane, 0) / members.length;
@@ -250,15 +277,15 @@ function buildPartition(graph, rng, sourceNodes, signature, stage, partitionInde
   return outputs;
 }
 
-function pathLengths(graph, startId, endIds) {
-  const outgoing = new Map();
+function pathLengths(graph: PrototypeGraph, startId: string, endIds: string[]): number[] {
+  const outgoing = new Map<string, string[]>();
   for (const edge of graph.edges) {
     if (!outgoing.has(edge.from)) outgoing.set(edge.from, []);
-    outgoing.get(edge.from).push(edge.to);
+    outgoing.get(edge.from)!.push(edge.to);
   }
   const targetSet = new Set(endIds);
-  const values = [];
-  function walk(id, count, seen) {
+  const values: number[] = [];
+  function walk(id: string, count: number, seen: Set<string>): void {
     if (seen.has(id)) return;
     if (targetSet.has(id)) { values.push(count); return; }
     const nextSeen = new Set(seen); nextSeen.add(id);
@@ -268,15 +295,15 @@ function pathLengths(graph, startId, endIds) {
   return values;
 }
 
-export function enumeratePrototypeStagePaths(graph, startId, bossId) {
+export function enumeratePrototypeStagePaths(graph: PrototypeGraph, startId: string, bossId: string): PrototypeNode[][] {
   const nodeById = new Map(graph.nodes.map(node => [node.id, node]));
-  const outgoing = new Map();
+  const outgoing = new Map<string, string[]>();
   for (const edge of graph.edges) {
     if (!outgoing.has(edge.from)) outgoing.set(edge.from, []);
-    outgoing.get(edge.from).push(edge.to);
+    outgoing.get(edge.from)!.push(edge.to);
   }
-  const paths = [];
-  function walk(id, path, seen) {
+  const paths: PrototypeNode[][] = [];
+  function walk(id: string, path: PrototypeNode[], seen: Set<string>): void {
     if (seen.has(id)) return;
     const node = nodeById.get(id); if (!node) return;
     const nextPath = path.concat(node);
@@ -288,7 +315,7 @@ export function enumeratePrototypeStagePaths(graph, startId, bossId) {
   return paths;
 }
 
-function ensureStageRoomMix(graph, stage, rng, startId, bossId, hasBranch) {
+function ensureStageRoomMix(graph: PrototypeGraph, stage: number, rng: Random, startId: string, bossId: string, _hasBranch: boolean): void {
   const rewardKinds = new Set(['treasure', 'altar']);
   const paths = enumeratePrototypeStagePaths(graph, startId, bossId);
   const rooms = graph.nodes.filter(node => node.stage === stage && node.id !== bossId);
@@ -342,17 +369,17 @@ function ensureStageRoomMix(graph, stage, rng, startId, bossId, hasBranch) {
   if (!graph.nodes.some(node => node.stage === stage && node.kind === 'trap') && remaining[1]) remaining[1].kind = 'trap';
 }
 
-function ensureStageRewardMinimum(graph, stage) {
+function ensureStageRewardMinimum(graph: PrototypeGraph, stage: StageRef): void {
   const rewards = new Set(['treasure', 'altar']);
-  const stageNumber = typeof stage === 'number' ? stage : stage.start.stage;
+  const stageNumber = stage.start.stage;
   const stageRooms = graph.nodes.filter(node => node.stage === stageNumber && node.id !== stage.start.id && node.id !== stage.boss.id);
   if (stageRooms.some(node => rewards.has(node.kind))) return;
   const target = stageRooms.filter(node => node.kind === 'combat').sort((a, b) => (b.depth || 0) - (a.depth || 0))[0];
   if (target) target.kind = 'treasure';
 }
 
-function ensureStageNonCombatQuota(graph, stage) {
-  const stageNumber = typeof stage === 'number' ? stage : stage.start.stage;
+function ensureStageNonCombatQuota(graph: PrototypeGraph, stage: StageRef): void {
+  const stageNumber = stage.start.stage;
   const rooms = graph.nodes.filter(node => node.stage === stageNumber && node.id !== stage.start.id && node.id !== stage.boss.id);
   const nonCombat = new Set(['treasure', 'altar']);
   const targetCount = Math.max(1, Math.round(rooms.length * 0.25));
@@ -366,8 +393,8 @@ function ensureStageNonCombatQuota(graph, stage) {
   }
 }
 
-function diversifyPartitionStarts(graph, stage) {
-  const stageNumber = typeof stage === 'number' ? stage : stage.start.stage;
+function diversifyPartitionStarts(graph: PrototypeGraph, stage: StageRef): void {
+  const stageNumber = stage.start.stage;
   const starts = graph.nodes.filter(node => node.stage === stageNumber && node.isStart && node.id !== stage.start.id && node.kind === 'combat')
     .sort((a, b) => (a.depth || 0) - (b.depth || 0));
   if (!starts.length) return;
@@ -378,9 +405,9 @@ function diversifyPartitionStarts(graph, stage) {
   else if (!hasTrap) starts[0].kind = 'trap';
 }
 
-function buildStage(graph, rng, stage, minRooms, hardMax) {
+function buildStage(graph: PrototypeGraph, rng: Random, stage: number, minRooms: number, hardMax: number): PrototypeStage {
   const stageStartNodeIndex = graph.nodes.length;
-  let frontiers = [];
+  let frontiers: PrototypeNode[] = [];
   let partitionIndex = 0;
   let shouldContinue = true;
   while (shouldContinue && partitionIndex < 4) {
@@ -391,7 +418,7 @@ function buildStage(graph, rng, stage, minRooms, hardMax) {
       const groupCount = Math.max(1, Math.min(ordered.length, rng() < 0.55 ? 1 : ordered.length));
       return contiguousGroups(ordered.length, groupCount).map(group => group.map(index => ordered[index]));
     })();
-    const plans = [];
+    const plans: Array<{ sources: PrototypeNode[]; signature: PartitionSignature }> = [];
     let branchCapacity = 3;
     sourceGroups.forEach((sources, groupIndex) => {
       const signature = chooseSignature(rng, remaining, hardMax, stage);
@@ -402,7 +429,7 @@ function buildStage(graph, rng, stage, minRooms, hardMax) {
       branchCapacity -= signature.a;
       plans.push({ sources, signature });
     });
-    const nextFrontiers = [];
+    const nextFrontiers: PrototypeNode[] = [];
     const sourceNodes = plans.flatMap(plan => plan.sources);
     const sourceCenter = sourceNodes.length > 0 ? sourceNodes.reduce((sum, node) => sum + node.lane, 0) / sourceNodes.length : 0.5;
     const totalRouteCount = plans.reduce((sum, plan) => sum + plan.signature.a, 0);
@@ -423,7 +450,7 @@ function buildStage(graph, rng, stage, minRooms, hardMax) {
     else shouldContinue = rng() >= 0.7;
   }
   const startNode = graph.nodes[stageStartNodeIndex];
-  const paddedFrontiers = [];
+  const paddedFrontiers: PrototypeNode[] = [];
   frontiers.forEach(frontier => {
     const routeLengths = pathLengths(graph, startNode.id, [frontier.id]);
     const currentLength = routeLengths.length > 0 ? Math.min(...routeLengths) : minRooms;
@@ -444,19 +471,22 @@ function buildStage(graph, rng, stage, minRooms, hardMax) {
   return { start: startNode, boss, min: Math.min(...finalLengths), max: Math.max(...finalLengths), average: finalLengths.reduce((sum, value) => sum + value, 0) / finalLengths.length, partitions: partitionIndex, complexity, hasBranch: stagePartitions.some(partition => partition.a >= 2) };
 }
 
-function partitionRouteGroups(graph, stage) {
+function partitionRouteGroups(graph: PrototypeGraph, stage: StageRef): Array<{
+  partition: PrototypePartition;
+  groups: Array<{ endId: string; paths: PrototypeNode[][] }>;
+}> {
   const nodeById = new Map(graph.nodes.map(node => [node.id, node]));
-  const stageIndex = typeof stage === 'number' ? stage : stage.index ?? stage.start?.stage;
-  return graph.partitions.filter(item => item.stage === stageIndex && item.outputGroups?.length).map(partition => ({
+  const stageIndex = stage.index ?? stage.start.stage;
+  return graph.partitions.filter((item): item is PrototypePartition & { outputGroups: PartitionOutputGroup[] } => item.stage === stageIndex && Boolean(item.outputGroups?.length)).map(partition => ({
     partition,
     groups: partition.outputGroups.map(group => ({
       endId: group.endId,
-      paths: (group.routes || [group.nodeIds]).map(route => route.map(id => nodeById.get(id)).filter(Boolean)),
+      paths: (group.routes || [group.nodeIds]).map(route => route.map(id => nodeById.get(id)).filter((node): node is PrototypeNode => Boolean(node))),
     })),
   }));
 }
 
-function hasAcceptableRouteBalance(graph, stage) {
+function hasAcceptableRouteBalance(graph: PrototypeGraph, stage: StageRef): boolean {
   const paths = enumeratePrototypeStagePaths(graph, stage.start.id, stage.boss.id);
   if (paths.length < 2) return true;
   const rewards = new Set(['treasure', 'altar']);
@@ -486,7 +516,7 @@ function hasAcceptableRouteBalance(graph, stage) {
   return Math.max(...scores) - Math.min(...scores) <= 1;
 }
 
-function rebalancePartitionOutputs(graph, stage) {
+function rebalancePartitionOutputs(graph: PrototypeGraph, stage: StageRef): void {
   const rewards = new Set(['treasure', 'altar']);
   for (const entry of partitionRouteGroups(graph, stage)) {
     if (entry.partition.b <= 1 || entry.partition.n !== 3 || entry.groups.length < 2) continue;
@@ -504,7 +534,7 @@ function rebalancePartitionOutputs(graph, stage) {
   }
 }
 
-function rebalanceWholeStageRoutes(graph, stage) {
+function rebalanceWholeStageRoutes(graph: PrototypeGraph, stage: StageRef): void {
   const paths = enumeratePrototypeStagePaths(graph, stage.start.id, stage.boss.id);
   if (paths.length < 2) return;
   const useCount = new Map();
@@ -532,7 +562,7 @@ function rebalanceWholeStageRoutes(graph, stage) {
   }
 }
 
-function diversifyStageRoutes(graph, stage) {
+function diversifyStageRoutes(graph: PrototypeGraph, stage: StageRef): void {
   const paths = enumeratePrototypeStagePaths(graph, stage.start.id, stage.boss.id);
   if (paths.length < 2) return;
   const useCount = new Map();
@@ -549,7 +579,7 @@ function diversifyStageRoutes(graph, stage) {
   if (sourceRisk && targets.length > 1) { const riskKind = sourceRisk.kind; sourceRisk.kind = 'combat'; targets[0].kind = riskKind; }
 }
 
-function rebalanceMergedBranchRewards(graph, stage) {
+function rebalanceMergedBranchRewards(graph: PrototypeGraph, stage: StageRef): void {
   for (const entry of partitionRouteGroups(graph, stage)) {
     if (entry.partition.b !== 1 || entry.groups.length !== 1) continue;
     const branches = entry.groups[0].paths.map(path => path.slice(0, -1));
@@ -563,15 +593,15 @@ function rebalanceMergedBranchRewards(graph, stage) {
   }
 }
 
-function ensureStageRoomVariety(graph, stage) {
-  const stageNumber = typeof stage === 'number' ? stage : stage.start.stage;
+function ensureStageRoomVariety(graph: PrototypeGraph, stage: StageRef): void {
+  const stageNumber = stage.start.stage;
   const rooms = graph.nodes.filter(node => node.stage === stageNumber && node.id !== stage.start.id && node.id !== stage.boss.id);
   if (rooms.length < 4) return;
   const kinds = new Set(rooms.map(node => node.kind));
   const useCount = new Map();
   const paths = enumeratePrototypeStagePaths(graph, stage.start.id, stage.boss.id);
   paths.forEach(path => path.forEach(node => useCount.set(node.id, (useCount.get(node.id) || 0) + 1)));
-  for (const missing of ['elite', 'trap', 'treasure', 'altar']) {
+  for (const missing of ['elite', 'trap', 'treasure', 'altar'] as PrototypeRoomKind[]) {
     if (kinds.has(missing)) continue;
     const target = rooms.filter(node => node.kind === 'combat').sort((a, b) => {
       const sharedA = (useCount.get(a.id) || 0) > 1 ? 0 : 1;
@@ -583,22 +613,22 @@ function ensureStageRoomVariety(graph, stage) {
   }
 }
 
-function repairDominatedRoutes(graph, stage) {
+function repairDominatedRoutes(graph: PrototypeGraph, stage: StageRef): void {
   const paths = enumeratePrototypeStagePaths(graph, stage.start.id, stage.boss.id);
   if (paths.length < 2) return;
   const useCount = new Map();
   paths.forEach(path => path.forEach(node => useCount.set(node.id, (useCount.get(node.id) || 0) + 1)));
-  const score = path => {
+  const score = (path: PrototypeNode[]) => {
     const playable = path.filter(node => node.id !== stage.boss.id);
     return { risk: playable.reduce((sum, node) => sum + roomRisk(node.kind), 0), reward: playable.reduce((sum, node) => sum + roomReward(node.kind), 0) };
   };
-  const dominatedCount = () => {
+  const dominatedCount = (): number => {
     const scores = paths.map(score);
     return scores.reduce((count, a, i) => count + (scores.some((b, j) => i !== j && a.risk > b.risk && a.reward < b.reward) ? 1 : 0), 0);
   };
   for (let pass = 0; pass < 8; pass += 1) {
     const before = dominatedCount(); if (!before) return;
-    let best = null;
+    let best: { a: PrototypeNode; b: PrototypeNode; oldA: PrototypeRoomKind; oldB: PrototypeRoomKind; after: number } | null = null;
     for (let i = 0; i < paths.length; i += 1) for (let j = i + 1; j < paths.length; j += 1) {
       const left = paths[i].filter(node => node.id !== stage.boss.id && useCount.get(node.id) === 1);
       const right = paths[j].filter(node => node.id !== stage.boss.id && useCount.get(node.id) === 1);
@@ -614,12 +644,12 @@ function repairDominatedRoutes(graph, stage) {
   }
 }
 
-function maximizeStageSpecialVariety(graph, stage) {
+function maximizeStageSpecialVariety(graph: PrototypeGraph, stage: StageRef): void {
   const stageNodes = graph.nodes.filter(node => node.stage === stage.start.stage && node.id !== stage.boss.id);
   const slots = stageNodes.filter(node => node.id !== stage.start.id);
   if (slots.length < 4 || slots.length > 6) return;
-  const specialKinds = ['elite', 'trap', 'treasure', 'altar'];
-  const allKinds = ['combat', ...specialKinds];
+  const specialKinds: PrototypeRoomKind[] = ['elite', 'trap', 'treasure', 'altar'];
+  const allKinds: PrototypeRoomKind[] = ['combat', ...specialKinds];
   const paths = enumeratePrototypeStagePaths(graph, stage.start.id, stage.boss.id);
   const specialScore = () => new Set(stageNodes.filter(node => specialKinds.includes(node.kind)).map(node => node.kind)).size;
   const hasExtraCombat = () => stageNodes.some(node => node.id !== stage.start.id && node.kind === 'combat');
@@ -635,8 +665,9 @@ function maximizeStageSpecialVariety(graph, stage) {
   };
   const baseline = specialScore(); const baselineExtraCombat = hasExtraCombat();
   if ((baseline === specialKinds.length && baselineExtraCombat) || !isHigherPriorityValid()) return;
-  const original = slots.map(node => node.kind); let best = null;
-  const search = index => {
+  const original = slots.map(node => node.kind);
+  let best: { score: number; extraCombat: boolean; assignment: PrototypeRoomKind[] } | null = null;
+  const search = (index: number): void => {
     if (index === slots.length) {
       const score = specialScore(); const extraCombat = hasExtraCombat();
       const improvesVariety = score > baseline || (score === baseline && !baselineExtraCombat && extraCombat);
@@ -648,11 +679,12 @@ function maximizeStageSpecialVariety(graph, stage) {
     for (const kind of allKinds) { slots[index].kind = kind; search(index + 1); }
   };
   search(0);
-  const assignment = best ? best.assignment : original;
+  const selected = best as { score: number; extraCombat: boolean; assignment: PrototypeRoomKind[] } | null;
+  const assignment = selected ? selected.assignment : original;
   slots.forEach((node, index) => { node.kind = assignment[index]; });
 }
 
-function optimizeMergedPartitionSlots(graph, stage) {
+function optimizeMergedPartitionSlots(graph: PrototypeGraph, stage: StageRef): void {
   const paths = enumeratePrototypeStagePaths(graph, stage.start.id, stage.boss.id);
   if (paths.length < 2) return;
   const scoreRoutes = () => {
@@ -668,8 +700,9 @@ function optimizeMergedPartitionSlots(graph, stage) {
   for (const entry of partitionRouteGroups(graph, stage)) {
     const allPaths = entry.groups.flatMap(group => group.paths); if (allPaths.length < 3) continue;
     const slots = allPaths.slice(0, 3).map(path => path[path.length - 2]); if (slots.some(node => !node)) continue;
-    const kinds = ['combat', 'elite', 'trap', 'treasure', 'altar'];
-    const before = scoreRoutes().dominated; let best = null;
+    const kinds: PrototypeRoomKind[] = ['combat', 'elite', 'trap', 'treasure', 'altar'];
+    const before = scoreRoutes().dominated;
+    let best: { assignment: PrototypeRoomKind[]; after: number; variety: number; extraCombat: boolean } | null = null;
     const beforeVariety = varietyScore(); const beforeExtraCombat = hasExtraCombat();
     for (const a of kinds) for (const b of kinds) for (const c of kinds) {
       const assignment = [a, b, c]; const old = slots.map(node => node.kind);
@@ -693,9 +726,11 @@ function optimizeMergedPartitionSlots(graph, stage) {
 export function generatePrototypeMap(seed: number): PrototypeGeneration {
   const stage1Min = 3; const stage1Max = 4; const stage2Min = 4; const stage2Max = 5;
   const rng = rngFromSeed(seed);
-  let stage1Graph = null; let stage1 = null; let simplestStage1 = null;
+  let stage1Graph: PrototypeGraph | null = null;
+  let stage1: PrototypeStage | null = null;
+  let simplestStage1: StageCandidate | null = null;
   for (let attempt = 0; attempt < 64; attempt += 1) {
-    const candidateGraph = { nodes: [], edges: [], partitions: [] };
+    const candidateGraph: PrototypeGraph = { nodes: [], edges: [], partitions: [] };
     const candidate = buildStage(candidateGraph, rng, 1, stage1Min, stage1Max);
     ensureStageRoomMix(candidateGraph, 1, rng, candidate.start.id, candidate.boss.id, candidate.hasBranch);
     ensureStageRewardMinimum(candidateGraph, candidate);
@@ -709,11 +744,17 @@ export function generatePrototypeMap(seed: number): PrototypeGeneration {
       stage1Graph = candidateGraph; stage1 = candidate; break;
     }
   }
-  if (!stage1Graph) { stage1Graph = simplestStage1.graph; stage1 = simplestStage1.stage; }
+  if (!stage1Graph) {
+    if (!simplestStage1) throw new Error('Unable to generate stage 1');
+    stage1Graph = simplestStage1.graph; stage1 = simplestStage1.stage;
+  }
+  if (!stage1) throw new Error('Unable to select stage 1');
 
-  let stage2Graph = null; let stage2 = null; let bestCandidate = null;
+  let stage2Graph: PrototypeGraph | null = null;
+  let stage2: PrototypeStage | null = null;
+  let bestCandidate: StageCandidate | null = null;
   for (let attempt = 0; attempt < 64; attempt += 1) {
-    const candidateGraph = { nodes: [], edges: [], partitions: [] };
+    const candidateGraph: PrototypeGraph = { nodes: [], edges: [], partitions: [] };
     const candidate = buildStage(candidateGraph, rng, 2, stage2Min, stage2Max);
     ensureStageRoomMix(candidateGraph, 2, rng, candidate.start.id, candidate.boss.id, candidate.hasBranch);
     ensureStageRewardMinimum(candidateGraph, candidate);
@@ -727,7 +768,11 @@ export function generatePrototypeMap(seed: number): PrototypeGeneration {
       stage2Graph = candidateGraph; stage2 = candidate; break;
     }
   }
-  if (!stage2Graph) { stage2Graph = bestCandidate.graph; stage2 = bestCandidate.stage; }
+  if (!stage2Graph) {
+    if (!bestCandidate) throw new Error('Unable to generate stage 2');
+    stage2Graph = bestCandidate.graph; stage2 = bestCandidate.stage;
+  }
+  if (!stage2) throw new Error('Unable to select stage 2');
 
   ensureStageRewardMinimum(stage1Graph, stage1); ensureStageRewardMinimum(stage2Graph, stage2);
   ensureStageNonCombatQuota(stage1Graph, stage1); ensureStageNonCombatQuota(stage2Graph, stage2);
@@ -753,8 +798,13 @@ export const PROTOTYPE_RUNTIME_SECONDS = {
   stageBoss: 78, finalBoss: 90, postCombatChoice: 9, portalSelection: 3, roomTransition: 1,
 } as const;
 
-export function prototypeAverageRouteMix(graph, stages) {
-  const combatKinds = new Set(['combat', 'trap', 'elite', 'boss']);
+export function prototypeAverageRouteMix(graph: PrototypeGraph, stages: PrototypeStage[]): {
+  combat: number;
+  nonCombat: number;
+  runtimeSeconds: number;
+  ratio: number;
+} {
+  const combatKinds = new Set<PrototypeRoomKind>(['combat', 'trap', 'elite', 'boss']);
   let combat = 0; let nonCombat = 0; let runtimeSeconds = 0; let roomCount = 0;
   for (const stage of stages) {
     const paths = enumeratePrototypeStagePaths(graph, stage.start.id, stage.boss.id);

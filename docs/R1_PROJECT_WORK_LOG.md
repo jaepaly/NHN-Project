@@ -77,6 +77,9 @@
 ### 재검토 경계
 
 - 원본 HTML은 초기 profile을 생성하지만 `ensureStageRoomMix()`에서 방 종류를 전투로 초기화한 뒤 경로 위험·보상 역할을 다시 배치한다. 따라서 “최종 노드가 초기 profile 가중치를 계속 보존”하는 계약은 #240 실제 구현에 없으며, 추가할 경우 별도 설계 변경으로 검토해야 한다.
+- 2026-08-02 R3 최종 검토에 따라 실제 MapGraph 런에서는 현재 노드가 `trap`일 때만 해당 노드의 `trapProfile`을 활성화하도록 단일화했다. 일반·엘리트·stage-boss·memory-boss가 레거시 `roomCursePlan`을 통해 저주를 받던 우회 경로와 계획 생성을 씬에서 제거했으며 DEV 명시 강제 프로필은 유지했다.
+- 직접 이식 코어의 `@ts-nocheck`를 제거하고 노드·간선·파티션·경로·스테이지 후보 전체를 strict TypeScript 도메인 타입으로 복구했다. 불가능한 생성 실패 상태만 명시적 오류로 좁혔고 원본 알고리즘의 실행 순서·난수 소비·가중치는 바꾸지 않았다.
+- 혼합 개행이 지적된 `scripts/map-generator-regression.ts`와 `src/run/mapGenerator.ts`는 `.gitattributes`로 LF를 고정했다. 반영 후 맵 배선 회귀, 500시드 통합 생성, 5,000시드 원본 통계, 전체 회귀 92종과 production build를 다시 통과했다.
 
 ---
 
