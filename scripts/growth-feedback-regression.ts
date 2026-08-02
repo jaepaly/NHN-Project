@@ -7,6 +7,7 @@ import {
   runeRingCount,
 } from '../src/render/growthFeedbackConfig';
 import { RUN_REWARD_CONFIG } from '../src/combat-core/run/rewardConfig';
+import { drawAltarOffer } from '../src/combat-core/run/altarOffer';
 import { ELEMENT_PALETTES } from '../src/render/palette';
 import type { RewardOption } from '../src/run/runContract';
 
@@ -73,6 +74,12 @@ assert.equal(
 // 데이터가 없어도 라벨은 항상 나온다 (연출이 보상 흐름을 막지 않는다)
 assert.ok(gainLabelFor(option({ kind: 'engrave' })).text.length > 0, '각인 데이터 없어도 라벨');
 assert.ok(gainLabelFor(option({ kind: 'evolve' })).text.length > 0, '진화 데이터 없어도 라벨');
+
+// 제단 각성은 일반 각성과 달리 awaken 세부정보가 없다. 이 실데이터 모양도 연출이
+// 예외 없이 처리해야 chooseReward 뒤의 다음 방 전환 예약이 끊기지 않는다.
+const altarAwaken = drawAltarOffer(100, 'fire').find((reward) => reward.kind === 'awaken');
+assert.ok(altarAwaken, '제단 각성 카드가 있어야 한다');
+assert.equal(gainLabelFor(altarAwaken).text, '화염 각성', '제단 각성 폴백 라벨');
 
 // 3) 색 규칙 — 원소가 있으면 원소색(카드 UI와 동일 규칙), 없으면 종류색
 assert.equal(
