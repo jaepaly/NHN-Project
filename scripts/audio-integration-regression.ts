@@ -22,12 +22,14 @@ for (const name of names) {
 }
 
 assert.match(audio, /'player-hit': \{ volumeScale: 1, cooldownMs: 90 \}/);
-assert.match(audio, /'mana-crystal-pickup': \{ volumeScale: 0\.9, cooldownMs: 70 \}/);
+assert.match(audio, /'mana-crystal-pickup': \{ volumeScale: 0\.65, cooldownMs: 110 \}/);
+assert.match(audio, /altar: 1\.2/);
 assert.match(title, /GameAudio\.preloadSfx\(this, 'title-start'\)/);
 assert.match(title, /GameAudio\.playOneShot\(this, 'title-start'/);
 assert.match(title, /GameAudio\.preloadSfx\(this, 'ui-confirm'\)/);
 assert.match(title, /GameAudio\.preloadBgm\(this, 'title'\)/);
 assert.match(title, /this\.audio\.playBgm\('title'\)/);
+assert.match(title, /this\.audio\.stopBgm\(\)/);
 assert.equal(
   [...title.matchAll(/GameAudio\.playOneShot\(this, 'ui-confirm'/g)].length,
   2,

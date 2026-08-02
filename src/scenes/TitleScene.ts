@@ -388,6 +388,8 @@ export class TitleScene extends Phaser.Scene {
     GameAudio.playOneShot(this, 'title-start', loadSettings(window.localStorage));
     this.cameras.main.fadeOut(420, 5, 6, 15);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      // 시연 시작 경로에서도 shutdown 순서에 기대지 않고 타이틀 음악을 먼저 정리한다.
+      this.audio.stopBgm();
       this.scene.start('proto');
     });
   }

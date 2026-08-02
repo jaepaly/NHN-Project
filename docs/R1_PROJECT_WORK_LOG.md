@@ -1925,16 +1925,26 @@
 - 생성된 90초 WAV 3종으로 루프를 만들었다. 타이틀 1차안은 경계가 부자연스러워 폐기했고 V2A/V2B 승인안 중 더 긴 V2B를 채택했다. 최종 구간은 타이틀 9.0~72.5초(61.0초), 보물방 12.0~72.0초(57.5초), 제단방 11.0~64.0초(50.5초)이며 모두 2.5초 equal-power 크로스페이드와 -6dBFS 피크를 적용했다.
 - 런 완료음은 재생성 C/D 중 고역 에너지가 거의 없고 중역 정보가 더 많은 `runcomplete_d.wav`를 채택해 2.000초에서 1.690초로 무음 정리하고 -7dBFS로 정규화했다.
 - 최종 OGG 7개를 추가하고 `GameAudio`에 `title|reward|altar` BGM과 `run-complete` SFX를 등록했다. 타이틀 씬은 타이틀 트랙만 별도 preload하며, 무전투 보물방·제단방 진입 시 각 전용곡으로 전환하고 다음 전투방에서 combat BGM으로 복귀한다. 런 완료음은 사망 선점 검사를 통과한 실제 승리에서만 재생한다.
+- 2026-08-02 인게임 청취에서 제단 BGM의 체감 음량 부족, 마나 수정 획득음의 반복 피로도, 각성한 영창가 시작 시 타이틀 BGM 잔류가 확인됐다. 1차 보정으로 제단 BGM만 `1.2`배(약 +1.6dB), 마나 수정음은 `0.65`배·110ms 쿨다운으로 조정했다. 타이틀은 일반·각성 시작 공통 페이드 완료 지점에서 `stopBgm()`을 명시 호출해 씬 shutdown 순서와 무관하게 정리한다.
+- 위 새 배율과 반복 피로도는 코드·빌드 검증만 완료한 1차값이며 실제 인게임 재청취 전에는 최종 믹스로 확정하지 않는다.
+
+### 1차 종료와 2차 사운드 잠정 백로그
+
+- 현재까지의 효과음 6종 추가, 타이틀·보물방·제단방 BGM, 런 완료음, UI 확정음 배선과 2026-08-02 믹스 보정을 1차 기능 범위로 마감한다. 제단·마나의 마지막 체감값은 후속 플레이 중 이상이 있을 때만 다시 조정한다.
+- 2차 후보는 ① 함정방·엘리트방 진입 시 공간 식별 효과음, ② 보스 패턴에 따른 예고·발동·위험 지속 기능음, ③ 선택 확정과 구분되는 UI 커서 반응음(W/S·A/D 항목 이동 포함)이다.
+- 보스 패턴음은 패턴별 파일을 바로 증식시키지 않고 실제 패턴 목록을 감사한 뒤 공통 기능 신호와 고유 신호를 나눠 제작한다. UI 커서음은 반복 입력 피로도와 `ui-confirm`과의 식별성을 우선 검증한다.
+- 위 항목은 잠정 백로그이며 프롬프트 작성, 후보 생성, 채택, 게임 배선은 아직 시작하지 않았다.
 
 ### 검증
 
 - [x] `npx tsc --noEmit`
 - [x] `npm run build` — production build 통과
-- [x] `audio-integration-regression.ts` — 5개 OGG 존재, 키·정책·호출 배선 통과
+- [x] `audio-integration-regression.ts` — 배포 OGG 존재, 키·정책·호출 배선 통과
 - [x] `test:rewardcard`, `test:roomchoice`, `test:active-mana`, `test:settings`
 - [x] UI 확정음 배치 보정 후 `audio-integration-regression.ts`, `test:rewardcard`, `test:pausekey`, production build, `git diff --check` 통과
+- [x] 2026-08-02 믹스 보정 후 `audio-integration-regression.ts`, `test:active-mana`, `test:settings`, production build, `git diff --check` 통과
 - [x] Browser Mock 런: 타이틀 표시, Enter 시작, 전투 씬 전환, 콘솔 warning/error 0건
-- [ ] 실제 스피커/헤드폰에서 기존 BGM과 5종의 최종 믹스·중첩·반복 피로도 확인
+- [ ] 제단 BGM 1.2배와 마나 수정음 0.65배·110ms의 실제 믹스·반복 피로도 재확인
 
 ---
 

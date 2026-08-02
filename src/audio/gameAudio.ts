@@ -63,11 +63,16 @@ const DEFAULT_SFX_POLICY: SfxPolicy = { volumeScale: 1, cooldownMs: 0 };
 const SFX_POLICY: Partial<Record<SfxName, SfxPolicy>> = {
   hit: { volumeScale: 0.75, cooldownMs: 35 },
   'player-hit': { volumeScale: 1, cooldownMs: 90 },
-  'mana-crystal-pickup': { volumeScale: 0.9, cooldownMs: 70 },
+  'mana-crystal-pickup': { volumeScale: 0.65, cooldownMs: 110 },
   'ui-confirm': { volumeScale: 0.9, cooldownMs: 80 },
   'route-transition': { volumeScale: 1, cooldownMs: 250 },
   'title-start': { volumeScale: 1, cooldownMs: 250 },
   'run-complete': { volumeScale: 1, cooldownMs: 500 },
+};
+
+/** 같은 -6dBFS 마스터라도 곡의 밀도·대역에 따라 체감 음량이 달라 공간별로 보정한다. */
+const BGM_VOLUME_SCALE: Partial<Record<BgmName, number>> = {
+  altar: 1.2,
 };
 
 export class GameAudio {
@@ -136,7 +141,7 @@ export class GameAudio {
   /** 설정 반영 — 재생 중인 BGM 볼륨도 즉시 바꿔 조절이 귀로 확인된다. */
   applySettings(settings: GameSettings): void {
     this.settings = { ...settings };
-    const bgm = MASTER_VOLUME * this.settings.bgmVolume;
+    const bgm = MASTER_VOLUME * this.settings.bgmVolume * this.currentBgmVolumeScale();
     (this.intro as Phaser.Sound.WebAudioSound | null)?.setVolume?.(bgm);
     (this.loop as Phaser.Sound.WebAudioSound | null)?.setVolume?.(bgm);
   }
@@ -164,7 +169,7 @@ export class GameAudio {
     this.stopBgm();
     this.currentBgm = name;
     const generation = ++this.bgmGeneration;
-    const bgmVolume = MASTER_VOLUME * this.settings.bgmVolume;
+    const bgmVolume = MASTER_VOLUME * this.settings.bgmVolume * this.currentBgmVolumeScale();
     this.intro = this.scene.sound.add(`audio-bgm-${name}-intro`, { volume: bgmVolume });
     this.loop = this.scene.sound.add(`audio-bgm-${name}-loop`, { loop: true, volume: bgmVolume });
     this.intro.once(Phaser.Sound.Events.COMPLETE, () => {
@@ -175,13 +180,18 @@ export class GameAudio {
     this.intro.play();
   }
 
-  private stopBgm(): void {
+  /** 씬 전환 직전처럼 shutdown 이벤트보다 먼저 음악을 확실히 끊어야 할 때 사용한다. */
+  stopBgm(): void {
     this.bgmGeneration += 1;
     this.intro?.destroy();
     this.loop?.destroy();
     this.intro = null;
     this.loop = null;
     this.currentBgm = null;
+  }
+
+  private currentBgmVolumeScale(): number {
+    return this.currentBgm ? (BGM_VOLUME_SCALE[this.currentBgm] ?? 1) : 1;
   }
 
   /** 현재 음소거 상태 — 일시정지 메뉴가 라벨(켬/끔)에 쓴다. */
