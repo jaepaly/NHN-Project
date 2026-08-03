@@ -132,8 +132,8 @@ function tierDescription(tier: AltarTier, awakenElement: SpellElement | null): s
       return `모든 원소 위력 +${percent}%\n한 원소가 아니라 **여덟 전부**`;
     case 'awaken':
       return awakenElement
-        ? `${ELEMENT_LABELS[awakenElement]} 각성을 지금 연다\n원래 친화를 깊이 쌓아야 열리는 문`
-        : '각성을 지금 연다\n원래 친화를 깊이 쌓아야 열리는 문';
+        ? `${ELEMENT_LABELS[awakenElement]} 각성을 지금 연다\n대가를 치른 뒤 작열·연환·낙인 중 직접 선택`
+        : '각성을 지금 연다\n대가를 치른 뒤 성질을 직접 선택';
     case 'ripple':
       return `수동 영창이 **다른 적에게** 번진다 (위력 ${Math.round(ALTAR_OFFER_CONFIG.ripple.powerScale * 100)}%)`
         + `\n가장 가까운 다른 적 ${ALTAR_OFFER_CONFIG.ripple.maxTargets}체까지 · 시퀀스 제외`;

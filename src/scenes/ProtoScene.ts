@@ -78,7 +78,6 @@ import { VFX_BUDGET_CONFIG } from '../render/vfxBudget';
 import type { AwakeningState } from '../combat-core/run/awakening';
 import {
   AWAKENING_CONFIG,
-  AWAKENING_KINDS,
   AWAKENING_LABELS,
   applyAwakening,
   awakenableElement,
@@ -120,7 +119,7 @@ import { flooredResistMultiplier } from '../combat-core/combat/debuffFloor';
 import { showBossChoice } from '../ui/bossChoiceOverlay';
 import { showSystemBanner } from '../render/systemBanner';
 import { bossResistanceLines, bossResistanceReadout } from '../render/bossResistanceReadout';
-import { playAwakeningSigil } from '../render/awakeningSigil';
+import { playAwakeningBrandMark, playAwakeningSigil } from '../render/awakeningSigil';
 import {
   PARTICLE_TEXTURES, ensureParticleTextures, particleKey,
 } from '../render/particleTextures';
@@ -681,6 +680,8 @@ export class ProtoScene extends Phaser.Scene {
    * 자기가 타이머를 걸었다고 믿고 있고 실제로는 씬이 시점을 정한다 — 계약을 넘지 않는다.
    */
   private pendingRunTransition: { delayMs: number; run: () => void } | null = null;
+  /** 제단 각성 갈래 선택 중에는 다음 방 전환도 붙잡는다. */
+  private altarAwakeningSelecting = false;
 
   private readonly combatRunController: CombatRunController = new CombatRunController({
     playerState: this.playerState,
@@ -1493,17 +1494,9 @@ export class ProtoScene extends Phaser.Scene {
           return;
         }
         if (chosen.kind === 'awaken' && chosen.element) {
-          // 제단 각성은 갈래를 고르지 않는다 — 대가를 이미 치렀으므로 바로 부여한다
-          const kind = AWAKENING_KINDS[
-            Math.floor(this.engraveRewardRand() * AWAKENING_KINDS.length) % AWAKENING_KINDS.length
-          ];
-          this.awakenings = applyAwakening(this.awakenings, chosen.element, kind);
-          this.announceBanner({
-            title: `${ELEMENT_LABELS[chosen.element]} 각성 — ${AWAKENING_LABELS[kind]}`,
-            lines: [awakeningDescription(kind, chosen.element)],
-            color: 0xd0a8ff,
-            holdMs: 3000,
-          });
+          // 제단은 대가를 먼저 치른 뒤 runUiBinding 후속 단계에서 갈래를 직접 고른다.
+          // 무작위 결과를 주면 최대 생명 25의 거래가 도박으로 읽힌다.
+          this.altarAwakeningSelecting = true;
           return;
         }
         return; // 거절·잠김
@@ -2114,6 +2107,7 @@ export class ProtoScene extends Phaser.Scene {
     // 제단 능력도 비운다 — 그래야 다음 런 제단이 다시 의미를 갖는다
     this.echoUnlocked = false;
     this.rippleUnlocked = false;
+    this.altarAwakeningSelecting = false;
     this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.runMovementDistance = 0;
@@ -2158,6 +2152,7 @@ export class ProtoScene extends Phaser.Scene {
     this.awakenings = {};
     this.echoUnlocked = false;
     this.rippleUnlocked = false;
+    this.altarAwakeningSelecting = false;
     this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
@@ -2184,6 +2179,7 @@ export class ProtoScene extends Phaser.Scene {
     this.awakenings = {};
     this.echoUnlocked = false;
     this.rippleUnlocked = false;
+    this.altarAwakeningSelecting = false;
     this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
@@ -3371,7 +3367,7 @@ export class ProtoScene extends Phaser.Scene {
    * 붙잡을 이유가 없으므로 종전대로 즉시 예약한다.
    */
   private transitionNeedsRoomChoice(): boolean {
-    return this.mapGraph.choices().length > 0;
+    return this.altarAwakeningSelecting || this.mapGraph.choices().length > 0;
   }
 
   /**
@@ -3496,6 +3492,7 @@ export class ProtoScene extends Phaser.Scene {
     this.destroyRunMapUi();
     // 보관된 전환을 버린다 — 남겨두면 새 런에서 지난 런의 전환이 터진다
     this.pendingRunTransition = null;
+    this.altarAwakeningSelecting = false;
     const definition = this.runMapDefinition(initialNodeId === null);
     this.mapGraph = new RunMapGraph(definition, initialNodeId ?? definition.startNodeId);
     this.combatRunController.configureMapRoute(maximumMapPathRooms(definition));
@@ -3743,6 +3740,31 @@ export class ProtoScene extends Phaser.Scene {
       if (!best || value > best.value) best = { element, value };
     }
     return best?.element ?? null;
+  }
+
+  /** 제단 각성의 두 번째 선택 — 거래 대가를 낸 뒤 성질은 플레이어가 결정한다. */
+  async resolveRewardFollowup(chosen: RewardOption): Promise<void> {
+    if (!chosen.altar || chosen.kind !== 'awaken' || !chosen.element) return;
+    try {
+      const element = chosen.element;
+      const picked = await showRewardCards(awakeningOptions(element), {
+        kicker: 'ALTAR AWAKENING',
+        title: `${ELEMENT_LABELS[element]}에 새 성질을 새긴다`,
+        contextLines: ['작열 · 본성 상태이상', '연환 · 가까운 적에게 파급', '낙인 · 다음 피해 취약'],
+      });
+      const awakening = picked.awaken?.awakening;
+      if (!awakening) return;
+      this.awakenings = applyAwakening(this.awakenings, element, awakening);
+      this.audio.playSfx('ui-confirm');
+      this.announceBanner({
+        title: `${ELEMENT_LABELS[element]} 각성 — ${AWAKENING_LABELS[awakening]}`,
+        lines: [awakeningDescription(awakening, element), '좌상단 친화 HUD에 각성 표식이 남는다'],
+        color: 0xd0a8ff,
+        holdMs: 3000,
+      });
+    } finally {
+      this.altarAwakeningSelecting = false;
+    }
   }
 
   /**
@@ -7482,6 +7504,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const pal = ELEMENT_PALETTES[row.element];
       const ratio = Phaser.Math.Clamp(row.value / AFFINITY_BAR_MILESTONE, 0, 1);
       const main = row.element === primaryElement;
+      const awakening = this.awakenings[row.element] ?? null;
       const barH = main
         ? AFFINITY_PANEL_LAYOUT.primaryBarHeight
         : AFFINITY_PANEL_LAYOUT.secondaryBarHeight;
@@ -7499,7 +7522,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         g.fillRoundedRect(barX, barY, barW, barH, barH / 2);
       }
       label
-        .setText(`「${ELEMENT_LABELS[row.element]}」 ${Math.round(row.value * 100)}%`)
+        .setText(
+          `「${ELEMENT_LABELS[row.element]}」 ${Math.round(row.value * 100)}%`
+          + (awakening ? ` ✦${AWAKENING_LABELS[awakening]}` : ''),
+        )
         .setColor(paletteColorToCss(pal.core))
         .setAlpha(alpha)
         .setFontSize(main ? 11 : 10);
@@ -8608,6 +8634,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         AWAKENING_CONFIG.brandWeakenMultiplier,
         AWAKENING_CONFIG.brandWeakenSeconds,
       );
+      playAwakeningBrandMark(this, enemy.x, enemy.y, spec.element_primary);
     }
   }
 

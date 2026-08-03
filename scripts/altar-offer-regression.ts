@@ -86,6 +86,7 @@ assert.deepEqual(
   ALTAR_TIERS.map((t) => t.kind),
 );
 assert.equal(full[1].element, 'fire', '각성 카드는 대상 원소를 싣는다');
+assert.ok(full[1].description.includes('직접 선택'), '제단 각성은 무작위가 아니라 갈래 선택임을 고지');
 // id는 서로 달라야 chooseReward가 구분한다.
 // ⚠️ 최상위가 둘이고 **대가가 같으므로** id에 종류가 들어가야 구분된다
 assert.equal(new Set(full.map((o) => o.id)).size, full.length, 'id 중복 없음');
