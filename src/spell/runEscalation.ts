@@ -19,7 +19,6 @@ export const RUN_ESCALATION_CONFIG = {
   /** 약화 배율 하한 (완전 봉인은 처벌 → 최소 40%는 남김) */
   weakenFloor: 0.4,
   /** 방 기믹 해금 티어 (R1이 이 플래그로 기믹 노출) */
-  gimmickUnlockTier: 3,
   /** 보스 이중 저항 발동 티어 (bossEnemy가 이미 2원소 지원) */
   dualResistTier: 4,
 } as const;
@@ -39,7 +38,6 @@ export interface RunEscalationProfile {
   /** 약화 원소에 적용할 위력 배율 (1=정상, <1=약화, 하한 weakenFloor) */
   weakenMultiplier: number;
   /** 방 기믹 해금 여부 (R1이 침묵대·정전 등 노출 판단에 사용) */
-  gimmicksUnlocked: boolean;
   /** 보스 이중 저항 여부 (2원소 동시 저항) */
   bossDualResistance: boolean;
 }
@@ -64,7 +62,6 @@ export function runEscalationProfile(memory: RunMemory): RunEscalationProfile {
         1 - RUN_ESCALATION_CONFIG.weakenPerTier * (tier - 1),
       )
       : 1,
-    gimmicksUnlocked: tier >= RUN_ESCALATION_CONFIG.gimmickUnlockTier,
     bossDualResistance: tier >= RUN_ESCALATION_CONFIG.dualResistTier,
   };
 }

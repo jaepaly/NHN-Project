@@ -178,10 +178,8 @@ import {
 } from '../combat-core/waves/waveManager';
 import type { WaveDefinition } from '../combat-core/waves/waveManager';
 import { CombatRunController } from '../combat-core/run/runController';
-import { ELITE_MODIFIERS, RUN_ENCOUNTERS } from '../combat-core/run/encounterConfig';
+import { ELITE_MODIFIERS } from '../combat-core/run/encounterConfig';
 import {
-  createRoomCursePlan,
-  curseForRoom,
   ROOM_CURSE_CONFIG,
   silenceManaDrainPerSecond,
 } from '../combat-core/run/roomCurse';
@@ -199,7 +197,6 @@ import {
 } from '../combat-core/run/wordLimitCurse';
 import type {
   RoomCurseAssignment,
-  RoomCursePlan,
 } from '../combat-core/run/roomCurse';
 import { drawRewardOptions, RUN_REWARD_CONFIG } from '../combat-core/run/rewardConfig';
 import { AFFINITY_ROWS, affinityHudRows, rankAffinities } from '../combat-core/run/useAffinity';
@@ -246,6 +243,7 @@ import { EMPTY_RUN_MEMORY } from '../spell/runMemory';
 import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { showRewardCards } from '../ui/rewardCardOverlay';
 import { MinimapHud } from '../ui/minimapHud';
+import { MINIMAP_CONFIG } from '../ui/minimapLayout';
 import { pushOutOfBlocks, segmentBlocked } from '../combat-core/combat/terrainBlock';
 import type { TerrainBlock } from '../combat-core/combat/terrainBlock';
 import {
@@ -701,18 +699,8 @@ export class ProtoScene extends Phaser.Scene {
       });
     },
     initialRoomIndex: DEBUG_START_ROOM,
-    /**
-     * ⚠️ 컨트롤러의 `maxRooms`는 `readonly`라 런 중에 바꿀 수 없다. 그래서 생성 맵도
-     * **프리셋과 같은 8방이어야** `ROOM x/8` 표시와 보스 판정(`roomIndex >= maxRooms`)이
-     * 맞는다. #272에서 미니맵·포탈 라벨이 상수 2칸 어긋난 것과 같은 종류의 결합이다.
-     *
-     * 생성기는 파티션 예산이 `1 + 2 + 1 + 3 + 1`로 고정이고 한 파티션의 모든 분기가
-     * 같은 길이를 갖기 때문에 **모든 경로가 정확히 8방**이다. 실측 500시드에서 나타난
-     * 경로 길이는 8 하나뿐이었고 한 맵 안에서 길이가 갈린 경우도 0이었다.
-     *
-     * 우연이 아니라 구조적 성질이지만, 예산을 건드리면 조용히 깨진다 —
-     * `map-generator-regression`이 이 일치를 못박는다.
-     */
+    // 생성 맵 설치 전의 초기 안전 상한이다. resetMapGraph가 런/루프마다 실제 생성된
+    // 그래프의 최대 경로 길이로 갱신하며, 분기형 맵의 표시용 총방 수로는 사용하지 않는다.
     maxRooms: maximumMapPathRooms(MAP_GRAPH_PRESET_01),
     encounterProvider: (roomIndex) => this.mapEncounterForRoom(roomIndex),
     rewardDraw: (roomIndex) => {
@@ -831,6 +819,11 @@ export class ProtoScene extends Phaser.Scene {
 
   private pauseMenuTitle!: Phaser.GameObjects.Text;
 
+  /** 현재 런의 재현용 맵 시드. 생성 맵이 아닌 시연·폴백은 null이다. */
+  private currentMapSeed: number | null = null;
+
+  private pauseMapSeedText!: Phaser.GameObjects.Text;
+
   private pauseMenuItems: Phaser.GameObjects.Text[] = [];
 
   private pauseMenuIndex = 0;
@@ -872,12 +865,6 @@ export class ProtoScene extends Phaser.Scene {
    * 시전마다 loadRunMemory()로 localStorage를 읽지 않도록 런 시작에 1회만 계산한다.
    */
   private runEscalation: RunEscalationProfile = runEscalationProfile(EMPTY_RUN_MEMORY);
-  /** 격상 Tier 3부터 스테이지별 일부 방에 배정되는 결정적 저주 계획. */
-  private roomCursePlan: RoomCursePlan = {
-    selectedKinds: {},
-    curseWeights: { silence: 0.5, blackout: 0.5, heatwave: 0.5, 'word-limit': 0.5 },
-    assignments: [],
-  };
   private activeRoomCurse: RoomCurseAssignment | null = null;
   /** MapGraph 연결 전 함정방 규칙을 검증하기 위한 DEV 전용 첫 방 강제 프로필입니다. */
   private readonly debugTrapProfile = debugTrapProfileFromEnv();
@@ -1654,6 +1641,7 @@ export class ProtoScene extends Phaser.Scene {
       result,
       roomIndex: runState.roomIndex,
       maxRooms: runState.maxRooms,
+      roomCountMode: runState.roomCountMode,
       totalCasts: memory.totalCasts,
       dominantElement: memory.dominantElement,
       dominantForm: memory.dominantForm,
@@ -2249,17 +2237,6 @@ export class ProtoScene extends Phaser.Scene {
     const memory = loadRunMemory();
     this.runEscalation = runEscalationProfile(memory);
     this.escalationNoticed.clear();
-    // 승패 누계 기반 시드: 같은 런 기억에서는 같은 방을 뽑아 재현 가능하고,
-    // 런이 끝나 기억이 갱신되면 다음 계획이 달라진다.
-    const curseSeed = Math.imul(memory.clears + 1, 0x9e3779b1)
-      ^ Math.imul(memory.deaths + 1, 0x85ebca6b);
-    this.roomCursePlan = createRoomCursePlan(
-      RUN_ENCOUNTERS,
-      this.runEscalation.gimmicksUnlocked,
-      createRunRandom(curseSeed),
-      undefined,
-      memory.lastCurseBehavior,
-    );
   }
 
   private startRoom(roomIndex: number): void {
@@ -2475,7 +2452,8 @@ export class ProtoScene extends Phaser.Scene {
       }, this.debugTrapProfile);
       return;
     }
-    const graphProfile = this.mapGraph.current().trapProfile;
+    const node = this.mapGraph.current();
+    const graphProfile = node.kind === 'trap' ? node.trapProfile : undefined;
     if (graphProfile) {
       if (graphProfile.kind === 'hazard') {
         this.activeRoomCurse = null;
@@ -2489,8 +2467,7 @@ export class ProtoScene extends Phaser.Scene {
       }, graphProfile);
       return;
     }
-    const assignment = curseForRoom(this.roomCursePlan, roomIndex);
-    this.activateRoomCurseAssignment(assignment);
+    this.activateRoomCurseAssignment(null);
   }
 
   private activateRoomCurseAssignment(
@@ -3480,13 +3457,16 @@ export class ProtoScene extends Phaser.Scene {
    *     600시드에서 0%였지만 **폴백이 없으면 런이 시작되지 않는다**. 안전망은 남긴다.
    */
   private runMapDefinition(useGenerator: boolean): MapGraphDefinition {
+    this.currentMapSeed = null;
     if (!useGenerator) return MAP_GRAPH_PRESET_01;
-    const generated = generateRunMap((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
+    const seed = (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0;
+    const generated = generateRunMap(seed);
     if (!generated) {
       // 조용히 넘어가면 "왜 항상 같은 맵이지"를 아무도 모른다
       console.warn('[map] 생성 상한 초과 — 고정 프리셋으로 폴백');
       return MAP_GRAPH_PRESET_01;
     }
+    this.currentMapSeed = generated.seed;
     return generated.definition;
   }
 
@@ -3507,6 +3487,7 @@ export class ProtoScene extends Phaser.Scene {
     this.pendingRunTransition = null;
     const definition = this.runMapDefinition(initialNodeId === null);
     this.mapGraph = new RunMapGraph(definition, initialNodeId ?? definition.startNodeId);
+    this.combatRunController.configureMapRoute(maximumMapPathRooms(definition));
     this.mapEncounterByRoom.clear();
     this.mapEncounterByRoom.set(roomIndex, encounterFromMapNode(this.mapGraph.current()));
     this.refreshMinimap();
@@ -6859,7 +6840,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.drawHudBars();
     // ROOM은 종전에 별도 DOM 칩(runHud)이었다. 우상단이 3단(칩·패널·미니맵)이 되어
     // 이 패널 첫 줄로 합쳤다 (총괄 지적) — 같은 정보군을 두 판에 나눌 이유가 없다.
-    const roomLine = `ROOM ${runState.roomIndex}/${runState.maxRooms}`;
+    const roomLine = runState.roomCountMode === 'dynamic'
+      ? `ROOM ${runState.roomIndex}`
+      : `ROOM ${runState.roomIndex}/${runState.maxRooms}`;
     // 위험지대 정화 — **지형이 깔린 방에서만** 한 줄 붙는다 (없으면 null).
     // HUD 박스가 아니라 여기인 이유: HUD는 높이가 고정이고 친화 바·쿨다운 바가
     // `HUD.y + HUD.height` 기준이라 행을 늘리면 전부 밀린다(총괄이 제보한 겹침과 같은
@@ -7032,6 +7015,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       letterSpacing: 6,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(106).setVisible(false);
 
+    this.pauseMapSeedText = this.add.text(width - 162, 0, '', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '12px',
+      color: UI_COLOR.textMuted,
+      letterSpacing: 1,
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100).setVisible(false);
+
 
     this.pauseMenuItems = PAUSE_MAIN.map((_, i) => this.add.text(
       width / 2,
@@ -7111,11 +7101,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.pauseDim.setVisible(visible);
     this.pauseMenuPlate.setVisible(visible);
     this.pauseMenuTitle.setVisible(visible);
+    this.pauseMapSeedText.setVisible(visible);
     this.pauseMenuItems.forEach((t) => t.setVisible(false));
     if (!visible) return;
 
     const { width } = this.scale;
     this.pauseMenuTitle.setText('일시정지');
+    this.pauseMapSeedText.setText(this.currentMapSeed === null
+      ? '맵 시드  고정 프리셋'
+      : `맵 시드  ${this.currentMapSeed}`);
     PAUSE_MAIN.forEach((row, i) => {
       const selected = i === this.pauseMenuIndex;
       const label = row.id === 'quit' && this.quitArmed ? '정말 나갈까? 한 번 더' : row.label;
@@ -7435,7 +7429,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       drawSectionRule(g, width - 306, RIGHT_PANEL.y + RIGHT_PANEL.padTop + 18, 288);
     }
     // 미니맵을 패널 아래로 — 높이가 바뀔 때만 옮긴다 (setTop이 동일 y면 no-op)
-    this.runMinimap?.setTop(RIGHT_PANEL.y + panelHeight + RIGHT_PANEL.gap);
+    const minimapTop = RIGHT_PANEL.y + panelHeight + RIGHT_PANEL.gap;
+    this.runMinimap?.setTop(minimapTop);
+    this.pauseMapSeedText?.setPosition(width - 162, minimapTop + MINIMAP_CONFIG.height + 7);
   }
 
   /**

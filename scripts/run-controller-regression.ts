@@ -292,7 +292,8 @@ for (let room = 1; room <= 6; room++) {
   if (room === 3) assert.equal(before.encounterKind, 'stage-boss');
   if (room === 4) {
     assert.equal(before.stage, 2);
-    assert.ok(['shield-sentinel', 'hazard-mixed'].includes(before.encounterVariantId ?? ''));
+    assert.equal(before.waveSetId, 'room-c-shield');
+    assert.equal(before.encounterVariantId, undefined);
   }
   if (room === 5) assert.equal(before.encounterKind, 'elite');
   if (room === 6) assert.equal(before.encounterKind, 'memory-boss');

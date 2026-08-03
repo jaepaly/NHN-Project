@@ -29,10 +29,7 @@ export const RUN_ENCOUNTERS: readonly EncounterDefinition[] = [
     stage: 2,
     kind: 'combat',
     rewardAfterClear: true,
-    variants: [
-      { id: 'shield-sentinel', waveSetId: 'room-c-shield' },
-      { id: 'hazard-mixed', waveSetId: 'room-c-hazard' },
-    ],
+    waveSetId: 'room-c-shield',
   },
   {
     id: 'stage-2-elite',

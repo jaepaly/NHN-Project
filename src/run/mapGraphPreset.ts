@@ -35,10 +35,10 @@ export const MAP_GRAPH_PRESET_01: MapGraphDefinition = {
     { id: 's1-treasure', stage: 1, kind: 'treasure', layer: 1, lane: 1, waveSetId: null, ...emptyRoom },
     { id: 's1-elite', stage: 1, kind: 'elite', layer: 2, lane: 0, waveSetId: 'elite', ...emptyRoom },
     { id: 's1-boss', stage: 1, kind: 'stage-boss', layer: 3, lane: 0, waveSetId: null, ...emptyRoom },
-    // ⚠️ 'room-c'는 WAVE_SETS에 없다 — 실제 키는 room-c-shield / room-c-hazard 두 변형이다.
+    // ⚠️ 'room-c'는 WAVE_SETS에 없다 — 실제 일반 전투 키는 room-c-shield다.
     // 그래서 5번 방에서 startRoom이 예외를 던져 몹도 포탈도 없는 빈 방이 됐다(총괄 제보).
-    // 그래프에는 변형(variants) 개념이 없어 하나를 골라야 한다 — 실드 파수꾼이 별개
-    // 기믹이라 shield를 택했다. 두 변형을 살릴지는 R1 판단(#283).
+    // 과거 room-c-hazard 변형은 별도 함정방 계약이 생긴 뒤에도 남아 일반방 표기와
+    // 붉은 위험지대 기믹을 충돌시켰으므로 제거했다.
     { id: 's2-combat', stage: 2, kind: 'combat', layer: 4, lane: 0, waveSetId: 'room-c-shield', ...emptyRoom },
     {
       id: 's2-trap',
