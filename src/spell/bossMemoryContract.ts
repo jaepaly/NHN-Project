@@ -50,7 +50,7 @@ export { getEvolvedName, templateEvolvedName, sanitizeName, evolveCacheKey } fro
 export type { EvolveNameRequest } from './evolveName';
 
 // ── 런 반복 격상 (#77) — 회차(clears) 기반 격상 프로필 (전투·방·보스가 소비) ──
-//   runEscalationProfile(runMemory) → { tier, weakenedForms, weakenMultiplier, gimmicksUnlocked, bossDualResistance }
+//   runEscalationProfile(runMemory) → { tier, weakenedForms, weakenMultiplier, bossDualResistance }
 //   weakenMultiplier: 시전 위력에 적용(과의존 원소 약화) / 플래그: R1·보스가 방기믹·이중저항에 적용
 export { runEscalationTier, runEscalationProfile, RUN_ESCALATION_CONFIG } from './runEscalation';
 export type { RunEscalationProfile } from './runEscalation';

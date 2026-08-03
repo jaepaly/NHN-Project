@@ -6,7 +6,7 @@ import type {
 
 /**
  * 위험지대/저주방 통합 프로필의 R1 소유 정의입니다.
- * 실제 Phaser 필드 생성과 기존 roomCursePlan의 노드 기반 전환은 R3 통합부가 담당합니다.
+ * 실제 Phaser 필드 생성과 MapGraph trapProfile 소비는 R3 통합부가 담당합니다.
  */
 export const TRAP_ROOM_PROFILES: Readonly<Record<TrapProfileKind, TrapRoomProfile>> = {
   hazard: {

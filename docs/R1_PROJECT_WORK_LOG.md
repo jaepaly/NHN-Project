@@ -1906,3 +1906,11 @@
 - [ ] 문서·영상
 - [ ] PR 리뷰·병합
 ```
+
+### 2026-08-03 — #330 결정 반영
+
+- 신규 MapGraph의 `trap` 노드와 `trapProfile`을 함정 위치·종류·표시·실행의 단일 출처로 유지한다.
+- 누적 클리어 기반 자동 Tier 3 방 기믹과 방 번호 기반 `roomCursePlan` 배정은 폐기한다.
+- `gimmicksUnlocked`·`gimmickUnlockTier` 및 관련 레거시 계획 함수를 제거했다.
+- `dualResistTier`는 4를 유지하며, 자동 티어 재번호화와 새 affix는 P0-E/F 기억 심도로 이관한다.
+- PR #312 브랜치에서 회귀 92종, production build, `git diff --check` 통과.

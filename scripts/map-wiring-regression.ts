@@ -116,7 +116,7 @@ function bodyOf(startMarker: string, endMarker: string): string {
     '선택한 trap 노드의 프로필을 방 기믹이 소비하지 않는다',
   );
   assert.ok(
-    !curseBody.includes('curseForRoom(') && !curseBody.includes('roomCursePlan'),
+    !curseBody.includes('curseForRoom('),
     '일반·엘리트·보스 노드가 레거시 방 저주 계획을 소비한다',
   );
   assert.ok(
