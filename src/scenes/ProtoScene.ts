@@ -6874,8 +6874,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
     for (const entry of entries) {
       if (this.spiritViews.has(entry.spiritId)) continue;
-      const visualElement = entry.element ?? (entry.role === 'heal' ? 'light' : 'earth');
-      this.spiritViews.set(entry.spiritId, new SpiritOrbView(this, visualElement));
+      const visualElements = entry.elements
+        ?? (entry.element ? [entry.element] : [entry.role === 'heal' ? 'light' : 'earth']);
+      this.spiritViews.set(entry.spiritId, new SpiritOrbView(this, visualElements));
     }
   }
 

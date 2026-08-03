@@ -6,18 +6,29 @@ import { ELEMENT_PALETTES } from '../../render/palette';
 export class SpiritOrbView {
   readonly view: Phaser.GameObjects.Container;
 
-  constructor(scene: Phaser.Scene, element: SpellElement) {
-    const palette = ELEMENT_PALETTES[element];
-    const orbitRing = scene.add.circle(0, 0, 13, palette.glow, 0.08)
-      .setStrokeStyle(1.5, palette.accent, 0.75)
-      .setBlendMode(Phaser.BlendModes.ADD);
+  constructor(scene: Phaser.Scene, rawElements: readonly SpellElement[]) {
+    const elements = [...new Set(rawElements)].filter((element): element is SpellElement => Boolean(ELEMENT_PALETTES[element]));
+    const primary = elements[0] ?? 'light';
+    const palette = ELEMENT_PALETTES[primary];
+    const orbitRing = scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    elements.forEach((element, index) => {
+      const start = -Math.PI / 2 + (Math.PI * 2 * index) / elements.length;
+      const end = -Math.PI / 2 + (Math.PI * 2 * (index + 1)) / elements.length;
+      orbitRing.lineStyle(2.5, ELEMENT_PALETTES[element].accent, 0.9).beginPath().arc(0, 0, 13, start, end).strokePath();
+    });
     const halo = scene.add.circle(0, 0, 9, palette.glow, 0.28)
       .setBlendMode(Phaser.BlendModes.ADD);
-    const core = scene.add.circle(0, 0, 4.5, palette.core, 1)
-      .setBlendMode(Phaser.BlendModes.ADD);
-    const mote = scene.add.circle(8, -4, 2, palette.accent, 0.9)
-      .setBlendMode(Phaser.BlendModes.ADD);
-    this.view = scene.add.container(0, 0, [orbitRing, halo, core, mote]).setDepth(8);
+    const cores = elements.map((element, index) => {
+      const angle = (Math.PI * 2 * index) / elements.length - Math.PI / 2;
+      return scene.add.circle(Math.cos(angle) * 2.4, Math.sin(angle) * 2.4, 4.5, ELEMENT_PALETTES[element].core, 0.94)
+        .setBlendMode(Phaser.BlendModes.ADD);
+    });
+    const motes = elements.map((element, index) => {
+      const angle = (Math.PI * 2 * index) / elements.length - Math.PI / 4;
+      return scene.add.circle(Math.cos(angle) * 8, Math.sin(angle) * 8, 2, ELEMENT_PALETTES[element].accent, 0.9)
+        .setBlendMode(Phaser.BlendModes.ADD);
+    });
+    this.view = scene.add.container(0, 0, [orbitRing, halo, ...cores, ...motes]).setDepth(8);
   }
 
   get x(): number {

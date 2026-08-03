@@ -2,6 +2,7 @@ import type { EngravedSpellSnapshot } from '../combat-core/engrave/engraveManage
 import type { SpiritSnapshot } from '../combat-core/spirit/spiritManager';
 import type { SpellElement, SpellForm } from '../spell/types';
 import type { AwakeningKind, AwakeningState } from '../combat-core/run/awakening';
+import { ELEMENT_LABELS } from '../render/palette';
 
 /**
  * 빌드 칩 뷰모델 (순수) — 우하단 빌드 패널을 텍스트 2줄에서 2×2 아이콘 그리드로
@@ -141,7 +142,13 @@ function spiritChip(
   const roleLabel = ROLE_LABELS[entry.role];
   const element = entry.element ?? spiritFallbackElement(entry.role);
   const detail = [`${roleLabel} 정령 · ${entry.intervalSeconds.toFixed(1)}초마다 발동`];
-  if (entry.fused) detail.push('융합 — 두 정령이 하나로');
+  if (entry.fused) {
+    const elements = entry.elements ?? [element, ...(entry.elementSecondary ? [entry.elementSecondary] : [])];
+    detail.push(`융합 원소 — ${elements.map((entryElement) => ELEMENT_LABELS[entryElement]).join(' + ')}`);
+    detail.push('융합 — 여러 정령이 하나로');
+  } else if (entry.element) {
+    detail.push(`원소 — ${ELEMENT_LABELS[entry.element]}`);
+  }
   return {
     kind: 'spirit',
     slot,
