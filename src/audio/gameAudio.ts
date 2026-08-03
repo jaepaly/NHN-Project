@@ -11,10 +11,16 @@ export const SFX_NAMES = [
   'reward-select',
   'room-clear',
   'boss-appear',
+  'ui-confirm',
+  'mana-crystal-pickup',
+  'route-transition',
+  'player-hit',
+  'title-start',
+  'run-complete',
 ] as const;
 
 export type SfxName = (typeof SFX_NAMES)[number];
-export type BgmName = 'combat' | 'boss';
+export type BgmName = 'combat' | 'boss' | 'title' | 'reward' | 'altar';
 
 /** 마스터 — 설정의 효과음·배경음악 크기가 이 위에 곱해진다 */
 const MASTER_VOLUME = 0.5;
@@ -40,6 +46,33 @@ const SFX_KEYS: Record<SfxName, string> = {
   'reward-select': 'audio-sfx-reward-select',
   'room-clear': 'audio-sfx-room-clear',
   'boss-appear': 'audio-sfx-boss-appear',
+  'ui-confirm': 'audio-sfx-ui-confirm',
+  'mana-crystal-pickup': 'audio-sfx-mana-crystal-pickup',
+  'route-transition': 'audio-sfx-route-transition',
+  'player-hit': 'audio-sfx-player-hit',
+  'title-start': 'audio-sfx-title-start',
+  'run-complete': 'audio-sfx-run-complete',
+};
+
+interface SfxPolicy {
+  volumeScale: number;
+  cooldownMs: number;
+}
+
+const DEFAULT_SFX_POLICY: SfxPolicy = { volumeScale: 1, cooldownMs: 0 };
+const SFX_POLICY: Partial<Record<SfxName, SfxPolicy>> = {
+  hit: { volumeScale: 0.75, cooldownMs: 35 },
+  'player-hit': { volumeScale: 1, cooldownMs: 90 },
+  'mana-crystal-pickup': { volumeScale: 0.65, cooldownMs: 110 },
+  'ui-confirm': { volumeScale: 0.9, cooldownMs: 80 },
+  'route-transition': { volumeScale: 1, cooldownMs: 250 },
+  'title-start': { volumeScale: 1, cooldownMs: 250 },
+  'run-complete': { volumeScale: 1, cooldownMs: 500 },
+};
+
+/** 같은 -6dBFS 마스터라도 곡의 밀도·대역에 따라 체감 음량이 달라 공간별로 보정한다. */
+const BGM_VOLUME_SCALE: Partial<Record<BgmName, number>> = {
+  altar: 1.2,
 };
 
 export class GameAudio {
@@ -48,22 +81,53 @@ export class GameAudio {
   private loop: Phaser.Sound.BaseSound | null = null;
   private currentBgm: BgmName | null = null;
   private bgmGeneration = 0;
-  private lastHitAt = -Infinity;
+  private readonly lastSfxAt = new Map<SfxName, number>();
   /** 설정의 볼륨 — 일시정지 메뉴에서 조절하면 applySettings로 들어온다 */
   private settings: GameSettings = { ...DEFAULT_SETTINGS };
 
   static preload(scene: Phaser.Scene): void {
-    scene.load.setPath(AUDIO_PATH);
     for (const element of Object.keys(CAST_KEYS) as SpellElement[]) {
-      scene.load.audio(CAST_KEYS[element], `sfx-cast-${element}.ogg`);
+      scene.load.audio(CAST_KEYS[element], `${AUDIO_PATH}sfx-cast-${element}.ogg`);
     }
     for (const name of SFX_NAMES) {
-      scene.load.audio(SFX_KEYS[name], `sfx-${name}.ogg`);
+      this.preloadSfx(scene, name);
     }
-    scene.load.audio('audio-bgm-combat-intro', 'bgm-combat-intro.ogg');
-    scene.load.audio('audio-bgm-combat-loop', 'bgm-combat-loop.ogg');
-    scene.load.audio('audio-bgm-boss-intro', 'bgm-boss-intro.ogg');
-    scene.load.audio('audio-bgm-boss-loop', 'bgm-boss-loop.ogg');
+    for (const name of ['combat', 'boss', 'reward', 'altar'] as BgmName[]) {
+      this.preloadBgm(scene, name);
+    }
+  }
+
+  /** 타이틀처럼 전체 GameAudio를 만들지 않는 씬에서 필요한 SFX 하나만 준비한다. */
+  static preloadSfx(scene: Phaser.Scene, name: SfxName): void {
+    const key = SFX_KEYS[name];
+    if (scene.cache.audio.exists(key)) return;
+    scene.load.audio(key, `${AUDIO_PATH}sfx-${name}.ogg`);
+  }
+
+  /** 타이틀 등 필요한 트랙만 싣는 씬과 전체 전투 preload가 공유하는 BGM 로더. */
+  static preloadBgm(scene: Phaser.Scene, name: BgmName): void {
+    const introKey = `audio-bgm-${name}-intro`;
+    const loopKey = `audio-bgm-${name}-loop`;
+    if (!scene.cache.audio.exists(introKey)) {
+      scene.load.audio(introKey, `${AUDIO_PATH}bgm-${name}-intro.ogg`);
+    }
+    if (!scene.cache.audio.exists(loopKey)) {
+      scene.load.audio(loopKey, `${AUDIO_PATH}bgm-${name}-loop.ogg`);
+    }
+  }
+
+  /** 타이틀의 일회성 시작음처럼 GameAudio 인스턴스 밖에서 설정 볼륨을 지켜 재생한다. */
+  static playOneShot(scene: Phaser.Scene, name: SfxName, settings: GameSettings): void {
+    const policy = SFX_POLICY[name] ?? DEFAULT_SFX_POLICY;
+    scene.sound.volume = MASTER_VOLUME;
+    try {
+      scene.sound.mute = localStorage.getItem(MUTE_STORAGE_KEY) === 'true';
+    } catch {
+      // Storage can be unavailable; keep the current in-session mute state.
+    }
+    scene.sound.play(SFX_KEYS[name], {
+      volume: settings.sfxVolume * policy.volumeScale,
+    });
   }
 
   constructor(scene: Phaser.Scene) {
@@ -77,7 +141,7 @@ export class GameAudio {
   /** 설정 반영 — 재생 중인 BGM 볼륨도 즉시 바꿔 조절이 귀로 확인된다. */
   applySettings(settings: GameSettings): void {
     this.settings = { ...settings };
-    const bgm = MASTER_VOLUME * this.settings.bgmVolume;
+    const bgm = MASTER_VOLUME * this.settings.bgmVolume * this.currentBgmVolumeScale();
     (this.intro as Phaser.Sound.WebAudioSound | null)?.setVolume?.(bgm);
     (this.loop as Phaser.Sound.WebAudioSound | null)?.setVolume?.(bgm);
   }
@@ -89,13 +153,13 @@ export class GameAudio {
   }
 
   playSfx(name: SfxName): void {
-    if (name === 'hit') {
-      const now = this.scene.time.now;
-      if (now - this.lastHitAt < 35) return;
-      this.lastHitAt = now;
-    }
+    const policy = SFX_POLICY[name] ?? DEFAULT_SFX_POLICY;
+    const now = this.scene.time.now;
+    const lastAt = this.lastSfxAt.get(name) ?? -Infinity;
+    if (now - lastAt < policy.cooldownMs) return;
+    this.lastSfxAt.set(name, now);
     this.scene.sound.play(SFX_KEYS[name], {
-      volume: MASTER_VOLUME * this.settings.sfxVolume * (name === 'hit' ? 0.75 : 1),
+      volume: MASTER_VOLUME * this.settings.sfxVolume * policy.volumeScale,
     });
   }
 
@@ -105,7 +169,7 @@ export class GameAudio {
     this.stopBgm();
     this.currentBgm = name;
     const generation = ++this.bgmGeneration;
-    const bgmVolume = MASTER_VOLUME * this.settings.bgmVolume;
+    const bgmVolume = MASTER_VOLUME * this.settings.bgmVolume * this.currentBgmVolumeScale();
     this.intro = this.scene.sound.add(`audio-bgm-${name}-intro`, { volume: bgmVolume });
     this.loop = this.scene.sound.add(`audio-bgm-${name}-loop`, { loop: true, volume: bgmVolume });
     this.intro.once(Phaser.Sound.Events.COMPLETE, () => {
@@ -116,13 +180,18 @@ export class GameAudio {
     this.intro.play();
   }
 
-  private stopBgm(): void {
+  /** 씬 전환 직전처럼 shutdown 이벤트보다 먼저 음악을 확실히 끊어야 할 때 사용한다. */
+  stopBgm(): void {
     this.bgmGeneration += 1;
     this.intro?.destroy();
     this.loop?.destroy();
     this.intro = null;
     this.loop = null;
     this.currentBgm = null;
+  }
+
+  private currentBgmVolumeScale(): number {
+    return this.currentBgm ? (BGM_VOLUME_SCALE[this.currentBgm] ?? 1) : 1;
   }
 
   /** 현재 음소거 상태 — 일시정지 메뉴가 라벨(켬/끔)에 쓴다. */

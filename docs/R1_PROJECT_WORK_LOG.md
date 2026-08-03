@@ -1861,6 +1861,90 @@
 - 구조적 필수 조건과 보상 최소·경로 지배 금지를 통과한 후보에서 특수방 `E/T/$/A`, 시작 외 일반전투, 비전투 비율 목표 근접도를 순서대로 선택한다. 스테이지 2 첫 선택 노드는 일반전투다.
 - `tsc --noEmit`, 500시드 `test:mapgen`(경로 길이 10/11/12방), `test:mapgraph`, `test:mapwiring`, production build, `git diff --check`를 통과했다.
 - #304의 위험지대 롤백·바닥지형 실런 배선은 유지하며 본 수정에 섞지 않는다.
+## [R1] 주요 요소 병합 전·후 작업 순서 메모 (2026-08-01)
+
+### 주요 요소 병합 전
+
+- 병합과 독립적으로 진행할 수 있는 사운드 작업을 진행한다.
+- 현재 통합 상태에서 가능한 플레이테스트를 진행한다.
+- 해당 플레이테스트와 현재 구현만으로 판단 가능한 선행 밸런스를 조정한다.
+- 방 전투 프리셋을 구현한다. 프리셋 수치와 구성은 통합 후 재검증을 전제로 한 1차안으로 취급한다.
+
+### 맵 생성기 등 주요 요소 병합 후
+
+- 최신 통합본을 기준으로 다시 플레이테스트한다.
+- 통합 전에는 배선할 수 없었거나 플레이 중 새로 확인된 누락 사운드 작업을 진행한다.
+- 맵 구조·방 전투 프리셋·영창·성장·적 구성이 함께 작동하는 상태에서 전체 전투 밸런싱을 진행한다.
+
+### 작업 경계
+
+- 병합 전 밸런스 작업은 명확히 확인 가능한 문제를 줄이는 선행 조정이며, 전체 전투 밸런스의 최종 확정으로 보지 않는다.
+- 방 전투 프리셋은 병합 전에 넣되, 실제 방 구성과 맵 진행에 연결된 뒤의 클리어 시간·영창 횟수·난이도 곡선은 병합 후 플레이테스트에서 다시 조정한다.
+- 이번 기록은 앞으로의 작업 순서 메모이며 구현, 수치 변경, 플레이테스트를 수행한 결과가 아니다.
+
+---
+
+## [R1] 메타 진행 재설계 R3 회신·P0 단계 분할 (2026-08-01)
+
+- R3의 `META_PROGRESSION_DESIGN.md`를 PR #319의 일반·필살영창 계약과 대조했다. 영구 공격력 대신 발견·연구·선택 난이도로 반복 동기를 만드는 방향은 승인 가능하나, 저장·결산 UI·연구·난이도 통합을 한 P0에 묶은 범위가 가장 큰 위험이라고 판단했다.
+- 필살영창은 입력을 과대해석해 6~12 form과 공명 장면을 만들므로 일반 의미 서명 발견·다양성 연구에서 제외하고 `ultimate-released` 목표로만 집계하도록 요청했다. 일반 시퀀스 서명은 validator를 통과한 form behavior에서 영창당 중복을 제거해 추출하며 지원 연구 횟수도 behavior가 아니라 유효 영창 단위로 센다.
+- 연구의 게이지 25% 시작은 공명 이력을 만들지 않는 seed API로 분리하고, 문서의 `융합 연구/fusion-released`는 현재 Shift+Enter `castMode='ultimate'` 계약에 맞춰 `필살영창 연구/ultimate-released`로 교정하도록 제안했다.
+- 전투력 재설계 시 판정 `plan.power`와 실효 전투 power를 분리하고 소프트캡은 behavior별이 아니라 plan 전체 예산에 한 번 적용해야 한다. form별 계수는 기존 시퀀스 power 분배·지속 틱과 이중 감쇠 위험이 있어 별도 R1 계측·밸런스 PR로 분리한다.
+- 기존 P0를 A 의미 서명·통찰 저장, B 최소 결산 화면, C 기본 연구 2종·최소 해금, D 나머지 연구 2종, E 기억 심도 0·1, F 전체 기억 심도로 분할했다. 제출 권장 컷라인은 A+B+C이며 전체 기억 심도, 보상 디렉터, 적 HP·소프트캡·form 계수는 후속 범위로 제안했다.
+- R3 회신 산출물은 로컬 `docs/R3_META_PROGRESSION_REVIEW_REPLY_2026-08-01.md`이며 전달용 문서라 `.gitignore`로 Git 추적에서 제외했다. 이번 작업은 문서·코드 읽기와 설계 검토만 수행했고 구현, 외부 모델 호출, 플레이테스트는 하지 않았다.
+
+---
+
+## [R1] Phase 5 — 신규 효과음 후보 판정·재생성 프롬프트 (2026-08-01)
+
+- `ui_confirm_A.wav`와 `route-transition_A.wav`는 유지 후보로 정했다. `ui_confirm_B.wav`, `route-transition_C.wav`, `title-start_B.wav`, `player-hit_A.wav`는 제외하고, 후보가 없던 `mana-crystal-pickup`도 함께 재생성한다.
+- `choice-appear`는 기존 `room-clear`가 선택지 직전 전환 신호를 이미 담당하므로 제작 대상에서 제외했다.
+- 프로젝트 외부 `SFX_REGENERATION_PROMPTS_2026-08-01.md`에 `title-start`, `player-hit`, `mana-crystal-pickup`의 D/E 프롬프트 총 6개를 작성했다.
+- 재생성 프롬프트는 `deep`, `bass`, `throb`, `force pulse`, `bloom`처럼 저음 충격을 유도한 표현을 제거하고 `mid-frequency focused`, `minimal energy below 120 Hz`, `no sub-bass`를 명시했다.
+- 새 후보 생성·청취·최종 채택과 기존 유지 후보의 게임 믹스 확인은 아직 수행하지 않았다.
+- 재생성 결과는 사용자가 직접 청취했으며 `player-hit_E.wav`만 유지했다. 계측상 활성 0.190초, 피크 -0.03dBFS, spectral centroid 1.303kHz로 기존 A의 69Hz 중심·120Hz 이하 98% 편중보다 피격 경고 정보가 확실히 개선됐다. 다만 원본 피크가 높으므로 최종 채택 시 -8~-9dBFS 정규화가 필요하다.
+- `title-start`와 `mana-crystal-pickup`은 이번 재생성 배치에서도 마음에 드는 후보가 없어 미채택 상태로 남긴다.
+
+### 1차 5종 후처리·게임 통합
+
+- 이후 재생성에서 `mana_F.wav`와 `title_F.wav`를 추가 채택해 1차 대상을 `ui_confirm_A`, `mana_F`, `route-transition_A`, `player-hit_E`, `title_F` 5종으로 확정했다.
+- `process-audio-assets.py`에 항목별 피크를 추가하고 -50dBFS 무음 정리, 후행 75ms, 마지막 20ms fade-out을 적용했다. 결과는 UI 0.205초/-9dBFS, 마나 0.245초/-9dBFS, 피격 0.270초/-8dBFS, 루트 1.790초/-7dBFS, 타이틀 0.635초/-7dBFS다.
+- 최종 OGG 5개를 `public/assets/audio/`에 추가했다. 현재 환경에 ffmpeg가 없어 프로젝트 외부의 `soundfile`/libsndfile로 Vorbis quality 0.4, stereo 48kHz로 변환했으며 프로젝트 의존성은 변경하지 않았다.
+- `GameAudio`에 데이터 기반 volume/cooldown 정책과 신규 키를 추가했다. 기존 `hit`의 35ms·0.75 배율을 보존하고 플레이어 피격 90ms, 마나 수정 70ms, UI 확정 80ms 제한을 적용했다.
+- 일반 보상 카드 확정은 기존 전용 `reward-select`만 재생한다. 유효한 루트 확정에는 `ui-confirm`+`route-transition`, 실제 HP 감소에는 `player-hit`, 실제 마나 수정 흡수에는 `mana-crystal-pickup`을 연결했다. 마나 포션·`MANA FULL`에는 재생하지 않으며 방 클리어 동시 흡수는 cooldown으로 중첩을 막는다.
+- 타이틀은 전체 전투 오디오를 로드하지 않고 `title-start` 하나만 preload한다. 시작 입력 guard가 잠긴 직후 저장된 SFX 볼륨·mute를 반영해 재생하고 420ms fade를 이어간다.
+- 오디오 preload는 loader 전역 `setPath`를 쓰지 않고 각 파일에 `BASE_URL` 전체 경로를 넘겨 과거 배경 경로 오염을 구조적으로 제거했다.
+- `ui-confirm`은 보스 이후 계속/종료 선택, 이어하기 계승 친화 선택, 유산 각인 선택, 승리·패배 런 결과 확인, 일시정지 메뉴 항목 확정에 추가했다. 후속 피드백에 따라 타이틀 설정·도감과 전투 중 설정을 ESC·Enter·바깥 클릭으로 닫는 완료 지점에도 한 번씩 재생하도록 확장했다.
+
+### 후속 사운드 패스 사전 승인 범위
+
+- 타이틀 배경음악, 보상·제단방 배경음악, 런 완료 효과음은 이후 별도 합의 없이 후보 제작·선정·구현까지 진행할 수 있다.
+- 기존 전투 배경음악 교체나 프로젝트 전체 믹스 정책 변경은 이 승인 범위에 포함하지 않는다.
+- 보상방과 제단방은 감정적 기능이 달라 같은 곡을 공유하지 않고 별도 BGM으로 제작한다. 타이틀·보상방·제단방 세 곡은 기존 전투 BGM과 같은 `dark arcane electronic` 계열의 음색으로 통일하되 에너지·화성·긴장도를 분리한다.
+- Adobe Firefly Generate Soundtrack용 90초 프롬프트는 공통으로 instrumental, controlled low end, clear midrange, stable middle section, no abrupt ending을 요구해 SFX 가독성과 후속 루프 편집 여지를 확보한다. 아직 후보 생성·청취·채택은 수행하지 않았다.
+- 생성된 90초 WAV 3종으로 루프를 만들었다. 타이틀 1차안은 경계가 부자연스러워 폐기했고 V2A/V2B 승인안 중 더 긴 V2B를 채택했다. 최종 구간은 타이틀 9.0~72.5초(61.0초), 보물방 12.0~72.0초(57.5초), 제단방 11.0~64.0초(50.5초)이며 모두 2.5초 equal-power 크로스페이드와 -6dBFS 피크를 적용했다.
+- 런 완료음은 재생성 C/D 중 고역 에너지가 거의 없고 중역 정보가 더 많은 `runcomplete_d.wav`를 채택해 2.000초에서 1.690초로 무음 정리하고 -7dBFS로 정규화했다.
+- 최종 OGG 7개를 추가하고 `GameAudio`에 `title|reward|altar` BGM과 `run-complete` SFX를 등록했다. 타이틀 씬은 타이틀 트랙만 별도 preload하며, 무전투 보물방·제단방 진입 시 각 전용곡으로 전환하고 다음 전투방에서 combat BGM으로 복귀한다. 런 완료음은 사망 선점 검사를 통과한 실제 승리에서만 재생한다.
+- 2026-08-02 인게임 청취에서 제단 BGM의 체감 음량 부족, 마나 수정 획득음의 반복 피로도, 각성한 영창가 시작 시 타이틀 BGM 잔류가 확인됐다. 1차 보정으로 제단 BGM만 `1.2`배(약 +1.6dB), 마나 수정음은 `0.65`배·110ms 쿨다운으로 조정했다. 타이틀은 일반·각성 시작 공통 페이드 완료 지점에서 `stopBgm()`을 명시 호출해 씬 shutdown 순서와 무관하게 정리한다.
+- 위 새 배율과 반복 피로도는 코드·빌드 검증만 완료한 1차값이며 실제 인게임 재청취 전에는 최종 믹스로 확정하지 않는다.
+
+### 1차 종료와 2차 사운드 잠정 백로그
+
+- 현재까지의 효과음 6종 추가, 타이틀·보물방·제단방 BGM, 런 완료음, UI 확정음 배선과 2026-08-02 믹스 보정을 1차 기능 범위로 마감한다. 제단·마나의 마지막 체감값은 후속 플레이 중 이상이 있을 때만 다시 조정한다.
+- 2차 후보는 ① 함정방·엘리트방 진입 시 공간 식별 효과음, ② 보스 패턴에 따른 예고·발동·위험 지속 기능음, ③ 선택 확정과 구분되는 UI 커서 반응음(W/S·A/D 항목 이동 포함)이다.
+- 보스 패턴음은 패턴별 파일을 바로 증식시키지 않고 실제 패턴 목록을 감사한 뒤 공통 기능 신호와 고유 신호를 나눠 제작한다. UI 커서음은 반복 입력 피로도와 `ui-confirm`과의 식별성을 우선 검증한다.
+- 위 항목은 잠정 백로그이며 프롬프트 작성, 후보 생성, 채택, 게임 배선은 아직 시작하지 않았다.
+
+### 검증
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build` — production build 통과
+- [x] `audio-integration-regression.ts` — 배포 OGG 존재, 키·정책·호출 배선 통과
+- [x] `test:rewardcard`, `test:roomchoice`, `test:active-mana`, `test:settings`
+- [x] UI 확정음 배치 보정 후 `audio-integration-regression.ts`, `test:rewardcard`, `test:pausekey`, production build, `git diff --check` 통과
+- [x] 2026-08-02 믹스 보정 후 `audio-integration-regression.ts`, `test:active-mana`, `test:settings`, production build, `git diff --check` 통과
+- [x] Browser Mock 런: 타이틀 표시, Enter 시작, 전투 씬 전환, 콘솔 warning/error 0건
+- [ ] 제단 BGM 1.2배와 마나 수정음 0.65배·110ms의 실제 믹스·반복 피로도 재확인
 
 ---
 

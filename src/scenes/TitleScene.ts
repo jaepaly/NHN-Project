@@ -8,6 +8,7 @@ import { loadSettings } from '../run/gameSettings';
 import { setVfxBrightness } from '../render/vfxBrightness';
 import { UI_COLOR, UI_FONT } from '../ui/uiTokens';
 import { requestDemoRun } from '../run/demoLoadout';
+import { GameAudio } from '../audio/gameAudio';
 
 const TITLE_COLORS = {
   background: 0x05060f,
@@ -20,6 +21,7 @@ const TITLE_COLORS = {
 
 export class TitleScene extends Phaser.Scene {
   private starting = false;
+  private audio!: GameAudio;
 
   /** 도감·설정이 열려 있는 동안 시작 트리거(클릭·Enter)를 막는다 */
   private codexOpen = false;
@@ -29,6 +31,12 @@ export class TitleScene extends Phaser.Scene {
 
   constructor() {
     super('title');
+  }
+
+  preload(): void {
+    GameAudio.preloadSfx(this, 'title-start');
+    GameAudio.preloadSfx(this, 'ui-confirm');
+    GameAudio.preloadBgm(this, 'title');
   }
 
   create(): void {
@@ -54,6 +62,9 @@ export class TitleScene extends Phaser.Scene {
     // 이펙트 밝기도 여기서 반영한다 — 타이틀에서 조절하고 바로 시작하면
     // 전투 씬이 loadSettings로 다시 읽지만, 그 사이 타이틀 연출은 이미 이 값을 쓴다
     const saved = loadSettings(window.localStorage);
+    this.audio = new GameAudio(this);
+    this.audio.applySettings(saved);
+    this.audio.playBgm('title');
     setVfxBrightness(saved.vfxBrightness);
     this.applyBrightness(saved.brightness);
 
@@ -92,22 +103,25 @@ export class TitleScene extends Phaser.Scene {
 
   /**
    * 설정 — 전투 중 일시정지 메뉴와 **같은 순수 코어**(gameSettings)를 쓴다.
-   * 타이틀엔 오디오가 없어(GameAudio는 ProtoScene 소유) 볼륨은 소리로 확인되지 않고
-   * 저장만 된다. 밝기는 여기서도 즉시 반영해 조절이 눈으로 확인되게 한다.
+   * 타이틀의 시작음도 저장된 SFX 볼륨을 쓰지만, 슬라이더 조절 중 미리듣지는 않는다.
+   * 밝기는 여기서도 즉시 반영해 조절이 눈으로 확인되게 한다.
    */
   private async openSettings(): Promise<void> {
     if (this.codexOpen || this.starting) return;
     this.codexOpen = true; // 시작 트리거 차단 — 도감과 같은 가드를 공유한다
     try {
       await showSettingsOverlay({
-        audioNote: '소리 크기는 전투에서 적용된다 · 밝기는 지금 바로',
+        audioNote: '소리 크기는 시작·전투에서 적용된다 · 밝기는 지금 바로',
         onChange: (settings) => {
           // 이펙트 밝기는 막이 아니라 렌더러 배율이라 여기서도 같이 반영해야
           // 설정을 닫고 바로 시작했을 때 첫 시전부터 적용된다
           setVfxBrightness(settings.vfxBrightness);
           this.applyBrightness(settings.brightness);
+          this.audio.applySettings(settings);
         },
+        mute: { get: () => this.audio.muted, toggle: () => this.audio.toggleMute() },
       });
+      GameAudio.playOneShot(this, 'ui-confirm', loadSettings(window.localStorage));
     } finally {
       this.time.delayedCall(50, () => { this.codexOpen = false; });
     }
@@ -167,6 +181,7 @@ export class TitleScene extends Phaser.Scene {
     this.codexOpen = true;
     try {
       await showCodexOverlay(loadCodex(window.localStorage));
+      GameAudio.playOneShot(this, 'ui-confirm', loadSettings(window.localStorage));
     } finally {
       // 같은 프레임의 씬 pointerdown이 시작을 못 물게 한 틱 늦게 푼다
       this.time.delayedCall(50, () => { this.codexOpen = false; });
@@ -370,8 +385,11 @@ export class TitleScene extends Phaser.Scene {
     if (demo) requestDemoRun();
     this.starting = true;
     this.input.enabled = false;
+    GameAudio.playOneShot(this, 'title-start', loadSettings(window.localStorage));
     this.cameras.main.fadeOut(420, 5, 6, 15);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      // 시연 시작 경로에서도 shutdown 순서에 기대지 않고 타이틀 음악을 먼저 정리한다.
+      this.audio.stopBgm();
       this.scene.start('proto');
     });
   }
