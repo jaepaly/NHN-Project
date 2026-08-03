@@ -668,6 +668,7 @@ export class ProtoScene extends Phaser.Scene {
   private trailUnlocked = false;
   private elementalChorusStage: 0 | 1 | 2 | 3 = 0;
   private elementalChorusAvailableAnnounced = false;
+  private roomTerrainVariant = 0;
   /** 파문 — 수동 영창이 다른 적에게 번진다 (제단 최상위, 에코와 같은 급) */
   private rippleUnlocked = false;
   /** 이 런에서 산 제단 등급 — 같은 것을 두 번 사면 최대 체력만 날린다 */
@@ -2313,6 +2314,7 @@ export class ProtoScene extends Phaser.Scene {
     this.eliteModifierAssignments = [];
     this.clearCombatRoom();
     this.applyRoomBackdrop(roomIndex);
+    this.roomTerrainVariant = Math.floor(Math.random() * 3);
     this.applyRoomTerrain();
     this.basicAttackCooldownRemaining = 0;
     // 방 선택 즉시 전환하므로 물리 포탈의 좌측 도착점은 더 이상 없다.
@@ -3456,7 +3458,7 @@ export class ProtoScene extends Phaser.Scene {
       return;
     }
     const stage = node.stage === 2 ? 2 : 1;
-    this.setTerrainBarriers(terrainForRoom(node.kind, stage));
+    this.setTerrainBarriers(terrainForRoom(node.kind, stage, this.roomTerrainVariant));
   }
 
   /**
@@ -3491,7 +3493,7 @@ export class ProtoScene extends Phaser.Scene {
     // 노드가 비어 있으면 방 종류별 기본 배치 — 장벽과 같은 규칙이다.
     // 기본값이 없으면 배선만 붙이고 화면은 그대로다(그게 #304 이전 상태였다).
     const stage = node.stage === 2 ? 2 : 1;
-    this.setFloorHazards(floorHazardsForRoom(node.kind, stage));
+    this.setFloorHazards(floorHazardsForRoom(node.kind, stage, this.roomTerrainVariant));
   }
 
   private clearTerrainBarriers(): void {
@@ -3897,11 +3899,23 @@ export class ProtoScene extends Phaser.Scene {
       if (!view) continue;
       view.clear();
       for (const zone of this.floorHazards.filter((entry) => entry.kind === kind)) {
+        const blob = (color: number, alpha: number, radius: number, seed: number): void => {
+          const points = Array.from({ length: 18 }, (_, i) => {
+            const angle = i * Math.PI * 2 / 18;
+            const wobble = 0.78 + 0.18 * Math.sin(i * 2.17 + phase * 0.35 + seed);
+            return new Phaser.Geom.Point(
+              zone.x + Math.cos(angle) * radius * wobble,
+              zone.y + Math.sin(angle) * radius * wobble,
+            );
+          });
+          view.fillStyle(color, alpha).fillPoints(points, true);
+          view.lineStyle(2, color, Math.min(1, alpha + 0.28)).strokePoints(points, true);
+        };
         const pulse = 1 + Math.sin(phase + zone.x * 0.01) * 0.035;
         if (kind === 'lava') {
-          view.fillStyle(0x421000, 0.42).fillCircle(zone.x, zone.y, zone.radius + 10 * pulse);
-          view.fillStyle(0xc83712, 0.5).fillCircle(zone.x, zone.y, zone.radius);
-          view.fillStyle(0xff8b28, 0.38).fillCircle(zone.x, zone.y, zone.radius * 0.72);
+          blob(0x421000, 0.55, zone.radius + 12 * pulse, 0.3);
+          blob(0xc83712, 0.58, zone.radius * 0.92, 1.1);
+          blob(0xff8b28, 0.42, zone.radius * 0.63, 2.4);
           for (let i = 0; i < 6; i += 1) {
             const angle = i * Math.PI * 2 / 6 + phase * 0.14;
             const distance = zone.radius * (0.28 + (i % 3) * 0.15);
@@ -3912,21 +3926,11 @@ export class ProtoScene extends Phaser.Scene {
               radius,
             );
           }
-          view.lineStyle(3, 0xffcf70, 0.88).strokeCircle(zone.x, zone.y, zone.radius * 0.96);
-          view.lineStyle(2, 0x6d1605, 0.8);
-          for (let i = 0; i < 7; i += 1) {
-            const angle = i * Math.PI * 2 / 7 + 0.24;
-            view.beginPath()
-              .moveTo(zone.x + Math.cos(angle) * zone.radius * 0.2, zone.y + Math.sin(angle) * zone.radius * 0.2)
-              .lineTo(zone.x + Math.cos(angle + 0.18) * zone.radius * 0.78, zone.y + Math.sin(angle + 0.18) * zone.radius * 0.78)
-              .strokePath();
-          }
           continue;
         }
-        view.fillStyle(0x071c10, 0.48).fillCircle(zone.x, zone.y, zone.radius + 10 * pulse);
-        view.fillStyle(0x166c32, 0.46).fillCircle(zone.x, zone.y, zone.radius);
-        view.lineStyle(3, 0xa8ff8a, 0.82).strokeCircle(zone.x, zone.y, zone.radius * 0.96);
-        view.lineStyle(2, 0x7ee86d, 0.46).strokeCircle(zone.x, zone.y, zone.radius * 0.64);
+        blob(0x071c10, 0.58, zone.radius + 12 * pulse, 0.7);
+        blob(0x166c32, 0.54, zone.radius * 0.92, 1.7);
+        blob(0x2f9e44, 0.3, zone.radius * 0.56, 2.9);
         for (let i = 0; i < 8; i += 1) {
           const angle = i * Math.PI * 2 / 8 - phase * 0.2;
           const distance = zone.radius * (0.3 + (i % 3) * 0.16);
@@ -5629,6 +5633,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const chorusSpec = formSpecs.find((spec) => spec.effect === 'damage');
     if (chorusSpec) {
       this.scheduleElementalChorus({ ...chorusSpec, power: chorusSpec.power * powerScale });
+      if (allowEcho) this.scheduleHighAltarFlourishes({ ...chorusSpec, power: chorusSpec.power * powerScale });
     }
   }
 

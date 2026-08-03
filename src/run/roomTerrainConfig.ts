@@ -137,13 +137,19 @@ const ELITE_LAYOUT: readonly TerrainBlock[] = [
   { x: 1480, y: 360, half: 52 },
 ];
 
+const ELITE_LAYOUT_VARIANTS: readonly (readonly TerrainBlock[])[] = [
+  ELITE_LAYOUT,
+  [{ x: 720, y: 820, half: 62 }, { x: 1210, y: 410, half: 62 }, { x: 1510, y: 890, half: 52 }],
+  [{ x: 700, y: 480, half: 62 }, { x: 1120, y: 900, half: 62 }, { x: 1540, y: 690, half: 52 }],
+];
+
 /**
  * 방 종류·스테이지 → 장벽 배치. 비어 있는 종류는 **의도적으로** 비어 있다
  * (위 문서 주석의 "여덟 종류 중 둘에만 둔다" 참조).
  */
-export function terrainForRoom(kind: MapNodeKind, stage: 1 | 2): readonly TerrainBlock[] {
+export function terrainForRoom(kind: MapNodeKind, stage: 1 | 2, variant = 0): readonly TerrainBlock[] {
   if (kind === 'combat') return stage === 2 ? COMBAT_STAGE2 : COMBAT_STAGE1;
-  if (kind === 'elite') return ELITE_LAYOUT;
+  if (kind === 'elite') return ELITE_LAYOUT_VARIANTS[Math.abs(variant) % ELITE_LAYOUT_VARIANTS.length];
   return [];
 }
 
@@ -225,6 +231,12 @@ const FLOOR_HAZARD_ELITE: readonly MapTerrainCircle[] = [
   { kind: 'lava', x: 620, y: 900, radius: 90 },
 ];
 
+const FLOOR_HAZARD_ELITE_VARIANTS: readonly (readonly MapTerrainCircle[])[] = [
+  FLOOR_HAZARD_ELITE,
+  [{ kind: 'poison', x: 720, y: 430, radius: 100 }, { kind: 'lava', x: 1320, y: 760, radius: 90 }],
+  [{ kind: 'poison', x: 1380, y: 460, radius: 100 }, { kind: 'lava', x: 600, y: 820, radius: 90 }],
+];
+
 export interface MapTerrainCircle {
   kind: 'lava' | 'poison';
   x: number;
@@ -236,11 +248,12 @@ export interface MapTerrainCircle {
 export function floorHazardsForRoom(
   kind: MapNodeKind,
   stage: 1 | 2,
+  variant = 0,
 ): readonly MapTerrainCircle[] {
   if (kind === 'combat') {
     return stage === 2 ? FLOOR_HAZARD_COMBAT_STAGE2 : FLOOR_HAZARD_COMBAT_STAGE1;
   }
-  if (kind === 'elite') return FLOOR_HAZARD_ELITE;
+  if (kind === 'elite') return FLOOR_HAZARD_ELITE_VARIANTS[Math.abs(variant) % FLOOR_HAZARD_ELITE_VARIANTS.length];
   return [];
 }
 
