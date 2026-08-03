@@ -72,3 +72,27 @@ export function playAwakeningSigil(
     onComplete: () => g.destroy(),
   });
 }
+
+/** 낙인 대상 표식 — 취약이 보이지 않는 수치로 끝나지 않게 한다. */
+export function playAwakeningBrandMark(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  element: SpellElement,
+): void {
+  const color = ELEMENT_PALETTES[element].accent;
+  const g = scene.add.graphics().setDepth(8).setAlpha(0.92);
+  g.lineStyle(2, color, 1);
+  g.strokeCircle(0, 0, 14);
+  g.lineBetween(-8, 0, 8, 0);
+  g.lineBetween(0, -8, 0, 8);
+  g.setPosition(x, y - 20).setScale(0.7);
+  scene.tweens.add({
+    targets: g,
+    scale: 1.35,
+    alpha: 0,
+    duration: 620,
+    ease: 'Cubic.easeOut',
+    onComplete: () => g.destroy(),
+  });
+}

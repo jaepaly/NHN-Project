@@ -26,6 +26,8 @@ export interface RunUiHooks {
   formFor?: (option: RewardOption) => SpellForm | null;
   /** 보상 화면에 함께 띄울 씬 쪽 맥락 (주문서 보유 등 — 컨트롤러가 모르는 것) */
   contextLines?: () => string[];
+  /** 보상 적용 뒤, 다음 방 선택 전에 처리할 씬 전용 후속 선택. */
+  afterRewardApplied?: (chosen: RewardOption) => Promise<void>;
   /**
    * 보상 선택 후 **다음 방으로 넘어가기 전에** 끼어드는 단계 — UI로 다음 방을 고른다 (#214).
    *
@@ -74,6 +76,11 @@ export function bindRunUi(controller: RunController, hooks: RunUiHooks = {}): vo
       choosingNextRoom = true;
       controller.chooseReward(chosen.id);
       try {
+        try {
+          await hooks.afterRewardApplied?.(chosen);
+        } catch {
+          /* 제단 후속 UI가 실패해도 방 전환까지 막으면 런이 고착된다. */
+        }
         await hooks.chooseNextRoom?.();
       } catch {
         /* 방 선택 UI가 실패해도 씬의 폴백으로 런은 계속된다 */

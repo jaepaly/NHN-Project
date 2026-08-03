@@ -46,6 +46,7 @@ const game = new Phaser.Game({
 const hooksFor = (scene: ProtoScene) => ({
   formFor: (option: Parameters<ProtoScene['rewardFormFor']>[0]) => scene.rewardFormFor(option),
   contextLines: () => scene.rewardContextLines(),
+  afterRewardApplied: (option: Parameters<ProtoScene['resolveRewardFollowup']>[0]) => scene.resolveRewardFollowup(option),
   // 보상 선택 후 UI에서 다음 방을 고른다 — 씬이 맵 그래프를 진행시킨다 (#214)
   chooseNextRoom: () => scene.chooseRoomDestination(),
 });

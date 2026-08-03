@@ -86,6 +86,7 @@ assert.deepEqual(
   ALTAR_TIERS.map((t) => t.kind),
 );
 assert.equal(full[1].element, 'fire', '각성 카드는 대상 원소를 싣는다');
+assert.ok(full[1].description.includes('직접 선택'), '제단 각성은 무작위가 아니라 갈래 선택임을 고지');
 // id는 서로 달라야 chooseReward가 구분한다.
 // ⚠️ 최상위가 둘이고 **대가가 같으므로** id에 종류가 들어가야 구분된다
 assert.equal(new Set(full.map((o) => o.id)).size, full.length, 'id 중복 없음');
@@ -135,6 +136,15 @@ assert.ok(ALTAR_OFFER_CONFIG.echo.delayMs > 0, '동시에 겹치면 버그처럼
 assert.ok(
   ALTAR_OFFER_CONFIG.echo.delayMs >= 500,
   `에코 지연이 짧다 (${ALTAR_OFFER_CONFIG.echo.delayMs}ms) — 원본과 한 덩어리로 읽힌다`,
+);
+assert.ok(
+  ALTAR_OFFER_CONFIG.echo.cloneLeadMs > 0
+    && ALTAR_OFFER_CONFIG.echo.cloneLeadMs < ALTAR_OFFER_CONFIG.echo.delayMs,
+  '분신은 에코 시전 전에 잠깐 나타나야 한다',
+);
+assert.ok(
+  ALTAR_OFFER_CONFIG.echo.cloneAlpha > 0 && ALTAR_OFFER_CONFIG.echo.cloneAlpha < 1,
+  '에코 분신은 원본 플레이어와 구분되는 반투명 상태여야 한다',
 );
 // 겹별 투명도 — 원본(1.0)보다 옅고, 뒤 겹이 앞 겹보다 더 옅다.
 // 같은 밝기로 세 발이 나가면 "왜 세 번인지" 읽히지 않는다.
