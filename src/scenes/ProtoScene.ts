@@ -277,16 +277,17 @@ import { RoomFixture } from '../render/roomFixture';
 import { ROOM_FIXTURE_CONFIG, ROOM_FIXTURE_GUIDE } from '../run/roomFixtureConfig';
 import { mockMinimapModel } from '../run/mapGraphMock';
 import { RunMapGraph, maximumMapPathRooms, toMinimapModel } from '../run/mapGraph';
-import { MAP_GRAPH_PRESET_01 } from '../run/mapGraphPreset';
+import { MAP_GRAPH_BUILD_PRESET, MAP_GRAPH_PRESET_01 } from '../run/mapGraphPreset';
 import { generateRunMap } from '../run/mapGenerator';
 import type { MapGraphDefinition } from '../run/mapGraph';
 import { encounterFromMapNode } from '../run/mapEncounter';
 import {
   DEMO_SAMPLE_INCANTATIONS,
   DEMO_START_ROOM,
-  applyDemoLoadout,
+  applyDemoBuildLoadout,
   consumeDemoRunRequest,
 } from '../run/demoLoadout';
+import type { DemoBuildId } from '../run/demoLoadout';
 import {
   MIRROR_CAST_CONFIG,
   mirrorImpactHitsPlayer,
@@ -1300,7 +1301,7 @@ export class ProtoScene extends Phaser.Scene {
     // 시연 로드아웃 — 타이틀의 "각성한 영창가로 시작"으로 들어온 경우에만.
     // resetForNewRun 뒤에 심어야 리셋에 지워지지 않는다.
     const demo = consumeDemoRunRequest();
-    if (demo) this.seedDemoRun();
+    if (demo) this.seedDemoRun(demo);
     this.prepareRunEscalation();
     const initialRunState = this.combatRunController.state;
     this.logRunStarted('new', initialRunState);
@@ -1354,16 +1355,22 @@ export class ProtoScene extends Phaser.Scene {
    * 실제 보상 경로(applyReward)를 그대로 쓴다 — 별도 주입로면 도달 불가능한 상태를
    * 보여주게 되고, 그건 심사위원에게 거짓말이다.
    */
-  private seedDemoRun(): void {
+  private demoBuildLabel(build: DemoBuildId): string {
+    if (build === 'specialist') return '홍염의 전문가';
+    if (build === 'chorus') return '무지개 합주자';
+    return '정령 지휘자';
+  }
+
+  private seedDemoRun(build: DemoBuildId): void {
     this.demoRun = true;
     // 방 지정 리셋을 **먼저** 한다 — reset()이 elementalAffinity를 비우므로
     // 친화를 심은 뒤에 부르면 그대로 지워진다.
-    this.resetMapGraph(MAP_GRAPH_PRESET_01.lastBeforeBossNodeId, DEMO_START_ROOM);
+    this.resetMapGraph(null, DEMO_START_ROOM, MAP_GRAPH_BUILD_PRESET);
     this.combatRunController.reset(Date.now(), false, DEMO_START_ROOM);
-    applyDemoLoadout(this.engraveManager, this.spiritManager, this.combatRunController);
+    applyDemoBuildLoadout(build, this.spiritManager, this.combatRunController);
     this.syncSpiritViews();
     this.announceSystemMessage(
-      `각성한 영창가 — ${DEMO_START_ROOM}번 방부터`,
+      `각성한 영창가 — ${this.demoBuildLabel(build)}`,
       '#ffd166',
       3200,
     );
@@ -2132,6 +2139,7 @@ export class ProtoScene extends Phaser.Scene {
   private continueToNextLoop(inherit: { source?: SpellElement; element: SpellElement; value: number; echoes?: readonly { element: SpellElement; value: number }[] } | null = null): void {
     void this._chooseInheritedAffinity;
     this.deathHandled = false;
+    this.demoRun = false;
     this.runElapsedMs = 0;
     this.continueRunResearchTracking();
     // 전투 전용 상태만 초기화 (다음 보스가 내성 재계산, 장판·쿨다운은 방 단위)
@@ -2196,6 +2204,7 @@ export class ProtoScene extends Phaser.Scene {
    */
   private resetForNewRun(): void {
     this.deathHandled = false;
+    this.demoRun = false;
     this.runElapsedMs = 0;
     this.pendingRunStartReason = null;
     this.resetRunResearchTracking();
@@ -2231,6 +2240,7 @@ export class ProtoScene extends Phaser.Scene {
 
   private restartRun(): void {
     this.deathHandled = false;
+    this.demoRun = false;
     this.runElapsedMs = 0;
     this.resetRunResearchTracking();
     this.fusionGauge.reset();
@@ -3557,6 +3567,7 @@ export class ProtoScene extends Phaser.Scene {
   private resetMapGraph(
     initialNodeId: string | null = null,
     roomIndex = DEBUG_START_ROOM,
+    fixedDefinition: MapGraphDefinition | null = null,
   ): void {
     // **먼저 걷어낸다** — Phaser는 씬 인스턴스를 재사용하므로(타이틀→새 런) 필드는
     // 남아 있는데 가리키는 GameObject는 이미 파괴돼 있다. 그대로 update하면 죽는다.
@@ -3564,7 +3575,7 @@ export class ProtoScene extends Phaser.Scene {
     // 보관된 전환을 버린다 — 남겨두면 새 런에서 지난 런의 전환이 터진다
     this.pendingRunTransition = null;
     this.altarAwakeningSelecting = false;
-    const definition = this.runMapDefinition(initialNodeId === null);
+    const definition = fixedDefinition ?? this.runMapDefinition(initialNodeId === null);
     this.mapGraph = new RunMapGraph(definition, initialNodeId ?? definition.startNodeId);
     this.combatRunController.configureMapRoute(maximumMapPathRooms(definition));
     this.mapEncounterByRoom.clear();

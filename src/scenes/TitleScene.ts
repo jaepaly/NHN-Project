@@ -7,8 +7,9 @@ import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { loadSettings } from '../run/gameSettings';
 import { setVfxBrightness } from '../render/vfxBrightness';
 import { UI_COLOR, UI_FONT } from '../ui/uiTokens';
-import { requestDemoRun } from '../run/demoLoadout';
+import { DEMO_BUILD_OPTIONS, demoBuildFromOptionId, requestDemoRun } from '../run/demoLoadout';
 import { GameAudio } from '../audio/gameAudio';
+import { showRewardCards } from '../ui/rewardCardOverlay';
 
 const TITLE_COLORS = {
   background: 0x05060f,
@@ -173,7 +174,26 @@ export class TitleScene extends Phaser.Scene {
 
     tab.on('pointerover', () => { tab.setAlpha(1).setColor('#ffe6a3'); hint.setAlpha(1); });
     tab.on('pointerout', () => { tab.setAlpha(0.75).setColor('#ffd166'); hint.setAlpha(0.8); });
-    tab.on('pointerdown', () => this.startGame(true));
+    tab.on('pointerdown', () => { void this.openDemoBuildChoice(); });
+  }
+
+  private async openDemoBuildChoice(): Promise<void> {
+    if (this.codexOpen || this.starting) return;
+    this.codexOpen = true;
+    try {
+      const selected = await showRewardCards([...DEMO_BUILD_OPTIONS], {
+        kicker: 'BUILD PRESET',
+        title: '어떤 각성의 길을 걸을까',
+        contextLines: ['선택한 빌드의 핵심 성장 상태로 시작한다', '분기 맵의 모든 경로는 제단을 지난다'],
+      });
+      const build = demoBuildFromOptionId(selected.id);
+      if (!build) return;
+      requestDemoRun(build);
+      this.codexOpen = false;
+      this.startGame();
+    } finally {
+      if (!this.starting) this.codexOpen = false;
+    }
   }
 
   private async openCodex(): Promise<void> {
@@ -380,9 +400,8 @@ export class TitleScene extends Phaser.Scene {
     });
   }
 
-  private startGame(demo = false): void {
+  private startGame(): void {
     if (this.starting || this.codexOpen) return;
-    if (demo) requestDemoRun();
     this.starting = true;
     this.input.enabled = false;
     GameAudio.playOneShot(this, 'title-start', loadSettings(window.localStorage));

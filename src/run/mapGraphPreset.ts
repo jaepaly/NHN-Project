@@ -68,3 +68,32 @@ export const MAP_GRAPH_PRESET_01: MapGraphDefinition = {
     { from: 's2-elite', to: 's2-memory-boss' },
   ],
 };
+
+/** 빌드 견본 런: 분기와 위험방은 남기되 어떤 길을 골라도 제단을 반드시 지난다. */
+export const MAP_GRAPH_BUILD_PRESET: MapGraphDefinition = {
+  startNodeId: 'build-start',
+  lastBeforeBossNodeId: 'build-elite',
+  nodes: [
+    { id: 'build-start', stage: 1, kind: 'start', layer: 0, lane: 0, waveSetId: 'room-a', ...emptyRoom },
+    { id: 'build-combat', stage: 1, kind: 'combat', layer: 1, lane: -1, waveSetId: 'room-b', ...emptyRoom },
+    {
+      id: 'build-trap', stage: 1, kind: 'trap', layer: 1, lane: 1, waveSetId: 'trap-hazard',
+      trapProfile: TRAP_ROOM_PROFILES.hazard, ...emptyRoom,
+    },
+    { id: 'build-elite-1', stage: 1, kind: 'elite', layer: 2, lane: 0, waveSetId: 'elite', ...emptyRoom },
+    { id: 'build-altar', stage: 1, kind: 'altar', layer: 3, lane: 0, waveSetId: null, ...emptyRoom },
+    { id: 'build-combat-2', stage: 2, kind: 'combat', layer: 4, lane: 0, waveSetId: 'room-c-shield', ...emptyRoom },
+    { id: 'build-elite', stage: 2, kind: 'elite', layer: 5, lane: 0, waveSetId: 'elite', ...emptyRoom },
+    { id: 'build-memory-boss', stage: 2, kind: 'memory-boss', layer: 6, lane: 0, waveSetId: null, ...emptyRoom },
+  ],
+  edges: [
+    { from: 'build-start', to: 'build-combat' },
+    { from: 'build-start', to: 'build-trap' },
+    { from: 'build-combat', to: 'build-elite-1' },
+    { from: 'build-trap', to: 'build-elite-1' },
+    { from: 'build-elite-1', to: 'build-altar' },
+    { from: 'build-altar', to: 'build-combat-2' },
+    { from: 'build-combat-2', to: 'build-elite' },
+    { from: 'build-elite', to: 'build-memory-boss' },
+  ],
+};
