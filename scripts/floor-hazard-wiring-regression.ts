@@ -78,10 +78,10 @@ assert.equal(
       '출구 위의 바닥지형은 막아야 한다',
     );
   }
-  // 방 한가운데는 정상 — 전부 막으면 기믹 자체가 안 나온다
+  // 전투 중심도 안전 — 장판 위에서 보스·적과 교전하게 만들면 회피 선택지가 사라진다.
   assert.equal(
-    floorHazardBlocksEntry({ x: 960, y: 640, radius: 90 }), false,
-    '방 중앙은 정상 배치다 — 다 막으면 기믹이 사라진다',
+    floorHazardBlocksEntry({ x: 960, y: 640, radius: 90 }), true,
+    '방 중앙의 안전 교전 구역을 덮는 바닥지형은 막아야 한다',
   );
   // 경계 근처: 여유(FLOOR_HAZARD_MARGIN)만큼 떨어지면 통과한다
   const justOutside = arrival.x + arrival.radius + 60 + FLOOR_HAZARD_MARGIN + 1;
@@ -94,13 +94,13 @@ assert.equal(
     { kind: 'poison', x: arrival.x, y: arrival.y, radius: 70 },
     { kind: 'lava', x: 960, y: 640, radius: 70 },
   ]);
-  assert.equal(filtered.length, 1, '도착을 덮는 항목만 버려야 한다');
-  assert.equal(filtered[0].kind, 'lava');
+  assert.equal(filtered.length, 0, '도착·전투 중심을 덮는 항목은 모두 버려야 한다');
 }
 
 // ── 3) 반경 상한 — 방을 통째로 덮으면 회피가 불가능하다 ─────────────────────
 {
-  const huge = floorHazardsFromPlacements([{ kind: 'lava', x: 960, y: 640, radius: 9999 }]);
+  // 중앙은 안전 교전 구역이라, 반경 상한은 유효한 외곽 배치에서 검증한다.
+  const huge = floorHazardsFromPlacements([{ kind: 'lava', x: 450, y: 240, radius: 9999 }]);
   assert.equal(huge.length, 1, '상한을 넘으면 버리는 게 아니라 줄인다');
   assert.equal(huge[0].radius, FLOOR_HAZARD_MAX_RADIUS, '반경을 상한으로 자른다');
   // 방어적 입력 — 노드는 손으로 쓰는 데이터다
@@ -132,7 +132,7 @@ assert.equal(
   );
   // 노드가 이기고, 비어 있으면 기본 배치 — 장벽과 같은 규칙이다
   assert.ok(
-    /this\.setFloorHazards\(floorHazardsForRoom\(node\.kind, stage\)\)/.test(scene),
+    /this\.setFloorHazards\(floorHazardsForRoom\(node\.kind, stage, this\.roomTerrainVariant\)\)/.test(scene),
     '노드가 비어 있으면 방 종류별 기본 배치를 써야 한다 —'
     + ' 기본값이 없으면 배선만 붙이고 화면은 그대로다',
   );
