@@ -1496,6 +1496,7 @@ export class ProtoScene extends Phaser.Scene {
         if (chosen.kind === 'awaken' && chosen.element) {
           // 제단은 대가를 먼저 치른 뒤 runUiBinding 후속 단계에서 갈래를 직접 고른다.
           // 무작위 결과를 주면 최대 생명 25의 거래가 도박으로 읽힌다.
+          this.ownedAltarKinds.push('awaken');
           this.altarAwakeningSelecting = true;
           return;
         }
