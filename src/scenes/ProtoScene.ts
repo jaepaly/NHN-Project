@@ -187,6 +187,7 @@ import {
   WaveManager,
 } from '../combat-core/waves/waveManager';
 import type { WaveDefinition } from '../combat-core/waves/waveManager';
+import { resolveEliteAssignments } from '../combat-core/waves/encounterPresets';
 import { CombatRunController } from '../combat-core/run/runController';
 import { ELITE_MODIFIERS } from '../combat-core/run/encounterConfig';
 import {
@@ -4111,7 +4112,14 @@ export class ProtoScene extends Phaser.Scene {
       ...Array<EnemyKind>(definition.shieldSentinelCount ?? 0).fill('shield-sentinel'),
     ];
     if (this.combatRunController.state.encounterKind === 'elite') {
-      this.eliteModifierAssignments = this.createEliteAssignments(sequence.length);
+      const presetId = this.combatRunController.state.waveSetId;
+      if (!presetId) throw new Error('Elite encounter requires an encounter preset');
+      this.eliteModifierAssignments = resolveEliteAssignments(
+        presetId,
+        this.waveManager.currentWaveNumber - 1,
+        this.currentMapSeed ?? 0,
+        this.combatRunController.state.encounterId,
+      );
       this.eliteSpawnIndex = 0;
     }
     sequence.forEach((kind, index) => {
@@ -4372,15 +4380,6 @@ if (applied) this.playPlayerHit();
         : undefined
     );
     this.enemies.push(modifier ? new EliteEnemy(this, enemy, modifier) : enemy);
-  }
-
-  private createEliteAssignments(enemyCount: number): EliteModifier[] {
-    const modifierPool = [...ELITE_MODIFIERS];
-    const assignments: EliteModifier[] = modifierPool.slice(0, enemyCount);
-    while (assignments.length < enemyCount) {
-      assignments.push(Phaser.Utils.Array.GetRandom(modifierPool));
-    }
-    return Phaser.Utils.Array.Shuffle(assignments);
   }
 
   private updateWaveFlow(deltaSeconds: number): void {
@@ -9406,13 +9405,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const underlyingEnemy = enemy instanceof EliteEnemy ? enemy.baseEnemy : enemy;
     const bossHpBefore = underlyingEnemy instanceof BossEnemy ? underlyingEnemy.hp : null;
     let defeated: boolean;
-    if (enemy instanceof ShieldSentinelEnemy && !bypassDirectionalShield) {
-      const result = enemy.takeMechanicDamage(damage, sourceX, sourceY);
+    if (underlyingEnemy instanceof ShieldSentinelEnemy && !bypassDirectionalShield) {
+      const result = underlyingEnemy.takeMechanicDamage(damage, sourceX, sourceY);
       if (result.blocked) {
         if (result.shieldBroken) {
-          this.showShieldBreakEffect(enemy);
+          this.showShieldBreakEffect(underlyingEnemy);
         } else {
-          this.showShieldBlockEffect(enemy, sourceX, sourceY);
+          this.showShieldBlockEffect(underlyingEnemy, sourceX, sourceY);
         }
         return false;
       }

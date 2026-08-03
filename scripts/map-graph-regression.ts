@@ -57,7 +57,7 @@ assert.deepEqual(trapEncounter, {
   stage: 2,
   kind: 'combat',
   rewardAfterClear: true,
-  waveSetId: 'trap-hazard',
+    waveSetId: 't3-b',
 });
 const memoryBossEncounter = encounterFromMapNode(
   MAP_GRAPH_PRESET_01.nodes.find((node) => node.id === 's2-memory-boss')!,
