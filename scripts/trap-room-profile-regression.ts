@@ -95,6 +95,16 @@ const missingProfile = {
 assert.throws(() => new RunMapGraph(missingProfile), /requires a trap profile/);
 
 const sceneSource = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+assert.match(
+  sceneSource,
+  /hazardEntryGraceRemaining = 1\.25/,
+  'trap hazards must provide an entry grace period before dealing damage',
+);
+assert.match(
+  sceneSource,
+  /placement\.radius \+ PLAYER_HIT_RADIUS \+ 48/,
+  'trap circles must exclude the actual player spawn radius',
+);
 const roomClearedHandler = sceneSource.match(
   /on\('room-cleared',[\s\S]*?\n    \}\);/,
 )?.[0] ?? '';

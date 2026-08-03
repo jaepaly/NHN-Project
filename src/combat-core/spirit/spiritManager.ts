@@ -30,6 +30,8 @@ export interface SpiritSnapshot {
   element?: SpellElement;
   /** 융합 정령 전용 — 이중 원소의 부속성 */
   elementSecondary?: SpellElement;
+  /** 융합 정령이 흡수한 모든 원소. element/elementSecondary는 구형 HUD 호환용이다. */
+  elements?: readonly SpellElement[];
   level: SpiritLevel;
   intervalSeconds: number;
   remainingSeconds: number;
@@ -37,10 +39,11 @@ export interface SpiritSnapshot {
   fused: boolean;
   /** 융합 정령의 LLM 격상명 */
   fusedName?: string;
+  fusionRank?: 1 | 2 | 3;
 }
 
 export type SpiritPulseRequest =
-  | { kind: 'attack'; spiritId: string; spell: SpellSpec }
+  | { kind: 'attack'; spiritId: string; spell: SpellSpec; burstCount: number }
   | { kind: 'heal'; spiritId: string; amount: number }
   | { kind: 'guard'; spiritId: string; amount: number };
 
@@ -56,7 +59,10 @@ interface SpiritState extends SpiritDefinition {
   /** 차지하는 슬롯 수 — 일반 1, 융합 2 (오토 DPS 예산도 슬롯 수에 비례) */
   slotWeight: number;
   elementSecondary?: SpellElement;
+  elements?: readonly SpellElement[];
   fusedName?: string;
+  fusionEssence: number;
+  fusionRank?: 1 | 2 | 3;
 }
 
 const ELEMENT_FORMS: Record<SpellElement, SpellForm> = {
@@ -126,6 +132,7 @@ export class SpiritManager {
       const expected = Math.min(SPIRIT_CONFIG.maxLevel, existing.level + 1);
       if (existing.level >= SPIRIT_CONFIG.maxLevel || option.spirit.level !== expected) return null;
       existing.level = expected as SpiritLevel;
+      existing.fusionEssence += 1;
       existing.remainingSeconds = Math.min(
         existing.remainingSeconds,
         intervalFor(existing) * this.hasteMultiplier,
@@ -139,6 +146,8 @@ export class SpiritManager {
       level: 1,
       remainingSeconds: intervalFor({ ...definition, level: 1 }) * this.hasteMultiplier,
       slotWeight: 1,
+      elements: definition.element ? [definition.element] : undefined,
+      fusionEssence: 1,
     };
     this.slots.push(created);
     return snapshot(created);
@@ -146,9 +155,7 @@ export class SpiritManager {
 
   /** 융합 후보 — 공격 정령 2체 보유 시 (PROGRESSION_DESIGN §3). */
   fuseCandidate(): { spiritIds: [string, string]; elements: [SpellElement, SpellElement] } | null {
-    const attackers = this.slots.filter(
-      (slot) => slot.role === 'attack' && !slot.elementSecondary && slot.element,
-    );
+    const attackers = this.slots.filter((slot) => slot.role === 'attack' && slot.element);
     if (attackers.length < 2) return null;
     return {
       spiritIds: [attackers[0].spiritId, attackers[1].spiritId],
@@ -168,19 +175,28 @@ export class SpiritManager {
     const second = this.slots.find((slot) => slot.spiritId === spiritIds[1]);
     if (!first?.element || !second?.element) return null;
     if (first.role !== 'attack' || second.role !== 'attack') return null;
-    if (first.elementSecondary || second.elementSecondary) return null;
+    const elements = [...new Set([
+      ...(first.elements ?? [first.element]),
+      ...(second.elements ?? [second.element]),
+    ])] as SpellElement[];
+    if (elements.length < 2) return null;
 
+    const fusionEssence = first.fusionEssence + second.fusionEssence;
+    const fusionRank = fusionEssence >= 6 ? 3 : fusionEssence >= 4 ? 2 : 1;
     this.slots = this.slots.filter((slot) => slot !== first && slot !== second);
     const fused: SpiritState = {
-      spiritId: `fused-${first.element}-${second.element}`,
+      spiritId: `fused-${elements.join('-')}`,
       role: 'attack',
-      element: first.element,
-      elementSecondary: second.element,
+      element: elements[0],
+      elementSecondary: elements[1],
+      elements,
       level: SPIRIT_CONFIG.maxLevel as SpiritLevel,
       remainingSeconds: spiritInterval('attack', SPIRIT_CONFIG.maxLevel as SpiritLevel)
         * this.hasteMultiplier,
-      slotWeight: 2,
+      slotWeight: 1,
       fusedName: name,
+      fusionEssence,
+      fusionRank,
     };
     this.slots.push(fused);
     return snapshot(fused);
@@ -302,22 +318,24 @@ function pulseFor(spirit: SpiritState): SpiritPulseRequest {
     kind: 'attack',
     spiritId: spirit.spiritId,
     spell: attackSpell(spirit.element ?? 'light', spirit.level, spirit),
+    burstCount: spirit.fusionRank ?? 1,
   };
 }
 
 function attackSpell(
   element: SpellElement,
   level: SpiritLevel,
-  state?: Pick<SpiritState, 'elementSecondary' | 'fusedName' | 'slotWeight'>,
+  state?: Pick<SpiritState, 'elementSecondary' | 'elements' | 'fusedName' | 'slotWeight' | 'fusionRank'>,
 ): SpellSpec {
   const evolved = level >= 2;
-  const fusedSecondary = state?.elementSecondary ?? null;
+  const fusedElements = state?.elements ?? (state?.elementSecondary ? [element, state.elementSecondary] : [element]);
+  const fusedSecondary = fusedElements[1] ?? null;
   const size: SpellSize = fusedSecondary
     ? 'huge' // 융합체는 격상의 시각적 정점
     : level === 1 ? 'small' : level === 2 ? 'medium' : 'large';
   const status = level >= 3 ? [...ELEMENT_STATUSES[element]] : [];
-  if (fusedSecondary) {
-    for (const extra of ELEMENT_STATUSES[fusedSecondary]) {
+  if (fusedElements.length > 1) {
+    for (const fusedElement of fusedElements.slice(1)) for (const extra of ELEMENT_STATUSES[fusedElement]) {
       if (!status.includes(extra) && status.length < 3) status.push(extra);
     }
   }
@@ -334,7 +352,7 @@ function attackSpell(
     speed: element === 'wind' || element === 'lightning' ? 'fast' : 'normal',
     status,
     // 융합체는 소모한 슬롯 수만큼의 power 예산을 쓴다 (2슬롯 → ×2, 총합은 불변)
-    power: spiritAttackPower(level) * (state?.slotWeight ?? 1),
+    power: spiritAttackPower(level) * (1 + (fusedElements.length - 1) * 0.5) * (state?.fusionRank ?? 1),
     cost: 0,
     flavor: '정령의 자동 시전은 마나·쿨다운·주문 기억을 사용하지 않는다.',
   };
@@ -365,11 +383,13 @@ function snapshot(state: SpiritState): SpiritSnapshot {
     role: state.role,
     element: state.element,
     elementSecondary: state.elementSecondary,
+    elements: state.elements,
     level: state.level,
     intervalSeconds: intervalFor(state),
     remainingSeconds: state.remainingSeconds,
-    fused: state.slotWeight > 1,
+    fused: (state.elements?.length ?? 1) > 1,
     fusedName: state.fusedName,
+    fusionRank: state.fusionRank,
   };
 }
 

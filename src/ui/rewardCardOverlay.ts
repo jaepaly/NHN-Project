@@ -197,9 +197,22 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   // 제단 전용 (#214)
   'altar-leave': 'DEPART',
   'all-affinity': 'ATTUNE',
+  'altar-high': 'HIGH ARCANA',
   echo: 'ECHO',
+  starburst: 'STAR BURST',
+  meteor: 'METEOR',
+  trail: 'TRAIL',
   ripple: 'RIPPLE',
 };
+
+function altarGlyph(kind: RewardOption['kind']): string | null {
+  const icons: Partial<Record<RewardOption['kind'], string>> = {
+    'all-affinity': '✦', awaken: '☽', 'altar-high': '✥', echo: '♙',
+    starburst: '✹', meteor: '☄', trail: '⌁',
+  };
+  const icon = icons[kind];
+  return icon ? `<span style="font-size:31px;color:#fff;text-shadow:0 0 12px currentColor">${icon}</span>` : null;
+}
 
 function ensureDom(): HTMLElement {
   if (!document.getElementById(STYLE_ID)) {
@@ -300,7 +313,7 @@ export function showRewardCards(
   framing: CardFraming = {},
 ): Promise<RewardOption> {
   if (activeCleanup) throw new Error('reward overlay already open');
-  const shown = options.slice(0, 3);
+  const shown = options.slice(0, 4);
   const wrap = ensureDom();
 
   const titleText = framing.title ?? '공명의 대가를 선택하라';
@@ -363,7 +376,9 @@ export function showRewardCards(
       btn.querySelector('.card-desc')!.textContent = option.description;
       // 폼 글리프 — 씬이 알려준 카드만. 스탯 보상 등 폼이 없는 카드는 원형 그대로.
       const form = framing.formFor?.(option) ?? null;
+      const altarIcon = altarGlyph(option.kind);
       if (form) btn.querySelector('.card-glyph')!.innerHTML = glyphSvg(form);
+      else if (altarIcon) btn.querySelector('.card-glyph')!.innerHTML = altarIcon;
       // 이미 보유 배지 — "친화를 더 쌓을까, 갈아탈까"의 근거 (게임성 ②)
       const ownedLabel = framing.ownedLabelFor?.(option) ?? null;
       if (ownedLabel) {
@@ -380,7 +395,7 @@ export function showRewardCards(
 
     // 캡처 단계에서 키를 소비 — Phaser(window 버블 리스너)·영창 바와 충돌 방지
     const onKeyDown = (e: KeyboardEvent): void => {
-      const hotkey = ['1', '2', '3'].indexOf(e.key);
+      const hotkey = ['1', '2', '3', '4'].indexOf(e.key);
       if (hotkey !== -1 && hotkey < shown.length) {
         e.preventDefault(); e.stopImmediatePropagation();
         finish(hotkey);

@@ -91,8 +91,9 @@ import type { BuildChip } from '../run/buildChipModel';
 import { buildChipModel } from '../run/buildChipModel';
 import { bandAffordances, reachableBand } from '../run/incantBands';
 import { drawTreasureReward } from '../combat-core/run/treasureRewardConfig';
-import { ALTAR_OFFER_CONFIG, drawAltarOffer } from '../combat-core/run/altarOffer';
-import { inheritCandidates } from '../combat-core/run/runInheritance';
+import { ALTAR_OFFER_CONFIG, drawAltarOffer, drawHighAltarOptions } from '../combat-core/run/altarOffer';
+import { inheritCandidates, mutateInheritedAffinity } from '../combat-core/run/runInheritance';
+import { chorusElements, chorusProjectileCount, chorusStage } from '../combat-core/run/elementalChorus';
 import type { AltarTierKind } from '../combat-core/run/altarOffer';
 import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomRewardScale';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
@@ -656,6 +657,10 @@ export class ProtoScene extends Phaser.Scene {
   private awakenings: AwakeningState = {};
   /** 제단 최상위 거래 — 수동 단일 영창이 한 번 더 울린다 (#214). 런 리셋에서 끈다 */
   private echoUnlocked = false;
+  private starburstUnlocked = false;
+  private meteorUnlocked = false;
+  private trailUnlocked = false;
+  private elementalChorusStage: 0 | 1 | 2 | 3 = 0;
   /** 파문 — 수동 영창이 다른 적에게 번진다 (제단 최상위, 에코와 같은 급) */
   private rippleUnlocked = false;
   /** 이 런에서 산 제단 등급 — 같은 것을 두 번 사면 최대 체력만 날린다 */
@@ -682,6 +687,7 @@ export class ProtoScene extends Phaser.Scene {
   private pendingRunTransition: { delayMs: number; run: () => void } | null = null;
   /** 제단 각성 갈래 선택 중에는 다음 방 전환도 붙잡는다. */
   private altarAwakeningSelecting = false;
+  private altarHighSelecting = false;
 
   private readonly combatRunController: CombatRunController = new CombatRunController({
     playerState: this.playerState,
@@ -778,6 +784,8 @@ export class ProtoScene extends Phaser.Scene {
   private bannerRoomGeneration = 0;
   private enemyProjectiles: EnemyProjectile[] = [];
   private hazardZones: HazardZone[] = [];
+  /** 함정방 입장 직후에는 배치가 보여도 즉시 피해를 주지 않는다. */
+  private hazardEntryGraceRemaining = 0;
   private hazardDecorations: Phaser.GameObjects.GameObject[] = [];
   private unstableWarnings: UnstableWarning[] = [];
   private manaCrystals: ManaCrystal[] = [];
@@ -1043,7 +1051,6 @@ export class ProtoScene extends Phaser.Scene {
   private bossShroudRemaining = 0;
   private bossPullRemaining = 0;
   private readonly spiritViews = new Map<string, SpiritOrbView>();
-  private spiritOrbitAngle = -Math.PI / 2;
   private readonly enemyControlState = new EnemyControlState();
   /** 적별 지속 상태이상 — burn(지속피해)·weaken(취약). freeze/slow는 enemyControlState. */
   private readonly enemyAilments = new EnemyAilmentState();
@@ -1467,13 +1474,12 @@ export class ProtoScene extends Phaser.Scene {
               + ALTAR_OFFER_CONFIG.allAffinityBonus;
           }
           this.combatRunController.seedAffinity(raised);
-          this.ownedAltarKinds.push('all-affinity');
+          this.syncElementalChorus();
           this.announceSystemMessage('모든 원소가 함께 깊어졌다', '#8fe3c8', 2600);
           return;
         }
         if (chosen.kind === 'ripple') {
           this.rippleUnlocked = true;
-          this.ownedAltarKinds.push('ripple');
           this.announceBanner({
             title: '영창 파문 — 말이 옆으로 번진다',
             lines: ['수동 단일 영창이 가까운 다른 적에게 · 시퀀스는 번지지 않는다'],
@@ -1484,7 +1490,6 @@ export class ProtoScene extends Phaser.Scene {
         }
         if (chosen.kind === 'echo') {
           this.echoUnlocked = true;
-          this.ownedAltarKinds.push('echo');
           this.announceBanner({
             title: '영창 에코 — 말이 두 번 울린다',
             lines: ['수동 단일 영창이 한 번 더 · 시퀀스는 울리지 않는다'],
@@ -1496,8 +1501,11 @@ export class ProtoScene extends Phaser.Scene {
         if (chosen.kind === 'awaken' && chosen.element) {
           // 제단은 대가를 먼저 치른 뒤 runUiBinding 후속 단계에서 갈래를 직접 고른다.
           // 무작위 결과를 주면 최대 생명 25의 거래가 도박으로 읽힌다.
-          this.ownedAltarKinds.push('awaken');
           this.altarAwakeningSelecting = true;
+          return;
+        }
+        if (chosen.kind === 'altar-high') {
+          this.altarHighSelecting = true;
           return;
         }
         return; // 거절·잠김
@@ -1584,12 +1592,15 @@ export class ProtoScene extends Phaser.Scene {
       this.time.delayedCall(1400, () => {
         const completedLoops = this.combatRunController.state.loopIndex + 1;
         const nextDamagePct = Math.round(loopDamageScale(completedLoops) * 100);
-        void showBossChoice(completedLoops, nextDamagePct).then(async (choice) => {
+        void showBossChoice(completedLoops, nextDamagePct).then((choice) => {
           this.audio.playSfx('ui-confirm');
           if (choice === 'continue') {
             // 이어가면 빌드가 비워진다 — 무엇을 들고 갈지 여기서 고른다.
             // 이미 "더 갈까"를 결정한 자리라 한 호흡으로 이어진다.
-            const inherit = await this.chooseInheritedAffinity();
+            const inherit = mutateInheritedAffinity(
+              this.combatRunController.state.elementalAffinity,
+              Date.now(),
+            );
             this.continueToNextLoop(inherit);
           } else {
             void showRunSummaryOverlay(this.buildRunSummary('victory'))
@@ -1735,6 +1746,7 @@ export class ProtoScene extends Phaser.Scene {
         this.player.x,
         this.player.y,
       );
+      this.syncElementalChorus();
       return;
     }
     if (selection.id === 'ward-study') {
@@ -2060,7 +2072,8 @@ export class ProtoScene extends Phaser.Scene {
    * 보상 카드 UI를 재사용한다 — 새 오버레이를 만들면 같은 기능이 화면마다 다르게
    * 생긴다(#총괄 지적 "정돈이 안 됐다"와 같은 종류).
    */
-  private async chooseInheritedAffinity(): Promise<{ element: SpellElement; value: number } | null> {
+  // Kept as a non-interactive fallback while old save/replay hooks still reference this shape.
+  private async _chooseInheritedAffinity(): Promise<{ element: SpellElement; value: number } | null> {
     const candidates = inheritCandidates(this.combatRunController.state.elementalAffinity);
     if (candidates.length === 0) return null;
     const options: RewardOption[] = candidates.slice(0, 3).map((c) => ({
@@ -2081,7 +2094,8 @@ export class ProtoScene extends Phaser.Scene {
     return picked ? { element: picked.element, value: picked.inherited } : null;
   }
 
-  private continueToNextLoop(inherit: { element: SpellElement; value: number } | null = null): void {
+  private continueToNextLoop(inherit: { source?: SpellElement; element: SpellElement; value: number; echoes?: readonly { element: SpellElement; value: number }[] } | null = null): void {
+    void this._chooseInheritedAffinity;
     this.deathHandled = false;
     this.continueRunResearchTracking();
     // 전투 전용 상태만 초기화 (다음 보스가 내성 재계산, 장판·쿨다운은 방 단위)
@@ -2107,8 +2121,13 @@ export class ProtoScene extends Phaser.Scene {
     this.playerState.reset();
     // 제단 능력도 비운다 — 그래야 다음 런 제단이 다시 의미를 갖는다
     this.echoUnlocked = false;
+    this.starburstUnlocked = false;
+    this.meteorUnlocked = false;
+    this.trailUnlocked = false;
+    this.elementalChorusStage = 0;
     this.rippleUnlocked = false;
     this.altarAwakeningSelecting = false;
+    this.altarHighSelecting = false;
     this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.runMovementDistance = 0;
@@ -2125,8 +2144,8 @@ export class ProtoScene extends Phaser.Scene {
     );
     if (inherit) {
       this.announceBanner({
-        title: `${ELEMENT_LABELS[inherit.element]}만이 남았다`,
-        lines: [`친화 ${inherit.value.toFixed(2)} 계승 · 나머지는 흩어졌다`],
+        title: `${ELEMENT_LABELS[inherit.source ?? inherit.element]}의 잔향이 변이했다`,
+        lines: [`${ELEMENT_LABELS[inherit.source ?? inherit.element]} → ${ELEMENT_LABELS[inherit.element]} · 친화 ${inherit.value.toFixed(2)} 계승`, ...(inherit.echoes?.map((echo) => `${ELEMENT_LABELS[echo.element]} 잔향 +${echo.value.toFixed(2)}`) ?? [])],
         color: 0xd8bb72,
         holdMs: 2800,
       });
@@ -2152,8 +2171,13 @@ export class ProtoScene extends Phaser.Scene {
     this.shockCooldowns.clear();
     this.awakenings = {};
     this.echoUnlocked = false;
+    this.starburstUnlocked = false;
+    this.meteorUnlocked = false;
+    this.trailUnlocked = false;
+    this.elementalChorusStage = 0;
     this.rippleUnlocked = false;
     this.altarAwakeningSelecting = false;
+    this.altarHighSelecting = false;
     this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
@@ -2179,8 +2203,13 @@ export class ProtoScene extends Phaser.Scene {
     this.shockCooldowns.clear();
     this.awakenings = {};
     this.echoUnlocked = false;
+    this.starburstUnlocked = false;
+    this.meteorUnlocked = false;
+    this.trailUnlocked = false;
+    this.elementalChorusStage = 0;
     this.rippleUnlocked = false;
     this.altarAwakeningSelecting = false;
+    this.altarHighSelecting = false;
     this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
@@ -2188,7 +2217,6 @@ export class ProtoScene extends Phaser.Scene {
     this.spiritManager.reset();
     this.clearSpiritViews();
     this.growthMarks.reset();
-    this.spiritOrbitAngle = -Math.PI / 2;
     this.engraveRewardRand = createRunRandom(Date.now());
     this.playerState.reset();
     this.runMovementDistance = 0;
@@ -3368,7 +3396,7 @@ export class ProtoScene extends Phaser.Scene {
    * 붙잡을 이유가 없으므로 종전대로 즉시 예약한다.
    */
   private transitionNeedsRoomChoice(): boolean {
-    return this.altarAwakeningSelecting || this.mapGraph.choices().length > 0;
+    return this.altarAwakeningSelecting || this.altarHighSelecting || this.mapGraph.choices().length > 0;
   }
 
   /**
@@ -3745,7 +3773,21 @@ export class ProtoScene extends Phaser.Scene {
 
   /** 제단 각성의 두 번째 선택 — 거래 대가를 낸 뒤 성질은 플레이어가 결정한다. */
   async resolveRewardFollowup(chosen: RewardOption): Promise<void> {
-    if (!chosen.altar || chosen.kind !== 'awaken' || !chosen.element) return;
+    if (!chosen.altar) return;
+    if (chosen.kind === 'altar-high') {
+      try {
+        const picked = await showRewardCards(drawHighAltarOptions(this.ownedAltarKinds), {
+          kicker: 'HIGH ALTAR ARCANA',
+          title: '고위 제단술 하나를 새긴다',
+          contextLines: ['한 런에 같은 제단술은 한 번만 선택할 수 있다'],
+        });
+        this.applyHighAltar(picked.kind);
+      } finally {
+        this.altarHighSelecting = false;
+      }
+      return;
+    }
+    if (chosen.kind !== 'awaken' || !chosen.element) return;
     try {
       const element = chosen.element;
       const picked = await showRewardCards(awakeningOptions(element), {
@@ -3766,6 +3808,25 @@ export class ProtoScene extends Phaser.Scene {
     } finally {
       this.altarAwakeningSelecting = false;
     }
+  }
+
+  private applyHighAltar(kind: RewardOption['kind']): void {
+    if (!['echo', 'starburst', 'meteor', 'trail'].includes(kind)) return;
+    this.ownedAltarKinds.push(kind as AltarTierKind);
+    if (kind === 'echo') this.echoUnlocked = true;
+    if (kind === 'starburst') this.starburstUnlocked = true;
+    if (kind === 'meteor') this.meteorUnlocked = true;
+    if (kind === 'trail') this.trailUnlocked = true;
+    const titles: Record<string, string> = {
+      echo: '영창 메아리', starburst: '성운 분열', meteor: '원소 낙성', trail: '마력 궤적',
+    };
+    this.audio.playSfx('ui-confirm');
+    this.announceBanner({
+      title: `${titles[kind]} — 제단술이 깨어났다`,
+      lines: ['수동 단일 영창에 새 장면이 더해진다 · 시퀀스 제외'],
+      color: 0xd0a8ff,
+      holdMs: 3000,
+    });
   }
 
   /**
@@ -3918,6 +3979,7 @@ export class ProtoScene extends Phaser.Scene {
       if (hazard.view.active) hazard.view.destroy();
     }
     this.hazardZones = [];
+    this.hazardEntryGraceRemaining = 0;
   }
 
   private spawnHazards(safeCorridor?: TrapSafeCorridor): void {
@@ -3928,6 +3990,9 @@ export class ProtoScene extends Phaser.Scene {
       PLAYER_HIT_RADIUS,
     );
     for (const placement of placements) {
+      // 안전 통로의 중심과 플레이어 스폰이 바뀌어도 발밑에 원형 함정이 놓이지 않게 한다.
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, placement.x, placement.y)
+        <= placement.radius + PLAYER_HIT_RADIUS + 48) continue;
       const view = this.add.circle(
         Phaser.Math.Clamp(placement.x, this.worldBounds.left + placement.radius, this.worldBounds.right - placement.radius),
         Phaser.Math.Clamp(placement.y, this.worldBounds.top + placement.radius, this.worldBounds.bottom - placement.radius),
@@ -3943,6 +4008,8 @@ export class ProtoScene extends Phaser.Scene {
     }
 
     this.spawnBoundaryHazards(900, 650, safeCorridor);
+    // 입장 장면을 읽고 첫 걸음을 뗄 수 있는 최소 유예. 유예 중에도 장판은 보인다.
+    this.hazardEntryGraceRemaining = 1.25;
   }
 
   private spawnBoundaryHazards(
@@ -4059,6 +4126,8 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private updateHazards(deltaSeconds: number): void {
+    this.hazardEntryGraceRemaining = Math.max(0, this.hazardEntryGraceRemaining - deltaSeconds);
+    if (this.hazardEntryGraceRemaining > 0) return;
     for (const hazard of this.hazardZones) {
       hazard.damageCooldown = Math.max(0, hazard.damageCooldown - deltaSeconds);
       if (hazard.damageCooldown > 0) continue;
@@ -5585,6 +5654,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const affinityGrowth = this.combatRunController.growAffinityFromUse(spec.element_primary);
       if (affinityGrowth.added > 0) {
         this.showAffinityGrowthFloat(spec.element_primary, affinityGrowth.total);
+        this.syncElementalChorus();
       }
       const affinityBonus = this.combatRunController.state
         .elementalAffinity[spec.element_primary] ?? 0;
@@ -5712,6 +5782,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
       this.scheduleSpellEcho(effectiveSpec);
       this.scheduleSpellRipple(effectiveSpec);
+      this.scheduleHighAltarFlourishes(effectiveSpec);
+      this.scheduleElementalChorus(effectiveSpec);
       this.playerState.startCastLock(); // 신속 영창 감소분 반영된 입력락
       this.playCastFlare();
     } finally {
@@ -5775,6 +5847,127 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       if (!this.scene?.isActive?.()) return;
       this.audio.playCast(spec.element_primary);
     });
+  }
+
+  private scheduleHighAltarFlourishes(spec: SpellSpec): void {
+    const target = this.nearestEnemy();
+    if (!target) return;
+    const fire = (delayMs: number, powerScale: number, x: number, y: number, form: SpellSpec['form']): void => {
+      this.time.delayedCall(delayMs, () => {
+        if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
+        this.applySpellEffect(
+          { ...spec, form, power: Math.max(1, Math.round(spec.power * powerScale)) },
+          new Phaser.Math.Vector2(x, y), false, 1, { decorVfxScale: 0.48 },
+        );
+        this.audio.playCast(spec.element_primary);
+      });
+    };
+    if (this.starburstUnlocked) {
+      for (let i = 0; i < 8; i += 1) {
+        const enemy = this.enemies.filter((candidate) => candidate.alive)[i % Math.max(1, this.enemies.filter((candidate) => candidate.alive).length)] ?? target;
+        const delayMs = 180 + i * 110;
+        const side = (i % 2 === 0 ? -1 : 1) * (70 + (i % 3) * 26);
+        const originX = this.player.x + side;
+        const originY = this.player.y - 22 - (i % 2) * 18;
+        this.playStarburstShardArc(originX, originY, enemy.x, enemy.y, side, delayMs, spec.element_primary);
+        // 파편이 목표에 닿는 순간에만 피해가 들어가야, 궤적과 타격이 한 장면으로 읽힌다.
+        fire(delayMs + 360, 0.42, originX, originY, 'bolt');
+      }
+    }
+    if (this.meteorUnlocked) {
+      const sigil = this.add.circle(target.x, target.y, 52, ELEMENT_PALETTES[spec.element_primary].glow, 0.16)
+        .setStrokeStyle(3, ELEMENT_PALETTES[spec.element_primary].accent, 0.9)
+        .setBlendMode(Phaser.BlendModes.ADD).setDepth(7);
+      this.tweens.add({ targets: sigil, scale: { from: 0.25, to: 1.25 }, alpha: 0, duration: 520, ease: 'Quad.easeOut', onComplete: () => sigil.destroy() });
+      fire(430, 1.35, target.x, target.y, 'nova');
+    }
+    if (this.trailUnlocked) {
+      for (let i = 1; i <= 5; i += 1) {
+        const t = i / 6;
+        fire(100 + i * 90, 0.5, Phaser.Math.Linear(this.player.x, target.x, t), Phaser.Math.Linear(this.player.y, target.y, t), 'zone');
+      }
+    }
+  }
+
+  private playStarburstShardArc(
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    side: number,
+    delayMs: number,
+    element: SpellElement,
+  ): void {
+    const color = ELEMENT_PALETTES[element].accent;
+    this.time.delayedCall(delayMs, () => {
+      if (!this.scene?.isActive?.() || !this.isCombatActive()) return;
+      const trail = this.add.graphics().setDepth(20).setBlendMode(Phaser.BlendModes.ADD);
+      const glow = this.add.circle(fromX, fromY, 18, color, 0.18).setDepth(20)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      const orb = this.add.circle(fromX, fromY, 9, 0xf3fbff, 1).setDepth(21)
+        .setStrokeStyle(3, color, 1)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      const progress = { value: 0 };
+      const controlX = (fromX + toX) * 0.5 + side * 0.7;
+      const controlY = Math.min(fromY, toY) - 72 - Math.abs(side) * 0.18;
+      this.tweens.add({
+        targets: progress,
+        value: 1,
+        duration: 360,
+        ease: 'Quad.easeIn',
+        onUpdate: () => {
+          const t = progress.value;
+          const x = (1 - t) ** 2 * fromX + 2 * (1 - t) * t * controlX + t ** 2 * toX;
+          const y = (1 - t) ** 2 * fromY + 2 * (1 - t) * t * controlY + t ** 2 * toY;
+          orb.setPosition(x, y);
+          glow.setPosition(x, y).setScale(1.1 - t * 0.38).setAlpha(0.28 - t * 0.2);
+          trail.clear().lineStyle(5, color, 0.82).beginPath().moveTo(fromX, fromY);
+          for (let sample = 1; sample <= 10; sample += 1) {
+            const u = t * sample / 10;
+            trail.lineTo(
+              (1 - u) ** 2 * fromX + 2 * (1 - u) * u * controlX + u ** 2 * toX,
+              (1 - u) ** 2 * fromY + 2 * (1 - u) * u * controlY + u ** 2 * toY,
+            );
+          }
+          trail.strokePath();
+        },
+        onComplete: () => { glow.destroy(); orb.destroy(); trail.destroy(); },
+      });
+    });
+  }
+
+  private syncElementalChorus(): void {
+    const next = chorusStage(this.combatRunController.state.elementalAffinity);
+    if (next <= this.elementalChorusStage) return;
+    this.elementalChorusStage = next;
+    const active = chorusElements(this.combatRunController.state.elementalAffinity);
+    this.announceBanner({
+      title: `원소 합주 ${next}단계`,
+      lines: [`친화 원소 ${active.length}개 · 수동 영창 뒤 공명 파편 ${chorusProjectileCount(next)}발`],
+      color: 0x8fe3c8,
+      holdMs: 3000,
+    });
+  }
+
+  private scheduleElementalChorus(spec: SpellSpec): void {
+    const affinity = this.combatRunController.state.elementalAffinity;
+    const stage = chorusStage(affinity);
+    if (stage === 0) return;
+    const elements = chorusElements(affinity).filter((element) => element !== spec.element_primary);
+    const target = this.nearestEnemy();
+    if (!target || elements.length === 0) return;
+    const count = chorusProjectileCount(stage);
+    for (let i = 0; i < count; i += 1) {
+      const element = elements[i % elements.length];
+      this.time.delayedCall(120 + i * 85, () => {
+        if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
+        this.applySpellEffect(
+          { ...spec, element_primary: element, power: Math.max(1, Math.round(spec.power * 0.22)) },
+          new Phaser.Math.Vector2(target.x, target.y), false, 2, { decorVfxScale: 0.38 },
+        );
+        this.audio.playCast(element);
+      });
+    }
   }
 
   private scheduleSpellEcho(spec: SpellSpec): void {
@@ -6389,17 +6582,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
   /** 마나·쿨다운·수동 주문 기억에 개입하지 않는 정령 자동 발동. */
   private updateSpirits(deltaSeconds: number): void {
-    this.spiritOrbitAngle += deltaSeconds * 1.35;
     this.syncSpiritViews();
     const entries = this.spiritManager.entries;
+    const target = this.nearestEnemy();
     entries.forEach((entry, index) => {
-      const angle = this.spiritOrbitAngle + (Math.PI * 2 * index) / Math.max(1, entries.length);
-      this.spiritViews.get(entry.spiritId)?.updatePosition(
-        this.player.x,
-        this.player.y - 8,
-        angle,
-        68,
-      );
+      const angle = (Math.PI * 2 * index) / Math.max(1, entries.length);
+      const anchorX = target ? target.x + Math.cos(angle) * 110 : this.player.x + Math.cos(angle) * 72;
+      const anchorY = target ? target.y + Math.sin(angle) * 110 : this.player.y + Math.sin(angle) * 72;
+      this.spiritViews.get(entry.spiritId)?.moveToward(anchorX, anchorY, deltaSeconds);
     });
 
     for (const request of this.spiritManager.update(deltaSeconds)) {
@@ -6413,7 +6603,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const origin = view
           ? new Phaser.Math.Vector2(view.x, view.y)
           : new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
-        this.applySpellEffect(request.spell, origin, true, 1);
+        for (let i = 0; i < request.burstCount; i += 1) {
+          this.time.delayedCall(i * 110, () => {
+            if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
+            this.applySpellEffect(
+              { ...request.spell, power: Math.max(1, Math.round(request.spell.power * (i === 0 ? 1 : 0.55))) },
+              origin, true, 1, { decorVfxScale: 1 + i * 0.12 },
+            );
+          });
+        }
         continue;
       }
       // 치유·수호는 적이 없어도 실제로 일한다 — 여기서 빛나는 건 허공 연출이 아니다
@@ -8820,7 +9018,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (enemy instanceof ShieldSentinelEnemy && !bypassDirectionalShield) {
       const result = enemy.takeMechanicDamage(damage, sourceX, sourceY);
       if (result.blocked) {
-        this.showShieldBlockEffect(enemy, sourceX, sourceY);
+        if (result.shieldBroken) {
+          this.showShieldBreakEffect(enemy);
+        } else {
+          this.showShieldBlockEffect(enemy, sourceX, sourceY);
+        }
         return false;
       }
       defeated = result.defeated;
@@ -9317,6 +9519,38 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         duration: Phaser.Math.Between(260, 420),
         ease: 'Cubic.easeOut',
         onComplete: () => particle.destroy(),
+      });
+    }
+  }
+
+  private showShieldBreakEffect(enemy: ShieldSentinelEnemy): void {
+    const burst = this.add.circle(enemy.x, enemy.y, 25, 0x8cecff, 0.3)
+      .setStrokeStyle(5, 0xe5fbff, 1)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: burst,
+      radius: 64,
+      alpha: 0,
+      duration: 360,
+      ease: 'Cubic.easeOut',
+      onComplete: () => burst.destroy(),
+    });
+    for (let i = 0; i < 22; i++) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const distance = Phaser.Math.Between(42, 92);
+      const shard = this.add.rectangle(enemy.x, enemy.y, Phaser.Math.Between(3, 6), 12, 0xb9efff, 0.98)
+        .setRotation(angle)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: shard,
+        x: enemy.x + Math.cos(angle) * distance,
+        y: enemy.y + Math.sin(angle) * distance,
+        alpha: 0,
+        scale: 0.25,
+        rotation: angle + Phaser.Math.FloatBetween(-1.3, 1.3),
+        duration: Phaser.Math.Between(300, 510),
+        ease: 'Cubic.easeOut',
+        onComplete: () => shard.destroy(),
       });
     }
   }

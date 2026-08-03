@@ -4,6 +4,7 @@ import {
   RUN_INHERITANCE,
   inheritCandidates,
   inheritedAffinity,
+  mutateInheritedAffinity,
 } from '../src/combat-core/run/runInheritance';
 import {
   ALTAR_OFFER_CONFIG,
@@ -28,35 +29,25 @@ import { AWAKENING_CONFIG } from '../src/combat-core/run/awakening';
 // 나간다. 실측: 한 런에 제단 2회가 3.2%, 맵에 제단 2개 이상이 21.7%.
 {
   const fresh = drawAltarOffer(200, 'fire', []);
-  const echoFresh = fresh.find((o) => o.kind === 'echo');
-  assert.ok(echoFresh, '아무것도 없으면 에코를 살 수 있다');
-  assert.ok(!echoFresh.altar?.locked, '처음엔 잠기지 않는다');
+  const highFresh = fresh.find((o) => o.kind === 'altar-high');
+  assert.ok(highFresh, '아무것도 없으면 고위 제단술을 고를 수 있다');
+  assert.ok(!highFresh.altar?.locked, '처음엔 잠기지 않는다');
 
   const owned = drawAltarOffer(200, 'fire', ['echo']);
-  const echoOwned = owned.find((o) => o.id.startsWith('altar-echo'));
-  assert.ok(echoOwned, '가진 등급도 목록에는 남는다 — 사라지면 뭐가 있었는지 모른다');
-  assert.ok(echoOwned.altar?.locked, '이미 가졌으면 잠긴다');
-  assert.equal(echoOwned.altar?.cost, 0, '잠긴 등급은 대가가 0이어야 실수로 지불되지 않는다');
-  assert.ok(
-    /이미/.test(echoOwned.title) || /이미/.test(echoOwned.description),
-    '왜 잠겼는지 말해야 한다 — 감당 못 해서 잠긴 것과 구분되어야 한다',
-  );
+  const highOwned = owned.find((o) => o.kind === 'altar-high');
+  assert.ok(highOwned && !highOwned.altar?.locked, '고위 제단술 거래는 다음 제단에도 유지된다');
 
   // 다른 등급은 여전히 살 수 있다
-  const ripple = owned.find((o) => o.kind === 'ripple');
-  assert.ok(ripple && !ripple.altar?.locked, '에코를 가졌어도 파문은 살 수 있다');
+  assert.equal(owned.length, fresh.length, '저가·중가 거래도 반복 선택할 수 있다');
 }
 
 // ── ② 최상위가 둘이고, 값이 같고, 결이 다르다 ──────────────────────────────
 {
   const top = ALTAR_TIERS.filter((t) => t.cost === 50);
-  assert.equal(top.length, 2, '최상위 등급이 둘이어야 두 번째 제단이 의미를 갖는다');
-  assert.deepEqual(
-    top.map((t) => t.kind).sort(), ['echo', 'ripple'],
-    '최상위는 에코(시간축)와 파문(공간축)',
-  );
+  assert.equal(top.length, 1, '최상위는 고위 제단술 선택 하나로 묶인다');
+  assert.equal(top[0].kind, 'altar-high', '최상위 거래가 후속 4택을 연다');
   // 같은 급이려면 값이 같아야 한다 — 하나가 싸면 그쪽만 고른다
-  assert.equal(top[0].cost, top[1].cost, '두 최상위의 대가가 같아야 한다');
+  assert.equal(top[0].cost, 50, '고위 제단술의 대가는 최대 생명 50이다');
 
   // 파문이 에코보다 위력이 낮은 이유: 대상이 늘어난다. 다만 적이 둘 이상일 때만
   // 발동하므로 보스전에서는 논다 — 그 상황 의존성이 균형을 잡는다.
@@ -118,6 +109,19 @@ import { AWAKENING_CONFIG } from '../src/combat-core/run/awakening';
   assert.equal(candidates.length, 2, '친화 0인 원소는 후보에서 뺀다');
   assert.equal(candidates[0].element, 'fire', '높은 순으로 정렬');
   assert.deepEqual(inheritCandidates({}), [], '아무것도 안 키웠으면 후보가 없다');
+  const mutation = mutateInheritedAffinity({ fire: 0.9, ice: 0.3 }, 12345);
+  assert.ok(mutation, '최고 친화가 있으면 자동 계승 변이가 생긴다');
+  assert.equal(mutation.source, 'fire', '최고 친화가 자동 계승의 원천이다');
+  assert.notEqual(mutation.element, mutation.source, '계승 친화는 같은 원소로 돌아오지 않는다');
+  assert.equal(mutation.value, inheritedAffinity(0.9), '계승량은 최고 친화의 일부다');
+  const chorusMutation = mutateInheritedAffinity({ fire: 0.9, ice: 0.3, water: 0.3 }, 12345);
+  assert.ok(chorusMutation && chorusMutation.echoes.length === 1, '합주 1단계는 다음 런에 작은 잔향 하나를 더 남긴다');
+  assert.ok(chorusMutation?.echoes.every((echo) => echo.element !== chorusMutation.element), '잔향은 주 변이 원소와 겹치지 않는다');
+  assert.ok(chorusMutation?.echoes.every((echo) => echo.value < chorusMutation.value), '다중 잔향은 주 계승보다 작다');
+  assert.deepEqual(
+    mutateInheritedAffinity({ fire: 0.9, ice: 0.3 }, 12345), mutation,
+    '동률·변이 대상은 시드가 같으면 재현된다',
+  );
 }
 
 // ── ④ 이어가기가 실제로 빌드를 비우는가 ────────────────────────────────────

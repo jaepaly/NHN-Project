@@ -35,7 +35,11 @@ const KIND_COLORS: Partial<Record<RewardOption['kind'], number>> = {
   // 제단 전용 (#214) — 대가를 치른 보상이라 각성과 같은 자주 계열로 묶는다
   'altar-leave': 0x7f8aba,
   'all-affinity': 0x8fe3c8,
+  'altar-high': 0xd0a8ff,
   echo: 0xd0a8ff,
+  starburst: 0xb18cff,
+  meteor: 0xffd166,
+  trail: 0x63e6be,
 };
 
 /** 보상 → 증가분을 숫자로 드러내는 부상 텍스트. 수치는 RUN_REWARD_CONFIG 단일 출처. */
@@ -94,6 +98,8 @@ export function gainLabelFor(option: RewardOption): GainLabel {
         text: `영창 에코 · 위력 ${Math.round(ALTAR_OFFER_CONFIG.echo.powerScale * 100)}%`,
         color,
       };
+    case 'altar-high':
+      return { text: '고위 제단술을 고른다', color };
     case 'altar-leave':
     default:
       // 거절·잠긴 카드는 얻은 게 없으니 부상 텍스트도 없다
