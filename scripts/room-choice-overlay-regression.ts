@@ -81,5 +81,18 @@ assert.ok(source.includes('optionById'), '선택 가능 노드 집합');
 assert.ok(source.includes("button.setAttribute('aria-disabled'"), '비선택 노드 비활성 계약');
 assert.ok(source.includes('route-ready-label'), '이동 가능 표시');
 assert.ok(source.includes('route-detail-description'), '호버·포커스 방 설명');
+assert.ok(source.includes('ROUTE_MAP_VERTICAL_GUTTER = 24'), '상하 장식 잘림 방지 여백');
+assert.ok(
+  source.includes('point.y + ROUTE_MAP_VERTICAL_GUTTER'),
+  '노드와 SVG 연결선에 같은 세로 여백 적용',
+);
+assert.ok(
+  source.includes('.route-node:not(.selectable):not(.current):hover'),
+  '미래·지나온 노드 hover 시각 반응',
+);
+assert.ok(
+  source.includes('if (selectable) setFocus(selectable.index)'),
+  '선택 가능 노드 hover와 포커스 확대 동기화',
+);
 
 console.log('room choice overlay regression: 방표시·입력방어·키보드·전체지도계약·레이아웃재사용·선택제한 6군 통과');

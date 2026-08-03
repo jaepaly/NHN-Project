@@ -107,6 +107,8 @@ export function roomChoiceFocusDirection(
 
 const STYLE_ID = 'r3-room-choice-style';
 const WRAP_ID = 'r3-room-choice-wrap';
+const ROUTE_MAP_VERTICAL_GUTTER = 24;
+const ROUTE_MAP_VIEW_HEIGHT = MINIMAP_CONFIG.height + ROUTE_MAP_VERTICAL_GUTTER * 2;
 
 const CSS = `
 #${WRAP_ID} {
@@ -220,7 +222,8 @@ ${ornamentCss(WRAP_ID)}
   display: grid; place-items: center; cursor: default;
   opacity: 0.32;
   box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.66);
-  transition: transform 180ms ease, opacity 180ms ease, box-shadow 180ms ease;
+  transition: transform 180ms ease, opacity 180ms ease, box-shadow 180ms ease,
+    border-color 180ms ease, filter 180ms ease;
 }
 #${WRAP_ID} .route-node::before,
 #${WRAP_ID} .route-node::after {
@@ -260,6 +263,16 @@ ${ornamentCss(WRAP_ID)}
     0 0 0 8px color-mix(in srgb, var(--room-color) 9%, transparent),
     0 6px 16px rgba(0, 0, 0, 0.6),
     inset 0 0 22px color-mix(in srgb, var(--room-color) 15%, transparent);
+}
+#${WRAP_ID} .route-node:not(.selectable):not(.current):hover {
+  transform: translate(-50%, -50%) scale(1.06);
+  opacity: 0.68;
+  border-color: color-mix(in srgb, var(--room-color) 82%, #8f7f91);
+  filter: brightness(1.2) saturate(0.9);
+  box-shadow:
+    0 0 0 5px color-mix(in srgb, var(--room-color) 7%, transparent),
+    0 4px 11px rgba(0, 0, 0, 0.52),
+    inset 0 0 18px color-mix(in srgb, var(--room-color) 10%, transparent);
 }
 #${WRAP_ID} .route-node:focus-visible {
   outline: 1px solid #ead9ad; outline-offset: 12px;
@@ -442,7 +455,10 @@ export function showRoomChoices(
   const titleEl = wrap.querySelector<HTMLElement>('.route-detail-title')!;
   const descriptionEl = wrap.querySelector<HTMLElement>('.route-detail-description')!;
   const currentNodeId = model.nodes.find((node) => node.status === 'current')?.id ?? null;
-  svg.setAttribute('viewBox', `0 0 ${MINIMAP_CONFIG.width} ${MINIMAP_CONFIG.height}`);
+  svg.setAttribute(
+    'viewBox',
+    `0 ${-ROUTE_MAP_VERTICAL_GUTTER} ${MINIMAP_CONFIG.width} ${ROUTE_MAP_VIEW_HEIGHT}`,
+  );
   svg.setAttribute('preserveAspectRatio', 'none');
 
   for (const edge of model.edges) {
@@ -542,7 +558,7 @@ export function showRoomChoices(
         selectable ? 'selectable' : '',
       ].filter(Boolean).join(' ');
       button.style.left = `${(point.x / MINIMAP_CONFIG.width) * 100}%`;
-      button.style.top = `${(point.y / MINIMAP_CONFIG.height) * 100}%`;
+      button.style.top = `${((point.y + ROUTE_MAP_VERTICAL_GUTTER) / ROUTE_MAP_VIEW_HEIGHT) * 100}%`;
       button.style.setProperty('--room-color', presentation.color);
       button.setAttribute('aria-label', `${nodeStateLabel(node, selectable !== undefined)}: ${presentation.label}`);
       button.setAttribute('aria-disabled', selectable ? 'false' : 'true');
@@ -567,7 +583,10 @@ export function showRoomChoices(
         button.addEventListener('focus', () => showDetail(node));
         selectableButtons.set(selectable.index, button);
       }
-      button.addEventListener('mouseenter', () => showDetail(node));
+      button.addEventListener('mouseenter', () => {
+        if (selectable) setFocus(selectable.index);
+        else showDetail(node);
+      });
       nodesEl.appendChild(button);
     }
 
