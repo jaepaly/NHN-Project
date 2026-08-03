@@ -6010,20 +6010,20 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.time.delayedCall(120 + i * 85, () => {
         if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive() || !enemy.alive) return;
         const origin = new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
-        this.playChorusShardArc(origin.x, origin.y, enemy.x, enemy.y, i, element);
-        this.applySpellEffect(
-          {
-            ...spec,
-            element_primary: element,
-            form: 'bolt',
-            size: 'huge',
-            power: Math.max(1, Math.round(spec.power * ELEMENTAL_CHORUS.projectilePowerScale)),
-          },
-          origin, true, 1, {
-            decorVfxScale: 1.45,
-            sequenceTarget: { lockedEnemy: enemy, lastTargetPoint: null },
-          },
-        );
+        this.playChorusShardArc(origin.x, origin.y, enemy.x, enemy.y, i, element, () => {
+          if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive() || !enemy.alive) return;
+          // 별 자체가 비행체다. 피해는 도착 순간의 작은 폭발로만 보여 이중 투사체가 되지 않는다.
+          this.applySpellEffect(
+            {
+              ...spec,
+              element_primary: element,
+              form: 'nova',
+              size: 'large',
+              power: Math.max(1, Math.round(spec.power * ELEMENTAL_CHORUS.projectilePowerScale)),
+            },
+            new Phaser.Math.Vector2(enemy.x, enemy.y), true, 1, { decorVfxScale: 0.7 },
+          );
+        });
         this.audio.playCast(element);
       });
     }
@@ -6037,6 +6037,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     toY: number,
     index: number,
     element: SpellElement,
+    onImpact: () => void,
   ): void {
     const color = ELEMENT_PALETTES[element].accent;
     const side = index % 2 === 0 ? 1 : -1;
@@ -6070,7 +6071,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         }
         trail.strokePath();
       },
-      onComplete: () => { trail.destroy(); aura.destroy(); shard.destroy(); },
+      onComplete: () => {
+        onImpact();
+        trail.destroy();
+        aura.destroy();
+        shard.destroy();
+      },
     });
   }
 
