@@ -157,7 +157,7 @@ export function sortCodexForDisplay(entries: readonly CodexEntry[]): CodexEntry[
   return [...entries].sort((a, b) => b.lastCastAt - a.lastCastAt);
 }
 
-export type CodexSortMode = 'recent' | 'discovered' | 'power' | 'element' | 'form';
+export type CodexSortMode = 'recent' | 'discovered' | 'power' | 'element' | 'form' | 'unsold';
 
 /** 원소·폼 정렬을 위한 고정 순서 (팔레트/스키마 순 — 같은 계열끼리 모이게) */
 const ELEMENT_ORDER: SpellElement[] = [
@@ -193,6 +193,11 @@ export function sortCodex(entries: readonly CodexEntry[], mode: CodexSortMode): 
     case 'form':
       return copy.sort((a, b) => (
         rank(FORM_ORDER, a.form) - rank(FORM_ORDER, b.form) || byPowerThenName(a, b)
+      ));
+    case 'unsold':
+      return copy.sort((a, b) => (
+        Number(isCodexEntrySellable(b)) - Number(isCodexEntrySellable(a))
+        || b.lastCastAt - a.lastCastAt || byName(a, b)
       ));
     case 'recent':
     default:

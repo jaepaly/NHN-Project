@@ -93,23 +93,25 @@ export class TitleScene extends Phaser.Scene {
   }
 
   /**
-   * 로비 탭 줄 — 주문 도감 · 설정 (총괄: "시작 화면을 로비처럼").
-   * 하단은 시연 탭이 이미 쓰고 있어 두 항목을 한 줄에 나란히 놓는다.
+   * 로비 탭 줄 — 주문 도감 · 설정 · 상점. 상점은 꾸미기 연결 전까지 안내용이다.
    */
   private createLobbyTabs(width: number, height: number): void {
-    const makeTab = (x: number, label: string, onPick: () => void): void => {
+    const makeTab = (x: number, label: string, onPick?: () => void): void => {
       const tab = this.add.text(x, height * 0.885, label, {
         fontFamily: UI_FONT.serif,
         fontSize: '15px',
         color: UI_COLOR.accent,
         letterSpacing: 2,
-      }).setOrigin(0.5).setAlpha(0.75).setInteractive({ useHandCursor: true });
+      }).setOrigin(0.5).setAlpha(onPick ? 0.75 : 0.42);
+      if (!onPick) return;
+      tab.setInteractive({ useHandCursor: true });
       tab.on('pointerover', () => tab.setAlpha(1).setColor(UI_COLOR.textBright));
       tab.on('pointerout', () => tab.setAlpha(0.75).setColor(UI_COLOR.accent));
       tab.on('pointerdown', onPick);
     };
-    makeTab(width / 2 - 78, '〔 주문 도감 〕', () => { void this.openCodex(); });
-    makeTab(width / 2 + 78, '〔 설정 〕', () => { void this.openSettings(); });
+    makeTab(width * 0.25, '〔 주문 도감 〕', () => { void this.openCodex(); });
+    makeTab(width * 0.5, '〔 설정 〕', () => { void this.openSettings(); });
+    makeTab(width * 0.75, '〔 상점 · 준비 중 〕');
   }
 
   /**

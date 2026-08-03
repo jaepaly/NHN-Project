@@ -1,5 +1,5 @@
 import type { CodexEntry, CodexSortMode } from '../spell/spellCodex';
-import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL } from './uiTokens';
+import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL, UI_SEMANTIC } from './uiTokens';
 import { cornerFlourish, deckleMask, divider, ornamentCss } from './grimoireOrnament';
 import { isCodexEntrySellable, markCodexEntrySold, sortCodex } from '../spell/spellCodex';
 import { ELEMENT_LABELS, ELEMENT_PALETTES, FORM_LABELS, paletteColorToCss } from '../render/palette';
@@ -90,7 +90,7 @@ ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .codex-converted {
   position: absolute; left: 6px; right: 6px; bottom: 5px;
   padding: 2px 3px; border-radius: 4px;
-  background: rgba(24, 56, 48, 0.92); color: #9fe5c3;
+  background: rgba(24, 56, 48, 0.92); color: ${UI_SEMANTIC.ok};
   font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
 }
 #${WRAP_ID} .codex-detail {
@@ -104,12 +104,17 @@ ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .codex-sell {
   font: inherit; font-size: 17px; font-weight: 800; cursor: pointer;
   padding: 11px 18px; border-radius: 8px;
-  border: 1px solid #937747; background: rgba(104, 78, 34, 0.26); color: #ffe0a0;
+  border: 1px solid ${UI_COLOR.borderStrong}; background: rgba(104, 78, 34, 0.26); color: ${UI_COLOR.accentGlow};
 }
-#${WRAP_ID} .codex-sell:hover { border-color: #ffd166; background: rgba(164, 123, 43, 0.38); }
+#${WRAP_ID} .codex-sell:hover { border-color: ${UI_COLOR.warm}; background: rgba(164, 123, 43, 0.38); }
 #${WRAP_ID} .codex-sold { margin-top: 9px; font-size: 13px; color: #7981a4; }
-#${WRAP_ID} .codex-detail-action { display: flex; justify-content: flex-end; margin-top: 14px; }
-#${WRAP_ID} .codex-tokens { margin-left: auto; font-size: 14px; color: #ffd166; white-space: nowrap; }
+#${WRAP_ID} .codex-detail-action { display: flex; justify-content: flex-end; margin: 18px 22px 8px 0; }
+#${WRAP_ID} .codex-tokens { font-size: 14px; color: ${UI_COLOR.warm}; white-space: nowrap; }
+#${WRAP_ID} .codex-sell-all {
+  margin-left: auto; padding: 7px 12px; border: 1px solid ${UI_COLOR.borderStrong}; border-radius: 7px;
+  background: rgba(104, 78, 34, 0.2); color: ${UI_COLOR.accentGlow}; font: inherit; font-size: 13px; cursor: pointer;
+}
+#${WRAP_ID} .codex-sell-all:hover { background: rgba(164, 123, 43, 0.32); }
 #${WRAP_ID} .codex-detail-hint { font-size: 14px; color: ${UI_COLOR.textMuted}; text-align: center; }
 #${WRAP_ID} .codex-empty {
   grid-column: 1 / -1; display: grid; place-items: center; height: 150px;
@@ -120,7 +125,7 @@ ${ornamentCss(WRAP_ID)}
 `;
 
 const SORT_LABELS: Record<CodexSortMode, string> = {
-  recent: '최근순', discovered: '발견순', power: '위력순', element: '속성별', form: '폼별',
+  unsold: '미전환 우선', recent: '최근순', discovered: '발견순', power: '위력순', element: '속성별', form: '폼별',
 };
 
 function ensureDom(): { wrap: HTMLDivElement; panel: HTMLDivElement } {
@@ -187,6 +192,7 @@ export function showCodexOverlay(
 
   const render = (): void => {
     const sorted = sortCodex(currentEntries, sortMode);
+    const convertibleCount = currentEntries.filter(isCodexEntrySellable).length;
     const sortButtons = (Object.keys(SORT_LABELS) as CodexSortMode[]).map((m) => (
       `<button class="codex-sortbtn${m === sortMode ? ' active' : ''}" data-sort="${m}">${SORT_LABELS[m]}</button>`
     )).join('');
@@ -218,6 +224,9 @@ export function showCodexOverlay(
         <div class="codex-title">주문 도감</div>
         ${divider()}
         <div class="codex-sub">${currentEntries.length > 0 ? `새겨진 주문 ${currentEntries.length}종` : '비어 있는 책'}</div>
+        ${options.onSell && convertibleCount > 0
+          ? `<button class="codex-sell-all" type="button">미전환 모두 처리 · ${convertibleCount}개</button>`
+          : ''}
         ${options.onSell ? `<div class="codex-tokens">✦ 주문 토큰 ${tokenBalance}</div>` : ''}
       </div>
       <div class="codex-sortbar">${currentEntries.length > 0 ? sortButtons : ''}</div>
@@ -225,6 +234,22 @@ export function showCodexOverlay(
       <div class="codex-detail"><div class="codex-detail-hint">타일을 클릭해 주문을 선택하세요</div></div>
       <div class="codex-foot"><b>ESC</b> 또는 바깥을 클릭해 닫기</div>
     `;
+
+    const sellAll = panel.querySelector<HTMLButtonElement>('.codex-sell-all');
+    sellAll?.addEventListener('click', () => {
+      let lastBalance = tokenBalance;
+      let nextEntries = currentEntries;
+      for (const entry of currentEntries.filter(isCodexEntrySellable)) {
+        const result = options.onSell?.(entry);
+        if (!result || result.amount <= 0) continue;
+        nextEntries = markCodexEntrySold(nextEntries, entry);
+        lastBalance = result.tokenBalance;
+      }
+      currentEntries = nextEntries;
+      tokenBalance = lastBalance;
+      selectedEntry = undefined;
+      render();
+    });
 
     const detail = panel.querySelector<HTMLDivElement>('.codex-detail')!;
     const showDetail = (entry: CodexEntry): void => {

@@ -46,6 +46,7 @@ assert.equal(isCodexEntrySellable(entry), true);
 const soldEntry = markCodexEntrySold([entry], entry)[0];
 assert.equal(isCodexEntrySellable(soldEntry), false);
 assert.equal(isCodexEntrySellable(mergeCodexEntry([soldEntry], { ...entry, lastCastAt: 2000 })[0]), true);
+assert.equal(sortCodex([soldEntry, entry], 'unsold')[0], entry, '미전환 주문이 우선 정렬된다');
 
 // 1-b) 형상·행동 설계는 요약에 표식이 남는다 (발견의 기록)
 const shaped = codexEntryFromSpec({ ...spec, shape: { kind: 'ring' } }, 1000);
