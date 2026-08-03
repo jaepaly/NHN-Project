@@ -54,6 +54,7 @@ assert.equal(researchContractSummaryLabel({
   goal: 3,
   completed: true,
   rewardInsight: 3,
+  usedElements: [],
   usedForms: [],
 }), '수호 연구 3/3 · 완료 +3');
 
