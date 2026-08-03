@@ -200,9 +200,10 @@ import { WALL_CONFIG } from '../src/combat-core/combat/persistentFormConfig';
     /if \(broke\) \{\s*this\.clearActiveWall\(wall\);/.test(scene),
     '내구도가 다하면 부서진 해당 벽만 사라져야 한다',
   );
-  // 렌더가 친화도를 읽는다 — 종전엔 상수라 친화가 화면에 닿지 않았다
+  // 장벽 생성이 친화도를 읽는다 — 종전엔 상수라 친화가 화면에 닿지 않았다.
+  // `affinityFor`는 합주 모드의 공통 친화도도 함께 해석한다.
   assert.ok(
-    scene.includes('elementalAffinity[spec.element_primary] ?? 0'),
+    scene.includes('this.affinityFor(spec.element_primary)'),
     '장벽이 세운 원소의 친화도를 읽어야 한다',
   );
 }

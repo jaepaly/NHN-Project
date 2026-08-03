@@ -87,9 +87,7 @@ import { ELEMENTS } from '../src/spell/types';
     'drawAffinityBar가 주력 원소를 판별하지 않는다');
   assert.ok(src.includes('affinityHudRows(affinity)'),
     'drawAffinityBar가 8원소 고정 행을 쓰지 않는다');
-  const at = src.indexOf('private drawAffinityBar');
-  const body = src.slice(at, at + 2000);
-  assert.ok(/for \(let i = 0; i < this\.affinityLabelTexts\.length/.test(body),
+  assert.ok(src.includes('for (let i = 0; i < this.affinityLabelTexts.length; i += 1)'),
     '친화 바가 여러 행을 순회하지 않는다');
 }
 

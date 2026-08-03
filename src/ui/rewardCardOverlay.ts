@@ -208,14 +208,14 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
 
 function altarGlyph(kind: RewardOption['kind']): string | null {
   if (kind === 'chorus-awaken') {
-    return `<span aria-label="무지개 합주 룬" style="font-size:31px;background:linear-gradient(135deg,#ff6f8f 0%,#ffd166 22%,#8cf0b5 43%,#72cfff 63%,#9c7dff 82%,#ed8cff 100%);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 0 12px rgba(155,125,255,.78)">✦</span>`;
+    return `<span aria-label="무지개 합주 룬" style="font-size:31px;background:linear-gradient(135deg,#ff6f8f 0%,#ffd166 22%,#8cf0b5 43%,#72cfff 63%,#9c7dff 82%,#ed8cff 100%);-webkit-background-clip:text;background-clip:text;color:transparent">✦</span>`;
   }
   const icons: Partial<Record<RewardOption['kind'], string>> = {
     'all-affinity': '✦', awaken: '☽', 'altar-high': '✥', echo: '♙',
     starburst: '✹', meteor: '☄', trail: '⌁',
   };
   const icon = icons[kind];
-  return icon ? `<span style="font-size:31px;color:#fff;text-shadow:0 0 12px currentColor">${icon}</span>` : null;
+  return icon ? `<span style="font-size:31px;color:#fff">${icon}</span>` : null;
 }
 
 function ensureDom(): HTMLElement {
