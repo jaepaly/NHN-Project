@@ -224,12 +224,14 @@ export function showCodexOverlay(
         <div class="codex-title">주문 도감</div>
         ${divider()}
         <div class="codex-sub">${currentEntries.length > 0 ? `새겨진 주문 ${currentEntries.length}종` : '비어 있는 책'}</div>
+        ${options.onClaimToken ? `<div class="codex-tokens">✦ 주문 토큰 ${tokenBalance}</div>` : ''}
+      </div>
+      <div class="codex-sortbar">
+        ${currentEntries.length > 0 ? sortButtons : ''}
         ${options.onClaimToken && claimableCount > 0
           ? `<button class="codex-claim-all" type="button">새 발견 보상 모두 수령 · ${claimableCount}개</button>`
           : ''}
-        ${options.onClaimToken ? `<div class="codex-tokens">✦ 주문 토큰 ${tokenBalance}</div>` : ''}
       </div>
-      <div class="codex-sortbar">${currentEntries.length > 0 ? sortButtons : ''}</div>
       <div class="codex-grid">${tiles}</div>
       <div class="codex-detail"><div class="codex-detail-hint">타일을 클릭해 주문을 선택하세요</div></div>
       <div class="codex-foot"><b>ESC</b> 또는 바깥을 클릭해 닫기</div>
