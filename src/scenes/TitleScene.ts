@@ -19,6 +19,7 @@ import { GameAudio } from '../audio/gameAudio';
 import { showRewardCards } from '../ui/rewardCardOverlay';
 import { showShopOverlay } from '../ui/shopOverlay';
 import { applySpellTokenClaim, loadMetaProfile, saveMetaProfile } from '../meta/metaProfile';
+import { requestPracticeRun } from '../dev/practiceMode';
 
 const TITLE_COLORS = {
   background: 0x05060f,
@@ -69,6 +70,7 @@ export class TitleScene extends Phaser.Scene {
     this.createStartPrompt(width, height);
     this.createLobbyTabs(width, height);
     this.createDemoTab(width, height);
+    if (import.meta.env.DEV) this.createPracticeTab(width, height);
     // 밝기 막은 탭보다 위에 — 타이틀엔 지켜야 할 HUD가 없다
     this.brightnessVeil = this.add.graphics().setScrollFactor(0).setDepth(50).setVisible(false);
     // 이펙트 밝기도 여기서 반영한다 — 타이틀에서 조절하고 바로 시작하면
@@ -188,6 +190,23 @@ export class TitleScene extends Phaser.Scene {
     tab.on('pointerover', () => { tab.setAlpha(1).setColor('#ffe6a3'); hint.setAlpha(1); });
     tab.on('pointerout', () => { tab.setAlpha(0.75).setColor('#ffd166'); hint.setAlpha(0.8); });
     tab.on('pointerdown', () => { void this.openDemoBuildChoice(); });
+  }
+
+  /** 개발 중 피해 숫자·지속형·합주를 반복 관찰하는 정지 허수아비 방. */
+  private createPracticeTab(width: number, height: number): void {
+    const tab = this.add.text(width - 112, height - 28, '〔 피해 연습실 〕', {
+      fontFamily: UI_FONT.serif,
+      fontSize: '13px',
+      color: '#8fe3c8',
+      letterSpacing: 1.5,
+    }).setOrigin(0.5).setAlpha(0.72).setInteractive({ useHandCursor: true });
+    tab.on('pointerover', () => tab.setAlpha(1).setColor('#c7f9e0'));
+    tab.on('pointerout', () => tab.setAlpha(0.72).setColor('#8fe3c8'));
+    tab.on('pointerdown', () => {
+      if (this.codexOpen || this.starting) return;
+      requestPracticeRun();
+      this.startGame();
+    });
   }
 
   /** 꾸미기 상점 연결 전에도 메타 재화의 존재와 현재 보유량을 로비에서 일관되게 보여 준다. */
