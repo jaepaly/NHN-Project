@@ -504,6 +504,7 @@ interface FriendlyMissile {
  * status=상태이상 파생(burn DoT·shock 전이, 시전 주체 미추적이라 별도 버킷)
  */
 type DamageSource = 'manual' | 'auto' | 'basic' | 'status';
+type BonusDamageNumberKind = 'chorus' | 'starburst';
 
 interface CastFeedbackState {
   resistanceNoticeShown: boolean;
@@ -529,6 +530,9 @@ interface SpellExecutionOptions {
    * 미지정이면 자동 시전 여부로 결정하는 기존 동작 그대로.
    */
   decorVfxScale?: number;
+  /** 자동 후속타는 원래 주문의 판정식을 유지하되, 피해 귀속과 숫자 표기만 별도로 쓴다. */
+  damageSource?: DamageSource;
+  bonusDamageNumber?: BonusDamageNumberKind;
   /**
    * 필살기(융합 방출)인가 — 참이면 친화 연출이 **보조 원소까지 순차로** 그린다
    * (총괄 지시: *"얼음과 전기를 함께 쓰면 깨지는 거랑 스파크 튀는 두가지 효과가
@@ -5978,11 +5982,20 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.tweens.add({ targets: [rift, core], scaleX: { from: 0.18, to: 1.12 }, scaleY: { from: 0.18, to: 1.12 }, duration: 180, ease: 'Quad.easeOut' });
       this.tweens.add({ targets: [rift, core], alpha: 0, delay: 430, duration: 260, onComplete: () => { rift.destroy(); core.destroy(); } });
       this.audio.playCast(spec.element_primary);
-      for (let index = 0; index < 8; index += 1) this.launchStarburstNebulaShard(impact.x, impact.y, index, spec);
+      const struckEnemies = new Set<CombatEnemy>();
+      for (let index = 0; index < 8; index += 1) {
+        this.launchStarburstNebulaShard(impact.x, impact.y, index, spec, struckEnemies);
+      }
     });
   }
 
-  private launchStarburstNebulaShard(fromX: number, fromY: number, index: number, spec: SpellSpec): void {
+  private launchStarburstNebulaShard(
+    fromX: number,
+    fromY: number,
+    index: number,
+    spec: SpellSpec,
+    struckEnemies: Set<CombatEnemy>,
+  ): void {
     const side = index % 2 === 0 ? -1 : 1;
     const lane = Math.floor(index / 2);
     const stagingX = fromX + side * (72 + lane * 24);
@@ -5997,18 +6010,27 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       targets: shard, x: stagingX, y: stagingY, angle: side * 65, duration: 190 + lane * 22, ease: 'Quad.easeOut',
       onUpdate: () => redrawTrail(fromX, fromY),
       onComplete: () => {
-        const target = this.enemies.filter((candidate) => candidate.alive)
+        const living = this.enemies.filter((candidate) => candidate.alive);
+        const damageTarget = index < 4
+          ? living.filter((candidate) => !struckEnemies.has(candidate))
+            .sort((a, b) => Phaser.Math.Distance.Between(stagingX, stagingY, a.x, a.y) - Phaser.Math.Distance.Between(stagingX, stagingY, b.x, b.y))[0]
+          : null;
+        const target = damageTarget ?? living
           .sort((a, b) => Phaser.Math.Distance.Between(stagingX, stagingY, a.x, a.y) - Phaser.Math.Distance.Between(stagingX, stagingY, b.x, b.y))[0];
         if (!target || !this.scene?.isActive?.() || !this.isCombatActive()) { shard.destroy(); trail.destroy(); return; }
+        if (damageTarget) struckEnemies.add(damageTarget);
         this.tweens.add({
           targets: shard, x: target.x, y: target.y, angle: side * -135, duration: 230 + lane * 18, ease: 'Cubic.easeIn',
           onUpdate: () => redrawTrail(stagingX, stagingY),
           onComplete: () => {
             shard.destroy(); trail.destroy();
             if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
+            if (!damageTarget) return;
+            const powerScale = target.kind === 'boss' ? 0.3 : 0.18;
             this.applySpellEffect(
-              { ...spec, form: 'nova', power: Math.max(1, Math.round(spec.power * 0.42)) },
-              new Phaser.Math.Vector2(target.x, target.y), false, 1, { decorVfxScale: 0.34 },
+              { ...spec, form: 'nova', size: 'small', power: Math.max(1, Math.round(spec.power * powerScale)) },
+              new Phaser.Math.Vector2(target.x, target.y), false, 1,
+              { decorVfxScale: 0.34, damageSource: 'auto', bonusDamageNumber: 'starburst' },
             );
           },
         });
@@ -6053,8 +6075,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const otherTargets = this.enemies.filter((enemy) => enemy.alive && enemy !== target);
     // 단일 보스전에서도 합주 보상이 사라지지 않도록, 다른 표적이 없으면 같은 적을
     // 단계 수만큼 교차 타격한다. 총합은 5/15/25%라 단일 전문보다 낮게 유지된다.
-    const targets = otherTargets.length > 0 ? otherTargets : [target];
-    const count = chorusProjectileCount(stage);
+    const targets = otherTargets.length > 0
+      ? otherTargets
+      : target.kind === 'boss'
+        ? [target]
+        : [];
+    const count = Math.min(chorusProjectileCount(stage), targets.length);
     for (let i = 0; i < count; i += 1) {
       const element = ELEMENTS[(ELEMENTS.indexOf(spec.element_primary) + i + 1) % ELEMENTS.length];
       const enemy = targets[i % targets.length];
@@ -6069,10 +6095,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
               ...spec,
               element_primary: element,
               form: 'nova',
-              size: 'large',
-              power: Math.max(1, Math.round(spec.power * ELEMENTAL_CHORUS.projectilePowerScale)),
+              size: 'small',
+              power: Math.max(1, Math.round(spec.power * ELEMENTAL_CHORUS.projectilePowerScale * (enemy.kind === 'boss' ? 0.4 : 0.8))),
             },
-            new Phaser.Math.Vector2(enemy.x, enemy.y), true, 1, { decorVfxScale: 0.7 },
+            new Phaser.Math.Vector2(enemy.x, enemy.y), true, 1,
+            { decorVfxScale: 0.7, bonusDamageNumber: 'chorus' },
           );
         });
         this.audio.playCast(element);
@@ -6600,6 +6627,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           vfxTierReduction,
           options?.onAffectEnemy,
           options?.fusionRelease === true,
+          options?.damageSource,
+          options?.bonusDamageNumber,
         );
       },
     }, spec);
@@ -8322,6 +8351,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     onAffectEnemy?: (enemy: CombatEnemy) => void,
     /** 필살기면 beam·wave 적중 연출이 보조 원소까지 순차로 나간다 (총괄 지시) */
     fusionRelease = false,
+    damageSource?: DamageSource,
+    bonusDamageNumber?: BonusDamageNumberKind,
   ): void {
     // Zone ticks may damage the same enemy again. Rain strikes share one cast-level
     // hit set so overlapping landing circles cannot multiply damage on one target.
@@ -8364,7 +8395,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         bypassDirectionalShield,
         hitStopKind,
         knockbackDistance,
-        auto ? 'auto' : 'manual',
+        damageSource ?? (auto ? 'auto' : 'manual'),
+        'full',
+        bonusDamageNumber,
       );
       onAffectEnemy?.(enemy);
       if (damaged && (spec.form === 'beam' || spec.form === 'wave')) {
@@ -8728,6 +8761,32 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         label.destroy();
         if (this.damageNumbers.get(enemy) === entry) this.damageNumbers.delete(enemy);
       },
+    });
+  }
+
+  /** 보조타는 수동 영창 숫자와 섞지 않고, 출처가 읽히는 작은 숫자로 따로 띄운다. */
+  private showBonusDamageNumber(
+    damage: number,
+    kind: BonusDamageNumberKind,
+    x: number,
+    y: number,
+  ): void {
+    const chorus = kind === 'chorus';
+    const label = this.add.text(x + (Math.random() - 0.5) * 26, y - 34, `${chorus ? '✦ 합주' : '✹ 성운'} ${Math.round(damage)}`, {
+      fontFamily: '"Consolas", "D2Coding", monospace',
+      fontSize: chorus ? '13px' : '14px',
+      fontStyle: 'bold',
+      color: chorus ? '#79e6dc' : '#b78aff',
+      stroke: '#080512',
+      strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(12).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: label,
+      y: label.y - 28,
+      alpha: 0,
+      duration: 620,
+      ease: 'Cubic.easeOut',
+      onComplete: () => label.destroy(),
     });
   }
 
@@ -9231,6 +9290,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
      * 원인 표시는 호출측의 지속 VFX(잔불·틱 펄스) 몫이다.
      */
     feedback: 'full' | 'status-tick' = 'full',
+    bonusDamageNumber?: BonusDamageNumberKind,
   ): boolean {
     if (damage <= 0 || !enemy.alive) return false;
     const underlyingEnemy = enemy instanceof EliteEnemy ? enemy.baseEnemy : enemy;
@@ -9258,6 +9318,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.showDamageNumber(
         enemy, damage, this.isResistedHit(enemy, element), enemy.x, enemy.y,
       );
+    } else if (bonusDamageNumber && feedback !== 'status-tick') {
+      this.showBonusDamageNumber(damage, bonusDamageNumber, enemy.x, enemy.y);
     }
     if (feedback !== 'status-tick') this.audio.playSfx('hit');
     if (!defeated && feedback !== 'status-tick') {
