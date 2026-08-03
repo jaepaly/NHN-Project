@@ -1987,6 +1987,16 @@
 
 ---
 
+## [R1] 실험 Gemini Worker 단건 상태 확인
+
+- 2026-08-03 `proxy/wrangler.local.toml`에 대응하는 실험 Worker `https://incant-judge-proxy.incant-judge-proxy.workers.dev`에 캐시를 거치지 않는 UTF-8 영창 요청을 한 번 직접 POST했다.
+- 요청 문장은 `별빛을 품은 서리창이 적을 꿰뚫는다`였으며 60초 제한 안에 HTTP 응답을 받지 못했다. 게임 클라이언트의 6초 제한에서는 원격 판정이 아니라 fallback으로 처리되는 상태다.
+- HTTP 응답 자체가 없어 upstream status, `X-Incant-Judge-Attempts`, retry reason, token 수와 `cf-placement`는 확보하지 못했다. 단건 관측이므로 원인을 지역·쿼터·배포·Gemini tail latency 중 하나로 단정하지 않는다.
+- 같은 영창을 팀 기본 Worker `https://incant-judge-proxy.diawodbsdot.workers.dev`에도 직접 POST하고 오류 body를 보존했다. 769ms 만에 HTTP 502가 반환됐으며 Gemini upstream은 400 `FAILED_PRECONDITION`, 상세 사유는 `User location is not supported for the API use.`였다.
+- 기본 Worker의 실패 원인은 Cloudflare→Gemini egress 지역 제한으로 확정됐다. 실험 Worker는 60초 무응답으로 장애 양상이 다르므로 해당 배포의 키 프로젝트·egress 또는 upstream 장기 지연은 별도로 조사해야 한다.
+
+---
+
 ## [R1] 이후 작업 기록 템플릿
 
 새 페이즈나 독립적인 작업 묶음을 시작할 때 아래 형식을 복사해 이어서 작성한다.
