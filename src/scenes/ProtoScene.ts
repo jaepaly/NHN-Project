@@ -5855,12 +5855,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (this.starburstUnlocked) {
       for (let i = 0; i < 8; i += 1) {
         const enemy = this.enemies.filter((candidate) => candidate.alive)[i % Math.max(1, this.enemies.filter((candidate) => candidate.alive).length)] ?? target;
-        const delayMs = 230 + i * 85;
+        const delayMs = 180 + i * 110;
         const side = (i % 2 === 0 ? -1 : 1) * (70 + (i % 3) * 26);
         const originX = this.player.x + side;
         const originY = this.player.y - 22 - (i % 2) * 18;
         this.playStarburstShardArc(originX, originY, enemy.x, enemy.y, side, delayMs, spec.element_primary);
-        fire(delayMs, 0.42, originX, originY, 'bolt');
+        // 파편이 목표에 닿는 순간에만 피해가 들어가야, 궤적과 타격이 한 장면으로 읽힌다.
+        fire(delayMs + 360, 0.42, originX, originY, 'bolt');
       }
     }
     if (this.meteorUnlocked) {
@@ -5888,24 +5889,29 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     element: SpellElement,
   ): void {
     const color = ELEMENT_PALETTES[element].accent;
-    this.time.delayedCall(Math.max(0, delayMs - 170), () => {
+    this.time.delayedCall(delayMs, () => {
       if (!this.scene?.isActive?.() || !this.isCombatActive()) return;
-      const trail = this.add.graphics().setDepth(8).setBlendMode(Phaser.BlendModes.ADD);
-      const orb = this.add.circle(fromX, fromY, 5, color, 0.95).setDepth(9).setBlendMode(Phaser.BlendModes.ADD);
+      const trail = this.add.graphics().setDepth(20).setBlendMode(Phaser.BlendModes.ADD);
+      const glow = this.add.circle(fromX, fromY, 18, color, 0.18).setDepth(20)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      const orb = this.add.circle(fromX, fromY, 9, 0xf3fbff, 1).setDepth(21)
+        .setStrokeStyle(3, color, 1)
+        .setBlendMode(Phaser.BlendModes.ADD);
       const progress = { value: 0 };
       const controlX = (fromX + toX) * 0.5 + side * 0.7;
       const controlY = Math.min(fromY, toY) - 72 - Math.abs(side) * 0.18;
       this.tweens.add({
         targets: progress,
         value: 1,
-        duration: 220,
+        duration: 360,
         ease: 'Quad.easeIn',
         onUpdate: () => {
           const t = progress.value;
           const x = (1 - t) ** 2 * fromX + 2 * (1 - t) * t * controlX + t ** 2 * toX;
           const y = (1 - t) ** 2 * fromY + 2 * (1 - t) * t * controlY + t ** 2 * toY;
           orb.setPosition(x, y);
-          trail.clear().lineStyle(2.5, color, 0.62).beginPath().moveTo(fromX, fromY);
+          glow.setPosition(x, y).setScale(1.1 - t * 0.38).setAlpha(0.28 - t * 0.2);
+          trail.clear().lineStyle(5, color, 0.82).beginPath().moveTo(fromX, fromY);
           for (let sample = 1; sample <= 10; sample += 1) {
             const u = t * sample / 10;
             trail.lineTo(
@@ -5915,7 +5921,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           }
           trail.strokePath();
         },
-        onComplete: () => { orb.destroy(); trail.destroy(); },
+        onComplete: () => { glow.destroy(); orb.destroy(); trail.destroy(); },
       });
     });
   }

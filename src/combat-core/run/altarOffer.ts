@@ -94,7 +94,7 @@ export type HighAltarKind = 'echo' | 'starburst' | 'meteor' | 'trail';
 
 const HIGH_ALTAR_OFFERS: Readonly<Record<HighAltarKind, Pick<RewardOption, 'title' | 'description'>>> = {
   echo: { title: '영창 메아리', description: '반투명 분신이 화면 다른 곳에서 같은 영창을 되울린다\n수동 단일 영창만 · 시퀀스 제외' },
-  starburst: { title: '성운 분열', description: '원소 파편 다섯 개가 적을 향해 연속으로 쏟아진다\n수동 단일 영창만 · 시퀀스 제외' },
+  starburst: { title: '성운 분열', description: '원소 파편 여덟 개가 양옆에서 휘어져 연속 명중한다\n수동 단일 영창만 · 시퀀스 제외' },
   meteor: { title: '원소 낙성', description: '잠시 뒤 적 위치에 원소 마법진과 큰 폭발이 떨어진다\n수동 단일 영창만 · 시퀀스 제외' },
   trail: { title: '마력 궤적', description: '영창이 지나간 길에 원소 잔류장이 세 번 피어난다\n수동 단일 영창만 · 시퀀스 제외' },
 };
