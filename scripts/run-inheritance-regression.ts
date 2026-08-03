@@ -4,6 +4,7 @@ import {
   RUN_INHERITANCE,
   inheritCandidates,
   inheritedAffinity,
+  mutateInheritedAffinity,
 } from '../src/combat-core/run/runInheritance';
 import {
   ALTAR_OFFER_CONFIG,
@@ -108,6 +109,15 @@ import { AWAKENING_CONFIG } from '../src/combat-core/run/awakening';
   assert.equal(candidates.length, 2, '친화 0인 원소는 후보에서 뺀다');
   assert.equal(candidates[0].element, 'fire', '높은 순으로 정렬');
   assert.deepEqual(inheritCandidates({}), [], '아무것도 안 키웠으면 후보가 없다');
+  const mutation = mutateInheritedAffinity({ fire: 0.9, ice: 0.3 }, 12345);
+  assert.ok(mutation, '최고 친화가 있으면 자동 계승 변이가 생긴다');
+  assert.equal(mutation.source, 'fire', '최고 친화가 자동 계승의 원천이다');
+  assert.notEqual(mutation.element, mutation.source, '계승 친화는 같은 원소로 돌아오지 않는다');
+  assert.equal(mutation.value, inheritedAffinity(0.9), '계승량은 최고 친화의 일부다');
+  assert.deepEqual(
+    mutateInheritedAffinity({ fire: 0.9, ice: 0.3 }, 12345), mutation,
+    '동률·변이 대상은 시드가 같으면 재현된다',
+  );
 }
 
 // ── ④ 이어가기가 실제로 빌드를 비우는가 ────────────────────────────────────

@@ -92,7 +92,7 @@ import { buildChipModel } from '../run/buildChipModel';
 import { bandAffordances, reachableBand } from '../run/incantBands';
 import { drawTreasureReward } from '../combat-core/run/treasureRewardConfig';
 import { ALTAR_OFFER_CONFIG, drawAltarOffer, drawHighAltarOptions } from '../combat-core/run/altarOffer';
-import { inheritCandidates } from '../combat-core/run/runInheritance';
+import { inheritCandidates, mutateInheritedAffinity } from '../combat-core/run/runInheritance';
 import type { AltarTierKind } from '../combat-core/run/altarOffer';
 import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomRewardScale';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
@@ -1588,12 +1588,15 @@ export class ProtoScene extends Phaser.Scene {
       this.time.delayedCall(1400, () => {
         const completedLoops = this.combatRunController.state.loopIndex + 1;
         const nextDamagePct = Math.round(loopDamageScale(completedLoops) * 100);
-        void showBossChoice(completedLoops, nextDamagePct).then(async (choice) => {
+        void showBossChoice(completedLoops, nextDamagePct).then((choice) => {
           this.audio.playSfx('ui-confirm');
           if (choice === 'continue') {
             // 이어가면 빌드가 비워진다 — 무엇을 들고 갈지 여기서 고른다.
             // 이미 "더 갈까"를 결정한 자리라 한 호흡으로 이어진다.
-            const inherit = await this.chooseInheritedAffinity();
+            const inherit = mutateInheritedAffinity(
+              this.combatRunController.state.elementalAffinity,
+              Date.now(),
+            );
             this.continueToNextLoop(inherit);
           } else {
             void showRunSummaryOverlay(this.buildRunSummary('victory'))
@@ -2064,7 +2067,8 @@ export class ProtoScene extends Phaser.Scene {
    * 보상 카드 UI를 재사용한다 — 새 오버레이를 만들면 같은 기능이 화면마다 다르게
    * 생긴다(#총괄 지적 "정돈이 안 됐다"와 같은 종류).
    */
-  private async chooseInheritedAffinity(): Promise<{ element: SpellElement; value: number } | null> {
+  // Kept as a non-interactive fallback while old save/replay hooks still reference this shape.
+  private async _chooseInheritedAffinity(): Promise<{ element: SpellElement; value: number } | null> {
     const candidates = inheritCandidates(this.combatRunController.state.elementalAffinity);
     if (candidates.length === 0) return null;
     const options: RewardOption[] = candidates.slice(0, 3).map((c) => ({
@@ -2085,7 +2089,8 @@ export class ProtoScene extends Phaser.Scene {
     return picked ? { element: picked.element, value: picked.inherited } : null;
   }
 
-  private continueToNextLoop(inherit: { element: SpellElement; value: number } | null = null): void {
+  private continueToNextLoop(inherit: { source?: SpellElement; element: SpellElement; value: number } | null = null): void {
+    void this._chooseInheritedAffinity;
     this.deathHandled = false;
     this.continueRunResearchTracking();
     // 전투 전용 상태만 초기화 (다음 보스가 내성 재계산, 장판·쿨다운은 방 단위)
@@ -2133,8 +2138,8 @@ export class ProtoScene extends Phaser.Scene {
     );
     if (inherit) {
       this.announceBanner({
-        title: `${ELEMENT_LABELS[inherit.element]}만이 남았다`,
-        lines: [`친화 ${inherit.value.toFixed(2)} 계승 · 나머지는 흩어졌다`],
+        title: `${ELEMENT_LABELS[inherit.source ?? inherit.element]}의 잔향이 변이했다`,
+        lines: [`${ELEMENT_LABELS[inherit.source ?? inherit.element]} → ${ELEMENT_LABELS[inherit.element]} · 친화 ${inherit.value.toFixed(2)} 계승`],
         color: 0xd8bb72,
         holdMs: 2800,
       });
