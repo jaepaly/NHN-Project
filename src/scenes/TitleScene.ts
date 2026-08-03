@@ -17,6 +17,7 @@ import { UI_COLOR, UI_FONT } from '../ui/uiTokens';
 import { DEMO_BUILD_OPTIONS, demoBuildFromOptionId, requestDemoRun } from '../run/demoLoadout';
 import { GameAudio } from '../audio/gameAudio';
 import { showRewardCards } from '../ui/rewardCardOverlay';
+import { showShopOverlay } from '../ui/shopOverlay';
 import { applySpellTokenClaim, loadMetaProfile, saveMetaProfile } from '../meta/metaProfile';
 
 const TITLE_COLORS = {
@@ -111,8 +112,7 @@ export class TitleScene extends Phaser.Scene {
     };
     makeTab(width * 0.25, '〔 주문 도감 〕', () => { void this.openCodex(); });
     makeTab(width * 0.5, '〔 설정 〕', () => { void this.openSettings(); });
-    // 상점은 아직 상품 UI가 없으므로 로비를 유지한다. 이후 상점 오버레이도 도감처럼 암막 없이 연다.
-    makeTab(width * 0.75, '〔 상점 · 준비 중 〕', () => undefined);
+    makeTab(width * 0.75, '〔 상점 〕', () => { void this.openShop(); });
   }
 
   /**
@@ -247,6 +247,17 @@ export class TitleScene extends Phaser.Scene {
       GameAudio.playOneShot(this, 'ui-confirm', loadSettings(window.localStorage));
     } finally {
       // 같은 프레임의 씬 pointerdown이 시작을 못 물게 한 틱 늦게 푼다
+      this.time.delayedCall(50, () => { this.codexOpen = false; });
+    }
+  }
+
+  private async openShop(): Promise<void> {
+    if (this.codexOpen || this.starting) return;
+    this.codexOpen = true;
+    try {
+      await showShopOverlay(loadMetaProfile(window.localStorage).spellTokens);
+      GameAudio.playOneShot(this, 'ui-confirm', loadSettings(window.localStorage));
+    } finally {
       this.time.delayedCall(50, () => { this.codexOpen = false; });
     }
   }

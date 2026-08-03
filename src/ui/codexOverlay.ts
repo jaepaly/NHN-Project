@@ -19,11 +19,16 @@ const CSS = `
 #${WRAP_ID} {
   position: fixed; inset: 0; z-index: ${UI_LAYER.codex};
   display: grid; place-items: center;
-  background: transparent;
+  background: ${UI_COLOR.scrim};
   opacity: 0; visibility: hidden; transition: opacity 200ms ease;
   font-family: ${UI_FONT.sans};
 }
 #${WRAP_ID}.active { opacity: 1; visibility: visible; }
+#${WRAP_ID} .codex-lobby-tokens {
+  position: fixed; top: 20px; right: 28px; z-index: 1;
+  font-family: ${UI_FONT.serif}; font-size: 15px; letter-spacing: 1.2px;
+  color: ${UI_COLOR.warm}; text-shadow: 0 1px 2px ${UI_COLOR.ink};
+}
 ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .codex-panel {
   --orn: ${UI_COLOR.accent};
@@ -184,6 +189,10 @@ export function showCodexOverlay(
   options: CodexOverlayOptions = {},
 ): Promise<void> {
   const { wrap, panel } = ensureDom();
+  const tokenReadout = document.createElement('div');
+  tokenReadout.className = 'codex-lobby-tokens';
+  tokenReadout.textContent = `✦ 주문 토큰 ${options.tokenBalance ?? 0}`;
+  wrap.appendChild(tokenReadout);
   let sortMode: CodexSortMode = 'recent';
   let currentEntries = [...entries];
   let tokenBalance = options.tokenBalance ?? 0;
@@ -247,6 +256,7 @@ export function showCodexOverlay(
       }
       currentEntries = nextEntries;
       tokenBalance = lastBalance;
+      tokenReadout.textContent = `✦ 주문 토큰 ${tokenBalance}`;
       selectedEntry = undefined;
       render();
     });
@@ -273,6 +283,7 @@ export function showCodexOverlay(
         if (!result || result.amount <= 0) return;
         currentEntries = markCodexEntryTokenClaimed(currentEntries, entry);
         tokenBalance = result.tokenBalance;
+        tokenReadout.textContent = `✦ 주문 토큰 ${tokenBalance}`;
         const updated = currentEntries.find((candidate) => (
           candidate.name === entry.name && candidate.firstCastAt === entry.firstCastAt
         ));
