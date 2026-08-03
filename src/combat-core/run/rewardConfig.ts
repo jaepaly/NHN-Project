@@ -42,7 +42,7 @@ type StaticRewardKind = Exclude<
   // ⚠️ 여기에 안 넣으면 `buildOption`의 switch가 그 종류를 안 다뤄 반환이 없다 —
   // tsc가 "ending return statement가 없다"로 잡는다(ripple 추가 때 실제로 걸렸다).
   'engrave' | 'spirit' | 'evolve' | 'awaken' | 'altar-leave' | 'all-affinity' | 'altar-high'
-  | 'echo' | 'ripple' | 'starburst' | 'meteor' | 'trail'
+  | 'echo' | 'ripple' | 'starburst' | 'meteor' | 'trail' | 'chorus-awaken'
 >;
 
 /**

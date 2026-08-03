@@ -202,6 +202,7 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   starburst: 'STAR BURST',
   meteor: 'METEOR',
   trail: 'TRAIL',
+  'chorus-awaken': 'CHORUS',
   ripple: 'RIPPLE',
 };
 

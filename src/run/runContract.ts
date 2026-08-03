@@ -36,6 +36,8 @@ export type RewardKind =
   | 'starburst'
   | 'meteor'
   | 'trail'
+  /** 조건을 만족한 개별 친화도를 공통 합주 친화도로 직접 전환한다. */
+  | 'chorus-awaken'
   /**
    * 영창 파문 — 수동 단일 주문이 **다른 적에게** 번진다 (공간축).
    * 에코와 같은 값·같은 급이되 축이 다르다 — 한 런에서 제단을 두 번 만나는
@@ -163,6 +165,8 @@ export interface RunStateSnapshot {
   elementalAffinity: Partial<Record<SpellElement, number>>;
   /** 합주 개화 뒤 모든 원소가 공유하는 친화도. null이면 개별 친화 단계다. */
   chorusAffinity: number | null;
+  /** 세 원소 친화 조건을 충족해, 다음 보상에서 합주 전환을 선택할 수 있다. */
+  chorusAvailable: boolean;
 }
 
 export interface RunEvents {

@@ -13,11 +13,15 @@ const controller = new CombatRunController({ playerState: new PlayerCombatState(
 controller.seedAffinity({ fire: 0.15, ice: 0.15, lightning: 0.15 });
 assert.equal(controller.state.chorusAffinity, null,
   '제단·카드가 3원소 친화를 올려도 실제 영창 없이 합주를 강제하지 않는다');
+assert.equal(controller.state.chorusAvailable, true, '친화 조건을 채우면 합주 전환 선택지는 열린다');
 controller.reset();
 for (const element of ['fire', 'ice', 'lightning'] as const) {
   for (let i = 0; i < 8; i += 1) controller.growAffinityFromUse(element);
 }
 
+assert.equal(controller.state.chorusAffinity, null, '조건 달성만으로 개별 친화도를 강제 압축하지 않는다');
+assert.equal(controller.state.chorusAvailable, true, '직접 영창으로도 합주 전환 선택지가 열린다');
+assert.equal(controller.activateElementalChorus(), true, '플레이어 선택으로 합주 전환');
 let state = controller.state;
 assert.equal(state.chorusAffinity, 0.16, '사용 성장 단위(2%)로 3원소 16%에서 합주 친화로 압축 전환');
 assert.deepEqual(state.elementalAffinity, {}, '합주 뒤 개별 친화도는 남지 않는다');

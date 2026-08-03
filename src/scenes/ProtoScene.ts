@@ -95,6 +95,7 @@ import { ALTAR_OFFER_CONFIG, drawAltarOffer, drawHighAltarOptions } from '../com
 import { inheritCandidates, mutateInheritedAffinity } from '../combat-core/run/runInheritance';
 import {
   affinityForElement,
+  chorusEntryAffinity,
   chorusProjectileCount,
   chorusStage,
   ELEMENTAL_CHORUS,
@@ -666,6 +667,7 @@ export class ProtoScene extends Phaser.Scene {
   private meteorUnlocked = false;
   private trailUnlocked = false;
   private elementalChorusStage: 0 | 1 | 2 | 3 = 0;
+  private elementalChorusAvailableAnnounced = false;
   /** 파문 — 수동 영창이 다른 적에게 번진다 (제단 최상위, 에코와 같은 급) */
   private rippleUnlocked = false;
   /** 이 런에서 산 제단 등급 — 같은 것을 두 번 사면 최대 체력만 날린다 */
@@ -761,7 +763,7 @@ export class ProtoScene extends Phaser.Scene {
       );
       if (awakenTarget) return awakeningOptions(awakenTarget);
       // 성장의 정점(④) — 진화·융합 후보가 있으면 정적 카드 한 장을 치환
-      return injectEvolveReward(
+      const evolved = injectEvolveReward(
         withSpirit,
         buildEvolveOption(
           roomIndex,
@@ -772,6 +774,9 @@ export class ProtoScene extends Phaser.Scene {
         ),
         this.engraveRewardRand,
       );
+      return this.combatRunController.state.chorusAvailable
+        ? this.injectChorusAwakenOption(evolved, roomIndex)
+        : evolved;
     },
   });
   private moveKeys!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
@@ -1761,6 +1766,7 @@ export class ProtoScene extends Phaser.Scene {
       );
       this.syncElementalChorus();
       this.syncElementalChorus();
+      this.syncElementalChorus();
       return;
     }
     if (selection.id === 'ward-study') {
@@ -2139,6 +2145,7 @@ export class ProtoScene extends Phaser.Scene {
     this.meteorUnlocked = false;
     this.trailUnlocked = false;
     this.elementalChorusStage = 0;
+    this.elementalChorusAvailableAnnounced = false;
     this.rippleUnlocked = false;
     this.altarAwakeningSelecting = false;
     this.altarHighSelecting = false;
@@ -2189,6 +2196,7 @@ export class ProtoScene extends Phaser.Scene {
     this.meteorUnlocked = false;
     this.trailUnlocked = false;
     this.elementalChorusStage = 0;
+    this.elementalChorusAvailableAnnounced = false;
     this.rippleUnlocked = false;
     this.altarAwakeningSelecting = false;
     this.altarHighSelecting = false;
@@ -2221,6 +2229,7 @@ export class ProtoScene extends Phaser.Scene {
     this.meteorUnlocked = false;
     this.trailUnlocked = false;
     this.elementalChorusStage = 0;
+    this.elementalChorusAvailableAnnounced = false;
     this.rippleUnlocked = false;
     this.altarAwakeningSelecting = false;
     this.altarHighSelecting = false;
@@ -5529,7 +5538,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (sequenceElements[0]) {
       const grown = this.combatRunController.growAffinityFromUse(sequenceElements[0]);
       if (grown.added > 0) this.showAffinityGrowthFloat(sequenceElements[0], grown.total);
-      if (grown.chorusActivated) this.syncElementalChorus();
+      if (grown.chorusAvailable) this.syncElementalChorus();
     }
     const sequenceHistoryEntry = this.spellHistory.recordSequence({
       rawText: text,
@@ -5958,6 +5967,17 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
   private syncElementalChorus(): void {
     const state = this.combatRunController.state;
+    if (state.chorusAffinity === null) {
+      if (!state.chorusAvailable || this.elementalChorusAvailableAnnounced) return;
+      this.elementalChorusAvailableAnnounced = true;
+      this.announceBanner({
+        title: '원소 합주 개화 가능',
+        lines: ['개별 친화도는 유지된다 · 다음 보상에서 합주 전환을 직접 선택할 수 있다'],
+        color: 0x8fe3c8,
+        holdMs: 3000,
+      });
+      return;
+    }
     const next = chorusStage(state.elementalAffinity, state.chorusAffinity);
     if (next <= this.elementalChorusStage) return;
     this.elementalChorusStage = next;
@@ -8045,6 +8065,26 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         title: '합주 친화',
         description: `모든 원소 위력 +${Math.round(ELEMENTAL_CHORUS.rewardAffinityBonus * (option.powerScale ?? 1) * 100)}% · 공명 파편을 키운다`,
       });
+  }
+
+  private injectChorusAwakenOption(options: readonly RewardOption[], roomIndex: number): RewardOption[] {
+    const state = this.combatRunController.state;
+    if (!state.chorusAvailable || state.chorusAffinity !== null || options.length === 0) return [...options];
+    const entry = chorusEntryAffinity(state.elementalAffinity);
+    const option: RewardOption = {
+      id: `room-${roomIndex}-chorus-awaken`,
+      kind: 'chorus-awaken',
+      title: '원소 합주로 전환',
+      description: `개별 친화도를 공통 친화 ${Math.round(entry * 100)}%로 압축\n모든 수동 영창 뒤 공명 파편 ${chorusProjectileCount(chorusStage({}, entry))}발`,
+    };
+    const replaceable = options
+      .map((reward, index) => ({ reward, index }))
+      .filter(({ reward }) => !['engrave', 'spirit', 'evolve'].includes(reward.kind));
+    if (replaceable.length === 0) return [...options, option].slice(0, 4);
+    const picked = replaceable[Math.floor(this.engraveRewardRand() * replaceable.length)];
+    const result = [...options];
+    result[picked.index] = option;
+    return result;
   }
 
   private drainBannerQueue(): void {
