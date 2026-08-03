@@ -1049,7 +1049,6 @@ export class ProtoScene extends Phaser.Scene {
   private bossShroudRemaining = 0;
   private bossPullRemaining = 0;
   private readonly spiritViews = new Map<string, SpiritOrbView>();
-  private spiritOrbitAngle = -Math.PI / 2;
   private readonly enemyControlState = new EnemyControlState();
   /** 적별 지속 상태이상 — burn(지속피해)·weaken(취약). freeze/slow는 enemyControlState. */
   private readonly enemyAilments = new EnemyAilmentState();
@@ -2216,7 +2215,6 @@ export class ProtoScene extends Phaser.Scene {
     this.spiritManager.reset();
     this.clearSpiritViews();
     this.growthMarks.reset();
-    this.spiritOrbitAngle = -Math.PI / 2;
     this.engraveRewardRand = createRunRandom(Date.now());
     this.playerState.reset();
     this.runMovementDistance = 0;
@@ -6515,17 +6513,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
   /** 마나·쿨다운·수동 주문 기억에 개입하지 않는 정령 자동 발동. */
   private updateSpirits(deltaSeconds: number): void {
-    this.spiritOrbitAngle += deltaSeconds * 1.35;
     this.syncSpiritViews();
     const entries = this.spiritManager.entries;
+    const target = this.nearestEnemy();
     entries.forEach((entry, index) => {
-      const angle = this.spiritOrbitAngle + (Math.PI * 2 * index) / Math.max(1, entries.length);
-      this.spiritViews.get(entry.spiritId)?.updatePosition(
-        this.player.x,
-        this.player.y - 8,
-        angle,
-        68,
-      );
+      const angle = (Math.PI * 2 * index) / Math.max(1, entries.length);
+      const anchorX = target ? target.x + Math.cos(angle) * 110 : this.player.x + Math.cos(angle) * 72;
+      const anchorY = target ? target.y + Math.sin(angle) * 110 : this.player.y + Math.sin(angle) * 72;
+      this.spiritViews.get(entry.spiritId)?.moveToward(anchorX, anchorY, deltaSeconds);
     });
 
     for (const request of this.spiritManager.update(deltaSeconds)) {
