@@ -116,6 +116,10 @@ for (const maxHp of [30, 35, 40, 60, 75, 100, 200]) {
     );
   });
 }
+const ownedAwaken = drawAltarOffer(100, 'fire', ['awaken']);
+assert.equal(ownedAwaken[1].altar?.locked, true, '한 번 산 제단 각성은 같은 런에서 다시 살 수 없다');
+assert.equal(ownedAwaken[1].kind, 'altar-leave', '이미 산 제단 각성은 효과 없는 잠금 카드가 된다');
+assert.ok(ownedAwaken[1].description.includes('이미'), '재구매 잠금 사유를 카드에 표시한다');
 
 // 6) 각성 대상이 없으면 그 등급만 잠긴다 — 아무 원소나 주면 대가만 날린다
 const noElement = drawAltarOffer(100, null);
