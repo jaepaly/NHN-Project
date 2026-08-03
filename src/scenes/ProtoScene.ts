@@ -9002,7 +9002,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (enemy instanceof ShieldSentinelEnemy && !bypassDirectionalShield) {
       const result = enemy.takeMechanicDamage(damage, sourceX, sourceY);
       if (result.blocked) {
-        this.showShieldBlockEffect(enemy, sourceX, sourceY);
+        if (result.shieldBroken) {
+          this.showShieldBreakEffect(enemy);
+        } else {
+          this.showShieldBlockEffect(enemy, sourceX, sourceY);
+        }
         return false;
       }
       defeated = result.defeated;
@@ -9499,6 +9503,38 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         duration: Phaser.Math.Between(260, 420),
         ease: 'Cubic.easeOut',
         onComplete: () => particle.destroy(),
+      });
+    }
+  }
+
+  private showShieldBreakEffect(enemy: ShieldSentinelEnemy): void {
+    const burst = this.add.circle(enemy.x, enemy.y, 25, 0x8cecff, 0.3)
+      .setStrokeStyle(5, 0xe5fbff, 1)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: burst,
+      radius: 64,
+      alpha: 0,
+      duration: 360,
+      ease: 'Cubic.easeOut',
+      onComplete: () => burst.destroy(),
+    });
+    for (let i = 0; i < 22; i++) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const distance = Phaser.Math.Between(42, 92);
+      const shard = this.add.rectangle(enemy.x, enemy.y, Phaser.Math.Between(3, 6), 12, 0xb9efff, 0.98)
+        .setRotation(angle)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: shard,
+        x: enemy.x + Math.cos(angle) * distance,
+        y: enemy.y + Math.sin(angle) * distance,
+        alpha: 0,
+        scale: 0.25,
+        rotation: angle + Phaser.Math.FloatBetween(-1.3, 1.3),
+        duration: Phaser.Math.Between(300, 510),
+        ease: 'Cubic.easeOut',
+        onComplete: () => shard.destroy(),
       });
     }
   }
