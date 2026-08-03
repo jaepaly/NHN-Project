@@ -18,7 +18,7 @@ for (const key of ['ArrowLeft', 'ArrowRight']) {
   assert.ok(!source.includes(`'${key}'`), `${key} 입력을 사용하지 않는다`);
 }
 assert.ok(source.includes('<b>A/D + Enter</b>'), '게임 이동키와 일치하는 조작 안내');
-assert.ok(source.includes("['1', '2', '3']"), '숫자키 직접 선택 유지');
+assert.ok(source.includes("['1', '2', '3', '4']"), '숫자키 직접 선택 유지');
 assert.ok(source.includes("addEventListener('click'"), '마우스 직접 선택 유지');
 
-console.log('reward card overlay regression: A/D·방향키 비활성·직접 선택 3군 통과');
+console.log('reward card overlay regression: A/D·방향키 비활성·4장 직접 선택 3군 통과');

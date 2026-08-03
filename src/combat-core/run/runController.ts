@@ -9,6 +9,7 @@ import type {
 } from '../../run/runContract';
 import type { SpellElement } from '../../spell/types';
 import { accrueUseAffinity } from './useAffinity';
+import { chorusEntryAffinity, ELEMENTAL_CHORUS, shouldEnterElementalChorus } from './elementalChorus';
 import { RUN_ENCOUNTERS } from './encounterConfig';
 import {
   drawRewardOptions,
@@ -73,6 +74,7 @@ export class CombatRunController implements RunController {
   private phase: RunPhase = 'combat';
   private rewards: RewardOption[] = [];
   private elementalAffinity: RunStateSnapshot['elementalAffinity'] = {};
+  private chorusAffinity: number | null = null;
   /** 사용으로 더해온 친화 누적 (원소별, 소프트캡 판정용 — 카드분은 제외) */
   private useAffinityAdded: Record<string, number> = {};
   private rewardOptions: RewardOption[] = [];
@@ -123,13 +125,29 @@ export class CombatRunController implements RunController {
    * 조금 올린다. 카드 친화와 같은 맵에 더하므로 데미지·VFX 격상이 함께 따라온다.
    * @returns { added: 이번에 실제 오른 양, total: 갱신된 총 친화 } (씬이 화면 표시에 사용)
    */
-  growAffinityFromUse(element: SpellElement): { added: number; total: number } {
+  growAffinityFromUse(element: SpellElement): { added: number; total: number; chorusActivated: boolean } {
+    if (this.chorusAffinity !== null) {
+      const added = Math.min(
+        ELEMENTAL_CHORUS.useAffinityPerCast,
+        Math.max(0, ELEMENTAL_CHORUS.affinityCap - this.chorusAffinity),
+      );
+      if (added > 0) {
+        this.chorusAffinity = roundedChorusAffinity(this.chorusAffinity + added);
+      }
+      return { added, total: this.chorusAffinity, chorusActivated: false };
+    }
     const { added, nextAddedSoFar } = accrueUseAffinity(this.useAffinityAdded[element] ?? 0);
     if (added > 0) {
       this.useAffinityAdded[element] = nextAddedSoFar;
       this.elementalAffinity[element] = (this.elementalAffinity[element] ?? 0) + added;
     }
-    return { added, total: this.elementalAffinity[element] ?? 0 };
+    const chorusActivated = shouldEnterElementalChorus(this.elementalAffinity);
+    if (chorusActivated) this.enterElementalChorus();
+    return {
+      added,
+      total: chorusActivated ? this.chorusAffinity! : this.elementalAffinity[element] ?? 0,
+      chorusActivated,
+    };
   }
 
   /**
@@ -138,17 +156,31 @@ export class CombatRunController implements RunController {
    * 사본이라 바깥에서 못 고치므로, 시연 주입에는 이 명시적 입구가 필요하다.
    */
   seedAffinity(affinity: Readonly<Partial<Record<SpellElement, number>>>): void {
+    if (this.chorusAffinity !== null) {
+      const increase = Math.max(0, ...Object.values(affinity).map((value) => Number.isFinite(value) ? value ?? 0 : 0));
+      this.chorusAffinity = roundedChorusAffinity(this.chorusAffinity + increase);
+      return;
+    }
     for (const [element, raw] of Object.entries(affinity)) {
       const value = Number.isFinite(raw) ? Math.max(0, raw as number) : 0;
       if (value > 0) this.elementalAffinity[element as SpellElement] = value;
     }
+    if (shouldEnterElementalChorus(this.elementalAffinity)) this.enterElementalChorus();
   }
 
   /** 메타 연구 등 런 시작 선택이 주는 소량의 친화를 현재 값에 더한다. */
   grantStartingAffinity(element: SpellElement, amount: number): { added: number; total: number } {
     const added = Number.isFinite(amount) ? Math.max(0, amount) : 0;
+    if (this.chorusAffinity !== null) {
+      this.chorusAffinity = roundedChorusAffinity(this.chorusAffinity + added);
+      return { added, total: this.chorusAffinity };
+    }
     const total = (this.elementalAffinity[element] ?? 0) + added;
     if (added > 0) this.elementalAffinity[element] = total;
+    if (shouldEnterElementalChorus(this.elementalAffinity)) {
+      this.enterElementalChorus();
+      return { added, total: this.chorusAffinity! };
+    }
     return { added, total };
   }
 
@@ -212,6 +244,7 @@ export class CombatRunController implements RunController {
     this.phase = 'combat';
     this.rewards = [];
     this.elementalAffinity = {};
+    this.chorusAffinity = null;
     this.useAffinityAdded = {};
     this.rewardOptions = [];
     this.wardOnRoomStart = 0;
@@ -249,6 +282,7 @@ export class CombatRunController implements RunController {
     // 빌드를 비운다 — 각인·정령은 씬 소유라 씬이 따로 비운다
     this.rewards = [];
     this.elementalAffinity = {};
+    this.chorusAffinity = null;
     this.useAffinityAdded = {};
     this.wardOnRoomStart = 0;
     if (inherit && inherit.value > 0) {
@@ -292,8 +326,15 @@ export class CombatRunController implements RunController {
         break;
       case 'affinity': {
         if (!reward.element) return;
+        if (this.chorusAffinity !== null) {
+          this.chorusAffinity = roundedChorusAffinity(
+            this.chorusAffinity + ELEMENTAL_CHORUS.rewardAffinityBonus * scale,
+          );
+          break;
+        }
         const previous = this.elementalAffinity[reward.element] ?? 0;
         this.elementalAffinity[reward.element] = previous + RUN_REWARD_CONFIG.affinityBonus * scale;
+        if (shouldEnterElementalChorus(this.elementalAffinity)) this.enterElementalChorus();
         break;
       }
       case 'swift-incant':
@@ -349,7 +390,15 @@ export class CombatRunController implements RunController {
       loopIndex: this.loopIndex,
       rewards: this.rewards.map(cloneReward),
       elementalAffinity: { ...this.elementalAffinity },
+      chorusAffinity: this.chorusAffinity,
     };
+  }
+
+  private enterElementalChorus(): void {
+    const entryAffinity = chorusEntryAffinity(this.elementalAffinity);
+    this.elementalAffinity = {};
+    this.useAffinityAdded = {};
+    this.chorusAffinity = entryAffinity;
   }
 
   private currentEncounter(): ResolvedEncounter {
@@ -417,6 +466,13 @@ function cloneReward(reward: RewardOption): RewardOption {
       }
       : undefined,
   };
+}
+
+function roundedChorusAffinity(value: number): number {
+  return Math.min(
+    ELEMENTAL_CHORUS.affinityCap,
+    Math.round(Math.max(0, value) * 100) / 100,
+  );
 }
 
 function positiveInteger(value: number): number {
