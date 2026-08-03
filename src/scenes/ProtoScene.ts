@@ -535,6 +535,8 @@ interface SpellExecutionOptions {
   /** 자동 후속타는 원래 주문의 판정식을 유지하되, 피해 귀속과 숫자 표기만 별도로 쓴다. */
   damageSource?: DamageSource;
   bonusDamageNumber?: BonusDamageNumberKind;
+  /** 보조 효과가 재탐색하지 않고 지정 좌표에 판정을 남길 때 쓴다. */
+  targetPoint?: Phaser.Math.Vector2;
   /**
    * 필살기(융합 방출)인가 — 참이면 친화 연출이 **보조 원소까지 순차로** 그린다
    * (총괄 지시: *"얼음과 전기를 함께 쓰면 깨지는 거랑 스파크 튀는 두가지 효과가
@@ -5965,7 +5967,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
         this.applySpellEffect(
           { ...spec, form, power: Math.max(1, Math.round(spec.power * powerScale)) },
-          new Phaser.Math.Vector2(x, y), false, 1, { decorVfxScale: 0.48 },
+          undefined, false, 1, { decorVfxScale: 0.48, targetPoint: new Phaser.Math.Vector2(x, y) },
         );
         this.audio.playCast(spec.element_primary);
       });
@@ -5978,6 +5980,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         .setStrokeStyle(3, ELEMENT_PALETTES[spec.element_primary].accent, 0.9)
         .setBlendMode(Phaser.BlendModes.ADD).setDepth(7);
       this.tweens.add({ targets: sigil, scale: { from: 0.25, to: 1.25 }, alpha: 0, duration: 520, ease: 'Quad.easeOut', onComplete: () => sigil.destroy() });
+      const meteorTrail = this.add.graphics().setDepth(20).setBlendMode(Phaser.BlendModes.ADD);
+      const meteor = this.add.circle(target.x, target.y - 360, 19, ELEMENT_PALETTES[spec.element_primary].core, 1)
+        .setStrokeStyle(4, 0xf0d6ff, 0.85).setDepth(21).setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: meteor, y: target.y, scale: { from: 0.45, to: 1.3 }, duration: 430, ease: 'Quad.easeIn',
+        onUpdate: () => meteorTrail.clear().lineStyle(8, ELEMENT_PALETTES[spec.element_primary].accent, 0.62)
+          .beginPath().moveTo(target.x, meteor.y - 84).lineTo(meteor.x, meteor.y).strokePath(),
+        onComplete: () => { meteor.destroy(); meteorTrail.destroy(); },
+      });
       fire(430, 1.35, target.x, target.y, 'nova');
     }
     if (this.trailUnlocked) {
@@ -6584,9 +6595,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const target = spec.form === 'chain'
       ? chainTargets[0] ?? null
       : preferredTarget ?? this.nearestEnemy();
-    const to = preferredTarget
-      ? new Phaser.Math.Vector2(preferredTarget.x, preferredTarget.y)
-      : this.spellTargetPoint(from, spec, target);
+    const to = options?.targetPoint?.clone()
+      ?? (preferredTarget
+        ? new Phaser.Math.Vector2(preferredTarget.x, preferredTarget.y)
+        : this.spellTargetPoint(from, spec, target));
     let lockedTarget = lockedPointTargetForForm(spec.form, target);
     const hitEnemies = new Set<CombatEnemy>();
     const castFeedback: CastFeedbackState = {
@@ -6817,6 +6829,27 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           ? new Phaser.Math.Vector2(view.x, view.y)
           : new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
         this.applySpellEffect(request.spell, origin, true, 1, { decorVfxScale: 1.15 });
+        // 융합 정령은 보조 속성을 정보로만 들고 있지 않는다. 짧은 박자 뒤 다른 원소탄을
+        // 실제로 한 번 더 날려, 불+얼음처럼 두 속성이 눈과 판정 모두에서 읽히게 한다.
+        if (request.spell.element_secondary) {
+          const secondary = request.spell.element_secondary;
+          this.time.delayedCall(150, () => {
+            if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
+            this.applySpellEffect(
+              {
+                ...request.spell,
+                name: `${request.spell.name} · ${ELEMENT_LABELS[secondary]} 파편`,
+                element_primary: secondary,
+                element_secondary: null,
+                power: Math.max(1, Math.round(request.spell.power * 0.45)),
+              },
+              origin,
+              true,
+              1,
+              { decorVfxScale: 0.82 },
+            );
+          });
+        }
         continue;
       }
       // 치유·수호는 적이 없어도 실제로 일한다 — 여기서 빛나는 건 허공 연출이 아니다
