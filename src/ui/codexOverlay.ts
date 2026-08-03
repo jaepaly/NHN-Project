@@ -1,7 +1,7 @@
 import type { CodexEntry, CodexSortMode } from '../spell/spellCodex';
 import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL, UI_SEMANTIC } from './uiTokens';
 import { cornerFlourish, deckleMask, divider, ornamentCss } from './grimoireOrnament';
-import { isCodexEntrySellable, markCodexEntrySold, sortCodex } from '../spell/spellCodex';
+import { isCodexEntryTokenClaimable, markCodexEntryTokenClaimed, sortCodex } from '../spell/spellCodex';
 import { ELEMENT_LABELS, ELEMENT_PALETTES, FORM_LABELS, paletteColorToCss } from '../render/palette';
 import { glyphSvg } from '../render/formGlyphs';
 
@@ -101,20 +101,20 @@ ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .codex-detail-sum { margin-top: 4px; font-size: 15px; color: ${UI_COLOR.textSoft}; }
 #${WRAP_ID} .codex-detail-flavor { margin-top: 3px; font-size: 14px; color: #8a93bd; font-style: italic; }
 #${WRAP_ID} .codex-detail-meta { margin-top: 4px; font-size: 13px; color: #6f7aa8; }
-#${WRAP_ID} .codex-sell {
+#${WRAP_ID} .codex-claim {
   font: inherit; font-size: 17px; font-weight: 800; cursor: pointer;
   padding: 11px 18px; border-radius: 8px;
   border: 1px solid ${UI_COLOR.borderStrong}; background: rgba(104, 78, 34, 0.26); color: ${UI_COLOR.accentGlow};
 }
-#${WRAP_ID} .codex-sell:hover { border-color: ${UI_COLOR.warm}; background: rgba(164, 123, 43, 0.38); }
+#${WRAP_ID} .codex-claim:hover { border-color: ${UI_COLOR.warm}; background: rgba(164, 123, 43, 0.38); }
 #${WRAP_ID} .codex-sold { margin-top: 9px; font-size: 13px; color: #7981a4; }
 #${WRAP_ID} .codex-detail-action { display: flex; justify-content: flex-end; margin: 18px 22px 8px 0; }
 #${WRAP_ID} .codex-tokens { font-size: 14px; color: ${UI_COLOR.warm}; white-space: nowrap; }
-#${WRAP_ID} .codex-sell-all {
+#${WRAP_ID} .codex-claim-all {
   margin-left: auto; padding: 7px 12px; border: 1px solid ${UI_COLOR.borderStrong}; border-radius: 7px;
   background: rgba(104, 78, 34, 0.2); color: ${UI_COLOR.accentGlow}; font: inherit; font-size: 13px; cursor: pointer;
 }
-#${WRAP_ID} .codex-sell-all:hover { background: rgba(164, 123, 43, 0.32); }
+#${WRAP_ID} .codex-claim-all:hover { background: rgba(164, 123, 43, 0.32); }
 #${WRAP_ID} .codex-detail-hint { font-size: 14px; color: ${UI_COLOR.textMuted}; text-align: center; }
 #${WRAP_ID} .codex-empty {
   grid-column: 1 / -1; display: grid; place-items: center; height: 150px;
@@ -125,7 +125,7 @@ ${ornamentCss(WRAP_ID)}
 `;
 
 const SORT_LABELS: Record<CodexSortMode, string> = {
-  unsold: '미전환 우선', recent: '최근순', discovered: '발견순', power: '위력순', element: '속성별', form: '폼별',
+  unclaimed: '미수령 우선', recent: '최근순', discovered: '발견순', power: '위력순', element: '속성별', form: '폼별',
 };
 
 function ensureDom(): { wrap: HTMLDivElement; panel: HTMLDivElement } {
@@ -169,15 +169,15 @@ function metaLine(entry: CodexEntry): string {
 }
 
 /** 도감을 연다. 닫힐 때 resolve — Esc·바깥 클릭으로 닫는다. */
-export interface CodexSaleResult {
+export interface CodexTokenClaimResult {
   amount: number;
   tokenBalance: number;
 }
 
 export interface CodexOverlayOptions {
   tokenBalance?: number;
-  saleValueFor?: (entry: CodexEntry) => number;
-  onSell?: (entry: CodexEntry) => CodexSaleResult | null;
+  tokenRewardFor?: (entry: CodexEntry) => number;
+  onClaimToken?: (entry: CodexEntry) => CodexTokenClaimResult | null;
 }
 
 export function showCodexOverlay(
@@ -192,7 +192,7 @@ export function showCodexOverlay(
 
   const render = (): void => {
     const sorted = sortCodex(currentEntries, sortMode);
-    const convertibleCount = currentEntries.filter(isCodexEntrySellable).length;
+    const claimableCount = currentEntries.filter(isCodexEntryTokenClaimable).length;
     const sortButtons = (Object.keys(SORT_LABELS) as CodexSortMode[]).map((m) => (
       `<button class="codex-sortbtn${m === sortMode ? ' active' : ''}" data-sort="${m}">${SORT_LABELS[m]}</button>`
     )).join('');
@@ -203,9 +203,9 @@ export function showCodexOverlay(
       : sorted.map((entry, i) => {
         const { core, glow } = tileColors(entry);
         const count = entry.castCount > 1 ? `<span class="codex-count">×${entry.castCount}</span>` : '';
-        const converted = Boolean(options.onSell) && !isCodexEntrySellable(entry);
+        const converted = Boolean(options.onClaimToken) && !isCodexEntryTokenClaimable(entry);
         const selected = selectedEntry?.name === entry.name && selectedEntry.firstCastAt === entry.firstCastAt;
-        const convertedMark = converted ? '<span class="codex-converted">연구 전환 완료</span>' : '';
+        const convertedMark = converted ? '<span class="codex-converted">발견 보상 수령 완료</span>' : '';
         return `<button class="codex-tile${selected ? ' selected' : ''}" data-idx="${i}" style="--tile-core:${core};--tile-glow:${glow}">
           ${count}
           <div class="codex-icon">${glyphSvg(entry.form)}</div>
@@ -224,10 +224,10 @@ export function showCodexOverlay(
         <div class="codex-title">주문 도감</div>
         ${divider()}
         <div class="codex-sub">${currentEntries.length > 0 ? `새겨진 주문 ${currentEntries.length}종` : '비어 있는 책'}</div>
-        ${options.onSell && convertibleCount > 0
-          ? `<button class="codex-sell-all" type="button">미전환 모두 처리 · ${convertibleCount}개</button>`
+        ${options.onClaimToken && claimableCount > 0
+          ? `<button class="codex-claim-all" type="button">새 발견 보상 모두 수령 · ${claimableCount}개</button>`
           : ''}
-        ${options.onSell ? `<div class="codex-tokens">✦ 주문 토큰 ${tokenBalance}</div>` : ''}
+        ${options.onClaimToken ? `<div class="codex-tokens">✦ 주문 토큰 ${tokenBalance}</div>` : ''}
       </div>
       <div class="codex-sortbar">${currentEntries.length > 0 ? sortButtons : ''}</div>
       <div class="codex-grid">${tiles}</div>
@@ -235,14 +235,14 @@ export function showCodexOverlay(
       <div class="codex-foot"><b>ESC</b> 또는 바깥을 클릭해 닫기</div>
     `;
 
-    const sellAll = panel.querySelector<HTMLButtonElement>('.codex-sell-all');
-    sellAll?.addEventListener('click', () => {
+    const claimAll = panel.querySelector<HTMLButtonElement>('.codex-claim-all');
+    claimAll?.addEventListener('click', () => {
       let lastBalance = tokenBalance;
       let nextEntries = currentEntries;
-      for (const entry of currentEntries.filter(isCodexEntrySellable)) {
-        const result = options.onSell?.(entry);
+      for (const entry of currentEntries.filter(isCodexEntryTokenClaimable)) {
+        const result = options.onClaimToken?.(entry);
         if (!result || result.amount <= 0) continue;
-        nextEntries = markCodexEntrySold(nextEntries, entry);
+        nextEntries = markCodexEntryTokenClaimed(nextEntries, entry);
         lastBalance = result.tokenBalance;
       }
       currentEntries = nextEntries;
@@ -255,23 +255,23 @@ export function showCodexOverlay(
     const showDetail = (entry: CodexEntry): void => {
       const flavor = entry.flavor
         ? `<div class="codex-detail-flavor">“${escapeHtml(entry.flavor)}”</div>` : '';
-      const saleAmount = options.saleValueFor?.(entry) ?? 0;
-      const sellable = Boolean(options.onSell) && isCodexEntrySellable(entry) && saleAmount > 0;
-      const saleControl = options.onSell
-        ? (sellable
-          ? `<button class="codex-sell" type="button">연구 기록으로 전환 · +${saleAmount} 토큰</button>`
-          : '<div class="codex-sold">다음 전환은 이 주문을 한 번 더 시전한 뒤 가능합니다.</div>')
+      const tokenReward = options.tokenRewardFor?.(entry) ?? 0;
+      const claimable = Boolean(options.onClaimToken) && isCodexEntryTokenClaimable(entry) && tokenReward > 0;
+      const claimControl = options.onClaimToken
+        ? (claimable
+          ? `<button class="codex-claim" type="button">발견 보상 수령 · +${tokenReward} 토큰</button>`
+          : '<div class="codex-sold">이 주문의 발견 보상은 이미 수령했습니다.</div>')
         : '';
       detail.innerHTML = `
         <div class="codex-detail-name" style="color:${tileColors(entry).core}">${escapeHtml(entry.name)}</div>
         <div class="codex-detail-sum">${escapeHtml(entry.summary)}</div>
         ${flavor}
         <div class="codex-detail-meta">${escapeHtml(metaLine(entry))}</div>
-        <div class="codex-detail-action">${saleControl}</div>`;
-      detail.querySelector<HTMLButtonElement>('.codex-sell')?.addEventListener('click', () => {
-        const result = options.onSell?.(entry);
+        <div class="codex-detail-action">${claimControl}</div>`;
+      detail.querySelector<HTMLButtonElement>('.codex-claim')?.addEventListener('click', () => {
+        const result = options.onClaimToken?.(entry);
         if (!result || result.amount <= 0) return;
-        currentEntries = markCodexEntrySold(currentEntries, entry);
+        currentEntries = markCodexEntryTokenClaimed(currentEntries, entry);
         tokenBalance = result.tokenBalance;
         const updated = currentEntries.find((candidate) => (
           candidate.name === entry.name && candidate.firstCastAt === entry.firstCastAt

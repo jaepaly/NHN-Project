@@ -2,11 +2,11 @@ import Phaser from 'phaser';
 import { applyWorldFx } from '../render/postFx';
 import {
   codexTokenSignature,
-  isCodexEntrySellable,
+  isCodexEntryTokenClaimable,
   loadCodex,
-  markCodexEntrySold,
+  markCodexEntryTokenClaimed,
   saveCodex,
-  spellTokenValueForSales,
+  spellTokenValueForClaims,
 } from '../spell/spellCodex';
 import { showCodexOverlay } from '../ui/codexOverlay';
 import { clearRunHud } from '../ui/runHud';
@@ -17,7 +17,7 @@ import { UI_COLOR, UI_FONT } from '../ui/uiTokens';
 import { DEMO_BUILD_OPTIONS, demoBuildFromOptionId, requestDemoRun } from '../run/demoLoadout';
 import { GameAudio } from '../audio/gameAudio';
 import { showRewardCards } from '../ui/rewardCardOverlay';
-import { applySpellTokenSale, loadMetaProfile, saveMetaProfile } from '../meta/metaProfile';
+import { applySpellTokenClaim, loadMetaProfile, saveMetaProfile } from '../meta/metaProfile';
 
 const TITLE_COLORS = {
   background: 0x05060f,
@@ -226,20 +226,20 @@ export class TitleScene extends Phaser.Scene {
     this.codexOpen = true;
     try {
       let profile = loadMetaProfile(window.localStorage);
-      const saleValueFor = (entry: import('../spell/spellCodex').CodexEntry): number => (
-        spellTokenValueForSales(profile.spellTokenSales[codexTokenSignature(entry)] ?? 0)
+      const tokenRewardFor = (entry: import('../spell/spellCodex').CodexEntry): number => (
+        spellTokenValueForClaims(profile.spellTokenSales[codexTokenSignature(entry)] ?? 0)
       );
       await showCodexOverlay(loadCodex(window.localStorage), {
         tokenBalance: profile.spellTokens,
-        saleValueFor,
-        onSell: (entry) => {
-          if (!isCodexEntrySellable(entry)) return null;
-          const sale = applySpellTokenSale(profile, codexTokenSignature(entry), saleValueFor(entry));
-          if (sale.amount <= 0) return null;
-          profile = sale.profile;
+        tokenRewardFor,
+        onClaimToken: (entry) => {
+          if (!isCodexEntryTokenClaimable(entry)) return null;
+          const claim = applySpellTokenClaim(profile, codexTokenSignature(entry), tokenRewardFor(entry));
+          if (claim.amount <= 0) return null;
+          profile = claim.profile;
           saveMetaProfile(profile, window.localStorage);
-          saveCodex(window.localStorage, markCodexEntrySold(loadCodex(window.localStorage), entry));
-          return { amount: sale.amount, tokenBalance: profile.spellTokens };
+          saveCodex(window.localStorage, markCodexEntryTokenClaimed(loadCodex(window.localStorage), entry));
+          return { amount: claim.amount, tokenBalance: profile.spellTokens };
         },
       });
       this.tokenReadout?.setText(`✦ 주문 토큰 ${profile.spellTokens}`);

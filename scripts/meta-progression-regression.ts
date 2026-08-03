@@ -5,7 +5,7 @@ import {
   isDiscoverySignature,
 } from '../src/meta/discoverySignature';
 import {
-  applySpellTokenSale,
+  applySpellTokenClaim,
   applyMetaRunOutcome,
   EMPTY_META_PROFILE,
   loadMetaProfile,
@@ -126,11 +126,11 @@ const wonProfile = applyMetaRunOutcome(lostProfile, {
 assert.equal(wonProfile.totalRuns, 2);
 assert.equal(wonProfile.totalWins, 1);
 
-const firstSale = applySpellTokenSale(wonProfile, 'damage:fire:none:bolt:medium', 10);
+const firstSale = applySpellTokenClaim(wonProfile, 'damage:fire:none:bolt:medium', 10);
 assert.equal(firstSale.amount, 10);
 assert.equal(firstSale.profile.spellTokens, 10);
 assert.equal(firstSale.profile.spellTokenSales['damage:fire:none:bolt:medium'], 1);
-const secondSale = applySpellTokenSale(firstSale.profile, 'damage:fire:none:bolt:medium', 5);
+const secondSale = applySpellTokenClaim(firstSale.profile, 'damage:fire:none:bolt:medium', 5);
 assert.equal(secondSale.profile.spellTokens, 15);
 assert.equal(secondSale.profile.spellTokenSales['damage:fire:none:bolt:medium'], 2);
 

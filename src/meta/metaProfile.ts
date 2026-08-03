@@ -8,9 +8,9 @@ export const META_PROFILE_STORAGE_KEY = 'incant:meta:v1';
 export interface MetaProfileV1 {
   version: 1;
   insight: number;
-  /** 주문 기록을 정제해 얻는 꾸미기 전용 재화. 획득·상점은 후속 단계에서 연결한다. */
+  /** 새로 발견한 주문의 보상으로 얻는 꾸미기 전용 재화. 상점은 후속 단계에서 연결한다. */
   spellTokens: number;
-  /** 주문 구조별 누적 판매 횟수. 같은 내용을 반복 교환할수록 가치가 떨어진다. */
+  /** 주문 구조별 누적 발견 보상 수령 횟수. 같은 구조의 새 발견일수록 보상이 줄어든다. */
   spellTokenSales: Record<string, number>;
   discoveredSignatures: DiscoverySignature[];
   completedContractIds: string[];
@@ -89,13 +89,13 @@ function normalizeProfile(value: unknown): MetaProfileV1 {
   };
 }
 
-export interface SpellTokenSale {
+export interface SpellTokenClaim {
   profile: MetaProfileV1;
   amount: number;
 }
 
-/** 판매 가치는 10 → 5 → 2 → 1 토큰으로 감소하며, 이 함수는 메타 저장을 직접 건드리지 않는다. */
-export function applySpellTokenSale(profile: MetaProfileV1, signature: string, amount: number): SpellTokenSale {
+/** 발견 보상은 10 → 5 → 2 → 1 토큰으로 감소하며, 이 함수는 메타 저장을 직접 건드리지 않는다. */
+export function applySpellTokenClaim(profile: MetaProfileV1, signature: string, amount: number): SpellTokenClaim {
   const key = typeof signature === 'string' ? signature.slice(0, 240) : '';
   const safeAmount = nonNegativeInteger(amount);
   if (!key || safeAmount <= 0) return { profile: normalizeProfile(profile), amount: 0 };

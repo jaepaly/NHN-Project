@@ -33,9 +33,11 @@ export interface CodexEntry {
   firstCastAt: number;
   lastCastAt: number;
   castCount: number;
-  /** 마지막으로 연구 토큰으로 전환했을 때의 시전 횟수. 이후 한 번 더 써야 재전환할 수 있다. */
+  /** 구 저장과의 호환용. 이미 토큰으로 바꾼 기록은 발견 보상 수령 완료로 본다. */
   lastSoldCastCount?: number;
-  /** 자유 텍스트 이름이 아닌 판정 결과 구조를 기준으로 한 연구 교환 키. */
+  /** 새 주문 발견 보상 수령 여부. 한 주문당 한 번만 수령한다. */
+  tokenClaimed?: boolean;
+  /** 자유 텍스트 이름이 아닌 판정 결과 구조를 기준으로 한 발견 보상 가치 키. */
   tokenSignature?: string;
 }
 
@@ -106,26 +108,26 @@ export function codexEntryFromSequence(
   };
 }
 
-/** 같은 이름이 아니라 판정된 주문 구조가 같을 때 같은 토큰 가치 하락표를 공유한다. */
+/** 같은 이름이 아니라 판정된 주문 구조가 같을 때 같은 발견 보상 가치 하락표를 공유한다. */
 export function codexTokenSignature(entry: CodexEntry): string {
   return entry.tokenSignature
     ?? [entry.element, entry.elementSecondary ?? 'none', entry.form ?? 'sequence', entry.size ?? 'medium'].join(':');
 }
 
-export function spellTokenValueForSales(previousSales: number): number {
-  const safeSales = Number.isFinite(previousSales) ? Math.max(0, Math.floor(previousSales)) : 0;
-  return SPELL_TOKEN_VALUES[Math.min(safeSales, SPELL_TOKEN_VALUES.length - 1)];
+export function spellTokenValueForClaims(previousClaims: number): number {
+  const safeClaims = Number.isFinite(previousClaims) ? Math.max(0, Math.floor(previousClaims)) : 0;
+  return SPELL_TOKEN_VALUES[Math.min(safeClaims, SPELL_TOKEN_VALUES.length - 1)];
 }
 
-export function isCodexEntrySellable(entry: CodexEntry): boolean {
-  return entry.castCount > Math.max(0, entry.lastSoldCastCount ?? 0);
+export function isCodexEntryTokenClaimable(entry: CodexEntry): boolean {
+  return entry.tokenClaimed !== true && entry.lastSoldCastCount === undefined;
 }
 
-/** 판매 표식은 도감에 남겨, 같은 기록을 닫았다 열어도 중복 판매할 수 없게 한다. */
-export function markCodexEntrySold(entries: readonly CodexEntry[], entry: CodexEntry): CodexEntry[] {
+/** 발견 보상 수령 표식은 도감에 남겨, 같은 주문을 다시 시전해도 중복 수령할 수 없게 한다. */
+export function markCodexEntryTokenClaimed(entries: readonly CodexEntry[], entry: CodexEntry): CodexEntry[] {
   return entries.map((candidate) => (
     candidate.name === entry.name && candidate.firstCastAt === entry.firstCastAt
-      ? { ...candidate, lastSoldCastCount: candidate.castCount }
+      ? { ...candidate, tokenClaimed: true }
       : candidate
   ));
 }
@@ -157,7 +159,7 @@ export function sortCodexForDisplay(entries: readonly CodexEntry[]): CodexEntry[
   return [...entries].sort((a, b) => b.lastCastAt - a.lastCastAt);
 }
 
-export type CodexSortMode = 'recent' | 'discovered' | 'power' | 'element' | 'form' | 'unsold';
+export type CodexSortMode = 'recent' | 'discovered' | 'power' | 'element' | 'form' | 'unclaimed';
 
 /** 원소·폼 정렬을 위한 고정 순서 (팔레트/스키마 순 — 같은 계열끼리 모이게) */
 const ELEMENT_ORDER: SpellElement[] = [
@@ -194,9 +196,9 @@ export function sortCodex(entries: readonly CodexEntry[], mode: CodexSortMode): 
       return copy.sort((a, b) => (
         rank(FORM_ORDER, a.form) - rank(FORM_ORDER, b.form) || byPowerThenName(a, b)
       ));
-    case 'unsold':
+    case 'unclaimed':
       return copy.sort((a, b) => (
-        Number(isCodexEntrySellable(b)) - Number(isCodexEntrySellable(a))
+        Number(isCodexEntryTokenClaimable(b)) - Number(isCodexEntryTokenClaimable(a))
         || b.lastCastAt - a.lastCastAt || byName(a, b)
       ));
     case 'recent':

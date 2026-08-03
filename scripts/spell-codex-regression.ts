@@ -4,15 +4,15 @@ import {
   codexTokenSignature,
   codexEntryFromSequence,
   codexEntryFromSpec,
-  isCodexEntrySellable,
+  isCodexEntryTokenClaimable,
   loadCodex,
   mergeCodexEntry,
-  markCodexEntrySold,
+  markCodexEntryTokenClaimed,
   recordCodexEntry,
   saveCodex,
   sortCodex,
   sortCodexForDisplay,
-  spellTokenValueForSales,
+  spellTokenValueForClaims,
 } from '../src/spell/spellCodex';
 import type { SpellSpec } from '../src/spell/types';
 
@@ -41,12 +41,16 @@ for (const token of ['빙결+대지', '투사체', '대형', '위력 62']) {
 assert.equal(entry.flavor, '서리가 대지를 꿰뚫는다');
 assert.equal(entry.castCount, 1);
 assert.ok(codexTokenSignature(entry).includes('damage:ice:earth:bolt'));
-assert.deepEqual([0, 1, 2, 3, 9].map(spellTokenValueForSales), [10, 5, 2, 1, 1]);
-assert.equal(isCodexEntrySellable(entry), true);
-const soldEntry = markCodexEntrySold([entry], entry)[0];
-assert.equal(isCodexEntrySellable(soldEntry), false);
-assert.equal(isCodexEntrySellable(mergeCodexEntry([soldEntry], { ...entry, lastCastAt: 2000 })[0]), true);
-assert.equal(sortCodex([soldEntry, entry], 'unsold')[0], entry, '미전환 주문이 우선 정렬된다');
+assert.deepEqual([0, 1, 2, 3, 9].map(spellTokenValueForClaims), [10, 5, 2, 1, 1]);
+assert.equal(isCodexEntryTokenClaimable(entry), true);
+const claimedEntry = markCodexEntryTokenClaimed([entry], entry)[0];
+assert.equal(isCodexEntryTokenClaimable(claimedEntry), false);
+assert.equal(
+  isCodexEntryTokenClaimable(mergeCodexEntry([claimedEntry], { ...entry, lastCastAt: 2000 })[0]),
+  false,
+  '발견 보상을 수령한 주문은 다시 시전해도 중복 수령할 수 없다',
+);
+assert.equal(sortCodex([claimedEntry, entry], 'unclaimed')[0], entry, '미수령 주문이 우선 정렬된다');
 
 // 1-b) 형상·행동 설계는 요약에 표식이 남는다 (발견의 기록)
 const shaped = codexEntryFromSpec({ ...spec, shape: { kind: 'ring' } }, 1000);
