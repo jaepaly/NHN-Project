@@ -52,7 +52,7 @@ for (let maxHp = MIN; maxHp <= 300; maxHp += 7) {
 assert.equal(canAffordAltarTier(MIN + 10, 10), true, '정확히 하한이 되면 살 수 있다');
 assert.equal(canAffordAltarTier(MIN + 9, 10), false, '하한 아래가 되면 못 산다');
 assert.equal(canAffordAltarTier(100, 50), true);
-assert.equal(canAffordAltarTier(70, 50), false);
+assert.equal(canAffordAltarTier(50, 50), false, '선택 뒤 최대 HP가 0이면 못 산다');
 assert.equal(canAffordAltarTier(Number.NaN, 10), false, 'NaN 방어');
 // 최대 체력이 늘수록 감당 가능은 단조 (줄어드는 구간이 없다)
 for (const cost of [10, 25, 50]) {
@@ -95,19 +95,25 @@ for (const option of full) {
   assert.ok(option.title.length > 0 && option.description.length > 0, `${option.id} 문구`);
 }
 
-// 5) 감당 못 하는 등급은 **빼지 않고 잠근다** — 사라지면 아낄 이유가 안 보인다
-const poor = drawAltarOffer(60, 'fire');
+// 5) 위험한 거래는 허용하되, 최대 HP가 0 이하가 되는 거래만 잠근다.
+const risky = drawAltarOffer(60, 'fire');
+assert.equal(risky.length, ALTAR_TIERS.length + 1, '위험해도 카드 수는 같다');
+const highRisk = risky.find((option) => option.altar?.cost === 50);
+assert.equal(highRisk?.altar?.locked, false, '60 − 50 = 10인 위험 거래는 선택 가능');
+assert.equal(highRisk?.kind, 'altar-high', '위험 거래도 실제 보상으로 연결된다');
+
+const poor = drawAltarOffer(50, 'fire');
 assert.equal(poor.length, ALTAR_TIERS.length + 1, '잠겨도 카드 수는 같다');
-// 최상위(50)는 **둘 다** 잠긴다 — 60 − 50 < 30
+// 최상위(50)는 잠긴다 — 50 − 50 = 0, 0/0 HP 상태는 만들지 않는다.
 for (const [i, tier] of ALTAR_TIERS.entries()) {
   if (tier.cost !== 50) continue;
   assert.equal(poor[i].altar?.locked, true, `−${tier.cost}(${tier.kind})은 잠김`);
   assert.equal(poor[i].altar?.cost, 0, '잠긴 카드는 대가를 걷지 않는다');
   assert.equal(poor[i].kind, 'altar-leave', '잠긴 카드는 아무 효과도 없는 종류로');
 }
-assert.equal(poor[0].altar?.locked, false, '−10은 아직 가능 (60 − 10 ≥ 30)');
+assert.equal(poor[0].altar?.locked, false, '−10은 아직 가능 (50 − 10 ≥ 1)');
 // 잠금 여부가 canAfford와 일치한다
-for (const maxHp of [30, 35, 40, 60, 75, 100, 200]) {
+for (const maxHp of [1, 10, 25, 30, 35, 40, 60, 75, 100, 200]) {
   const offer = drawAltarOffer(maxHp, 'fire');
   ALTAR_TIERS.forEach((tier, i) => {
     assert.equal(

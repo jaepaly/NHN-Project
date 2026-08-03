@@ -133,6 +133,13 @@ assert.deepEqual(loadMetaProfile(storage), {
   completedContractIds: [],
 });
 
+storage.setItem(META_PROFILE_STORAGE_KEY, JSON.stringify({
+  ...EMPTY_META_PROFILE,
+  discoveredSignatures: [],
+  completedContractIds: [],
+}));
+assert.equal(loadMetaProfile(storage).spellTokens, 0, '기존 메타 저장은 토큰 0으로 안전 이행');
+
 saveMetaProfile(wonProfile, storage);
 assert.deepEqual(loadMetaProfile(storage), wonProfile);
 

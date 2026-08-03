@@ -8,6 +8,8 @@ export const META_PROFILE_STORAGE_KEY = 'incant:meta:v1';
 export interface MetaProfileV1 {
   version: 1;
   insight: number;
+  /** 주문 기록을 정제해 얻는 꾸미기 전용 재화. 획득·상점은 후속 단계에서 연결한다. */
+  spellTokens: number;
   discoveredSignatures: DiscoverySignature[];
   completedContractIds: string[];
   maxDepthCleared: number;
@@ -31,6 +33,7 @@ export interface StorageLike {
 export const EMPTY_META_PROFILE: Readonly<MetaProfileV1> = Object.freeze({
   version: 1,
   insight: 0,
+  spellTokens: 0,
   discoveredSignatures: [],
   completedContractIds: [],
   maxDepthCleared: 0,
@@ -64,6 +67,7 @@ function normalizeProfile(value: unknown): MetaProfileV1 {
   return {
     version: 1,
     insight: nonNegativeInteger(source.insight),
+    spellTokens: nonNegativeInteger(source.spellTokens),
     discoveredSignatures: uniqueStrings(source.discoveredSignatures)
       .filter(isDiscoverySignature),
     completedContractIds: uniqueStrings(source.completedContractIds),

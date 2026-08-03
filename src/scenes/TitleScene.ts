@@ -10,6 +10,7 @@ import { UI_COLOR, UI_FONT } from '../ui/uiTokens';
 import { DEMO_BUILD_OPTIONS, demoBuildFromOptionId, requestDemoRun } from '../run/demoLoadout';
 import { GameAudio } from '../audio/gameAudio';
 import { showRewardCards } from '../ui/rewardCardOverlay';
+import { loadMetaProfile } from '../meta/metaProfile';
 
 const TITLE_COLORS = {
   background: 0x05060f,
@@ -55,6 +56,7 @@ export class TitleScene extends Phaser.Scene {
     this.drawBackground(width, height);
     this.createArcaneSeal(width / 2, height * 0.44);
     this.createTitle(width, height);
+    this.createTokenReadout(width);
     this.createStartPrompt(width, height);
     this.createLobbyTabs(width, height);
     this.createDemoTab(width, height);
@@ -175,6 +177,19 @@ export class TitleScene extends Phaser.Scene {
     tab.on('pointerover', () => { tab.setAlpha(1).setColor('#ffe6a3'); hint.setAlpha(1); });
     tab.on('pointerout', () => { tab.setAlpha(0.75).setColor('#ffd166'); hint.setAlpha(0.8); });
     tab.on('pointerdown', () => { void this.openDemoBuildChoice(); });
+  }
+
+  /** 꾸미기 상점 연결 전에도 메타 재화의 존재와 현재 보유량을 로비에서 일관되게 보여 준다. */
+  private createTokenReadout(width: number): void {
+    const tokens = loadMetaProfile(window.localStorage).spellTokens;
+    this.add.text(width - 28, 28, `✦ 주문 토큰 ${tokens}`, {
+      fontFamily: UI_FONT.serif,
+      fontSize: '15px',
+      color: UI_COLOR.warm,
+      stroke: '#080b1a',
+      strokeThickness: 3,
+      letterSpacing: 1.2,
+    }).setOrigin(1, 0.5).setAlpha(0.9);
   }
 
   private async openDemoBuildChoice(): Promise<void> {

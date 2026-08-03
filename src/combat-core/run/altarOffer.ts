@@ -27,7 +27,10 @@ export const ALTAR_OFFER_CONFIG = {
    * "깎을 수 있는 만큼만 깎고 보상은 다 준다"로 하면 저체력일 때 대형 보상을
    * 헐값에 사는 구멍이 된다. 감당 못 하면 못 사는 게 맞다.
    */
-  minMaxHp: 30,
+  /** 제단 거래가 남길 수 있는 최소 최대 체력. 0/0 상태만 막고 위험한 선택은 허용한다. */
+  minMaxHp: 1,
+  /** 이 값 이하로 내려가는 거래는 한 번 더 의사를 확인한다. */
+  riskWarningMaxHp: 30,
   /** 전 원소 친화 상승분 — 일반 카드와 같은 폭이되 **모든 원소**에 걸린다 */
   allAffinityBonus: RUN_REWARD_CONFIG.affinityBonus,
   /**
