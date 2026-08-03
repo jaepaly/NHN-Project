@@ -5855,7 +5855,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (this.starburstUnlocked) {
       for (let i = 0; i < 8; i += 1) {
         const enemy = this.enemies.filter((candidate) => candidate.alive)[i % Math.max(1, this.enemies.filter((candidate) => candidate.alive).length)] ?? target;
-        fire(90 + i * 65, 0.42, enemy.x, enemy.y, 'bolt');
+        const delayMs = 230 + i * 85;
+        const side = (i % 2 === 0 ? -1 : 1) * (70 + (i % 3) * 26);
+        const originX = this.player.x + side;
+        const originY = this.player.y - 22 - (i % 2) * 18;
+        this.playStarburstShardArc(originX, originY, enemy.x, enemy.y, side, delayMs, spec.element_primary);
+        fire(delayMs, 0.42, originX, originY, 'bolt');
       }
     }
     if (this.meteorUnlocked) {
@@ -5871,6 +5876,41 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         fire(100 + i * 90, 0.5, Phaser.Math.Linear(this.player.x, target.x, t), Phaser.Math.Linear(this.player.y, target.y, t), 'zone');
       }
     }
+  }
+
+  private playStarburstShardArc(
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    side: number,
+    delayMs: number,
+    element: SpellElement,
+  ): void {
+    const color = ELEMENT_PALETTES[element].accent;
+    this.time.delayedCall(Math.max(0, delayMs - 170), () => {
+      if (!this.scene?.isActive?.() || !this.isCombatActive()) return;
+      const trail = this.add.graphics().setDepth(8).setBlendMode(Phaser.BlendModes.ADD);
+      const orb = this.add.circle(fromX, fromY, 5, color, 0.95).setDepth(9).setBlendMode(Phaser.BlendModes.ADD);
+      const progress = { value: 0 };
+      const controlX = (fromX + toX) * 0.5 + side * 0.7;
+      const controlY = Math.min(fromY, toY) - 72 - Math.abs(side) * 0.18;
+      this.tweens.add({
+        targets: progress,
+        value: 1,
+        duration: 220,
+        ease: 'Quad.easeIn',
+        onUpdate: () => {
+          const t = progress.value;
+          const x = (1 - t) ** 2 * fromX + 2 * (1 - t) * t * controlX + t ** 2 * toX;
+          const y = (1 - t) ** 2 * fromY + 2 * (1 - t) * t * controlY + t ** 2 * toY;
+          orb.setPosition(x, y);
+          trail.clear().lineStyle(2.5, color, 0.62).beginPath().moveTo(fromX, fromY)
+            .quadraticBezierTo(controlX, controlY, x, y).strokePath();
+        },
+        onComplete: () => { orb.destroy(); trail.destroy(); },
+      });
+    });
   }
 
   private syncElementalChorus(): void {
