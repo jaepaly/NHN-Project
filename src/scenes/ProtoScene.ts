@@ -2098,6 +2098,8 @@ export class ProtoScene extends Phaser.Scene {
     this.clearBurnEmbers();
     this.clearDamageNumbers();
     this.shockCooldowns.clear();
+    // Memory-boss history survives, but repeat damage penalty starts fresh per loop.
+    this.spellHistory.resetRepeatPenalty();
     // ⚠️ **빌드를 비운다** (총괄 결정). 종전엔 친화·각인·정령을 통째로 들고 가
     // 2회차부터 성장이 아니라 누적이었다. 계승은 친화 하나뿐이다.
     //
