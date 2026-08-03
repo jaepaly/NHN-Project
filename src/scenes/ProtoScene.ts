@@ -5943,16 +5943,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       });
     };
     if (this.starburstUnlocked) {
-      for (let i = 0; i < 8; i += 1) {
-        const enemy = this.enemies.filter((candidate) => candidate.alive)[i % Math.max(1, this.enemies.filter((candidate) => candidate.alive).length)] ?? target;
-        const delayMs = 180 + i * 110;
-        const side = (i % 2 === 0 ? -1 : 1) * (70 + (i % 3) * 26);
-        const originX = this.player.x + side;
-        const originY = this.player.y - 22 - (i % 2) * 18;
-        this.playStarburstShardArc(originX, originY, enemy.x, enemy.y, side, delayMs, spec.element_primary);
-        // 파편이 목표에 닿는 순간에만 피해가 들어가야, 궤적과 타격이 한 장면으로 읽힌다.
-        fire(delayMs + 360, 0.42, originX, originY, 'bolt');
-      }
+      this.playStarburstRift(target, spec);
     }
     if (this.meteorUnlocked) {
       const sigil = this.add.circle(target.x, target.y, 52, ELEMENT_PALETTES[spec.element_primary].glow, 0.16)
@@ -5969,50 +5960,59 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
   }
 
-  private playStarburstShardArc(
-    fromX: number,
-    fromY: number,
-    toX: number,
-    toY: number,
-    side: number,
-    delayMs: number,
-    element: SpellElement,
-  ): void {
-    const color = ELEMENT_PALETTES[element].accent;
-    this.time.delayedCall(delayMs, () => {
+  /** 성운 분열: 주 영창의 적중 지점에서 균열이 열리고, 파편이 좌우로 흩어진 뒤 재추적한다. */
+  private playStarburstRift(impact: CombatEnemy, spec: SpellSpec): void {
+    this.time.delayedCall(130, () => {
+      // 주 영창이 적을 처치했어도 적중점의 균열 연출은 끝까지 남겨 보상 발동을 읽게 한다.
       if (!this.scene?.isActive?.() || !this.isCombatActive()) return;
-      const trail = this.add.graphics().setDepth(20).setBlendMode(Phaser.BlendModes.ADD);
-      const glow = this.add.circle(fromX, fromY, 18, color, 0.18).setDepth(20)
-        .setBlendMode(Phaser.BlendModes.ADD);
-      const orb = this.add.circle(fromX, fromY, 9, 0xf3fbff, 1).setDepth(21)
-        .setStrokeStyle(3, color, 1)
-        .setBlendMode(Phaser.BlendModes.ADD);
-      const progress = { value: 0 };
-      const controlX = (fromX + toX) * 0.5 + side * 0.7;
-      const controlY = Math.min(fromY, toY) - 72 - Math.abs(side) * 0.18;
-      this.tweens.add({
-        targets: progress,
-        value: 1,
-        duration: 360,
-        ease: 'Quad.easeIn',
-        onUpdate: () => {
-          const t = progress.value;
-          const x = (1 - t) ** 2 * fromX + 2 * (1 - t) * t * controlX + t ** 2 * toX;
-          const y = (1 - t) ** 2 * fromY + 2 * (1 - t) * t * controlY + t ** 2 * toY;
-          orb.setPosition(x, y);
-          glow.setPosition(x, y).setScale(1.1 - t * 0.38).setAlpha(0.28 - t * 0.2);
-          trail.clear().lineStyle(5, color, 0.82).beginPath().moveTo(fromX, fromY);
-          for (let sample = 1; sample <= 10; sample += 1) {
-            const u = t * sample / 10;
-            trail.lineTo(
-              (1 - u) ** 2 * fromX + 2 * (1 - u) * u * controlX + u ** 2 * toX,
-              (1 - u) ** 2 * fromY + 2 * (1 - u) * u * controlY + u ** 2 * toY,
+      const rift = this.add.graphics().setDepth(19).setBlendMode(Phaser.BlendModes.ADD);
+      const core = this.add.ellipse(impact.x, impact.y, 58, 24, 0x180725, 0.88).setDepth(18)
+        .setStrokeStyle(3, 0x553084, 0.95).setBlendMode(Phaser.BlendModes.ADD);
+      rift.lineStyle(3, 0x7d4fb2, 0.95).beginPath()
+        .moveTo(impact.x - 42, impact.y + 4).lineTo(impact.x - 18, impact.y - 8)
+        .lineTo(impact.x - 3, impact.y + 5).lineTo(impact.x + 17, impact.y - 11)
+        .lineTo(impact.x + 42, impact.y + 2).strokePath();
+      rift.lineStyle(2, 0x2c1957, 1).beginPath()
+        .moveTo(impact.x - 30, impact.y - 7).lineTo(impact.x - 10, impact.y + 10)
+        .lineTo(impact.x + 9, impact.y - 5).lineTo(impact.x + 30, impact.y + 9).strokePath();
+      this.tweens.add({ targets: [rift, core], scaleX: { from: 0.18, to: 1.12 }, scaleY: { from: 0.18, to: 1.12 }, duration: 180, ease: 'Quad.easeOut' });
+      this.tweens.add({ targets: [rift, core], alpha: 0, delay: 430, duration: 260, onComplete: () => { rift.destroy(); core.destroy(); } });
+      this.audio.playCast(spec.element_primary);
+      for (let index = 0; index < 8; index += 1) this.launchStarburstNebulaShard(impact.x, impact.y, index, spec);
+    });
+  }
+
+  private launchStarburstNebulaShard(fromX: number, fromY: number, index: number, spec: SpellSpec): void {
+    const side = index % 2 === 0 ? -1 : 1;
+    const lane = Math.floor(index / 2);
+    const stagingX = fromX + side * (72 + lane * 24);
+    const stagingY = fromY + [-34, -10, 16, 39][lane];
+    const trail = this.add.graphics().setDepth(20).setBlendMode(Phaser.BlendModes.ADD);
+    const shard = this.add.triangle(fromX, fromY, 0, 12, 9, -13, -9, -13, 0x25113f, 1).setDepth(21)
+      .setStrokeStyle(2, 0x8554b9, 0.9).setBlendMode(Phaser.BlendModes.ADD);
+    const redrawTrail = (startX: number, startY: number): void => {
+      trail.clear().lineStyle(4, 0x3d2168, 0.76).beginPath().moveTo(startX, startY).lineTo(shard.x, shard.y).strokePath();
+    };
+    this.tweens.add({
+      targets: shard, x: stagingX, y: stagingY, angle: side * 65, duration: 190 + lane * 22, ease: 'Quad.easeOut',
+      onUpdate: () => redrawTrail(fromX, fromY),
+      onComplete: () => {
+        const target = this.enemies.filter((candidate) => candidate.alive)
+          .sort((a, b) => Phaser.Math.Distance.Between(stagingX, stagingY, a.x, a.y) - Phaser.Math.Distance.Between(stagingX, stagingY, b.x, b.y))[0];
+        if (!target || !this.scene?.isActive?.() || !this.isCombatActive()) { shard.destroy(); trail.destroy(); return; }
+        this.tweens.add({
+          targets: shard, x: target.x, y: target.y, angle: side * -135, duration: 230 + lane * 18, ease: 'Cubic.easeIn',
+          onUpdate: () => redrawTrail(stagingX, stagingY),
+          onComplete: () => {
+            shard.destroy(); trail.destroy();
+            if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
+            this.applySpellEffect(
+              { ...spec, form: 'nova', power: Math.max(1, Math.round(spec.power * 0.42)) },
+              new Phaser.Math.Vector2(target.x, target.y), false, 1, { decorVfxScale: 0.34 },
             );
-          }
-          trail.strokePath();
-        },
-        onComplete: () => { glow.destroy(); orb.destroy(); trail.destroy(); },
-      });
+          },
+        });
+      },
     });
   }
 

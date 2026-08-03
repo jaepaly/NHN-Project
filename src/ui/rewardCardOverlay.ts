@@ -202,11 +202,14 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   starburst: 'STAR BURST',
   meteor: 'METEOR',
   trail: 'TRAIL',
-  'chorus-awaken': 'CHORUS',
+  'chorus-awaken': 'ASCENDANT CHORUS',
   ripple: 'RIPPLE',
 };
 
 function altarGlyph(kind: RewardOption['kind']): string | null {
+  if (kind === 'chorus-awaken') {
+    return `<span aria-label="무지개 합주 룬" style="font-size:31px;background:linear-gradient(135deg,#ff6f8f 0%,#ffd166 22%,#8cf0b5 43%,#72cfff 63%,#9c7dff 82%,#ed8cff 100%);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 0 12px rgba(155,125,255,.78)">✦</span>`;
+  }
   const icons: Partial<Record<RewardOption['kind'], string>> = {
     'all-affinity': '✦', awaken: '☽', 'altar-high': '✥', echo: '♙',
     starburst: '✹', meteor: '☄', trail: '⌁',
@@ -239,7 +242,7 @@ function ensureDom(): HTMLElement {
  * 반짝이는 금빛 테두리로 한눈에 티가 나게 한다 (총괄 요청).
  */
 export function isRareReward(option: RewardOption): boolean {
-  return option.kind === 'evolve';
+  return option.kind === 'evolve' || option.kind === 'chorus-awaken';
 }
 
 function cardColors(option: RewardOption): { core: string; glow: string } {
@@ -251,6 +254,7 @@ function cardColors(option: RewardOption): { core: string; glow: string } {
   if (option.kind === 'swift-incant') return { core: UI_COLOR.warm, glow: '#8a6420' };
   if (option.kind === 'mana-surge') return { core: UI_SEMANTIC.mana, glow: '#3f5a8a' };
   if (option.kind === 'ward-start') return { core: UI_SEMANTIC.shield, glow: '#3a6f80' };
+  if (option.kind === 'chorus-awaken') return { core: '#b68cff', glow: '#5ed9c9' };
   return { core: UI_COLOR.accent, glow: UI_COLOR.borderStrong };
 }
 
