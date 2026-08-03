@@ -9,7 +9,12 @@ import type {
 } from '../../run/runContract';
 import type { SpellElement } from '../../spell/types';
 import { accrueUseAffinity } from './useAffinity';
-import { chorusEntryAffinity, ELEMENTAL_CHORUS, shouldEnterElementalChorus } from './elementalChorus';
+import {
+  chorusElements,
+  chorusEntryAffinity,
+  ELEMENTAL_CHORUS,
+  shouldEnterElementalChorus,
+} from './elementalChorus';
 import { RUN_ENCOUNTERS } from './encounterConfig';
 import {
   drawRewardOptions,
@@ -141,7 +146,7 @@ export class CombatRunController implements RunController {
       this.useAffinityAdded[element] = nextAddedSoFar;
       this.elementalAffinity[element] = (this.elementalAffinity[element] ?? 0) + added;
     }
-    const chorusActivated = shouldEnterElementalChorus(this.elementalAffinity);
+    const chorusActivated = this.shouldEnterElementalChorus();
     if (chorusActivated) this.enterElementalChorus();
     return {
       added,
@@ -165,7 +170,7 @@ export class CombatRunController implements RunController {
       const value = Number.isFinite(raw) ? Math.max(0, raw as number) : 0;
       if (value > 0) this.elementalAffinity[element as SpellElement] = value;
     }
-    if (shouldEnterElementalChorus(this.elementalAffinity)) this.enterElementalChorus();
+    if (this.shouldEnterElementalChorus()) this.enterElementalChorus();
   }
 
   /** 메타 연구 등 런 시작 선택이 주는 소량의 친화를 현재 값에 더한다. */
@@ -177,7 +182,7 @@ export class CombatRunController implements RunController {
     }
     const total = (this.elementalAffinity[element] ?? 0) + added;
     if (added > 0) this.elementalAffinity[element] = total;
-    if (shouldEnterElementalChorus(this.elementalAffinity)) {
+    if (this.shouldEnterElementalChorus()) {
       this.enterElementalChorus();
       return { added, total: this.chorusAffinity! };
     }
@@ -334,7 +339,7 @@ export class CombatRunController implements RunController {
         }
         const previous = this.elementalAffinity[reward.element] ?? 0;
         this.elementalAffinity[reward.element] = previous + RUN_REWARD_CONFIG.affinityBonus * scale;
-        if (shouldEnterElementalChorus(this.elementalAffinity)) this.enterElementalChorus();
+        if (this.shouldEnterElementalChorus()) this.enterElementalChorus();
         break;
       }
       case 'swift-incant':
@@ -399,6 +404,17 @@ export class CombatRunController implements RunController {
     this.elementalAffinity = {};
     this.useAffinityAdded = {};
     this.chorusAffinity = entryAffinity;
+  }
+
+  /**
+   * 합주는 카드가 우연히 3원소를 올려서 열리는 빌드가 아니다. 각 원소를 실제로
+   * 충분히 영창한 선택의 결과여야, 단일 전문 빌드가 보상 하나로 강제 전환되지 않는다.
+   */
+  private shouldEnterElementalChorus(): boolean {
+    if (!shouldEnterElementalChorus(this.elementalAffinity)) return false;
+    return chorusElements(this.elementalAffinity).filter(
+      (element) => (this.useAffinityAdded[element] ?? 0) >= ELEMENTAL_CHORUS.affinityThreshold,
+    ).length >= 3;
   }
 
   private currentEncounter(): ResolvedEncounter {

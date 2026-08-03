@@ -12,6 +12,12 @@ import {
 } from '../src/run/roomTerrainConfig';
 import type { MapNodeKind } from '../src/run/mapGraphContract';
 
+assert.equal(
+  floorHazardBlocksEntry({ ...TERRAIN_KEEPOUTS.arenaCenter, radius: 1 }),
+  true,
+  '전투 중심에는 용암·독지대를 배치하지 않는다',
+);
+
 /**
  * 용암·독지대 실런 배선 회귀 (#304).
  *

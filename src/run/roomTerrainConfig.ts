@@ -77,6 +77,8 @@ export const ROOM_TERRAIN_BOUNDS = {
 export const TERRAIN_KEEPOUTS = {
   /** 도착 지점 (#245 계약: 항상 왼쪽 중앙) */
   arrival: { x: 176, y: 640, radius: 120 },
+  /** 전투의 중심은 회피·교전·보스 대치용으로 비워 둔다. */
+  arenaCenter: { x: ROOM_TERRAIN_BOUNDS.centerX, y: ROOM_TERRAIN_BOUNDS.centerY, radius: 180 },
   /** 출구 포탈 두 슬롯 (오른쪽 가장자리) */
   exits: [
     { x: 1840, y: 538, radius: 90 },
@@ -211,15 +213,15 @@ export const FLOOR_HAZARD_MARGIN = TERRAIN_PLAYER_RADIUS;
  *    회귀가 좌표를 직접 검사한다
  */
 const FLOOR_HAZARD_COMBAT_STAGE1: readonly MapTerrainCircle[] = [
-  { kind: 'poison', x: 960, y: 640, radius: 110 },
+  { kind: 'poison', x: 1200, y: 430, radius: 110 },
 ];
 
 const FLOOR_HAZARD_COMBAT_STAGE2: readonly MapTerrainCircle[] = [
-  { kind: 'lava', x: 960, y: 640, radius: 110 },
+  { kind: 'lava', x: 1220, y: 830, radius: 110 },
 ];
 
 const FLOOR_HAZARD_ELITE: readonly MapTerrainCircle[] = [
-  { kind: 'poison', x: 960, y: 640, radius: 100 },
+  { kind: 'poison', x: 1220, y: 440, radius: 100 },
   { kind: 'lava', x: 620, y: 900, radius: 90 },
 ];
 
@@ -309,7 +311,7 @@ export function floorHazardBlocksEntry(
     const reach = zone.radius + spot.radius + FLOOR_HAZARD_MARGIN;
     return dx * dx + dy * dy < reach * reach;
   };
-  if (hits(TERRAIN_KEEPOUTS.arrival)) return true;
+  if (hits(TERRAIN_KEEPOUTS.arrival) || hits(TERRAIN_KEEPOUTS.arenaCenter)) return true;
   return TERRAIN_KEEPOUTS.exits.some(hits);
 }
 

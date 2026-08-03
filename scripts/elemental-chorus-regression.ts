@@ -10,6 +10,10 @@ import {
 } from '../src/combat-core/run/elementalChorus';
 
 const controller = new CombatRunController({ playerState: new PlayerCombatState() });
+controller.seedAffinity({ fire: 0.15, ice: 0.15, lightning: 0.15 });
+assert.equal(controller.state.chorusAffinity, null,
+  '제단·카드가 3원소 친화를 올려도 실제 영창 없이 합주를 강제하지 않는다');
+controller.reset();
 for (const element of ['fire', 'ice', 'lightning'] as const) {
   for (let i = 0; i < 8; i += 1) controller.growAffinityFromUse(element);
 }

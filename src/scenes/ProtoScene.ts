@@ -5564,11 +5564,17 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         '#ff9f43',
       );
     }
+    const powerScale = plan.power > 0 ? sequenceHistoryEntry.power / plan.power : 1;
     await this.executeSpellSequencePlan(
       plan,
-      plan.power > 0 ? sequenceHistoryEntry.power / plan.power : 1,
+      powerScale,
       allowEcho,
     );
+    // 합주 파편은 행동을 복제하지 않는 순수 원거리 보조타라, 시퀀스에도 안전하게 붙는다.
+    const chorusSpec = formSpecs.find((spec) => spec.effect === 'damage');
+    if (chorusSpec) {
+      this.scheduleElementalChorus({ ...chorusSpec, power: chorusSpec.power * powerScale });
+    }
   }
 
   // ── 판정 → 렌더링 사이클 ────────────────────────────────────
