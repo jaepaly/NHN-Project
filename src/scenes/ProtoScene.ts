@@ -122,6 +122,7 @@ import { devInfo } from '../debug/devLog';
 import { FusionGauge } from '../combat-core/player/fusionGauge';
 import { enemyHpScale, loopDamageScale } from '../combat-core/run/loopDifficulty';
 import { playerPowerIndex } from '../combat-core/run/playerPower';
+import { formatRunElapsed } from '../combat-core/run/runTimer';
 import { flooredResistMultiplier } from '../combat-core/combat/debuffFloor';
 import { showBossChoice } from '../ui/bossChoiceOverlay';
 import { showSystemBanner } from '../render/systemBanner';
@@ -982,6 +983,8 @@ export class ProtoScene extends Phaser.Scene {
    * 실시간이라 영창 중에도 원래 속도로 날아갔다(총괄 제보).
    */
   private timeScale = 1;
+  /** 실제 조작·전투 시간만 누적한다. 일시정지와 보상/메뉴 선택 시간은 포함하지 않는다. */
+  private runElapsedMs = 0;
   private readonly enemyHitStop = new EnemyHitStopController<CombatEnemy>();
   private readonly enemyKnockbacks = new Map<CombatEnemy, EnemyKnockbackState>();
   private basicAttackCooldownRemaining = 0;
@@ -1386,6 +1389,7 @@ export class ProtoScene extends Phaser.Scene {
 
   override update(_time: number, delta: number): void {
     this.checkPlayerDeath();
+    this.updateRunElapsed(delta);
     if (this.isCombatActive()) {
       // 슬로모션: timeScale을 개체 이동에 직접 곱한다 (프로토 방식)
       const d = (delta / 1000) * this.timeScale;
@@ -1441,6 +1445,11 @@ export class ProtoScene extends Phaser.Scene {
     if (this.shouldShowMinimap()) this.runMinimap?.pulse();
     this.updateStatusText();
     this.updateSequenceProgress();
+  }
+
+  private updateRunElapsed(delta: number): void {
+    if (this.deathHandled || this.time.paused || !this.isCombatActive()) return;
+    this.runElapsedMs += Math.max(0, delta);
   }
 
   private isCombatActive(): boolean {
@@ -1678,6 +1687,7 @@ export class ProtoScene extends Phaser.Scene {
       maxRooms: runState.maxRooms,
       roomCountMode: runState.roomCountMode,
       totalCasts: memory.totalCasts,
+      elapsedMs: this.runElapsedMs,
       dominantElement: memory.dominantElement,
       dominantForm: memory.dominantForm,
       recentSpellNames: memory.recentSpellNames,
@@ -2122,6 +2132,7 @@ export class ProtoScene extends Phaser.Scene {
   private continueToNextLoop(inherit: { source?: SpellElement; element: SpellElement; value: number; echoes?: readonly { element: SpellElement; value: number }[] } | null = null): void {
     void this._chooseInheritedAffinity;
     this.deathHandled = false;
+    this.runElapsedMs = 0;
     this.continueRunResearchTracking();
     // 전투 전용 상태만 초기화 (다음 보스가 내성 재계산, 장판·쿨다운은 방 단위)
     this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
@@ -2185,6 +2196,7 @@ export class ProtoScene extends Phaser.Scene {
    */
   private resetForNewRun(): void {
     this.deathHandled = false;
+    this.runElapsedMs = 0;
     this.pendingRunStartReason = null;
     this.resetRunResearchTracking();
     this.fusionGauge.reset();
@@ -2219,6 +2231,7 @@ export class ProtoScene extends Phaser.Scene {
 
   private restartRun(): void {
     this.deathHandled = false;
+    this.runElapsedMs = 0;
     this.resetRunResearchTracking();
     this.fusionGauge.reset();
     this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
@@ -7348,6 +7361,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       ]
       : [];
     const withCleanse = (lines: readonly string[]): string => [
+      `RUN ${formatRunElapsed(this.runElapsedMs)}`,
       ...lines,
       ...researchLines,
       ...(cleanseLine ? [cleanseLine] : []),
