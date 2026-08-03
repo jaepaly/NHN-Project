@@ -39,11 +39,10 @@ export interface SpiritSnapshot {
   fused: boolean;
   /** 융합 정령의 LLM 격상명 */
   fusedName?: string;
-  fusionRank?: 1 | 2 | 3;
 }
 
 export type SpiritPulseRequest =
-  | { kind: 'attack'; spiritId: string; spell: SpellSpec; burstCount: number }
+  | { kind: 'attack'; spiritId: string; spell: SpellSpec }
   | { kind: 'heal'; spiritId: string; amount: number }
   | { kind: 'guard'; spiritId: string; amount: number };
 
@@ -61,8 +60,6 @@ interface SpiritState extends SpiritDefinition {
   elementSecondary?: SpellElement;
   elements?: readonly SpellElement[];
   fusedName?: string;
-  fusionEssence: number;
-  fusionRank?: 1 | 2 | 3;
 }
 
 const ELEMENT_FORMS: Record<SpellElement, SpellForm> = {
@@ -132,7 +129,6 @@ export class SpiritManager {
       const expected = Math.min(SPIRIT_CONFIG.maxLevel, existing.level + 1);
       if (existing.level >= SPIRIT_CONFIG.maxLevel || option.spirit.level !== expected) return null;
       existing.level = expected as SpiritLevel;
-      existing.fusionEssence += 1;
       existing.remainingSeconds = Math.min(
         existing.remainingSeconds,
         intervalFor(existing) * this.hasteMultiplier,
@@ -147,7 +143,6 @@ export class SpiritManager {
       remainingSeconds: intervalFor({ ...definition, level: 1 }) * this.hasteMultiplier,
       slotWeight: 1,
       elements: definition.element ? [definition.element] : undefined,
-      fusionEssence: 1,
     };
     this.slots.push(created);
     return snapshot(created);
@@ -181,8 +176,6 @@ export class SpiritManager {
     ])] as SpellElement[];
     if (elements.length < 2) return null;
 
-    const fusionEssence = first.fusionEssence + second.fusionEssence;
-    const fusionRank = fusionEssence >= 6 ? 3 : fusionEssence >= 4 ? 2 : 1;
     this.slots = this.slots.filter((slot) => slot !== first && slot !== second);
     const fused: SpiritState = {
       spiritId: `fused-${elements.join('-')}`,
@@ -195,8 +188,6 @@ export class SpiritManager {
         * this.hasteMultiplier,
       slotWeight: 1,
       fusedName: name,
-      fusionEssence,
-      fusionRank,
     };
     this.slots.push(fused);
     return snapshot(fused);
@@ -318,14 +309,13 @@ function pulseFor(spirit: SpiritState): SpiritPulseRequest {
     kind: 'attack',
     spiritId: spirit.spiritId,
     spell: attackSpell(spirit.element ?? 'light', spirit.level, spirit),
-    burstCount: spirit.fusionRank ?? 1,
   };
 }
 
 function attackSpell(
   element: SpellElement,
   level: SpiritLevel,
-  state?: Pick<SpiritState, 'elementSecondary' | 'elements' | 'fusedName' | 'slotWeight' | 'fusionRank'>,
+  state?: Pick<SpiritState, 'elementSecondary' | 'elements' | 'fusedName' | 'slotWeight'>,
 ): SpellSpec {
   const evolved = level >= 2;
   const fusedElements = state?.elements ?? (state?.elementSecondary ? [element, state.elementSecondary] : [element]);
@@ -352,7 +342,7 @@ function attackSpell(
     speed: element === 'wind' || element === 'lightning' ? 'fast' : 'normal',
     status,
     // 융합체는 소모한 슬롯 수만큼의 power 예산을 쓴다 (2슬롯 → ×2, 총합은 불변)
-    power: spiritAttackPower(level) * (1 + (fusedElements.length - 1) * 0.5) * (state?.fusionRank ?? 1),
+    power: spiritAttackPower(level) * (1 + (fusedElements.length - 1) * 0.5),
     cost: 0,
     flavor: '정령의 자동 시전은 마나·쿨다운·주문 기억을 사용하지 않는다.',
   };
@@ -389,7 +379,6 @@ function snapshot(state: SpiritState): SpiritSnapshot {
     remainingSeconds: state.remainingSeconds,
     fused: (state.elements?.length ?? 1) > 1,
     fusedName: state.fusedName,
-    fusionRank: state.fusionRank,
   };
 }
 

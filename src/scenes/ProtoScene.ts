@@ -5974,23 +5974,78 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const target = this.nearestEnemy();
     if (!target) return;
     const otherTargets = this.enemies.filter((enemy) => enemy.alive && enemy !== target);
-    const count = Math.min(chorusProjectileCount(stage), otherTargets.length);
+    // 단일 보스전에서도 합주 보상이 사라지지 않도록, 다른 표적이 없으면 같은 적을
+    // 단계 수만큼 교차 타격한다. 총합은 5/15/25%라 단일 전문보다 낮게 유지된다.
+    const targets = otherTargets.length > 0 ? otherTargets : [target];
+    const count = chorusProjectileCount(stage);
     for (let i = 0; i < count; i += 1) {
       const element = ELEMENTS[(ELEMENTS.indexOf(spec.element_primary) + i + 1) % ELEMENTS.length];
-      const enemy = otherTargets[i];
+      const enemy = targets[i % targets.length];
       this.time.delayedCall(120 + i * 85, () => {
         if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive() || !enemy.alive) return;
+        const origin = new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
+        this.playChorusShardArc(origin.x, origin.y, enemy.x, enemy.y, i, element);
         this.applySpellEffect(
           {
             ...spec,
             element_primary: element,
+            form: 'bolt',
+            size: 'huge',
             power: Math.max(1, Math.round(spec.power * ELEMENTAL_CHORUS.projectilePowerScale)),
           },
-          new Phaser.Math.Vector2(enemy.x, enemy.y), false, 2, { decorVfxScale: 0.48 },
+          origin, true, 1, {
+            decorVfxScale: 1.45,
+            sequenceTarget: { lockedEnemy: enemy, lastTargetPoint: null },
+          },
         );
         this.audio.playCast(element);
       });
     }
+  }
+
+  /** 합주 파편은 본 영창과 구분되는 큰 성운 궤적을 남긴다. */
+  private playChorusShardArc(
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    index: number,
+    element: SpellElement,
+  ): void {
+    const color = ELEMENT_PALETTES[element].accent;
+    const side = index % 2 === 0 ? 1 : -1;
+    const bend = 105 + (index % 3) * 34;
+    const controlX = (fromX + toX) * 0.5 + side * bend;
+    const controlY = (fromY + toY) * 0.5 - 86 - (index % 2) * 42;
+    const trail = this.add.graphics().setDepth(22).setBlendMode(Phaser.BlendModes.ADD);
+    const aura = this.add.circle(fromX, fromY, 30, color, 0.2).setDepth(22)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const shard = this.add.star(fromX, fromY, 6, 8, 19, 0xf8fbff, 1).setDepth(23)
+      .setStrokeStyle(4, color, 1).setBlendMode(Phaser.BlendModes.ADD);
+    const progress = { value: 0 };
+    this.tweens.add({
+      targets: progress,
+      value: 1,
+      duration: 300,
+      ease: 'Cubic.easeIn',
+      onUpdate: () => {
+        const t = progress.value;
+        const x = (1 - t) ** 2 * fromX + 2 * (1 - t) * t * controlX + t ** 2 * toX;
+        const y = (1 - t) ** 2 * fromY + 2 * (1 - t) * t * controlY + t ** 2 * toY;
+        shard.setPosition(x, y).setRotation(t * Math.PI * 3 * side).setScale(1.35 - t * 0.35);
+        aura.setPosition(x, y).setScale(1.2 - t * 0.45).setAlpha(0.23 - t * 0.16);
+        trail.clear().lineStyle(9, color, 0.7).beginPath().moveTo(fromX, fromY);
+        for (let sample = 1; sample <= 12; sample += 1) {
+          const u = t * sample / 12;
+          trail.lineTo(
+            (1 - u) ** 2 * fromX + 2 * (1 - u) * u * controlX + u ** 2 * toX,
+            (1 - u) ** 2 * fromY + 2 * (1 - u) * u * controlY + u ** 2 * toY,
+          );
+        }
+        trail.strokePath();
+      },
+      onComplete: () => { trail.destroy(); aura.destroy(); shard.destroy(); },
+    });
   }
 
   private scheduleSpellEcho(spec: SpellSpec): void {
@@ -6625,15 +6680,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const origin = view
           ? new Phaser.Math.Vector2(view.x, view.y)
           : new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
-        for (let i = 0; i < request.burstCount; i += 1) {
-          this.time.delayedCall(i * 110, () => {
-            if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
-            this.applySpellEffect(
-              { ...request.spell, power: Math.max(1, Math.round(request.spell.power * (i === 0 ? 1 : 0.55))) },
-              origin, true, 1, { decorVfxScale: 1 + i * 0.12 },
-            );
-          });
-        }
+        this.applySpellEffect(request.spell, origin, true, 1, { decorVfxScale: 1.15 });
         continue;
       }
       // 치유·수호는 적이 없어도 실제로 일한다 — 여기서 빛나는 건 허공 연출이 아니다
