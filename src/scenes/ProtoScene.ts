@@ -5853,16 +5853,22 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       });
     };
     if (this.starburstUnlocked) {
-      for (let i = 0; i < 5; i += 1) {
+      for (let i = 0; i < 8; i += 1) {
         const enemy = this.enemies.filter((candidate) => candidate.alive)[i % Math.max(1, this.enemies.filter((candidate) => candidate.alive).length)] ?? target;
-        fire(140 + i * 90, 0.28, enemy.x, enemy.y, 'bolt');
+        fire(90 + i * 65, 0.42, enemy.x, enemy.y, 'bolt');
       }
     }
-    if (this.meteorUnlocked) fire(430, 0.9, target.x, target.y, 'nova');
+    if (this.meteorUnlocked) {
+      const sigil = this.add.circle(target.x, target.y, 52, ELEMENT_PALETTES[spec.element_primary].glow, 0.16)
+        .setStrokeStyle(3, ELEMENT_PALETTES[spec.element_primary].accent, 0.9)
+        .setBlendMode(Phaser.BlendModes.ADD).setDepth(7);
+      this.tweens.add({ targets: sigil, scale: { from: 0.25, to: 1.25 }, alpha: 0, duration: 520, ease: 'Quad.easeOut', onComplete: () => sigil.destroy() });
+      fire(430, 1.35, target.x, target.y, 'nova');
+    }
     if (this.trailUnlocked) {
-      for (let i = 1; i <= 3; i += 1) {
-        const t = i / 4;
-        fire(170 + i * 120, 0.35, Phaser.Math.Linear(this.player.x, target.x, t), Phaser.Math.Linear(this.player.y, target.y, t), 'zone');
+      for (let i = 1; i <= 5; i += 1) {
+        const t = i / 6;
+        fire(100 + i * 90, 0.5, Phaser.Math.Linear(this.player.x, target.x, t), Phaser.Math.Linear(this.player.y, target.y, t), 'zone');
       }
     }
   }
