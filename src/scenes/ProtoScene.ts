@@ -784,6 +784,8 @@ export class ProtoScene extends Phaser.Scene {
   private bannerRoomGeneration = 0;
   private enemyProjectiles: EnemyProjectile[] = [];
   private hazardZones: HazardZone[] = [];
+  /** 함정방 입장 직후에는 배치가 보여도 즉시 피해를 주지 않는다. */
+  private hazardEntryGraceRemaining = 0;
   private hazardDecorations: Phaser.GameObjects.GameObject[] = [];
   private unstableWarnings: UnstableWarning[] = [];
   private manaCrystals: ManaCrystal[] = [];
@@ -3977,6 +3979,7 @@ export class ProtoScene extends Phaser.Scene {
       if (hazard.view.active) hazard.view.destroy();
     }
     this.hazardZones = [];
+    this.hazardEntryGraceRemaining = 0;
   }
 
   private spawnHazards(safeCorridor?: TrapSafeCorridor): void {
@@ -3987,6 +3990,9 @@ export class ProtoScene extends Phaser.Scene {
       PLAYER_HIT_RADIUS,
     );
     for (const placement of placements) {
+      // 안전 통로의 중심과 플레이어 스폰이 바뀌어도 발밑에 원형 함정이 놓이지 않게 한다.
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, placement.x, placement.y)
+        <= placement.radius + PLAYER_HIT_RADIUS + 48) continue;
       const view = this.add.circle(
         Phaser.Math.Clamp(placement.x, this.worldBounds.left + placement.radius, this.worldBounds.right - placement.radius),
         Phaser.Math.Clamp(placement.y, this.worldBounds.top + placement.radius, this.worldBounds.bottom - placement.radius),
@@ -4002,6 +4008,8 @@ export class ProtoScene extends Phaser.Scene {
     }
 
     this.spawnBoundaryHazards(900, 650, safeCorridor);
+    // 입장 장면을 읽고 첫 걸음을 뗄 수 있는 최소 유예. 유예 중에도 장판은 보인다.
+    this.hazardEntryGraceRemaining = 1.25;
   }
 
   private spawnBoundaryHazards(
@@ -4118,6 +4126,8 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private updateHazards(deltaSeconds: number): void {
+    this.hazardEntryGraceRemaining = Math.max(0, this.hazardEntryGraceRemaining - deltaSeconds);
+    if (this.hazardEntryGraceRemaining > 0) return;
     for (const hazard of this.hazardZones) {
       hazard.damageCooldown = Math.max(0, hazard.damageCooldown - deltaSeconds);
       if (hazard.damageCooldown > 0) continue;
