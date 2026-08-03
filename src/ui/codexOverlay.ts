@@ -1,6 +1,6 @@
 import type { CodexEntry, CodexSortMode } from '../spell/spellCodex';
 import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL, UI_SEMANTIC } from './uiTokens';
-import { cornerFlourish, deckleMask, divider, ornamentCss } from './grimoireOrnament';
+import { deckleMask, divider, ornamentCss } from './grimoireOrnament';
 import { isCodexEntryTokenClaimable, markCodexEntryTokenClaimed, sortCodex } from '../spell/spellCodex';
 import { ELEMENT_LABELS, ELEMENT_PALETTES, FORM_LABELS, paletteColorToCss } from '../render/palette';
 import { glyphSvg } from '../render/formGlyphs';
@@ -24,11 +24,6 @@ const CSS = `
   font-family: ${UI_FONT.sans};
 }
 #${WRAP_ID}.active { opacity: 1; visibility: visible; }
-#${WRAP_ID} .codex-lobby-tokens {
-  position: fixed; top: 19px; right: 28px; z-index: 1;
-  font-family: ${UI_FONT.serif}; font-size: 15px; letter-spacing: 1.2px;
-  color: ${UI_COLOR.warm}; opacity: 0.9; -webkit-text-stroke: 3px ${UI_COLOR.ink}; paint-order: stroke fill;
-}
 ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .codex-panel {
   --orn: ${UI_COLOR.accent};
@@ -47,9 +42,19 @@ ${ornamentCss(WRAP_ID)}
   border: 1px solid ${UI_COLOR.border};
   padding: 28px 30px 20px;
 }
-#${WRAP_ID} .codex-head { display: flex; align-items: baseline; gap: 12px; }
-#${WRAP_ID} .codex-title { font-size: 24px; font-weight: 800; letter-spacing: 0.28em; color: ${UI_COLOR.textBright}; }
-#${WRAP_ID} .codex-sub { font-size: 14px; color: ${UI_COLOR.textMuted}; }
+#${WRAP_ID} .codex-head { position: relative; display: flex; min-height: 34px; align-items: center; }
+#${WRAP_ID} .codex-title { position: relative; z-index: 1; font-size: 24px; font-weight: 800; letter-spacing: 0.28em; color: ${UI_COLOR.textBright}; }
+#${WRAP_ID} .codex-title-count { margin-left: 8px; font-size: 14px; font-weight: 600; letter-spacing: 0.06em; color: ${UI_COLOR.textMuted}; }
+#${WRAP_ID} .codex-sub {
+  position: relative; z-index: 1; margin-left: auto;
+  font-family: ${UI_FONT.serif}; font-size: 15px; letter-spacing: 1.2px;
+  color: ${UI_COLOR.warm}; opacity: 0.9;
+  -webkit-text-stroke: 3px ${UI_COLOR.ink}; paint-order: stroke fill;
+}
+#${WRAP_ID} .codex-head .orn-divider {
+  position: absolute; left: 50%; top: 50%; width: min(320px, 42%); height: 14px;
+  margin: 0; transform: translate(-50%, -50%);
+}
 #${WRAP_ID} .codex-sortbar { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
 #${WRAP_ID} .codex-sortbtn {
   font: inherit; font-size: 14px; cursor: pointer;
@@ -189,10 +194,6 @@ export function showCodexOverlay(
   options: CodexOverlayOptions = {},
 ): Promise<void> {
   const { wrap, panel } = ensureDom();
-  const tokenReadout = document.createElement('div');
-  tokenReadout.className = 'codex-lobby-tokens';
-  tokenReadout.textContent = `✦ 주문 토큰 ${options.tokenBalance ?? 0}`;
-  wrap.appendChild(tokenReadout);
   let sortMode: CodexSortMode = 'recent';
   let currentEntries = [...entries];
   let tokenBalance = options.tokenBalance ?? 0;
@@ -225,13 +226,9 @@ export function showCodexOverlay(
 
     panel.innerHTML = `
       <div class="codex-head">
-        ${cornerFlourish().replace('orn-corner', 'orn-corner tl')}
-        ${cornerFlourish().replace('orn-corner', 'orn-corner tr')}
-        ${cornerFlourish().replace('orn-corner', 'orn-corner bl')}
-        ${cornerFlourish().replace('orn-corner', 'orn-corner br')}
-        <div class="codex-title">주문 도감</div>
+        <div class="codex-title">주문 도감<span class="codex-title-count">(새겨진 주문 ${currentEntries.length}종)</span></div>
         ${divider()}
-        <div class="codex-sub">${currentEntries.length > 0 ? `새겨진 주문 ${currentEntries.length}종` : '비어 있는 책'}</div>
+        <div class="codex-sub">주문 토큰 ${tokenBalance}</div>
       </div>
       <div class="codex-sortbar">
         ${currentEntries.length > 0 ? sortButtons : ''}
@@ -256,7 +253,6 @@ export function showCodexOverlay(
       }
       currentEntries = nextEntries;
       tokenBalance = lastBalance;
-      tokenReadout.textContent = `✦ 주문 토큰 ${tokenBalance}`;
       selectedEntry = undefined;
       render();
     });
@@ -283,7 +279,6 @@ export function showCodexOverlay(
         if (!result || result.amount <= 0) return;
         currentEntries = markCodexEntryTokenClaimed(currentEntries, entry);
         tokenBalance = result.tokenBalance;
-        tokenReadout.textContent = `✦ 주문 토큰 ${tokenBalance}`;
         const updated = currentEntries.find((candidate) => (
           candidate.name === entry.name && candidate.firstCastAt === entry.firstCastAt
         ));

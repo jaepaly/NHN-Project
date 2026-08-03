@@ -14,11 +14,6 @@ ${ornamentCss(WRAP_ID)}
   text-align: center; background: ${UI_COLOR.panel}; border: 1px solid ${UI_COLOR.border};
   box-shadow: ${UI_MATERIAL.paperShadow}, ${UI_MATERIAL.rule};
 }
-#${WRAP_ID} .shop-token-readout {
-  position: fixed; top: 19px; right: 28px; z-index: 1;
-  font-family: ${UI_FONT.serif}; font-size: 15px; letter-spacing: 1.2px;
-  color: ${UI_COLOR.warm}; opacity: 0.9; -webkit-text-stroke: 3px ${UI_COLOR.ink}; paint-order: stroke fill;
-}
 #${WRAP_ID} .shop-title { font-family: ${UI_FONT.serif}; font-size: 24px; font-weight: 800; letter-spacing: 0.24em; color: ${UI_COLOR.textBright}; }
 #${WRAP_ID} .shop-note { margin-top: 24px; color: ${UI_COLOR.textSoft}; font-size: 16px; line-height: 1.8; }
 #${WRAP_ID} .shop-foot { margin-top: 28px; color: ${UI_COLOR.textMuted}; font-size: 14px; }
@@ -41,13 +36,9 @@ function ensureDom(): { wrap: HTMLDivElement; panel: HTMLDivElement } {
   return { wrap, panel: wrap.firstElementChild as HTMLDivElement };
 }
 
-/** 꾸미기 상품 연결 전의 상점 진입점. 로비와 달리 암막 위에도 토큰을 읽을 수 있게 둔다. */
-export function showShopOverlay(tokenBalance: number): Promise<void> {
+/** 꾸미기 상품 연결 전의 상점 진입점. */
+export function showShopOverlay(_tokenBalance: number): Promise<void> {
   const { wrap, panel } = ensureDom();
-  const tokenReadout = document.createElement('div');
-  tokenReadout.className = 'shop-token-readout';
-  tokenReadout.textContent = `✦ 주문 토큰 ${tokenBalance}`;
-  wrap.appendChild(tokenReadout);
   panel.innerHTML = `
     ${cornerFlourish().replace('orn-corner', 'orn-corner tl')}
     ${cornerFlourish().replace('orn-corner', 'orn-corner tr')}
