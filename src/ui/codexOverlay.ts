@@ -25,9 +25,9 @@ const CSS = `
 }
 #${WRAP_ID}.active { opacity: 1; visibility: visible; }
 #${WRAP_ID} .codex-lobby-tokens {
-  position: fixed; top: 20px; right: 28px; z-index: 1;
+  position: fixed; top: 19px; right: 28px; z-index: 1;
   font-family: ${UI_FONT.serif}; font-size: 15px; letter-spacing: 1.2px;
-  color: ${UI_COLOR.warm}; text-shadow: 0 1px 2px ${UI_COLOR.ink};
+  color: ${UI_COLOR.warm}; opacity: 0.9; -webkit-text-stroke: 3px ${UI_COLOR.ink}; paint-order: stroke fill;
 }
 ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .codex-panel {

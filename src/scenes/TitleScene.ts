@@ -197,7 +197,7 @@ export class TitleScene extends Phaser.Scene {
       fontFamily: UI_FONT.serif,
       fontSize: '15px',
       color: UI_COLOR.warm,
-      stroke: '#080b1a',
+      stroke: UI_COLOR.ink,
       strokeThickness: 3,
       letterSpacing: 1.2,
     }).setOrigin(1, 0.5).setAlpha(0.9);

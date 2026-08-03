@@ -15,9 +15,9 @@ ${ornamentCss(WRAP_ID)}
   box-shadow: ${UI_MATERIAL.paperShadow}, ${UI_MATERIAL.rule};
 }
 #${WRAP_ID} .shop-token-readout {
-  position: fixed; top: 20px; right: 28px; z-index: 1;
+  position: fixed; top: 19px; right: 28px; z-index: 1;
   font-family: ${UI_FONT.serif}; font-size: 15px; letter-spacing: 1.2px;
-  color: ${UI_COLOR.warm}; text-shadow: 0 1px 2px ${UI_COLOR.ink};
+  color: ${UI_COLOR.warm}; opacity: 0.9; -webkit-text-stroke: 3px ${UI_COLOR.ink}; paint-order: stroke fill;
 }
 #${WRAP_ID} .shop-title { font-family: ${UI_FONT.serif}; font-size: 24px; font-weight: 800; letter-spacing: 0.24em; color: ${UI_COLOR.textBright}; }
 #${WRAP_ID} .shop-note { margin-top: 24px; color: ${UI_COLOR.textSoft}; font-size: 16px; line-height: 1.8; }
