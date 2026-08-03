@@ -4,6 +4,7 @@ import {
   AWAKENING_KINDS,
   applyAwakening,
   awakenableElement,
+  awakeningDetail,
   awakeningFor,
   awakeningOptions,
   searingStatus,
@@ -65,6 +66,9 @@ assert.ok(options.every((o) => o.kind === 'awaken'));
 assert.ok(options.every((o) => o.element === 'ice'), '카드 색·표시용 원소');
 assert.ok(options.every((o) => o.awaken?.element === 'ice'));
 assert.ok(options.every((o) => o.description.includes('빙결')), '설명에 원소 이름');
+assert.match(awakeningDetail('searing', 'fire'), /화상/, '작열 툴팁은 실제 상태이상을 알려 준다');
+assert.match(awakeningDetail('chaining', 'ice'), /50%/, '연환 툴팁은 파급 피해 비율을 알려 준다');
+assert.match(awakeningDetail('brand', 'dark'), /4초.*25%/, '낙인 툴팁은 지속시간과 취약 수치를 알려 준다');
 // 다른 원소면 id가 겹치지 않는다
 assert.equal(
   new Set([...awakeningOptions('fire'), ...options].map((o) => o.id)).size, 6,

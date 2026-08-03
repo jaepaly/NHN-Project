@@ -5,6 +5,7 @@ import {
   isDiscoverySignature,
 } from '../src/meta/discoverySignature';
 import {
+  applySpellTokenClaim,
   applyMetaRunOutcome,
   EMPTY_META_PROFILE,
   loadMetaProfile,
@@ -125,6 +126,14 @@ const wonProfile = applyMetaRunOutcome(lostProfile, {
 assert.equal(wonProfile.totalRuns, 2);
 assert.equal(wonProfile.totalWins, 1);
 
+const firstSale = applySpellTokenClaim(wonProfile, 'damage:fire:none:bolt:medium', 10);
+assert.equal(firstSale.amount, 10);
+assert.equal(firstSale.profile.spellTokens, 10);
+assert.equal(firstSale.profile.spellTokenSales['damage:fire:none:bolt:medium'], 1);
+const secondSale = applySpellTokenClaim(firstSale.profile, 'damage:fire:none:bolt:medium', 5);
+assert.equal(secondSale.profile.spellTokens, 15);
+assert.equal(secondSale.profile.spellTokenSales['damage:fire:none:bolt:medium'], 2);
+
 const storage = new MemoryStorage();
 storage.setItem(META_PROFILE_STORAGE_KEY, '{broken-json');
 assert.deepEqual(loadMetaProfile(storage), {
@@ -132,6 +141,13 @@ assert.deepEqual(loadMetaProfile(storage), {
   discoveredSignatures: [],
   completedContractIds: [],
 });
+
+storage.setItem(META_PROFILE_STORAGE_KEY, JSON.stringify({
+  ...EMPTY_META_PROFILE,
+  discoveredSignatures: [],
+  completedContractIds: [],
+}));
+assert.equal(loadMetaProfile(storage).spellTokens, 0, '기존 메타 저장은 토큰 0으로 안전 이행');
 
 saveMetaProfile(wonProfile, storage);
 assert.deepEqual(loadMetaProfile(storage), wonProfile);

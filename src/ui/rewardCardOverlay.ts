@@ -158,6 +158,16 @@ ${ornamentCss(WRAP_ID)}
   /* 설명의 의도된 구획(시작/목표/단계)을 카드에서도 보존한다. */
   white-space: pre-line;
 }
+#${WRAP_ID} .card-detail {
+  position: absolute; z-index: 4; left: 50%; bottom: 38px; width: 224px;
+  padding: 10px 12px; box-sizing: border-box; border: 1px solid var(--card-core);
+  border-radius: 7px; background: rgba(10, 8, 17, .97); color: ${UI_COLOR.textSoft};
+  box-shadow: 0 7px 18px rgba(0, 0, 0, .5); font-size: 12px; line-height: 1.55;
+  opacity: 0; pointer-events: none; transform: translate(-50%, 8px); transition: opacity 120ms ease, transform 120ms ease;
+}
+#${WRAP_ID} .reward-card:hover .card-detail, #${WRAP_ID} .reward-card:focus .card-detail, #${WRAP_ID} .reward-card.focused .card-detail {
+  opacity: 1; transform: translate(-50%, 0);
+}
 #${WRAP_ID} .card-kind {
   position: absolute; left: 0; right: 0; bottom: 14px;
   font-size: 11px; letter-spacing: 0.18em; color: var(--card-core); opacity: 0.9;
@@ -279,6 +289,8 @@ export interface CardFraming {
    * 쓰이는 순간(무엇을 더할지 고르는 방 클리어 화면)으로 자리를 옮겼다.
    */
   contextLines?: string[];
+  /** 카드 본문을 가리지 않는 호버 상세. 각성처럼 수치·조건 설명이 긴 선택지에 쓴다. */
+  detailFor?: (option: RewardOption) => string | null;
 }
 
 function escapeText(text: string): string {
@@ -376,11 +388,16 @@ export function showRewardCards(
         <div class="card-glyph"></div>
         <div class="card-title"></div>
         <div class="card-desc"></div>
+        <div class="card-detail" role="tooltip"></div>
         <div class="card-kind">${
           option.element ? `${ELEMENT_LABELS[option.element]} ${KIND_LABELS[option.kind]}` : KIND_LABELS[option.kind]
         }</div>`;
       btn.querySelector('.card-title')!.textContent = option.title;
       btn.querySelector('.card-desc')!.textContent = option.description;
+      const detail = framing.detailFor?.(option) ?? null;
+      const detailEl = btn.querySelector<HTMLElement>('.card-detail')!;
+      if (detail) detailEl.textContent = detail;
+      else detailEl.remove();
       // 폼 글리프 — 씬이 알려준 카드만. 스탯 보상 등 폼이 없는 카드는 원형 그대로.
       const form = framing.formFor?.(option) ?? null;
       const altarIcon = altarGlyph(option.kind);

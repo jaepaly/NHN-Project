@@ -8,6 +8,10 @@ export const META_PROFILE_STORAGE_KEY = 'incant:meta:v1';
 export interface MetaProfileV1 {
   version: 1;
   insight: number;
+  /** 새로 발견한 주문의 보상으로 얻는 꾸미기 전용 재화. 상점은 후속 단계에서 연결한다. */
+  spellTokens: number;
+  /** 주문 구조별 누적 발견 보상 수령 횟수. 같은 구조의 새 발견일수록 보상이 줄어든다. */
+  spellTokenSales: Record<string, number>;
   discoveredSignatures: DiscoverySignature[];
   completedContractIds: string[];
   maxDepthCleared: number;
@@ -31,6 +35,8 @@ export interface StorageLike {
 export const EMPTY_META_PROFILE: Readonly<MetaProfileV1> = Object.freeze({
   version: 1,
   insight: 0,
+  spellTokens: 0,
+  spellTokenSales: {},
   discoveredSignatures: [],
   completedContractIds: [],
   maxDepthCleared: 0,
@@ -58,12 +64,21 @@ function uniqueStrings(value: unknown): string[] {
   return [...new Set(value.filter((entry): entry is string => typeof entry === 'string'))];
 }
 
+function tokenSales(value: unknown): Record<string, number> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key, count]) => key.length > 0 && key.length <= 240 && Number.isFinite(count))
+    .map(([key, count]) => [key, nonNegativeInteger(count)]));
+}
+
 function normalizeProfile(value: unknown): MetaProfileV1 {
   if (typeof value !== 'object' || value === null) return freshProfile();
   const source = value as Partial<MetaProfileV1>;
   return {
     version: 1,
     insight: nonNegativeInteger(source.insight),
+    spellTokens: nonNegativeInteger(source.spellTokens),
+    spellTokenSales: tokenSales(source.spellTokenSales),
     discoveredSignatures: uniqueStrings(source.discoveredSignatures)
       .filter(isDiscoverySignature),
     completedContractIds: uniqueStrings(source.completedContractIds),
@@ -71,6 +86,30 @@ function normalizeProfile(value: unknown): MetaProfileV1 {
     totalRuns: nonNegativeInteger(source.totalRuns),
     totalWins: nonNegativeInteger(source.totalWins),
     bestDepth: nonNegativeInteger(source.bestDepth),
+  };
+}
+
+export interface SpellTokenClaim {
+  profile: MetaProfileV1;
+  amount: number;
+}
+
+/** 발견 보상은 10 → 5 → 2 → 1 토큰으로 감소하며, 이 함수는 메타 저장을 직접 건드리지 않는다. */
+export function applySpellTokenClaim(profile: MetaProfileV1, signature: string, amount: number): SpellTokenClaim {
+  const key = typeof signature === 'string' ? signature.slice(0, 240) : '';
+  const safeAmount = nonNegativeInteger(amount);
+  if (!key || safeAmount <= 0) return { profile: normalizeProfile(profile), amount: 0 };
+  const normalized = normalizeProfile(profile);
+  return {
+    amount: safeAmount,
+    profile: normalizeProfile({
+      ...normalized,
+      spellTokens: normalized.spellTokens + safeAmount,
+      spellTokenSales: {
+        ...normalized.spellTokenSales,
+        [key]: (normalized.spellTokenSales[key] ?? 0) + 1,
+      },
+    }),
   };
 }
 

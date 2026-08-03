@@ -28,6 +28,8 @@ export interface RunUiHooks {
   contextLines?: () => string[];
   /** 보상 적용 뒤, 다음 방 선택 전에 처리할 씬 전용 후속 선택. */
   afterRewardApplied?: (chosen: RewardOption) => Promise<void>;
+  /** 위험하지만 유효한 선택을 적용하기 전 최종 확인한다. false면 카드 선택으로 돌아간다. */
+  confirmRewardSelection?: (chosen: RewardOption) => Promise<boolean>;
   /**
    * 보상 선택 후 **다음 방으로 넘어가기 전에** 끼어드는 단계 — UI로 다음 방을 고른다 (#214).
    *
@@ -66,11 +68,16 @@ export function bindRunUi(controller: RunController, hooks: RunUiHooks = {}): vo
       summarizeRunRewards(ownedAtOffer),
       ...(hooks.contextLines?.() ?? []),
     ].filter((line) => line.length > 0);
-    void showRewardCards(options, {
-      ownedLabelFor: (option) => ownedLabelFor(option, ownedAtOffer),
-      formFor: hooks.formFor,
-      contextLines,
-    }).then(async (chosen) => {
+    const chooseReward = async (): Promise<void> => {
+      const chosen = await showRewardCards(options, {
+        ownedLabelFor: (option) => ownedLabelFor(option, ownedAtOffer),
+        formFor: hooks.formFor,
+        contextLines,
+      });
+      if (!(await hooks.confirmRewardSelection?.(chosen) ?? true)) {
+        await chooseReward();
+        return;
+      }
       // **먼저 적용한다** — 고른 것이 즉시 HUD에 나타나야 선택에 의미가 생긴다.
       // 전환 타이머는 씬이 주입한 scheduleTransition이 붙잡으므로 방은 넘어가지 않는다.
       choosingNextRoom = true;
@@ -90,7 +97,8 @@ export function bindRunUi(controller: RunController, hooks: RunUiHooks = {}): vo
         queuedTransition = null;
         if (transition) void playRoomTransition(transition.label, transition.durationMs);
       }
-    });
+    };
+    void chooseReward();
   });
 
   controller.on('room-transition', (state, durationMs) => {

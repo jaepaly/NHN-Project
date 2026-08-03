@@ -81,6 +81,7 @@ import {
   AWAKENING_LABELS,
   applyAwakening,
   awakenableElement,
+  awakeningDetail,
   awakeningDescription,
   awakeningFor,
   awakeningOptions,
@@ -249,6 +250,7 @@ import type { BossResistanceProfile, RunEscalationProfile } from '../spell/bossM
 import { EMPTY_RUN_MEMORY } from '../spell/runMemory';
 import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { showRewardCards } from '../ui/rewardCardOverlay';
+import { showAltarRiskConfirm } from '../ui/altarRiskConfirm';
 import { MinimapHud } from '../ui/minimapHud';
 import { MINIMAP_CONFIG } from '../ui/minimapLayout';
 import { pushOutOfBlocks, segmentBlocked } from '../combat-core/combat/terrainBlock';
@@ -3856,6 +3858,9 @@ export class ProtoScene extends Phaser.Scene {
         kicker: 'ALTAR AWAKENING',
         title: `${ELEMENT_LABELS[element]}에 새 성질을 새긴다`,
         contextLines: ['작열 · 본성 상태이상', '연환 · 가까운 적에게 파급', '낙인 · 다음 피해 취약'],
+        detailFor: (option) => option.awaken
+          ? awakeningDetail(option.awaken.awakening, option.awaken.element)
+          : null,
       });
       const awakening = picked.awaken?.awakening;
       if (!awakening) return;
@@ -3895,6 +3900,19 @@ export class ProtoScene extends Phaser.Scene {
    * 제단 거래 집행 — 대가를 치르고 보상을 건다 (reward-applied에서 호출).
    * 잠긴 카드·거절 카드는 cost 0이라 아무 일도 일어나지 않는다.
    */
+  /**
+   * 최대 HP 30 미만은 고위험 빌드이지만 유효한 플레이어 선택이다.
+   * 0 이하 거래는 offer 단계에서 잠기며, 이 단계에서는 확인만 맡는다.
+   */
+  async confirmRewardSelection(chosen: RewardOption): Promise<boolean> {
+    const cost = chosen.altar?.cost ?? 0;
+    if (cost <= 0 || chosen.altar?.locked) return true;
+    const currentMaxHp = this.playerState.maxHp;
+    const nextMaxHp = currentMaxHp - cost;
+    if (nextMaxHp > ALTAR_OFFER_CONFIG.riskWarningMaxHp) return true;
+    return showAltarRiskConfirm({ currentMaxHp, nextMaxHp });
+  }
+
   private applyAltarDeal(chosen: RewardOption): void {
     const cost = chosen.altar?.cost ?? 0;
     if (cost <= 0) return;
@@ -5990,20 +6008,41 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.playStarburstRift(target, spec);
     }
     if (this.meteorUnlocked) {
-      const sigil = this.add.circle(target.x, target.y, 52, ELEMENT_PALETTES[spec.element_primary].glow, 0.16)
-        .setStrokeStyle(3, ELEMENT_PALETTES[spec.element_primary].accent, 0.9)
-        .setBlendMode(Phaser.BlendModes.ADD).setDepth(7);
-      this.tweens.add({ targets: sigil, scale: { from: 0.25, to: 1.25 }, alpha: 0, duration: 520, ease: 'Quad.easeOut', onComplete: () => sigil.destroy() });
+      const impactX = target.x;
+      const impactY = target.y;
+      const palette = ELEMENT_PALETTES[spec.element_primary];
+      // 낙성은 "어디에, 언제" 떨어지는지를 먼저 보여 준다. ADD 시길 하나만으로는 바닥 VFX에 묻혔다.
+      const warning = this.add.graphics().setDepth(17);
+      const redrawWarning = (progress: number): void => {
+        const radius = 68 - progress * 14;
+        warning.clear();
+        warning.fillStyle(0x090713, 0.38);
+        warning.fillCircle(impactX, impactY, radius);
+        warning.lineStyle(4, palette.accent, 0.96);
+        warning.strokeCircle(impactX, impactY, radius);
+        warning.lineStyle(2, palette.core, 0.76);
+        warning.strokeCircle(impactX, impactY, radius * 0.62);
+        warning.lineStyle(3, palette.glow, 0.9);
+        warning.beginPath();
+        warning.arc(impactX, impactY, radius + 7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+        warning.strokePath();
+      };
+      redrawWarning(0);
+      this.tweens.addCounter({
+        from: 0, to: 1, duration: 620, ease: 'Quad.easeIn',
+        onUpdate: (tween) => redrawWarning(tween.getValue() ?? 0),
+        onComplete: () => warning.destroy(),
+      });
       const meteorTrail = this.add.graphics().setDepth(20).setBlendMode(Phaser.BlendModes.ADD);
-      const meteor = this.add.circle(target.x, target.y - 360, 19, ELEMENT_PALETTES[spec.element_primary].core, 1)
+      const meteor = this.add.circle(impactX, impactY - 420, 22, palette.core, 1)
         .setStrokeStyle(4, 0xf0d6ff, 0.85).setDepth(21).setBlendMode(Phaser.BlendModes.ADD);
       this.tweens.add({
-        targets: meteor, y: target.y, scale: { from: 0.45, to: 1.3 }, duration: 430, ease: 'Quad.easeIn',
-        onUpdate: () => meteorTrail.clear().lineStyle(8, ELEMENT_PALETTES[spec.element_primary].accent, 0.62)
-          .beginPath().moveTo(target.x, meteor.y - 84).lineTo(meteor.x, meteor.y).strokePath(),
+        targets: meteor, y: impactY, scale: { from: 0.45, to: 1.3 }, duration: 620, ease: 'Quad.easeIn',
+        onUpdate: () => meteorTrail.clear().lineStyle(8, palette.accent, 0.62)
+          .beginPath().moveTo(impactX, meteor.y - 96).lineTo(meteor.x, meteor.y).strokePath(),
         onComplete: () => { meteor.destroy(); meteorTrail.destroy(); },
       });
-      fire(430, 1.35, target.x, target.y, 'nova');
+      fire(620, 1.35, impactX, impactY, 'nova');
     }
     if (this.trailUnlocked) {
       for (let i = 1; i <= 5; i += 1) {

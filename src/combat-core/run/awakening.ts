@@ -55,6 +55,23 @@ export function awakeningDescription(kind: AwakeningKind, element: SpellElement)
   }
 }
 
+/** 선택 카드 호버에만 쓰는 상세 계약. 카드 본문은 짧게, 실제 수치·조건은 여기서 설명한다. */
+export function awakeningDetail(kind: AwakeningKind, element: SpellElement): string {
+  const elementStatus = FUSION_ELEMENT_STATUS[element];
+  const statusLabels: Record<SpellStatus, string> = {
+    burn: '화상', freeze: '빙결', shock: '감전', slow: '둔화', knockback: '밀쳐냄', weaken: '취약',
+  };
+  switch (kind) {
+    case 'searing':
+      return `수동 ${ELEMENT_LABELS[element]} 영창에 ${statusLabels[elementStatus]}을 추가합니다. 자동 시전에는 적용되지 않습니다.`;
+    case 'chaining':
+      return `명중 후 가장 가까운 적 1명에게 원본 피해의 ${Math.round(AWAKENING_CONFIG.chainingDamageScale * 100)}%로 추가 파급합니다.`;
+    case 'brand':
+    default:
+      return `명중 적은 ${AWAKENING_CONFIG.brandWeakenSeconds}초 동안 받는 피해가 ${Math.round((AWAKENING_CONFIG.brandWeakenMultiplier - 1) * 100)}% 증가합니다.`;
+  }
+}
+
 /**
  * 각성 후보 원소 — 임계 이상이면서 아직 각성하지 않은 것 중 **가장 높은 하나**.
  * 여러 개가 동시에 걸리면 가장 깊이 투자한 쪽을 먼저 준다(집중형 보상이라는 취지).

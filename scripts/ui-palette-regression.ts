@@ -300,6 +300,13 @@ import {
   // **모든 오버레이가 장식을 쓰는가.** 만들어만 두면 아무 소용이 없다.
   for (const name of overlays) {
     const src = readFileSync(`src/ui/${name}.ts`, 'utf8');
+    // 도감 헤더는 긴 제목·토큰과 코너 장식이 겹치므로, 네 귀퉁이 장식 대신
+    // 중앙 괘선을 고정하는 예외 레이아웃을 쓴다.
+    if (name === 'codexOverlay') {
+      assert.ok(/divider\(\)/.test(src), `${name}: 중앙 구획 괘선이 없다`);
+      assert.ok(/codex-head \.orn-divider/.test(src), `${name}: 괘선이 헤더 중앙에 고정되지 않았다`);
+      continue;
+    }
     assert.ok(
       /cornerFlourish\(\)/.test(src),
       `${name}: 모서리 장식이 없다 — 판만 있으면 "상자에 색만"으로 돌아간다`,

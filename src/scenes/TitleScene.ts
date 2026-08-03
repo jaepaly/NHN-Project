@@ -1,6 +1,13 @@
 import Phaser from 'phaser';
 import { applyWorldFx } from '../render/postFx';
-import { loadCodex } from '../spell/spellCodex';
+import {
+  codexTokenSignature,
+  isCodexEntryTokenClaimable,
+  loadCodex,
+  markCodexEntryTokenClaimed,
+  saveCodex,
+  spellTokenValueForClaims,
+} from '../spell/spellCodex';
 import { showCodexOverlay } from '../ui/codexOverlay';
 import { clearRunHud } from '../ui/runHud';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
@@ -10,6 +17,8 @@ import { UI_COLOR, UI_FONT } from '../ui/uiTokens';
 import { DEMO_BUILD_OPTIONS, demoBuildFromOptionId, requestDemoRun } from '../run/demoLoadout';
 import { GameAudio } from '../audio/gameAudio';
 import { showRewardCards } from '../ui/rewardCardOverlay';
+import { showShopOverlay } from '../ui/shopOverlay';
+import { applySpellTokenClaim, loadMetaProfile, saveMetaProfile } from '../meta/metaProfile';
 
 const TITLE_COLORS = {
   background: 0x05060f,
@@ -23,6 +32,7 @@ const TITLE_COLORS = {
 export class TitleScene extends Phaser.Scene {
   private starting = false;
   private audio!: GameAudio;
+  private tokenReadout?: Phaser.GameObjects.Text;
 
   /** 도감·설정이 열려 있는 동안 시작 트리거(클릭·Enter)를 막는다 */
   private codexOpen = false;
@@ -55,6 +65,7 @@ export class TitleScene extends Phaser.Scene {
     this.drawBackground(width, height);
     this.createArcaneSeal(width / 2, height * 0.44);
     this.createTitle(width, height);
+    this.createTokenReadout(width);
     this.createStartPrompt(width, height);
     this.createLobbyTabs(width, height);
     this.createDemoTab(width, height);
@@ -83,23 +94,25 @@ export class TitleScene extends Phaser.Scene {
   }
 
   /**
-   * 로비 탭 줄 — 주문 도감 · 설정 (총괄: "시작 화면을 로비처럼").
-   * 하단은 시연 탭이 이미 쓰고 있어 두 항목을 한 줄에 나란히 놓는다.
+   * 로비 탭 줄 — 주문 도감 · 설정 · 상점. 상점은 꾸미기 연결 전까지 안내용이다.
    */
   private createLobbyTabs(width: number, height: number): void {
-    const makeTab = (x: number, label: string, onPick: () => void): void => {
+    const makeTab = (x: number, label: string, onPick?: () => void): void => {
       const tab = this.add.text(x, height * 0.885, label, {
         fontFamily: UI_FONT.serif,
         fontSize: '15px',
         color: UI_COLOR.accent,
         letterSpacing: 2,
-      }).setOrigin(0.5).setAlpha(0.75).setInteractive({ useHandCursor: true });
+      }).setOrigin(0.5).setAlpha(onPick ? 0.75 : 0.42);
+      if (!onPick) return;
+      tab.setInteractive({ useHandCursor: true });
       tab.on('pointerover', () => tab.setAlpha(1).setColor(UI_COLOR.textBright));
       tab.on('pointerout', () => tab.setAlpha(0.75).setColor(UI_COLOR.accent));
       tab.on('pointerdown', onPick);
     };
-    makeTab(width / 2 - 78, '〔 주문 도감 〕', () => { void this.openCodex(); });
-    makeTab(width / 2 + 78, '〔 설정 〕', () => { void this.openSettings(); });
+    makeTab(width * 0.25, '〔 주문 도감 〕', () => { void this.openCodex(); });
+    makeTab(width * 0.5, '〔 설정 〕', () => { void this.openSettings(); });
+    makeTab(width * 0.75, '〔 상점 〕', () => { void this.openShop(); });
   }
 
   /**
@@ -177,6 +190,19 @@ export class TitleScene extends Phaser.Scene {
     tab.on('pointerdown', () => { void this.openDemoBuildChoice(); });
   }
 
+  /** 꾸미기 상점 연결 전에도 메타 재화의 존재와 현재 보유량을 로비에서 일관되게 보여 준다. */
+  private createTokenReadout(width: number): void {
+    const tokens = loadMetaProfile(window.localStorage).spellTokens;
+    this.tokenReadout = this.add.text(width - 28, 28, `✦ 주문 토큰 ${tokens}`, {
+      fontFamily: UI_FONT.serif,
+      fontSize: '15px',
+      color: UI_COLOR.warm,
+      stroke: UI_COLOR.ink,
+      strokeThickness: 3,
+      letterSpacing: 1.2,
+    }).setOrigin(1, 0.5).setAlpha(0.9);
+  }
+
   private async openDemoBuildChoice(): Promise<void> {
     if (this.codexOpen || this.starting) return;
     this.codexOpen = true;
@@ -200,10 +226,38 @@ export class TitleScene extends Phaser.Scene {
     if (this.codexOpen || this.starting) return;
     this.codexOpen = true;
     try {
-      await showCodexOverlay(loadCodex(window.localStorage));
+      let profile = loadMetaProfile(window.localStorage);
+      const tokenRewardFor = (entry: import('../spell/spellCodex').CodexEntry): number => (
+        spellTokenValueForClaims(profile.spellTokenSales[codexTokenSignature(entry)] ?? 0)
+      );
+      await showCodexOverlay(loadCodex(window.localStorage), {
+        tokenBalance: profile.spellTokens,
+        tokenRewardFor,
+        onClaimToken: (entry) => {
+          if (!isCodexEntryTokenClaimable(entry)) return null;
+          const claim = applySpellTokenClaim(profile, codexTokenSignature(entry), tokenRewardFor(entry));
+          if (claim.amount <= 0) return null;
+          profile = claim.profile;
+          saveMetaProfile(profile, window.localStorage);
+          saveCodex(window.localStorage, markCodexEntryTokenClaimed(loadCodex(window.localStorage), entry));
+          return { amount: claim.amount, tokenBalance: profile.spellTokens };
+        },
+      });
+      this.tokenReadout?.setText(`✦ 주문 토큰 ${profile.spellTokens}`);
       GameAudio.playOneShot(this, 'ui-confirm', loadSettings(window.localStorage));
     } finally {
       // 같은 프레임의 씬 pointerdown이 시작을 못 물게 한 틱 늦게 푼다
+      this.time.delayedCall(50, () => { this.codexOpen = false; });
+    }
+  }
+
+  private async openShop(): Promise<void> {
+    if (this.codexOpen || this.starting) return;
+    this.codexOpen = true;
+    try {
+      await showShopOverlay(loadMetaProfile(window.localStorage).spellTokens);
+      GameAudio.playOneShot(this, 'ui-confirm', loadSettings(window.localStorage));
+    } finally {
       this.time.delayedCall(50, () => { this.codexOpen = false; });
     }
   }

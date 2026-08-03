@@ -41,53 +41,53 @@ const CSS = `
 ${overlayBaseCss(WRAP_ID)}
 #${WRAP_ID} { z-index: ${UI_LAYER.settings}; }
 #${WRAP_ID} .settings-panel {
-  width: min(460px, calc(100vw - 40px));
-  padding: 26px 30px 22px;
+  width: min(580px, calc(100vw - 32px));
+  padding: 34px 38px 30px;
 }
 #${WRAP_ID} .settings-title {
   font-family: ${UI_FONT.serif};
-  font-size: 19px; font-weight: 800; letter-spacing: 0.24em; color: ${UI_COLOR.textBright};
+  font-size: 24px; font-weight: 800; letter-spacing: 0.24em; color: ${UI_COLOR.textBright};
 }
-#${WRAP_ID} .settings-sub { margin-top: 4px; font-size: 12px; color: ${UI_COLOR.textMuted}; }
-#${WRAP_ID} .settings-row { margin-top: 22px; }
+#${WRAP_ID} .settings-sub { margin-top: 6px; font-size: 14px; color: ${UI_COLOR.textMuted}; }
+#${WRAP_ID} .settings-row { margin-top: 28px; }
 #${WRAP_ID} .settings-head { display: flex; justify-content: space-between; align-items: baseline; }
-#${WRAP_ID} .settings-label { font-size: 14px; font-weight: 700; color: ${UI_COLOR.text}; }
+#${WRAP_ID} .settings-label { font-size: 17px; font-weight: 700; color: ${UI_COLOR.text}; }
 #${WRAP_ID} .settings-value {
-  font-family: ${UI_FONT.mono}; font-size: 13px; font-weight: 700; color: ${UI_COLOR.accent};
+  font-family: ${UI_FONT.mono}; font-size: 15px; font-weight: 700; color: ${UI_COLOR.accent};
 }
-#${WRAP_ID} .settings-hint { margin-top: 2px; font-size: 11.5px; color: ${UI_COLOR.textMuted}; }
+#${WRAP_ID} .settings-hint { margin-top: 3px; font-size: 13px; color: ${UI_COLOR.textMuted}; }
 #${WRAP_ID} input[type="range"] {
   -webkit-appearance: none; appearance: none;
-  width: 100%; margin-top: 10px; height: 6px; border-radius: ${UI_RADIUS.pill};
+  width: 100%; margin-top: 12px; height: 8px; border-radius: ${UI_RADIUS.pill};
   background: #1d2445; outline: none; cursor: pointer;
 }
 #${WRAP_ID} input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
-  width: 16px; height: 16px; border-radius: ${UI_RADIUS.circle};
+  width: 20px; height: 20px; border-radius: ${UI_RADIUS.circle};
   background: ${UI_COLOR.text}; border: 2px solid ${UI_COLOR.ink}; cursor: grab;
 }
 #${WRAP_ID} input[type="range"]::-moz-range-thumb {
-  width: 16px; height: 16px; border-radius: ${UI_RADIUS.circle};
+  width: 20px; height: 20px; border-radius: ${UI_RADIUS.circle};
   background: ${UI_COLOR.text}; border: 2px solid ${UI_COLOR.ink}; cursor: grab;
 }
 #${WRAP_ID} input[type="range"]:focus-visible { box-shadow: 0 0 0 3px rgba(216, 187, 114, 0.5); }
 #${WRAP_ID} .settings-toggle {
-  margin-top: 22px; width: 100%; display: flex; justify-content: space-between;
-  align-items: center; padding: 11px 14px;
+  margin-top: 28px; width: 100%; display: flex; justify-content: space-between;
+  align-items: center; padding: 14px 17px;
   border: 1px solid ${UI_COLOR.border}; border-radius: ${UI_RADIUS.sm};
   background: transparent; color: ${UI_COLOR.text};
-  font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+  font: inherit; font-size: 17px; font-weight: 700; cursor: pointer;
 }
 #${WRAP_ID} .settings-toggle:hover { border-color: ${UI_COLOR.borderStrong}; }
 #${WRAP_ID} .settings-toggle b { font-family: ${UI_FONT.mono}; color: ${UI_COLOR.accent}; }
 #${WRAP_ID} .settings-foot {
-  margin-top: 24px; display: flex; justify-content: space-between; align-items: center;
-  font-size: 12px; color: ${UI_COLOR.textMuted};
+  margin-top: 30px; display: flex; justify-content: space-between; align-items: center;
+  font-size: 14px; color: ${UI_COLOR.textMuted};
 }
 #${WRAP_ID} .settings-reset {
-  padding: 6px 12px; border-radius: ${UI_RADIUS.sm}; cursor: pointer;
+  padding: 8px 14px; border-radius: ${UI_RADIUS.sm}; cursor: pointer;
   border: 1px solid ${UI_COLOR.border}; background: transparent; color: ${UI_COLOR.textSoft};
-  font: inherit; font-size: 12px;
+  font: inherit; font-size: 14px;
 }
 #${WRAP_ID} .settings-reset:hover { border-color: ${UI_COLOR.borderStrong}; color: ${UI_COLOR.text}; }
 #${WRAP_ID} .settings-foot b { color: ${UI_COLOR.text}; }
