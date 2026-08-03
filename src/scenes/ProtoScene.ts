@@ -6814,7 +6814,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const angle = (Math.PI * 2 * index) / Math.max(1, entries.length);
       const anchorX = target ? target.x + Math.cos(angle) * 110 : this.player.x + Math.cos(angle) * 72;
       const anchorY = target ? target.y + Math.sin(angle) * 110 : this.player.y + Math.sin(angle) * 72;
-      this.spiritViews.get(entry.spiritId)?.moveToward(anchorX, anchorY, deltaSeconds);
+      const spiritSpeed = 220 * this.playerState.moveSpeedMultiplier * 1.12;
+      this.spiritViews.get(entry.spiritId)?.moveToward(anchorX, anchorY, deltaSeconds, spiritSpeed);
     });
 
     for (const request of this.spiritManager.update(deltaSeconds)) {

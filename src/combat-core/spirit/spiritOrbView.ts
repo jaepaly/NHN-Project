@@ -39,11 +39,16 @@ export class SpiritOrbView {
     return this.view.y;
   }
 
-  moveToward(targetX: number, targetY: number, deltaSeconds: number): void {
+  moveToward(targetX: number, targetY: number, deltaSeconds: number, maxSpeed: number): void {
     if (this.view.x === 0 && this.view.y === 0) this.view.setPosition(targetX, targetY);
-    const t = Math.min(1, Math.max(0, deltaSeconds) * 3.2);
-    this.view.x = Phaser.Math.Linear(this.view.x, targetX, t);
-    this.view.y = Phaser.Math.Linear(this.view.y, targetY, t);
+    const dx = targetX - this.view.x;
+    const dy = targetY - this.view.y;
+    const distance = Math.hypot(dx, dy);
+    const step = Math.min(distance, Math.max(0, maxSpeed) * Math.max(0, deltaSeconds));
+    if (distance > 0 && step > 0) {
+      this.view.x += (dx / distance) * step;
+      this.view.y += (dy / distance) * step;
+    }
     this.view.rotation = Phaser.Math.Angle.Between(this.view.x, this.view.y, targetX, targetY);
   }
 
