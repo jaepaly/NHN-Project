@@ -30,8 +30,8 @@ export const USE_AFFINITY = {
  */
 export function accrueUseAffinity(
   addedSoFar: number,
-  perCast = USE_AFFINITY.perCast,
-  useCap = USE_AFFINITY.useCap,
+  perCast: number = USE_AFFINITY.perCast,
+  useCap: number = USE_AFFINITY.useCap,
 ): { added: number; nextAddedSoFar: number } {
   const safe = Number.isFinite(addedSoFar) ? Math.max(0, addedSoFar) : 0;
   const room = Math.max(0, useCap - safe);

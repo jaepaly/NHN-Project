@@ -161,6 +161,8 @@ export interface RunStateSnapshot {
   readonly rewards: readonly RewardOption[];
   /** 원소별 위력 배율 보너스 (0.15 = +15%) — HUD 요약 표시용 */
   elementalAffinity: Partial<Record<SpellElement, number>>;
+  /** 합주 개화 뒤 모든 원소가 공유하는 친화도. null이면 개별 친화 단계다. */
+  chorusAffinity: number | null;
 }
 
 export interface RunEvents {

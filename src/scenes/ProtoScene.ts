@@ -93,7 +93,12 @@ import { bandAffordances, reachableBand } from '../run/incantBands';
 import { drawTreasureReward } from '../combat-core/run/treasureRewardConfig';
 import { ALTAR_OFFER_CONFIG, drawAltarOffer, drawHighAltarOptions } from '../combat-core/run/altarOffer';
 import { inheritCandidates, mutateInheritedAffinity } from '../combat-core/run/runInheritance';
-import { chorusElements, chorusProjectileCount, chorusStage } from '../combat-core/run/elementalChorus';
+import {
+  affinityForElement,
+  chorusProjectileCount,
+  chorusStage,
+  ELEMENTAL_CHORUS,
+} from '../combat-core/run/elementalChorus';
 import type { AltarTierKind } from '../combat-core/run/altarOffer';
 import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomRewardScale';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
@@ -1468,6 +1473,12 @@ export class ProtoScene extends Phaser.Scene {
       if (chosen.altar) {
         this.applyAltarDeal(chosen);
         if (chosen.kind === 'all-affinity') {
+          if (state.chorusAffinity !== null) {
+            this.combatRunController.grantStartingAffinity('fire', ALTAR_OFFER_CONFIG.allAffinityBonus);
+            this.syncElementalChorus();
+            this.announceSystemMessage('합주 친화가 깊어졌다', '#8fe3c8', 2600);
+            return;
+          }
           const raised: Partial<Record<SpellElement, number>> = {};
           for (const element of ELEMENTS) {
             raised[element] = (state.elementalAffinity[element] ?? 0)
@@ -1746,6 +1757,7 @@ export class ProtoScene extends Phaser.Scene {
         this.player.x,
         this.player.y,
       );
+      this.syncElementalChorus();
       this.syncElementalChorus();
       return;
     }
@@ -5515,6 +5527,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (sequenceElements[0]) {
       const grown = this.combatRunController.growAffinityFromUse(sequenceElements[0]);
       if (grown.added > 0) this.showAffinityGrowthFloat(sequenceElements[0], grown.total);
+      if (grown.chorusActivated) this.syncElementalChorus();
     }
     const sequenceHistoryEntry = this.spellHistory.recordSequence({
       rawText: text,
@@ -5656,8 +5669,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         this.showAffinityGrowthFloat(spec.element_primary, affinityGrowth.total);
         this.syncElementalChorus();
       }
-      const affinityBonus = this.combatRunController.state
-        .elementalAffinity[spec.element_primary] ?? 0;
+      const affinityBonus = this.affinityFor(spec.element_primary);
       // 런 반복 격상(#77): 회차가 쌓이면 과의존한 **폼**이 이번 런 전체에서 약화된다.
       // 원소가 아니라 폼이다(#171) — 다채로운 화염 마스터는 안 맞고, 같은 수를
       // 반복하는 사람만 맞는다. 프로필은 런 시작에 확정된 캐시를 쓴다.
@@ -5937,33 +5949,42 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private syncElementalChorus(): void {
-    const next = chorusStage(this.combatRunController.state.elementalAffinity);
+    const state = this.combatRunController.state;
+    const next = chorusStage(state.elementalAffinity, state.chorusAffinity);
     if (next <= this.elementalChorusStage) return;
     this.elementalChorusStage = next;
-    const active = chorusElements(this.combatRunController.state.elementalAffinity);
     this.announceBanner({
-      title: `원소 합주 ${next}단계`,
-      lines: [`친화 원소 ${active.length}개 · 수동 영창 뒤 공명 파편 ${chorusProjectileCount(next)}발`],
+      title: next === 1 ? '원소 합주 개화' : `원소 합주 ${next}단계`,
+      lines: [
+        `공통 친화 ${Math.round((state.chorusAffinity ?? 0) * 100)}% · 수동 영창 뒤 공명 파편 ${chorusProjectileCount(next)}발`,
+        '이제 어떤 원소 영창이든 합주 친화가 자란다',
+      ],
       color: 0x8fe3c8,
       holdMs: 3000,
     });
   }
 
   private scheduleElementalChorus(spec: SpellSpec): void {
-    const affinity = this.combatRunController.state.elementalAffinity;
-    const stage = chorusStage(affinity);
+    const state = this.combatRunController.state;
+    if (state.chorusAffinity === null) return;
+    const stage = chorusStage(state.elementalAffinity, state.chorusAffinity);
     if (stage === 0) return;
-    const elements = chorusElements(affinity).filter((element) => element !== spec.element_primary);
     const target = this.nearestEnemy();
-    if (!target || elements.length === 0) return;
-    const count = chorusProjectileCount(stage);
+    if (!target) return;
+    const otherTargets = this.enemies.filter((enemy) => enemy.alive && enemy !== target);
+    const count = Math.min(chorusProjectileCount(stage), otherTargets.length);
     for (let i = 0; i < count; i += 1) {
-      const element = elements[i % elements.length];
+      const element = ELEMENTS[(ELEMENTS.indexOf(spec.element_primary) + i + 1) % ELEMENTS.length];
+      const enemy = otherTargets[i];
       this.time.delayedCall(120 + i * 85, () => {
-        if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
+        if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive() || !enemy.alive) return;
         this.applySpellEffect(
-          { ...spec, element_primary: element, power: Math.max(1, Math.round(spec.power * 0.22)) },
-          new Phaser.Math.Vector2(target.x, target.y), false, 2, { decorVfxScale: 0.38 },
+          {
+            ...spec,
+            element_primary: element,
+            power: Math.max(1, Math.round(spec.power * ELEMENTAL_CHORUS.projectilePowerScale)),
+          },
+          new Phaser.Math.Vector2(enemy.x, enemy.y), false, 2, { decorVfxScale: 0.48 },
         );
         this.audio.playCast(element);
       });
@@ -6265,8 +6286,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   ): SpellSpec {
     const { spec: baseSpec, tuning } = behavior;
     const priorUsages = this.spellHistory.allBehaviorUsages;
-    const affinityBonus = this.combatRunController.state
-      .elementalAffinity[baseSpec.element_primary] ?? 0;
+    const affinityBonus = this.affinityFor(baseSpec.element_primary);
     const escalationWeaken = this.runEscalation.weakenedForms.includes(baseSpec.form)
       ? this.runEscalation.weakenMultiplier
       : 1;
@@ -6402,7 +6422,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       radiusScale: options?.radiusScale,
       // 친화 격상 연출(영창가 빌드 동기) — 위력·판정 불변, 순수 오버레이
       vfxIntensity: reducedAffinityVfxIntensity(
-        this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
+        this.affinityFor(spec.element_primary),
         vfxTierReduction,
       ),
       // 필살기는 두 원소를 순차로 터뜨린다 (총괄 지시). beam·wave는 실피해를 확인한 뒤
@@ -6673,8 +6693,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 세운 원소의 친화도 — 두께·마디·내구도가 전부 여기서 나온다 (#296).
     // 제보: *"친화가 높아져도 강화된 설치물처럼 느껴지지 않습니다."* 종전엔 두께가
     // 상수 14로 고정이라 친화가 렌더에 **아예 닿지 않았다.**
-    const affinity = this.combatRunController.state
-      .elementalAffinity[spec.element_primary] ?? 0;
+    const affinity = this.affinityFor(spec.element_primary);
     const view = this.add.graphics().setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
     const maxIntegrity = wallMaxIntegrity(affinity);
     const wall: ActiveWall = {
@@ -7187,7 +7206,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         this.sortedBossResistanceEntries().map(([element, multiplier]) => ({
           element,
           multiplier,
-          affinity: this.combatRunController.state.elementalAffinity[element] ?? 0,
+          affinity: this.affinityFor(element),
         })),
         RESISTANCE.masteryImmunityAffinity,
       );
@@ -7755,7 +7774,40 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
    * 모든 상태를 보여주면서도 집중형 보상이라는 위계는 보존한다.
    */
   private drawAffinityBar(g: Phaser.GameObjects.Graphics): void {
-    const affinity = this.combatRunController.state.elementalAffinity;
+    const state = this.combatRunController.state;
+    const affinity = state.elementalAffinity;
+    if (state.chorusAffinity !== null) {
+      const panel = affinityPanelGeometry(HUD.y, HUD.height, 1);
+      const barX = HUD.x + AFFINITY_PANEL_LAYOUT.padX;
+      const barW = HUD.width - AFFINITY_PANEL_LAYOUT.padX * 2;
+      const barY = affinityBarY(panel.top, 0);
+      const ratio = Phaser.Math.Clamp(
+        state.chorusAffinity / ELEMENTAL_CHORUS.affinityCap,
+        0,
+        1,
+      );
+      drawGrimoirePanel(g, HUD.x, panel.top, HUD.width, panel.height, 0.9);
+      g.fillStyle(UI_HEX.track, 0.9);
+      g.fillRoundedRect(barX, barY, barW, AFFINITY_PANEL_LAYOUT.primaryBarHeight, 4);
+      const rainbow = [0xff6b6b, 0xffd166, 0x72f1b8, 0x66d9ff, 0xb18cff];
+      const fillW = barW * ratio;
+      for (let i = 0; i < rainbow.length; i += 1) {
+        const x = barX + fillW * i / rainbow.length;
+        g.fillStyle(rainbow[i], 0.95);
+        g.fillRect(x, barY, fillW / rainbow.length + 1, AFFINITY_PANEL_LAYOUT.primaryBarHeight);
+      }
+      g.lineStyle(1, 0xf4edff, 0.9);
+      g.strokeRoundedRect(barX, barY, barW, AFFINITY_PANEL_LAYOUT.primaryBarHeight, 4);
+      this.affinityLabelTexts[0]
+        .setText(`원소 합주  ${Math.round(state.chorusAffinity * 100)}%  ·  공명 파편 ${chorusProjectileCount(chorusStage(affinity, state.chorusAffinity))}발`)
+        .setColor('#f2eaff')
+        .setAlpha(1)
+        .setFontSize(11);
+      for (let i = 1; i < this.affinityLabelTexts.length; i += 1) {
+        this.affinityLabelTexts[i].setText('');
+      }
+      return;
+    }
     const rows = affinityHudRows(affinity);
     const primaryElement = rankAffinities<SpellElement>(affinity, 1)[0]?.element ?? null;
     const panel = affinityPanelGeometry(HUD.y, HUD.height, rows.length);
@@ -7921,6 +7973,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       roomGeneration: copy.scope === 'room' ? this.bannerRoomGeneration : null,
     });
     this.drainBannerQueue();
+  }
+
+  private affinityFor(element: SpellElement): number {
+    const state = this.combatRunController.state;
+    return affinityForElement(state.elementalAffinity, state.chorusAffinity, element);
   }
 
   private drainBannerQueue(): void {
@@ -8148,7 +8205,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       onAffectEnemy?.(enemy);
       if (damaged && (spec.form === 'beam' || spec.form === 'wave')) {
         const tier = reducedAffinityVfxIntensity(
-          this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
+          this.affinityFor(spec.element_primary),
           vfxTierReduction,
         );
         if (tier > 0) {
@@ -8250,7 +8307,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 마스터리 면역 (#171 R1 발안, 총괄 채택): 친화가 각성 이정표(0.9)에 도달한
     // 원소는 그 원소의 보스 내성을 **완전히 무시**한다 — "네가 불에 저항해?
     // 내가 곧 불이다." 단기·장기·이중 저항 전부에 걸린다(같은 관문이므로).
-    const affinity = this.combatRunController.state.elementalAffinity[element] ?? 0;
+    const affinity = this.affinityFor(element);
     if (multiplier < 1 && affinity >= RESISTANCE.masteryImmunityAffinity) {
       if (!this.masteryPierceAnnounced) {
         this.masteryPierceAnnounced = true;
@@ -8449,7 +8506,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (!element || enemy.kind !== 'boss') return false;
     const multiplier = this.activeBossResistances.get(element) ?? 1;
     if (multiplier >= 1) return false;
-    const affinity = this.combatRunController.state.elementalAffinity[element] ?? 0;
+    const affinity = this.affinityFor(element);
     return affinity < RESISTANCE.masteryImmunityAffinity;
   }
 
@@ -8577,7 +8634,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       radiusScale: options?.radiusScale,
       // 친화 격상 연출(영창가 빌드 동기) — 위력·판정 불변, 순수 오버레이
       vfxIntensity: reducedAffinityVfxIntensity(
-        this.combatRunController.state.elementalAffinity[spec.element_primary] ?? 0,
+          this.affinityFor(spec.element_primary),
         vfxTierReduction,
       ),
       // 필살기는 두 원소를 순차로 터뜨린다 (총괄 지시). beam·wave는 실피해를 확인한 뒤
