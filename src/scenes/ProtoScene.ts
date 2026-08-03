@@ -2093,7 +2093,7 @@ export class ProtoScene extends Phaser.Scene {
     return picked ? { element: picked.element, value: picked.inherited } : null;
   }
 
-  private continueToNextLoop(inherit: { source?: SpellElement; element: SpellElement; value: number } | null = null): void {
+  private continueToNextLoop(inherit: { source?: SpellElement; element: SpellElement; value: number; echoes?: readonly { element: SpellElement; value: number }[] } | null = null): void {
     void this._chooseInheritedAffinity;
     this.deathHandled = false;
     this.continueRunResearchTracking();
@@ -2144,7 +2144,7 @@ export class ProtoScene extends Phaser.Scene {
     if (inherit) {
       this.announceBanner({
         title: `${ELEMENT_LABELS[inherit.source ?? inherit.element]}의 잔향이 변이했다`,
-        lines: [`${ELEMENT_LABELS[inherit.source ?? inherit.element]} → ${ELEMENT_LABELS[inherit.element]} · 친화 ${inherit.value.toFixed(2)} 계승`],
+        lines: [`${ELEMENT_LABELS[inherit.source ?? inherit.element]} → ${ELEMENT_LABELS[inherit.element]} · 친화 ${inherit.value.toFixed(2)} 계승`, ...(inherit.echoes?.map((echo) => `${ELEMENT_LABELS[echo.element]} 잔향 +${echo.value.toFixed(2)}`) ?? [])],
         color: 0xd8bb72,
         holdMs: 2800,
       });

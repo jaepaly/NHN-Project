@@ -114,6 +114,10 @@ import { AWAKENING_CONFIG } from '../src/combat-core/run/awakening';
   assert.equal(mutation.source, 'fire', '최고 친화가 자동 계승의 원천이다');
   assert.notEqual(mutation.element, mutation.source, '계승 친화는 같은 원소로 돌아오지 않는다');
   assert.equal(mutation.value, inheritedAffinity(0.9), '계승량은 최고 친화의 일부다');
+  const chorusMutation = mutateInheritedAffinity({ fire: 0.9, ice: 0.3, water: 0.3 }, 12345);
+  assert.ok(chorusMutation && chorusMutation.echoes.length === 1, '합주 1단계는 다음 런에 작은 잔향 하나를 더 남긴다');
+  assert.ok(chorusMutation?.echoes.every((echo) => echo.element !== chorusMutation.element), '잔향은 주 변이 원소와 겹치지 않는다');
+  assert.ok(chorusMutation?.echoes.every((echo) => echo.value < chorusMutation.value), '다중 잔향은 주 계승보다 작다');
   assert.deepEqual(
     mutateInheritedAffinity({ fire: 0.9, ice: 0.3 }, 12345), mutation,
     '동률·변이 대상은 시드가 같으면 재현된다',

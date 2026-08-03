@@ -1,4 +1,5 @@
 import { ELEMENTS, type SpellElement } from '../../spell/types';
+import { chorusStage } from './elementalChorus';
 
 /**
  * 런 계승 (총괄 결정 2026-07-31) — 이어가기에서 **무엇을 들고 가는가**.
@@ -57,7 +58,7 @@ export function inheritedAffinity(value: number): number {
 export function mutateInheritedAffinity(
   affinity: Readonly<Partial<Record<SpellElement, number>>>,
   seed: number,
-): { source: SpellElement; element: SpellElement; value: number } | null {
+): { source: SpellElement; element: SpellElement; value: number; echoes: readonly { element: SpellElement; value: number }[] } | null {
   const entries = (Object.entries(affinity) as [SpellElement, number][])
     .filter(([, value]) => Number.isFinite(value) && value > 0);
   if (entries.length === 0) return null;
@@ -66,7 +67,14 @@ export function mutateInheritedAffinity(
   const next = (Math.abs(Math.floor(seed)) >>> 0) || 1;
   const source = tied[next % tied.length];
   const targets = ELEMENTS.filter((element) => element !== source);
-  return { source, element: targets[(next >>> 8) % targets.length], value: inheritedAffinity(highest) };
+  const element = targets[(next >>> 8) % targets.length];
+  const stage = chorusStage(affinity);
+  const echoCount = stage === 0 ? 0 : stage;
+  const echoes = targets
+    .filter((target) => target !== element)
+    .slice(0, echoCount)
+    .map((target) => ({ element: target, value: Math.round(inheritedAffinity(highest) * 0.4 * 100) / 100 }));
+  return { source, element, value: inheritedAffinity(highest), echoes };
 }
 
 /**

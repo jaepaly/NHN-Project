@@ -240,7 +240,7 @@ export class CombatRunController implements RunController {
    */
   continueRun(
     seed = Date.now(),
-    inherit?: { element: SpellElement; value: number },
+    inherit?: { element: SpellElement; value: number; echoes?: readonly { element: SpellElement; value: number }[] },
   ): void {
     this.loopIndex += 1;
     this.roomIndex = this.initialRoomIndex;
@@ -253,6 +253,9 @@ export class CombatRunController implements RunController {
     this.wardOnRoomStart = 0;
     if (inherit && inherit.value > 0) {
       this.elementalAffinity[inherit.element] = inherit.value;
+      for (const echo of inherit.echoes ?? []) {
+        if (echo.value > 0) this.elementalAffinity[echo.element] = echo.value;
+      }
     }
     this.rand = mulberry32(seed);
     this.encounters = resolveEncounters(this.encounterDefinitions, mulberry32(seed ^ 0x9e3779b9));
