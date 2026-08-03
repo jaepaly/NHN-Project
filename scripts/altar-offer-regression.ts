@@ -137,6 +137,15 @@ assert.ok(
   ALTAR_OFFER_CONFIG.echo.delayMs >= 500,
   `에코 지연이 짧다 (${ALTAR_OFFER_CONFIG.echo.delayMs}ms) — 원본과 한 덩어리로 읽힌다`,
 );
+assert.ok(
+  ALTAR_OFFER_CONFIG.echo.cloneLeadMs > 0
+    && ALTAR_OFFER_CONFIG.echo.cloneLeadMs < ALTAR_OFFER_CONFIG.echo.delayMs,
+  '분신은 에코 시전 전에 잠깐 나타나야 한다',
+);
+assert.ok(
+  ALTAR_OFFER_CONFIG.echo.cloneAlpha > 0 && ALTAR_OFFER_CONFIG.echo.cloneAlpha < 1,
+  '에코 분신은 원본 플레이어와 구분되는 반투명 상태여야 한다',
+);
 // 겹별 투명도 — 원본(1.0)보다 옅고, 뒤 겹이 앞 겹보다 더 옅다.
 // 같은 밝기로 세 발이 나가면 "왜 세 번인지" 읽히지 않는다.
 const { decorScales } = ALTAR_OFFER_CONFIG.echo;

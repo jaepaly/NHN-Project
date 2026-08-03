@@ -31,7 +31,7 @@ export const ALTAR_OFFER_CONFIG = {
   /** 전 원소 친화 상승분 — 일반 카드와 같은 폭이되 **모든 원소**에 걸린다 */
   allAffinityBonus: RUN_REWARD_CONFIG.affinityBonus,
   /**
-   * 영창 에코 — 수동 단일 주문이 한 번 더 울린다.
+   * 영창 에코 — 화면 안 다른 위치에 나타난 반투명 분신이 수동 단일 주문을 한 번 더 울린다.
    *
    * ⚠️ **확률 발동이 아니라 확정 발동이다** (총괄과 검토): 이 게임은 한 방에 수동
    * 영창이 4회뿐이라(#258) 확률이 평탄화될 표본이 없다. 50% 확률이면 16방 중 1방은
@@ -64,6 +64,12 @@ export const ALTAR_OFFER_CONFIG = {
      * 읽혔다. 메아리는 원본이 끝난 뒤에 와야 메아리다.
      */
     delayMs: 520,
+    /** 분신이 나타나 "시전자"로 읽히도록, 실제 에코보다 먼저 확보하는 시간. */
+    cloneLeadMs: 150,
+    /** 분신의 최고 불투명도 — 원본 플레이어와 헷갈리지 않게 한다. */
+    cloneAlpha: 0.52,
+    /** 시전 뒤 잔상까지 포함한 분신 수명. */
+    cloneLifetimeMs: 520,
     powerScale: 0.7,
     /** 3중 울림 확률 — 다섯 번에 한 번쯤 */
     extraChance: 0.2,
@@ -139,7 +145,7 @@ function tierDescription(tier: AltarTier, awakenElement: SpellElement | null): s
         + `\n가장 가까운 다른 적 ${ALTAR_OFFER_CONFIG.ripple.maxTargets}체까지 · 시퀀스 제외`;
     case 'echo':
     default:
-      return `수동 영창이 **같은 자리에** 한 번 더 울린다 (위력 ${Math.round(ALTAR_OFFER_CONFIG.echo.powerScale * 100)}%)`
+      return `반투명 분신이 화면 안 다른 곳에서 영창을 되울린다 (위력 ${Math.round(ALTAR_OFFER_CONFIG.echo.powerScale * 100)}%)`
         + `\n${Math.round(ALTAR_OFFER_CONFIG.echo.extraChance * 100)}% 확률로 세 겹 · 시퀀스 제외`;
   }
 }

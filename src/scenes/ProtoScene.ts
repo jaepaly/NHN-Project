@@ -5778,28 +5778,98 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
   private scheduleSpellEcho(spec: SpellSpec): void {
     if (!this.echoUnlocked) return;
-    const { delayMs, powerScale, extraChance, decorScales } = ALTAR_OFFER_CONFIG.echo;
+    const {
+      delayMs, powerScale, extraChance, decorScales,
+      cloneLeadMs, cloneAlpha, cloneLifetimeMs,
+    } = ALTAR_OFFER_CONFIG.echo;
     const count = 1 + (Math.random() < extraChance ? 1 : 0);
     for (let i = 1; i <= count; i += 1) {
-      // 겹이 깊어질수록 옅어진다 — 원본 1.0 > 첫 에코 > 둘째 에코.
-      // 같은 밝기로 세 발이 나가면 "왜 세 번인지" 읽히지 않는다(총괄 지적).
+      // 겹이 깊어질수록 옅어진다 — 원본 1.0 > 첫 분신 > 둘째 분신.
+      // 같은 밝기로 세 발이 나가면 "왜 세 번인지" 읽히지 않는다.
       const decorVfxScale = decorScales[i - 1] ?? decorScales[decorScales.length - 1];
-      this.time.delayedCall(delayMs * i, () => {
+      this.time.delayedCall(Math.max(0, delayMs * i - cloneLeadMs), () => {
         if (!this.scene?.isActive?.() || !this.playerState.alive) return;
         if (!this.isCombatActive()) return;
-        this.applySpellEffect(
-          { ...spec, power: Math.max(1, Math.round(spec.power * powerScale)) },
-          undefined,
-          false,
-          // 친화 격상 연출도 함께 낮춘다 — 장식만 옅고 플러리시는 만개하면 어긋난다
-          i,
-          { decorVfxScale },
-        );
-        // 소리도 옅게 — 원본과 같은 크기로 울리면 "두 번 쐈다"로 들린다
-        this.audio.playCast(spec.element_primary);
+        const echo = this.createAltarEchoClone(spec.element_primary, cloneAlpha, cloneLifetimeMs);
+        this.time.delayedCall(cloneLeadMs, () => {
+          if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) {
+            echo.view.destroy();
+            return;
+          }
+          this.applySpellEffect(
+            { ...spec, power: Math.max(1, Math.round(spec.power * powerScale)) },
+            echo.origin,
+            false,
+            // 친화 격상 연출도 함께 낮춘다 — 장식만 옅고 플러리시는 만개하면 어긋난다
+            i,
+            { decorVfxScale },
+          );
+          this.tweens.add({
+            targets: echo.view,
+            scale: { from: 1, to: 1.14 },
+            duration: 90,
+            yoyo: true,
+            ease: 'Quad.easeOut',
+          });
+          this.audio.playCast(spec.element_primary);
+          this.tweens.add({
+            targets: echo.view,
+            alpha: 0,
+            scale: 1.18,
+            duration: Math.max(120, cloneLifetimeMs - cloneLeadMs),
+            ease: 'Cubic.easeOut',
+            onComplete: () => echo.view.destroy(),
+          });
+        });
       });
     }
     if (count > 1) this.announceSystemMessage('메아리가 세 겹으로 울렸다', '#d0a8ff', 1800);
+  }
+
+  /** 제단 에코의 시전자 — 원소 심화 공명과 구별되는 공간적 잔상이다. */
+  private createAltarEchoClone(
+    element: SpellElement,
+    alpha: number,
+    lifetimeMs: number,
+  ): { view: Phaser.GameObjects.Container; origin: Phaser.Math.Vector2 } {
+    const cameraView = this.cameras.main.worldView;
+    const padding = 72;
+    const minX = Math.max(this.worldBounds.left + padding, cameraView.left + padding);
+    const maxX = Math.min(this.worldBounds.right - padding, cameraView.right - padding);
+    const minY = Math.max(this.worldBounds.top + padding, cameraView.top + padding);
+    const maxY = Math.min(this.worldBounds.bottom - padding, cameraView.bottom - padding);
+    let x = this.player.x;
+    let y = this.player.y;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      x = Phaser.Math.FloatBetween(Math.min(minX, maxX), Math.max(minX, maxX));
+      y = Phaser.Math.FloatBetween(Math.min(minY, maxY), Math.max(minY, maxY));
+      if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) >= 120) break;
+    }
+
+    const color = ELEMENT_PALETTES[element].core;
+    const ring = this.drawArcRing(48, 3, color, 0.58);
+    const halo = this.add.circle(0, 0, 19, color, 0.22).setBlendMode(Phaser.BlendModes.ADD);
+    const body = this.textures.exists('player-invoker')
+      ? createSpriteLayers(this, 'player-invoker', 36, color)
+      : [this.add.circle(0, 0, 13, color).setBlendMode(Phaser.BlendModes.ADD)];
+    const clone = this.add.container(x, y, [ring, halo, ...body])
+      .setDepth(8)
+      .setAlpha(0)
+      .setScale(0.82);
+    this.tweens.add({
+      targets: clone,
+      alpha: { from: 0, to: alpha },
+      scale: { from: 0.82, to: 1 },
+      duration: Math.min(180, Math.max(90, lifetimeMs * 0.35)),
+      ease: 'Cubic.easeOut',
+    });
+    this.tweens.add({
+      targets: ring,
+      rotation: Math.PI * 1.2,
+      duration: lifetimeMs,
+      ease: 'Linear',
+    });
+    return { view: clone, origin: new Phaser.Math.Vector2(x, y - 20) };
   }
 
   private beginSequenceExecutionUx(plan: ResolvedSpellPlan, resonanceNames: string[] = []): void {
