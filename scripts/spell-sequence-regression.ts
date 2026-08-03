@@ -4,6 +4,7 @@ import { PlayerCombatState } from '../src/combat-core/player/playerCombatState';
 import {
   debugSpellPlan,
   resolveSpellPlan,
+  sequencePlanHasActionBehavior,
   sequenceFlowTimeline,
   type ResolvedSpellSequence,
 } from '../src/spell/sequencePlan';
@@ -30,6 +31,22 @@ const formSequence = (durationMs: number): ResolvedSpellSequence => ({
 const waitSequence = (durationMs: number): ResolvedSpellSequence => ({
   durationMs, behaviors: [{ type: 'wait' }],
 });
+const actionSpec = {
+  name: '?대룞', effect: 'summon' as const, target: 'enemy' as const, element_primary: 'fire' as const,
+  element_secondary: null, form: 'summon' as const, size: 'small' as const, speed: 'fast' as const,
+  status: [], power: 10, cost: 0,
+  behavior: { steps: [{ kind: 'dash' as const, seconds: 1 }], loop: false },
+};
+assert.equal(
+  sequencePlanHasActionBehavior({ sequences: [formSequence(1000)] }),
+  false,
+  '순수 주문 시퀀스는 에코 허용 대상',
+);
+assert.equal(
+  sequencePlanHasActionBehavior({ sequences: [{ durationMs: 1000, behaviors: [{ type: 'form', spec: actionSpec }] }] }),
+  true,
+  '행동 DSL 시퀀스는 에코 제외',
+);
 const timeline = sequenceFlowTimeline([formSequence(1000), waitSequence(300), formSequence(1000)]);
 assert.deepEqual(timeline.waitsMs, [700, 300, 200]);
 assert.equal(timeline.totalMs, 1200, 'form timing remains after movement removal');

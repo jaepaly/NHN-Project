@@ -304,6 +304,7 @@ import {
   behaviorElements,
   behaviorUsesAnyElement,
   resolveSpellPlan,
+  sequencePlanHasActionBehavior,
   sequenceFlowTimeline,
   tuningScale,
 } from '../spell/sequencePlan';
@@ -5337,6 +5338,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceManaShortage(plan.manaCost);
       return;
     }
+    const allowEcho = !ultimate && !sequencePlanHasActionBehavior(plan);
     const formSpecs = plan.sequences.flatMap((sequence) => sequence.behaviors.flatMap((behavior) => (
       behavior.type === 'form' ? [behavior.spec] : []
     )));
@@ -5419,6 +5421,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     await this.executeSpellSequencePlan(
       plan,
       plan.power > 0 ? sequenceHistoryEntry.power / plan.power : 1,
+      allowEcho,
     );
   }
 
@@ -5804,6 +5807,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private async executeSpellSequencePlan(
     plan: ResolvedSpellPlan,
     repeatPowerScale = 1,
+    allowEcho = false,
   ): Promise<void> {
     const targetState: SequenceTargetState = {
       lockedEnemy: null,
@@ -5843,6 +5847,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
             repeatPowerScale,
             plan.castMode === 'ultimate',
             plan.castMode === 'normal',
+            allowEcho,
           );
           executedSpecs.push(executed);
         }
@@ -5930,6 +5935,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     repeatPowerScale: number,
     stackPersistentForms = false,
     researchEligible = true,
+    allowEcho = false,
   ): SpellSpec {
     const { spec: baseSpec, tuning } = behavior;
     const priorUsages = this.spellHistory.allBehaviorUsages;
@@ -5981,6 +5987,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       },
     };
     this.applySpellEffect(spec, undefined, false, 0, options);
+    if (allowEcho) this.scheduleSpellEcho(spec);
     return spec;
   }
 
