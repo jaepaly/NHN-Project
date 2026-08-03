@@ -774,7 +774,7 @@ export class ProtoScene extends Phaser.Scene {
         ),
         this.engraveRewardRand,
       );
-      return this.combatRunController.state.chorusAvailable
+      return this.combatRunController.state.chorusAvailable && Object.keys(this.awakenings).length === 0
         ? this.injectChorusAwakenOption(evolved, roomIndex)
         : evolved;
     },
