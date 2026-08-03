@@ -4,6 +4,7 @@ export const ELEMENTAL_CHORUS = {
   affinityThreshold: 0.3,
   entryAffinity: 0.15,
   useAffinityPerCast: 0.01,
+  rewardAffinityBonus: 0.03,
   affinityCap: 0.3,
   stages: [0.15, 0.23, 0.3] as const,
   projectileCounts: [1, 3, 5] as const,

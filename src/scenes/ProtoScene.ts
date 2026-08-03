@@ -721,11 +721,11 @@ export class ProtoScene extends Phaser.Scene {
       // 들어가도 일반 전투방 보상이 나왔다(총괄 제보).
       const roomless = this.rewardlessNodeKind();
       if (roomless === 'treasure') {
-        return drawTreasureReward(
+        return this.rewriteChorusAffinityRewards(drawTreasureReward(
           roomIndex,
           this.combatRunController.state.maxRooms,
           this.engraveRewardRand,
-        );
+        ));
       }
       if (roomless === 'altar') {
         // 대가와 보상이 한 장에 붙은 거래 카드 + 거절 카드 (#214 재설계)
@@ -740,8 +740,10 @@ export class ProtoScene extends Phaser.Scene {
       const kind = this.mapGraph.current().kind;
       const kindScale = rewardScaleFor(kind).scale;
       const engraved = this.engraveManager.injectReward(
-        drawRewardOptions(roomIndex, this.engraveRewardRand, kindScale)
-          .slice(0, rewardOptionCount(kind)),
+        this.rewriteChorusAffinityRewards(
+          drawRewardOptions(roomIndex, this.engraveRewardRand, kindScale)
+            .slice(0, rewardOptionCount(kind)),
+        ),
         roomIndex,
         this.engraveRewardRand,
       );
@@ -7978,6 +7980,18 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private affinityFor(element: SpellElement): number {
     const state = this.combatRunController.state;
     return affinityForElement(state.elementalAffinity, state.chorusAffinity, element);
+  }
+
+  private rewriteChorusAffinityRewards(options: readonly RewardOption[]): RewardOption[] {
+    if (this.combatRunController.state.chorusAffinity === null) return [...options];
+    return options.map((option) => option.kind !== 'affinity'
+      ? option
+      : {
+        ...option,
+        id: `${option.id}-chorus`,
+        title: '합주 친화',
+        description: `모든 원소 위력 +${Math.round(ELEMENTAL_CHORUS.rewardAffinityBonus * (option.powerScale ?? 1) * 100)}% · 공명 파편을 키운다`,
+      });
   }
 
   private drainBannerQueue(): void {

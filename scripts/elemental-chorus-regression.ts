@@ -34,5 +34,7 @@ assert.equal(chorusStage(state.elementalAffinity, state.chorusAffinity), 3);
 assert.equal(chorusProjectileCount(3), 5);
 assert.ok(ELEMENTAL_CHORUS.projectilePowerScale <= 0.05,
   '공명 파편은 단일 전문 빌드의 상위 화력이 되지 않는 보조 피해');
+assert.ok(ELEMENTAL_CHORUS.rewardAffinityBonus <= 0.03,
+  '합주 친화 카드는 한 장으로 최대 단계에 도달하지 않는 소량 성장');
 
 console.log('elemental chorus regression: 개화·공통성장·단계·저피해 파편 통과');

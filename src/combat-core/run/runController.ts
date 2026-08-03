@@ -330,7 +330,7 @@ export class CombatRunController implements RunController {
         if (!reward.element) return;
         if (this.chorusAffinity !== null) {
           this.chorusAffinity = roundedChorusAffinity(
-            this.chorusAffinity + RUN_REWARD_CONFIG.affinityBonus * scale,
+            this.chorusAffinity + ELEMENTAL_CHORUS.rewardAffinityBonus * scale,
           );
           break;
         }
