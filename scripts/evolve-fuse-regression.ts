@@ -130,18 +130,18 @@ assert.equal(dual.slotCount(), 1, '융합체는 한 슬롯을 비워 새 정령�
   const triple = dual.fuse(tripleCandidate!.spiritIds, '삼원 성운');
   assert.deepEqual(triple?.elements, ['fire', 'lightning', 'ice'], '세 원소 융합체가 모든 흡수 원소를 보존한다');
 
-  const pulses = dual.update(spiritInterval('attack', 3));
+  const pulses = dual.update(spiritInterval('attack', 1));
   assert.equal(pulses[0].kind, 'attack');
   if (pulses[0].kind !== 'attack') throw new Error('expected attack pulse');
-  assert.equal(pulses[0].spell.element_secondary, 'lightning', '이중 원소 시전');
+  assert.equal(pulses[0].spell.element_secondary, null, '원소별 순차 발사를 위해 한 번에 하나의 원소만 시전');
   assert.equal(pulses[0].spell.size, 'huge', '융합 시전은 huge');
   assert.equal(pulses[0].spell.name, '삼원 성운', '재융합 격상명 반영');
   assert.equal(
     pulses[0].spell.power,
-    spiritAttackPower(3) * 2,
-    '세 원소 융합은 다원소 보정으로 위력이 상승한다',
+    spiritAttackPower(1) * 2 / 3,
+    '세 원소 융합은 두 슬롯 예산을 원소 수만큼 나눠 순차 발사한다',
   );
-  assert.ok(pulses[0].spell.status.length >= 2, '두 원소 상태이상 결합');
+  assert.ok(pulses[0].spell.status.length >= 1, '각 순차 발사는 자기 원소 상태이상을 적용');
 }
 
 // 3) 진화 카드 생성·주입 — 정적 카드만 치환하고 성장 카드는 보존한다.

@@ -36,7 +36,7 @@ const makeController = () => new CombatRunController({ playerState: new PlayerCo
   assert.equal(spirits.entries.length, 2);
   const fusion = spirits.entries.find(entry => entry.fused);
   assert.deepEqual(fusion?.elements, ['fire', 'ice']);
-  assert.equal(fusion?.level, 3, 'fused spirit uses the actual fusion upgrade level');
+  assert.equal(fusion?.level, 1, 'fused spirit does not have a separate evolution level');
   assert.equal(spirits.entries.find(entry => entry.element === 'lightning')?.level, 1);
 }
 

@@ -167,11 +167,7 @@ export function applyDemoLoadout(
     }
     engraveManager.evolve(entry.key, entry.evolvedName);
   }
-  for (const spirit of DEMO_SPIRITS) {
-    for (let level = 1; level <= spirit.level; level += 1) {
-      spiritManager.applyReward(spiritCard(spirit.element, level));
-    }
-  }
+  for (const spirit of DEMO_SPIRITS) spiritManager.applyReward(spiritCard(spirit.element, 1));
   affinitySink.seedAffinity(DEMO_AFFINITY);
 }
 

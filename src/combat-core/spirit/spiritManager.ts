@@ -5,21 +5,21 @@ import { ELEMENT_LABELS } from '../../render/palette';
 
 export const SPIRIT_CONFIG = {
   maxSlots: 2,
-  maxLevel: 3,
+  maxLevel: 1,
   attackBasePower: 50,
   /** 공격 정령 한 슬롯은 수동 지속 DPS의 7.5%를 사용한다. */
   attackPowerScale: 0.15,
-  attackIntervals: [6, 4.5, 4.5],
+  attackIntervals: [6, 6, 6],
   /**
    * 레벨별 DPS 성장 (총괄 결정 2026-07-22) — 정령 투자가 실제 화력이 되게.
    * Lv1은 기본 게이트(오토 40%) 그대로, 강화할수록 오토 비중이 올라간다.
    * 풀투자(2정령 Lv3 + 신속 하한 0.5) = 각인 25% + 정령 15%×1.4×2 = 오토 ~67%
    * — 어떤 빌드로도 수동 기본(100%)은 넘지 않는다(새 불변식, 회귀 고정).
    */
-  levelDpsGrowth: [1, 1.2, 1.4],
-  utilityIntervals: [8, 7, 6],
-  healAmounts: [10, 15, 22],
-  guardAmounts: [12, 18, 26],
+  levelDpsGrowth: [1, 1, 1],
+  utilityIntervals: [8, 8, 8],
+  healAmounts: [10, 10, 10],
+  guardAmounts: [12, 12, 12],
 } as const;
 
 export type SpiritLevel = GrowthLevel;
@@ -84,6 +84,10 @@ const ELEMENT_STATUSES: Record<SpellElement, SpellStatus[]> = {
   dark: ['weaken'],
 };
 
+export function spiritElementStatuses(element: SpellElement): SpellStatus[] {
+  return [...ELEMENT_STATUSES[element]];
+}
+
 const DEFINITIONS: readonly SpiritDefinition[] = [
   ...ELEMENTS.map((element) => ({
     spiritId: `attack-${element}`,
@@ -124,18 +128,7 @@ export class SpiritManager {
     const definition = DEFINITIONS.find((entry) => entry.spiritId === option.spirit?.spiritId);
     if (!definition || definition.role !== option.spirit.role) return null;
 
-    const existing = this.slots.find((slot) => slot.spiritId === definition.spiritId);
-    if (existing) {
-      const expected = Math.min(SPIRIT_CONFIG.maxLevel, existing.level + 1);
-      if (existing.level >= SPIRIT_CONFIG.maxLevel || option.spirit.level !== expected) return null;
-      existing.level = expected as SpiritLevel;
-      existing.remainingSeconds = Math.min(
-        existing.remainingSeconds,
-        intervalFor(existing) * this.hasteMultiplier,
-      );
-      return snapshot(existing);
-    }
-
+    if (this.slots.some((slot) => slot.spiritId === definition.spiritId)) return null;
     if (option.spirit.level !== 1 || this.slotCount() >= SPIRIT_CONFIG.maxSlots) return null;
     const created: SpiritState = {
       ...definition,
@@ -183,8 +176,8 @@ export class SpiritManager {
       element: elements[0],
       elementSecondary: elements[1],
       elements,
-      level: SPIRIT_CONFIG.maxLevel as SpiritLevel,
-      remainingSeconds: spiritInterval('attack', SPIRIT_CONFIG.maxLevel as SpiritLevel)
+      level: 1,
+      remainingSeconds: spiritInterval('attack', 1)
         * this.hasteMultiplier,
       slotWeight: 1,
       fusedName: name,
@@ -244,14 +237,6 @@ export class SpiritManager {
         }
       }
     }
-    for (const slot of this.slots) {
-      if (slot.level < SPIRIT_CONFIG.maxLevel) {
-        candidates.push({
-          definition: slot,
-          level: (slot.level + 1) as SpiritLevel,
-        });
-      }
-    }
     if (candidates.length === 0) return null;
 
     const { definition, level } = candidates[randomIndex(candidates.length, rand)];
@@ -259,7 +244,7 @@ export class SpiritManager {
     return {
       id: `room-${roomIndex}-spirit-${definition.spiritId}-lv${level}`,
       kind: 'spirit',
-      title: spiritTitle(definition, level),
+      title: spiritTitle(definition),
       description: spiritDescription(definition, level),
       element,
       spirit: {
@@ -317,39 +302,31 @@ function attackSpell(
   level: SpiritLevel,
   state?: Pick<SpiritState, 'elementSecondary' | 'elements' | 'fusedName' | 'slotWeight'>,
 ): SpellSpec {
-  const evolved = level >= 2;
   const fusedElements = state?.elements ?? (state?.elementSecondary ? [element, state.elementSecondary] : [element]);
-  const fusedSecondary = fusedElements[1] ?? null;
-  const size: SpellSize = fusedSecondary
+  const fused = fusedElements.length > 1;
+  const size: SpellSize = fused
     ? 'huge' // 융합체는 격상의 시각적 정점
     : level === 1 ? 'small' : level === 2 ? 'medium' : 'large';
-  const status = level >= 3 ? [...ELEMENT_STATUSES[element]] : [];
-  if (fusedElements.length > 1) {
-    for (const fusedElement of fusedElements.slice(1)) for (const extra of ELEMENT_STATUSES[fusedElement]) {
-      if (!status.includes(extra) && status.length < 3) status.push(extra);
-    }
-  }
+  const status = spiritElementStatuses(element);
   return {
     name: state?.fusedName ?? `${ELEMENT_LABELS[element]} 정령 Lv${level}`,
     effect: 'damage',
-    target: evolved && ['nova', 'wave', 'zone', 'rain'].includes(ELEMENT_FORMS[element])
-      ? 'area'
-      : 'enemy',
+    target: 'enemy',
     element_primary: element,
-    element_secondary: fusedSecondary,
-    form: evolved ? ELEMENT_FORMS[element] : 'bolt',
+    element_secondary: null,
+    form: 'bolt',
     size,
     speed: element === 'wind' || element === 'lightning' ? 'fast' : 'normal',
     status,
     // 융합체는 소모한 슬롯 수만큼의 power 예산을 쓴다 (2슬롯 → ×2, 총합은 불변)
-    power: spiritAttackPower(level) * (1 + (fusedElements.length - 1) * 0.5),
+    power: spiritAttackPower(1) * (fused ? 2 / fusedElements.length : 1),
     cost: 0,
     flavor: '정령의 자동 시전은 마나·쿨다운·주문 기억을 사용하지 않는다.',
   };
 }
 
-function spiritTitle(definition: SpiritDefinition, level: SpiritLevel): string {
-  const prefix = level === 1 ? '정령 계약' : '정령 진화';
+function spiritTitle(definition: SpiritDefinition): string {
+  const prefix = '정령 계약';
   if (definition.role === 'heal') return `${prefix} · 치유`;
   if (definition.role === 'guard') return `${prefix} · 수호`;
   return `${prefix} · ${ELEMENT_LABELS[definition.element ?? 'light']}`;

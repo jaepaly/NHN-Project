@@ -208,7 +208,7 @@ import type {
 import { drawRewardOptions, RUN_REWARD_CONFIG } from '../combat-core/run/rewardConfig';
 import { AFFINITY_ROWS, affinityHudRows, rankAffinities } from '../combat-core/run/useAffinity';
 import { ENGRAVE_CONFIG, EngraveManager } from '../combat-core/engrave/engraveManager';
-import { SpiritManager } from '../combat-core/spirit/spiritManager';
+import { SpiritManager, spiritElementStatuses } from '../combat-core/spirit/spiritManager';
 import {
   resolveSelfBuff, SELF_BUFF_CONFIG, formatSelfBuffStatus, selfBuffColor,
 } from '../combat-core/player/selfBuffConfig';
@@ -6828,7 +6828,22 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const origin = view
           ? new Phaser.Math.Vector2(view.x, view.y)
           : new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
-        this.applySpellEffect(request.spell, origin, true, 1, { decorVfxScale: 1.15 });
+        const elements = this.spiritManager.entries.find((entry) => entry.spiritId === request.spiritId)?.elements
+          ?? [request.spell.element_primary];
+        elements.forEach((element, elementIndex) => {
+          const cast = (): void => {
+            if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
+            this.applySpellEffect({
+              ...request.spell,
+              name: `${request.spell.name} · ${ELEMENT_LABELS[element]}`,
+              element_primary: element,
+              element_secondary: null,
+              status: spiritElementStatuses(element),
+            }, origin, true, 1, { decorVfxScale: elementIndex === 0 ? 1.15 : 0.95 });
+          };
+          if (elementIndex === 0) cast();
+          else this.time.delayedCall(elementIndex * 420, cast);
+        });
         // 융합 정령은 보조 속성을 정보로만 들고 있지 않는다. 짧은 박자 뒤 다른 원소탄을
         // 실제로 한 번 더 날려, 불+얼음처럼 두 속성이 눈과 판정 모두에서 읽히게 한다.
         if (request.spell.element_secondary) {
@@ -7804,10 +7819,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
 
       // 레벨 3핍 — 채워진 길이로 읽힌다 ("Lv2" 4글자를 대체)
-      const pipW = (BUILD_CHIP.size - 10) / 3;
-      for (let p = 0; p < 3; p += 1) {
-        g.fillStyle(p < chip.level ? core : 0xffffff, p < chip.level ? 0.95 : 0.16);
-        g.fillRect(x - half + 5 + p * pipW, y + half - 4, pipW - 1.5, 2);
+      if (chip.kind === 'engrave') {
+        const pipW = (BUILD_CHIP.size - 10) / 3;
+        for (let p = 0; p < 3; p += 1) {
+          g.fillStyle(p < chip.level ? core : 0xffffff, p < chip.level ? 0.95 : 0.16);
+          g.fillRect(x - half + 5 + p * pipW, y + half - 4, pipW - 1.5, 2);
+        }
       }
 
       // 각성 표식 — 진화(금테)와 **다른 축**이라 자리도 색도 다르게 둔다.
