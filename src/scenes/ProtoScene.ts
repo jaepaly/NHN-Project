@@ -93,6 +93,7 @@ import { bandAffordances, reachableBand } from '../run/incantBands';
 import { drawTreasureReward } from '../combat-core/run/treasureRewardConfig';
 import { ALTAR_OFFER_CONFIG, drawAltarOffer, drawHighAltarOptions } from '../combat-core/run/altarOffer';
 import { inheritCandidates, mutateInheritedAffinity } from '../combat-core/run/runInheritance';
+import { chorusElements, chorusProjectileCount, chorusStage } from '../combat-core/run/elementalChorus';
 import type { AltarTierKind } from '../combat-core/run/altarOffer';
 import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomRewardScale';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
@@ -659,6 +660,7 @@ export class ProtoScene extends Phaser.Scene {
   private starburstUnlocked = false;
   private meteorUnlocked = false;
   private trailUnlocked = false;
+  private elementalChorusStage: 0 | 1 | 2 | 3 = 0;
   /** 파문 — 수동 영창이 다른 적에게 번진다 (제단 최상위, 에코와 같은 급) */
   private rippleUnlocked = false;
   /** 이 런에서 산 제단 등급 — 같은 것을 두 번 사면 최대 체력만 날린다 */
@@ -1471,6 +1473,7 @@ export class ProtoScene extends Phaser.Scene {
               + ALTAR_OFFER_CONFIG.allAffinityBonus;
           }
           this.combatRunController.seedAffinity(raised);
+          this.syncElementalChorus();
           this.announceSystemMessage('모든 원소가 함께 깊어졌다', '#8fe3c8', 2600);
           return;
         }
@@ -1742,6 +1745,7 @@ export class ProtoScene extends Phaser.Scene {
         this.player.x,
         this.player.y,
       );
+      this.syncElementalChorus();
       return;
     }
     if (selection.id === 'ward-study') {
@@ -2119,6 +2123,7 @@ export class ProtoScene extends Phaser.Scene {
     this.starburstUnlocked = false;
     this.meteorUnlocked = false;
     this.trailUnlocked = false;
+    this.elementalChorusStage = 0;
     this.rippleUnlocked = false;
     this.altarAwakeningSelecting = false;
     this.altarHighSelecting = false;
@@ -2168,6 +2173,7 @@ export class ProtoScene extends Phaser.Scene {
     this.starburstUnlocked = false;
     this.meteorUnlocked = false;
     this.trailUnlocked = false;
+    this.elementalChorusStage = 0;
     this.rippleUnlocked = false;
     this.altarAwakeningSelecting = false;
     this.altarHighSelecting = false;
@@ -2199,6 +2205,7 @@ export class ProtoScene extends Phaser.Scene {
     this.starburstUnlocked = false;
     this.meteorUnlocked = false;
     this.trailUnlocked = false;
+    this.elementalChorusStage = 0;
     this.rippleUnlocked = false;
     this.altarAwakeningSelecting = false;
     this.altarHighSelecting = false;
@@ -5639,6 +5646,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const affinityGrowth = this.combatRunController.growAffinityFromUse(spec.element_primary);
       if (affinityGrowth.added > 0) {
         this.showAffinityGrowthFloat(spec.element_primary, affinityGrowth.total);
+        this.syncElementalChorus();
       }
       const affinityBonus = this.combatRunController.state
         .elementalAffinity[spec.element_primary] ?? 0;
@@ -5767,6 +5775,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.scheduleSpellEcho(effectiveSpec);
       this.scheduleSpellRipple(effectiveSpec);
       this.scheduleHighAltarFlourishes(effectiveSpec);
+      this.scheduleElementalChorus(effectiveSpec);
       this.playerState.startCastLock(); // 신속 영창 감소분 반영된 입력락
       this.playCastFlare();
     } finally {
@@ -5857,6 +5866,40 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const t = i / 4;
         fire(170 + i * 120, 0.35, Phaser.Math.Linear(this.player.x, target.x, t), Phaser.Math.Linear(this.player.y, target.y, t), 'zone');
       }
+    }
+  }
+
+  private syncElementalChorus(): void {
+    const next = chorusStage(this.combatRunController.state.elementalAffinity);
+    if (next <= this.elementalChorusStage) return;
+    this.elementalChorusStage = next;
+    const active = chorusElements(this.combatRunController.state.elementalAffinity);
+    this.announceBanner({
+      title: `원소 합주 ${next}단계`,
+      lines: [`친화 원소 ${active.length}개 · 수동 영창 뒤 공명 파편 ${chorusProjectileCount(next)}발`],
+      color: 0x8fe3c8,
+      holdMs: 3000,
+    });
+  }
+
+  private scheduleElementalChorus(spec: SpellSpec): void {
+    const affinity = this.combatRunController.state.elementalAffinity;
+    const stage = chorusStage(affinity);
+    if (stage === 0) return;
+    const elements = chorusElements(affinity).filter((element) => element !== spec.element_primary);
+    const target = this.nearestEnemy();
+    if (!target || elements.length === 0) return;
+    const count = chorusProjectileCount(stage);
+    for (let i = 0; i < count; i += 1) {
+      const element = elements[i % elements.length];
+      this.time.delayedCall(120 + i * 85, () => {
+        if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
+        this.applySpellEffect(
+          { ...spec, element_primary: element, power: Math.max(1, Math.round(spec.power * 0.22)) },
+          new Phaser.Math.Vector2(target.x, target.y), false, 2, { decorVfxScale: 0.38 },
+        );
+        this.audio.playCast(element);
+      });
     }
   }
 
