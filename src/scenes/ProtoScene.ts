@@ -5905,8 +5905,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           const x = (1 - t) ** 2 * fromX + 2 * (1 - t) * t * controlX + t ** 2 * toX;
           const y = (1 - t) ** 2 * fromY + 2 * (1 - t) * t * controlY + t ** 2 * toY;
           orb.setPosition(x, y);
-          trail.clear().lineStyle(2.5, color, 0.62).beginPath().moveTo(fromX, fromY)
-            .quadraticBezierTo(controlX, controlY, x, y).strokePath();
+          trail.clear().lineStyle(2.5, color, 0.62).beginPath().moveTo(fromX, fromY);
+          for (let sample = 1; sample <= 10; sample += 1) {
+            const u = t * sample / 10;
+            trail.lineTo(
+              (1 - u) ** 2 * fromX + 2 * (1 - u) * u * controlX + u ** 2 * toX,
+              (1 - u) ** 2 * fromY + 2 * (1 - u) * u * controlY + u ** 2 * toY,
+            );
+          }
+          trail.strokePath();
         },
         onComplete: () => { orb.destroy(); trail.destroy(); },
       });
