@@ -69,14 +69,22 @@ ${ornamentCss(WRAP_ID)}
 `;
 
 export type BossChoice = 'end' | 'continue';
+export type DemoCompletionChoice = 'start-real' | 'title';
 
-interface ChoiceCard {
-  choice: BossChoice;
+interface ChoiceCard<T extends string> {
+  choice: T;
   hotkey: string;
   title: string;
   desc: string;
   core: string;
   glow: string;
+}
+
+interface ChoiceOverlayCopy {
+  kicker: string;
+  title: string;
+  sub: string;
+  hint: string;
 }
 
 function ensureDom(): HTMLElement {
@@ -105,21 +113,11 @@ function escapeText(text: string): string {
  * 보스 후 선택을 연다.
  * @param nextLoop 이어가면 진입할 루프 번호 (표시용) · @param nextDamagePct 다음 루프 적 피해 배율(%)
  */
-export function showBossChoice(nextLoop: number, nextDamagePct: number): Promise<BossChoice> {
+function showChoiceOverlay<T extends string>(
+  copy: ChoiceOverlayCopy,
+  cards: readonly ChoiceCard<T>[],
+): Promise<T> {
   const wrap = ensureDom();
-  const cards: ChoiceCard[] = [
-    {
-      choice: 'end', hotkey: '1', title: '여기서 마친다',
-      desc: '이번 여정을 갈무리하고 시작 화면으로. 얻은 유산은 이미 안전하다.',
-      core: UI_COLOR.positive, glow: '#3f7a5f',
-    },
-    {
-      choice: 'continue', hotkey: '2', title: '더 깊이 간다',
-      desc: `빌드 그대로 다음 순환으로 — 적 피해 ×${(nextDamagePct / 100).toFixed(1)}. `
-        + '더 강해지지만, 여기서 쓰러지면 이번에 더 벌 것을 잃는다.',
-      core: '#c9b0d8', glow: '#6b4a86',
-    },
-  ];
 
   wrap.innerHTML = `
     <div class="ui-panel bc-panel">
@@ -127,10 +125,10 @@ export function showBossChoice(nextLoop: number, nextDamagePct: number): Promise
       ${cornerFlourish().replace('orn-corner', 'orn-corner tr')}
       ${cornerFlourish().replace('orn-corner', 'orn-corner bl')}
       ${cornerFlourish().replace('orn-corner', 'orn-corner br')}
-      <div class="bc-kicker">BOSS FELLED</div>
-      <div class="bc-title">${nextLoop > 1 ? `${nextLoop - 1}순환 돌파` : '기억의 보스를 넘었다'}</div>
+      <div class="bc-kicker">${escapeText(copy.kicker)}</div>
+      <div class="bc-title">${escapeText(copy.title)}</div>
       ${divider()}
-      <div class="bc-sub">유산은 은행에 새겨졌다. 이대로 마칠 것인가, 더 깊이 밀어붙일 것인가.</div>
+      <div class="bc-sub">${escapeText(copy.sub)}</div>
       <div class="bc-cards">
         ${cards.map((c) => `
           <div class="bc-card" data-choice="${c.choice}" style="--bc-core:${c.core};--bc-glow:${c.glow}">
@@ -139,26 +137,76 @@ export function showBossChoice(nextLoop: number, nextDamagePct: number): Promise
             <div class="bc-card-desc">${escapeText(c.desc)}</div>
           </div>`).join('')}
       </div>
-      <div class="bc-hint"><b>1</b> 마치기 · <b>2</b> 이어가기 · 클릭</div>
+      <div class="bc-hint">${copy.hint}</div>
     </div>`;
 
-  return new Promise<BossChoice>((resolve) => {
-    const finish = (choice: BossChoice): void => {
+  return new Promise<T>((resolve) => {
+    const finish = (choice: T): void => {
       window.removeEventListener('keydown', onKey, true);
       wrap.classList.remove('active');
       wrap.setAttribute('aria-hidden', 'true');
       resolve(choice);
     };
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === '1') { event.preventDefault(); event.stopImmediatePropagation(); finish('end'); }
-      else if (event.key === '2') { event.preventDefault(); event.stopImmediatePropagation(); finish('continue'); }
+      const selected = cards.find((card) => card.hotkey === event.key);
+      if (!selected) return;
+      event.preventDefault(); event.stopImmediatePropagation(); finish(selected.choice);
     };
     wrap.querySelectorAll<HTMLElement>('.bc-card').forEach((el) => {
-      el.addEventListener('click', () => finish(el.dataset.choice as BossChoice));
+      el.addEventListener('click', () => finish(el.dataset.choice as T));
     });
     window.addEventListener('keydown', onKey, true);
     void wrap.offsetWidth;
     wrap.classList.add('active');
     wrap.setAttribute('aria-hidden', 'false');
   });
+}
+
+/** 보스 후 선택 — 저장된 런을 갈무리하거나 다음 순환으로 이어간다. */
+export function showBossChoice(nextLoop: number, nextDamagePct: number): Promise<BossChoice> {
+  return showChoiceOverlay<BossChoice>(
+    {
+      kicker: 'BOSS FELLED',
+      title: nextLoop > 1 ? `${nextLoop - 1}순환 돌파` : '기억의 보스를 넘었다',
+      sub: '유산은 은행에 새겨졌다. 이대로 마칠 것인가, 더 깊이 밀어붙일 것인가.',
+      hint: '<b>1</b> 마치기 · <b>2</b> 이어가기 · 클릭',
+    },
+    [
+      {
+        choice: 'end', hotkey: '1', title: '여기서 마친다',
+        desc: '이번 여정을 갈무리하고 시작 화면으로. 얻은 유산은 이미 안전하다.',
+        core: UI_COLOR.positive, glow: '#3f7a5f',
+      },
+      {
+        choice: 'continue', hotkey: '2', title: '더 깊이 간다',
+        desc: `빌드 그대로 다음 순환으로 — 적 피해 ×${(nextDamagePct / 100).toFixed(1)}. `
+          + '더 강해지지만, 여기서 쓰러지면 이번에 더 벌 것을 잃는다.',
+        core: '#c9b0d8', glow: '#6b4a86',
+      },
+    ],
+  );
+}
+
+/** 시연 런 완주 — 프리셋 빌드의 체험을 정식 런의 루프·메타 보상과 분리한다. */
+export function showDemoCompletionChoice(): Promise<DemoCompletionChoice> {
+  return showChoiceOverlay<DemoCompletionChoice>(
+    {
+      kicker: 'TRIAL COMPLETE',
+      title: '체험 완료',
+      sub: '각성한 영창가의 힘은 체험이었다. 이제 당신만의 영창으로 첫 기억을 시작하라.',
+      hint: '<b>1</b> 정식 런 시작 · <b>2</b> 타이틀로 · 클릭',
+    },
+    [
+      {
+        choice: 'start-real', hotkey: '1', title: '정식 런 시작',
+        desc: '체험 보상은 남지 않는다. 처음부터 당신만의 영창과 빌드를 만들어 간다.',
+        core: UI_COLOR.positive, glow: '#3f7a5f',
+      },
+      {
+        choice: 'title', hotkey: '2', title: '타이틀로',
+        desc: '다른 각성한 영창가를 체험하거나, 시작 화면에서 새 여정을 고른다.',
+        core: UI_COLOR.textSoft, glow: UI_COLOR.borderStrong,
+      },
+    ],
+  );
 }
