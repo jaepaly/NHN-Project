@@ -87,6 +87,12 @@ ${ornamentCss(WRAP_ID)}
   font-size: 11px; font-weight: 700; color: #0a0e22;
   background: var(--tile-core); border-radius: 999px; padding: 0 5px;
 }
+#${WRAP_ID} .codex-converted {
+  position: absolute; left: 6px; right: 6px; bottom: 5px;
+  padding: 2px 3px; border-radius: 4px;
+  background: rgba(24, 56, 48, 0.92); color: #9fe5c3;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+}
 #${WRAP_ID} .codex-detail {
   margin-top: 16px; padding: 14px 16px; min-height: 62px;
   border-top: 1px solid rgba(58, 74, 143, 0.4);
@@ -96,12 +102,13 @@ ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .codex-detail-flavor { margin-top: 3px; font-size: 14px; color: #8a93bd; font-style: italic; }
 #${WRAP_ID} .codex-detail-meta { margin-top: 4px; font-size: 13px; color: #6f7aa8; }
 #${WRAP_ID} .codex-sell {
-  margin-top: 10px; font: inherit; font-size: 14px; cursor: pointer;
-  padding: 7px 12px; border-radius: 6px;
+  font: inherit; font-size: 17px; font-weight: 800; cursor: pointer;
+  padding: 11px 18px; border-radius: 8px;
   border: 1px solid #937747; background: rgba(104, 78, 34, 0.26); color: #ffe0a0;
 }
 #${WRAP_ID} .codex-sell:hover { border-color: #ffd166; background: rgba(164, 123, 43, 0.38); }
 #${WRAP_ID} .codex-sold { margin-top: 9px; font-size: 13px; color: #7981a4; }
+#${WRAP_ID} .codex-detail-action { display: flex; justify-content: flex-end; margin-top: 14px; }
 #${WRAP_ID} .codex-tokens { margin-left: auto; font-size: 14px; color: #ffd166; white-space: nowrap; }
 #${WRAP_ID} .codex-detail-hint { font-size: 14px; color: ${UI_COLOR.textMuted}; text-align: center; }
 #${WRAP_ID} .codex-empty {
@@ -176,8 +183,9 @@ export function showCodexOverlay(
   let sortMode: CodexSortMode = 'recent';
   let currentEntries = [...entries];
   let tokenBalance = options.tokenBalance ?? 0;
+  let selectedEntry: CodexEntry | undefined;
 
-  const render = (selectedEntry?: CodexEntry): void => {
+  const render = (): void => {
     const sorted = sortCodex(currentEntries, sortMode);
     const sortButtons = (Object.keys(SORT_LABELS) as CodexSortMode[]).map((m) => (
       `<button class="codex-sortbtn${m === sortMode ? ' active' : ''}" data-sort="${m}">${SORT_LABELS[m]}</button>`
@@ -189,11 +197,15 @@ export function showCodexOverlay(
       : sorted.map((entry, i) => {
         const { core, glow } = tileColors(entry);
         const count = entry.castCount > 1 ? `<span class="codex-count">×${entry.castCount}</span>` : '';
-        return `<button class="codex-tile" data-idx="${i}" style="--tile-core:${core};--tile-glow:${glow}">
+        const converted = Boolean(options.onSell) && !isCodexEntrySellable(entry);
+        const selected = selectedEntry?.name === entry.name && selectedEntry.firstCastAt === entry.firstCastAt;
+        const convertedMark = converted ? '<span class="codex-converted">연구 전환 완료</span>' : '';
+        return `<button class="codex-tile${selected ? ' selected' : ''}" data-idx="${i}" style="--tile-core:${core};--tile-glow:${glow}">
           ${count}
           <div class="codex-icon">${glyphSvg(entry.form)}</div>
           <div class="codex-tile-name">${escapeHtml(entry.name)}</div>
           <div class="codex-tile-pow">위력 ${entry.power}</div>
+          ${convertedMark}
         </button>`;
       }).join('');
 
@@ -210,7 +222,7 @@ export function showCodexOverlay(
       </div>
       <div class="codex-sortbar">${currentEntries.length > 0 ? sortButtons : ''}</div>
       <div class="codex-grid">${tiles}</div>
-      <div class="codex-detail"><div class="codex-detail-hint">타일에 커서를 올리면 상세가 나타난다</div></div>
+      <div class="codex-detail"><div class="codex-detail-hint">타일을 클릭해 주문을 선택하세요</div></div>
       <div class="codex-foot"><b>ESC</b> 또는 바깥을 클릭해 닫기</div>
     `;
 
@@ -230,7 +242,7 @@ export function showCodexOverlay(
         <div class="codex-detail-sum">${escapeHtml(entry.summary)}</div>
         ${flavor}
         <div class="codex-detail-meta">${escapeHtml(metaLine(entry))}</div>
-        ${saleControl}`;
+        <div class="codex-detail-action">${saleControl}</div>`;
       detail.querySelector<HTMLButtonElement>('.codex-sell')?.addEventListener('click', () => {
         const result = options.onSell?.(entry);
         if (!result || result.amount <= 0) return;
@@ -239,19 +251,27 @@ export function showCodexOverlay(
         const updated = currentEntries.find((candidate) => (
           candidate.name === entry.name && candidate.firstCastAt === entry.firstCastAt
         ));
-        render(updated);
+        selectedEntry = updated;
+        render();
       });
     };
     panel.querySelectorAll<HTMLElement>('.codex-tile').forEach((el) => {
       const entry = sorted[Number(el.dataset.idx)];
-      el.addEventListener('mouseenter', () => showDetail(entry));
       el.addEventListener('focus', () => showDetail(entry));
-      el.addEventListener('click', () => showDetail(entry));
+      el.addEventListener('click', () => {
+        selectedEntry = entry;
+        render();
+      });
     });
     panel.querySelectorAll<HTMLElement>('.codex-sortbtn').forEach((el) => {
       el.addEventListener('click', () => { sortMode = el.dataset.sort as CodexSortMode; render(); });
     });
-    if (selectedEntry) showDetail(selectedEntry);
+    if (selectedEntry) {
+      const selected = sorted.find((entry) => (
+        entry.name === selectedEntry?.name && entry.firstCastAt === selectedEntry?.firstCastAt
+      ));
+      if (selected) showDetail(selected);
+    }
   };
 
   render();
