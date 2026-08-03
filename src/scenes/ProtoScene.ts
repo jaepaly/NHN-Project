@@ -44,6 +44,8 @@ import { ShooterEnemy } from '../combat-core/enemies/shooterEnemy';
 import { SplitterEnemy } from '../combat-core/enemies/splitterEnemy';
 import { ShieldSentinelEnemy } from '../combat-core/enemies/shieldSentinelEnemy';
 import { EliteEnemy } from '../combat-core/enemies/eliteEnemy';
+import { TrainingDummyEnemy } from '../dev/trainingDummyEnemy';
+import { consumePracticeRunRequest } from '../dev/practiceMode';
 import {
   ACTIVE_MANA_CONFIG,
   crossedBossManaThresholds,
@@ -1020,6 +1022,8 @@ export class ProtoScene extends Phaser.Scene {
   private elementalResearchEchoCharge = 0;
   /** 시연 런("각성한 영창가로 시작")인가 — 유산 선택을 건너뛰는 데 쓴다 */
   private demoRun = false;
+  /** DEV 전용 피해 연습실 — 일반 웨이브·방 진행을 멈추고 허수아비만 유지한다. */
+  private practiceRun = false;
   /** #214 선행 개발 프리뷰 전용 (DEV 콘솔 훅이 생성) — 본 게임 경로 미배선 */
   private devMinimap: MinimapHud | null = null;
   private devPortalField: PortalField | null = null;
@@ -1304,8 +1308,10 @@ export class ProtoScene extends Phaser.Scene {
     this.resetForNewRun();
     // 시연 로드아웃 — 타이틀의 "각성한 영창가로 시작"으로 들어온 경우에만.
     // resetForNewRun 뒤에 심어야 리셋에 지워지지 않는다.
+    const practice = import.meta.env.DEV && consumePracticeRunRequest();
     const demo = consumeDemoRunRequest();
-    if (demo) this.seedDemoRun(demo);
+    if (practice) this.seedPracticeRun();
+    else if (demo) this.seedDemoRun(demo);
     this.prepareRunEscalation();
     const initialRunState = this.combatRunController.state;
     this.logRunStarted('new', initialRunState);
@@ -1398,6 +1404,23 @@ export class ProtoScene extends Phaser.Scene {
     });
   }
 
+  /** 피해 표시를 실제 전투 경로로 반복 확인하는 DEV 전용 시작 상태. */
+  private seedPracticeRun(): void {
+    this.practiceRun = true;
+    this.demoRun = true;
+    applyDemoBuildLoadout('chorus', this.spiritManager, this.combatRunController);
+    // 허수아비가 하나뿐이므로 실제 발사 수와 HUD가 일치하는 합주 1단계로 둔다.
+    // 다중 파편 혼잡도는 일반 런의 다수 적 전투에서 확인한다.
+    this.elementalChorusStage = chorusStage(
+      this.combatRunController.state.elementalAffinity,
+      this.combatRunController.state.chorusAffinity,
+    );
+    this.incantGuide = {
+      title: '피해 표시를 반복 확인하세요',
+      lines: ['· 불길이 허수아비 아래에서 계속 타오른다', '· 얼음 창이 허수아비를 꿰뚫는다'],
+    };
+  }
+
   override update(_time: number, delta: number): void {
     this.checkPlayerDeath();
     this.updateRunElapsed(delta);
@@ -1405,6 +1428,7 @@ export class ProtoScene extends Phaser.Scene {
       // 슬로모션: timeScale을 개체 이동에 직접 곱한다 (프로토 방식)
       const d = (delta / 1000) * this.timeScale;
       this.playerState.update(d);
+      if (this.practiceRun) this.playerState.restoreMana(this.playerState.maxMana);
       this.basicAttackCooldownRemaining = Math.max(0, this.basicAttackCooldownRemaining - d);
       this.updatePlayerMovement(d);
       this.updateRoomCurse(delta / 1000, d);
@@ -2158,6 +2182,7 @@ export class ProtoScene extends Phaser.Scene {
     void this._chooseInheritedAffinity;
     this.deathHandled = false;
     this.demoRun = false;
+    this.practiceRun = false;
     this.runElapsedMs = 0;
     this.continueRunResearchTracking();
     // 전투 전용 상태만 초기화 (다음 보스가 내성 재계산, 장판·쿨다운은 방 단위)
@@ -2223,6 +2248,7 @@ export class ProtoScene extends Phaser.Scene {
   private resetForNewRun(): void {
     this.deathHandled = false;
     this.demoRun = false;
+    this.practiceRun = false;
     this.runElapsedMs = 0;
     this.pendingRunStartReason = null;
     this.resetRunResearchTracking();
@@ -2259,6 +2285,7 @@ export class ProtoScene extends Phaser.Scene {
   private restartRun(): void {
     this.deathHandled = false;
     this.demoRun = false;
+    this.practiceRun = false;
     this.runElapsedMs = 0;
     this.resetRunResearchTracking();
     this.fusionGauge.reset();
@@ -2360,12 +2387,16 @@ export class ProtoScene extends Phaser.Scene {
     this.clearCombatRoom();
     this.applyRoomBackdrop(roomIndex);
     this.roomTerrainVariant = Math.floor(Math.random() * 3);
-    this.applyRoomTerrain();
+    if (!this.practiceRun) this.applyRoomTerrain();
     this.basicAttackCooldownRemaining = 0;
     // 방 선택 즉시 전환하므로 물리 포탈의 좌측 도착점은 더 이상 없다.
     // 모든 방을 중앙에서 시작해 선택 직후 전투까지의 이동 공백을 없앤다.
     this.player.setPosition(this.worldBounds.centerX, this.worldBounds.centerY);
     this.cameras.main.centerOn(this.player.x, this.player.y);
+    if (this.practiceRun) {
+      this.startPracticeRoom();
+      return;
+    }
     this.activateRoomCurse(roomIndex);
     if (this.isBossEncounter()) {
       this.startBossRoom(encounter.encounterKind === 'memory-boss');
@@ -2406,6 +2437,23 @@ export class ProtoScene extends Phaser.Scene {
     this.announceSystemMessage(`방 ${roomIndex}`, '#8fa4ff');
     // 첫 방 진입 시, 아직 한 번도 영창해본 적 없는 플레이어에게 조작을 안내한다.
     if (roomIndex === 1) this.maybeShowOnboardingHint();
+  }
+
+  /** DEV 연습실은 방 진행 없이 본 게임 CombatEnemy 계약의 허수아비 하나만 유지한다. */
+  private startPracticeRoom(): void {
+    this.waveManager = new WaveManager([{ chaserCount: 0, shooterCount: 0, splitterCount: 0 }]);
+    this.audio.playBgm('combat');
+    this.enemies.push(new TrainingDummyEnemy(
+      this,
+      this.worldBounds.centerX + 240,
+      this.worldBounds.centerY,
+    ));
+    this.announceBanner({
+      title: '피해 연습실',
+      lines: ['허수아비는 움직이거나 공격하지 않고 천천히 회복한다', '마나는 자동으로 채워진다 · ESC로 나가기'],
+      color: 0x8fe3c8,
+      holdMs: 4200,
+    });
   }
 
   /** 마지막 방 = 보스방 관례 (rewardConfig.maxRooms 참조) */
@@ -7486,6 +7534,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.waveText.setText(withCleanse([roomLine, 'ROOM CLEAR']));
     } else if (runState.phase === 'room-transition') {
       this.waveText.setText(withCleanse([roomLine, `NEXT ROOM ${runState.roomIndex + 1}`]));
+    } else if (this.practiceRun) {
+      this.waveText.setText(withCleanse(['PRACTICE', '고정 표적 · 마나 자동 회복']));
     } else if (this.isBossEncounter()) {
       const boss = this.enemies.find((enemy) => enemy.kind === 'boss');
       // 저항을 상시 노출한다 — 보스 링 색만으로는 "무엇이 안 통하는지" 알 수 없다.
@@ -9587,6 +9637,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private updateManaPotion(deltaSeconds: number): void {
+    if (this.practiceRun) return;
     if (this.roomClearPending) return;
     if (!this.manaPotionSpawnedThisRoom) {
       this.manaPotionSpawnRemaining -= deltaSeconds;
