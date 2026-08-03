@@ -74,9 +74,31 @@ const makeController = () => new CombatRunController({ playerState: new PlayerCo
 {
   const title = readFileSync('src/scenes/TitleScene.ts', 'utf8');
   const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+  const choiceOverlay = readFileSync('src/ui/bossChoiceOverlay.ts', 'utf8');
   assert.ok(title.includes('openDemoBuildChoice'), 'title must open the build picker');
   assert.ok(scene.includes('MAP_GRAPH_BUILD_PRESET'), 'preset run must install its fixed map');
   assert.ok(scene.includes('applyDemoBuildLoadout'), 'scene must apply the selected build');
+  assert.ok(scene.includes('showDemoCompletionChoice'), 'demo completion must use its own exit prompt');
+  assert.ok(scene.includes("if (!isDemoRun) this.persistRunMemory('win');"),
+    'demo victory must not persist meta rewards or grimoire entries');
+  assert.ok(scene.includes('if (this.demoRun) return;'),
+    'demo defeat or abandon must not persist meta rewards either');
+  assert.ok(scene.includes('if (!this.demoRun) this.runResearchTracker.recordRoomCleared'),
+    'demo room clears must not grant insight progress');
+  assert.ok(scene.includes('if (castMode === \'normal\' && !this.demoRun)'),
+    'demo casts must not record discoveries or research progress');
+  const completedAt = scene.indexOf("this.combatRunController.on('run-completed'");
+  const completed = scene.slice(completedAt, completedAt + 2800);
+  assert.ok(completed.indexOf('showDemoCompletionChoice') < completed.indexOf('showBossChoice'),
+    'demo completion must branch before the normal continue-deeper choice');
+  assert.ok(completed.includes("choice === 'start-real') this.scene.restart()"),
+    'the primary demo completion action must start a fresh normal run');
+  const demoChoiceAt = choiceOverlay.indexOf('export function showDemoCompletionChoice');
+  const demoChoice = choiceOverlay.slice(demoChoiceAt, demoChoiceAt + 1600);
+  assert.ok(demoChoice.includes('체험 완료') && demoChoice.includes('정식 런 시작'),
+    'demo completion must explain the trial and point to a real run');
+  assert.ok(!demoChoice.includes('더 깊이 간다'),
+    'demo completion must not expose the normal loop-continuation action');
 }
 
-console.log('demo build preset regression: picker, loadouts, and mandatory altar route passed');
+console.log('demo build preset regression: picker, loadouts, mandatory altar route, and isolated completion flow passed');

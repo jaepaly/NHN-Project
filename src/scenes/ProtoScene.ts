@@ -124,7 +124,7 @@ import { enemyHpScale, loopDamageScale } from '../combat-core/run/loopDifficulty
 import { playerPowerIndex } from '../combat-core/run/playerPower';
 import { formatRunElapsed } from '../combat-core/run/runTimer';
 import { flooredResistMultiplier } from '../combat-core/combat/debuffFloor';
-import { showBossChoice } from '../ui/bossChoiceOverlay';
+import { showBossChoice, showDemoCompletionChoice } from '../ui/bossChoiceOverlay';
 import { showSystemBanner } from '../render/systemBanner';
 import { bossResistanceLines, bossResistanceReadout } from '../render/bossResistanceReadout';
 import { playAwakeningBrandMark, playAwakeningSigil } from '../render/awakeningSigil';
@@ -1478,7 +1478,7 @@ export class ProtoScene extends Phaser.Scene {
     this.runFlowBound = true;
     this.combatRunController.on('room-cleared', (options, state) => {
       const clearedNode = this.mapGraph.current();
-      this.runResearchTracker.recordRoomCleared(clearedNode.id, clearedNode.kind);
+      if (!this.demoRun) this.runResearchTracker.recordRoomCleared(clearedNode.id, clearedNode.kind);
       this.audio.playSfx('room-clear');
       // 포탈/보상 선택 구간은 안전 상태여야 한다. 다음 방 시작까지 함정 판정과
       // 저주 연출을 남겨 두면 출구 접근을 방해하거나 전투 종료 뒤에도 피해처럼 보인다.
@@ -1612,8 +1612,9 @@ export class ProtoScene extends Phaser.Scene {
       // 플레이어 사망이 먼저 확정된 동시 확정 레이스(사망 후 장판 틱이 보스 처치 등)
       // — 패배가 선점: 기억 저장·승리 연출 모두 생략해 한 런에 lose/win 이중 기록을 막는다
       if (this.deathHandled) return;
+      const isDemoRun = this.demoRun;
       const finalNode = this.mapGraph.current();
-      this.runResearchTracker.recordRoomCleared(finalNode.id, finalNode.kind);
+      if (!isDemoRun) this.runResearchTracker.recordRoomCleared(finalNode.id, finalNode.kind);
       this.audio.playSfx('run-complete');
       if (import.meta.env.DEV) {
         void postPlayLog({
@@ -1621,16 +1622,26 @@ export class ProtoScene extends Phaser.Scene {
           loopIndex: state.loopIndex,
         });
       }
-      this.announceSystemMessage('런 완료', '#72f1b8');
+      this.announceSystemMessage(isDemoRun ? '체험 완료' : '런 완료', '#72f1b8');
       this.reportAutoShare('런 완주');
       if (import.meta.env.DEV) {
         const share = this.autoShareSnapshot();
         this.announceSystemMessage(`[DEV] 오토 비중 ${share.autoSharePercent}%`, '#8fa4ff', 3200);
       }
       // 보스 처치 = 유산 은행 저장. 이어가다 죽어도 이건 남는다 (총괄 리스크 구조).
-      this.persistRunMemory('win');
+      // 단, 프리셋 체험은 실제 발견·보상을 지급하지 않는다.
+      if (!isDemoRun) this.persistRunMemory('win');
       // 보스 후 선택: 마칠까(시작 화면) vs 이어갈까(빌드 유지·난이도↑)
       this.time.delayedCall(1400, () => {
+        if (isDemoRun) {
+          void showDemoCompletionChoice().then((choice) => {
+            this.audio.playSfx('ui-confirm');
+            this.destroyRunMapUi();
+            if (choice === 'start-real') this.scene.restart();
+            else this.scene.start('title');
+          });
+          return;
+        }
         const completedLoops = this.combatRunController.state.loopIndex + 1;
         const nextDamagePct = Math.round(loopDamageScale(completedLoops) * 100);
         void showBossChoice(completedLoops, nextDamagePct).then((choice) => {
@@ -2044,6 +2055,9 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private persistRunMemory(result: 'win' | 'lose'): void {
+    // "각성한 영창가"는 후반 빌드 체험이다. 여기서 기록을 남기면 정식 시작 전에
+    // 통찰·발견·유산이 열려 체험과 본게임의 경계가 사라진다.
+    if (this.demoRun) return;
     saveRunMemory(updateRunMemory(
       loadRunMemory(),
       summarizeRun(this.spellHistory, result, this.runMovementDistance),
@@ -5724,7 +5738,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         return;
       }
       this.playerState.trySpendMana(castPlan.spend);
-      if (castMode === 'normal') {
+      if (castMode === 'normal' && !this.demoRun) {
         const previousResearch = this.runResearchTracker.snapshot().research;
         this.runResearchTracker.recordNormalSpell(spec);
         this.reportResearchAdvance(previousResearch);
