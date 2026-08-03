@@ -9,7 +9,7 @@ import type {
 } from '../../run/runContract';
 import type { SpellElement } from '../../spell/types';
 import { accrueUseAffinity } from './useAffinity';
-import { ELEMENTAL_CHORUS, shouldEnterElementalChorus } from './elementalChorus';
+import { chorusEntryAffinity, ELEMENTAL_CHORUS, shouldEnterElementalChorus } from './elementalChorus';
 import { RUN_ENCOUNTERS } from './encounterConfig';
 import {
   drawRewardOptions,
@@ -127,13 +127,11 @@ export class CombatRunController implements RunController {
    */
   growAffinityFromUse(element: SpellElement): { added: number; total: number; chorusActivated: boolean } {
     if (this.chorusAffinity !== null) {
-      const { added, nextAddedSoFar } = accrueUseAffinity(
-        this.useAffinityAdded.chorus ?? 0,
+      const added = Math.min(
         ELEMENTAL_CHORUS.useAffinityPerCast,
-        ELEMENTAL_CHORUS.affinityCap - ELEMENTAL_CHORUS.entryAffinity,
+        Math.max(0, ELEMENTAL_CHORUS.affinityCap - this.chorusAffinity),
       );
       if (added > 0) {
-        this.useAffinityAdded.chorus = nextAddedSoFar;
         this.chorusAffinity = roundedChorusAffinity(this.chorusAffinity + added);
       }
       return { added, total: this.chorusAffinity, chorusActivated: false };
@@ -397,9 +395,10 @@ export class CombatRunController implements RunController {
   }
 
   private enterElementalChorus(): void {
+    const entryAffinity = chorusEntryAffinity(this.elementalAffinity);
     this.elementalAffinity = {};
     this.useAffinityAdded = {};
-    this.chorusAffinity = ELEMENTAL_CHORUS.entryAffinity;
+    this.chorusAffinity = entryAffinity;
   }
 
   private currentEncounter(): ResolvedEncounter {

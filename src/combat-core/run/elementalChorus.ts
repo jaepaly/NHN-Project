@@ -1,8 +1,9 @@
 import { ELEMENTS, type SpellElement } from '../../spell/types';
 
 export const ELEMENTAL_CHORUS = {
-  affinityThreshold: 0.3,
+  affinityThreshold: 0.15,
   entryAffinity: 0.15,
+  entryAffinityCap: 0.2,
   useAffinityPerCast: 0.01,
   rewardAffinityBonus: 0.03,
   affinityCap: 0.3,
@@ -21,6 +22,18 @@ export function shouldEnterElementalChorus(
   affinity: Readonly<Partial<Record<SpellElement, number>>>,
 ): boolean {
   return chorusElements(affinity).length >= 3;
+}
+
+export function chorusEntryAffinity(
+  affinity: Readonly<Partial<Record<SpellElement, number>>>,
+): number {
+  const eligible = chorusElements(affinity);
+  if (eligible.length < 3) return 0;
+  const average = eligible.reduce((sum, element) => sum + (affinity[element] ?? 0), 0) / eligible.length;
+  return Math.min(
+    ELEMENTAL_CHORUS.entryAffinityCap,
+    Math.max(ELEMENTAL_CHORUS.entryAffinity, Math.round(average * 100) / 100),
+  );
 }
 
 export function chorusStage(
