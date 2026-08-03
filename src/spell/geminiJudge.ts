@@ -2,6 +2,7 @@ import type { JudgeOptions, SpellJudge, UltimateResonanceContext } from './judge
 import type { SpellJudgement } from './types';
 import { validateJudgement } from './validate';
 import { MockJudge, precheckText } from './mockJudge';
+import { createRequestId } from './playLog';
 
 /**
  * GeminiJudge — 실제 LLM 판정기 (Cloudflare 프록시 경유) — GDD §3.5
@@ -75,6 +76,7 @@ export class GeminiJudge implements SpellJudge {
   async judge(text: string, options: JudgeOptions = {}): Promise<SpellJudgement> {
     this.lastFallbackReason = undefined;
     const key = text.trim();
+    const requestId = options.requestId ?? createRequestId();
     const castMode = options.castMode === 'ultimate' ? 'ultimate' : 'normal';
     const resonance = castMode === 'ultimate' ? options.resonance : undefined;
     const cacheKey = `${castMode}:${resonance ? JSON.stringify(resonance) : '-'}:${key}`;
@@ -93,7 +95,7 @@ export class GeminiJudge implements SpellJudge {
 
     // 2~3) 프록시 요청 + 스키마 재검증
     try {
-      const raw = await this.fetchWithTimeout(key, castMode, resonance);
+      const raw = await this.fetchWithTimeout(key, castMode, resonance, requestId);
       const validated = validateJudgement(raw);
       // 필살영창 요청에 단일 주문이 돌아오면 일반 주문으로 자원을 소비시키지 않는다.
       // 모드 계약이 맞는 plan만 캐시하고, 나머지는 필살영창 Mock 폴백으로 복구한다.
@@ -126,14 +128,18 @@ export class GeminiJudge implements SpellJudge {
     text: string,
     castMode: 'normal' | 'ultimate',
     resonance?: UltimateResonanceContext,
+    requestId?: string,
   ): Promise<unknown> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), judgeTimeoutMs(text));
     try {
       const res = await fetch(this.proxyUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, castMode, ...(resonance ? { resonance } : {}) }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(requestId ? { 'X-Incant-Request-Id': requestId } : {}),
+        },
+        body: JSON.stringify({ text, castMode, ...(resonance ? { resonance } : {}), requestId }),
         signal: ctrl.signal,
       });
       if (!res.ok) {

@@ -25,4 +25,6 @@ export interface UltimateResonanceContext {
 export interface JudgeOptions {
   castMode?: CastMode;
   resonance?: UltimateResonanceContext;
+  /** DEV observability correlation ID; never affects judgement semantics. */
+  requestId?: string;
 }

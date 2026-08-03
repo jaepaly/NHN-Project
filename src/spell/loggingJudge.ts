@@ -1,6 +1,6 @@
 import type { JudgeOptions, SpellJudge } from './judge';
 import type { SpellJudgement } from './types';
-import { postPlayLog } from './playLog';
+import { createRequestId, hashPlayLogInput, postPlayLog } from './playLog';
 
 export interface LoggingJudgeOptions {
   promptVersion?: string;
@@ -67,13 +67,17 @@ export class LoggingJudge implements SpellJudge {
 
   async judge(text: string, options?: JudgeOptions): Promise<SpellJudgement> {
     const startedAt = Date.now();
-    const j = await this.inner.judge(text, options);
+    const requestId = options?.requestId ?? createRequestId();
+    const j = await this.inner.judge(text, { ...options, requestId });
     const src = this.inner.lastSource ?? 'mock';
     const t = Math.round((Date.now() - this.start) / 100) / 10; // 0.1초 단위 상대시각
+    const inputHash = await hashPlayLogInput(text);
     void postPlayLog({
       t,
       type: j.disposition === 'cast' ? 'cast' : j.disposition,
-      input: text,
+      requestId,
+      inputLength: text.length,
+      inputHash,
       src,
       elapsedMs: Date.now() - startedAt,
       fallbackReason: this.inner.lastFallbackReason,

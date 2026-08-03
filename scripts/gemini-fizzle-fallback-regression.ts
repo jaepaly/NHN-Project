@@ -65,6 +65,7 @@ try {
   assert.equal(castJudge.lastSource, 'gemini');
   assert.equal(castJudge.lastFallbackReason, undefined);
   assert.equal(fetchCount, 1);
+  assert.ok(String((requestBodies[0] as { requestId?: unknown }).requestId).length >= 8, 'judge request carries a correlation ID');
   assert.equal((await castJudge.judge('화염구')).disposition, 'cast');
   assert.equal(castJudge.lastSource, 'cache');
   assert.equal(castJudge.lastFallbackReason, undefined);
