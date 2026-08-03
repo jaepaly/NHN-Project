@@ -1,7 +1,7 @@
 import type { CodexEntry, CodexSortMode } from '../spell/spellCodex';
 import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL } from './uiTokens';
 import { cornerFlourish, deckleMask, divider, ornamentCss } from './grimoireOrnament';
-import { sortCodex } from '../spell/spellCodex';
+import { isCodexEntrySellable, markCodexEntrySold, sortCodex } from '../spell/spellCodex';
 import { ELEMENT_LABELS, ELEMENT_PALETTES, FORM_LABELS, paletteColorToCss } from '../render/palette';
 import { glyphSvg } from '../render/formGlyphs';
 
@@ -95,6 +95,14 @@ ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .codex-detail-sum { margin-top: 3px; font-size: 12.5px; color: ${UI_COLOR.textSoft}; }
 #${WRAP_ID} .codex-detail-flavor { margin-top: 2px; font-size: 12px; color: #8a93bd; font-style: italic; }
 #${WRAP_ID} .codex-detail-meta { margin-top: 3px; font-size: 11px; color: #6f7aa8; }
+#${WRAP_ID} .codex-sell {
+  margin-top: 9px; font: inherit; font-size: 12px; cursor: pointer;
+  padding: 5px 10px; border-radius: 6px;
+  border: 1px solid #937747; background: rgba(104, 78, 34, 0.26); color: #ffe0a0;
+}
+#${WRAP_ID} .codex-sell:hover { border-color: #ffd166; background: rgba(164, 123, 43, 0.38); }
+#${WRAP_ID} .codex-sold { margin-top: 8px; font-size: 11px; color: #7981a4; }
+#${WRAP_ID} .codex-tokens { margin-left: auto; font-size: 12px; color: #ffd166; white-space: nowrap; }
 #${WRAP_ID} .codex-detail-hint { font-size: 12.5px; color: ${UI_COLOR.textMuted}; text-align: center; }
 #${WRAP_ID} .codex-empty {
   grid-column: 1 / -1; display: grid; place-items: center; height: 150px;
@@ -149,12 +157,28 @@ function metaLine(entry: CodexEntry): string {
 }
 
 /** 도감을 연다. 닫힐 때 resolve — Esc·바깥 클릭으로 닫는다. */
-export function showCodexOverlay(entries: readonly CodexEntry[]): Promise<void> {
+export interface CodexSaleResult {
+  amount: number;
+  tokenBalance: number;
+}
+
+export interface CodexOverlayOptions {
+  tokenBalance?: number;
+  saleValueFor?: (entry: CodexEntry) => number;
+  onSell?: (entry: CodexEntry) => CodexSaleResult | null;
+}
+
+export function showCodexOverlay(
+  entries: readonly CodexEntry[],
+  options: CodexOverlayOptions = {},
+): Promise<void> {
   const { wrap, panel } = ensureDom();
   let sortMode: CodexSortMode = 'recent';
+  let currentEntries = [...entries];
+  let tokenBalance = options.tokenBalance ?? 0;
 
-  const render = (): void => {
-    const sorted = sortCodex(entries, sortMode);
+  const render = (selectedEntry?: CodexEntry): void => {
+    const sorted = sortCodex(currentEntries, sortMode);
     const sortButtons = (Object.keys(SORT_LABELS) as CodexSortMode[]).map((m) => (
       `<button class="codex-sortbtn${m === sortMode ? ' active' : ''}" data-sort="${m}">${SORT_LABELS[m]}</button>`
     )).join('');
@@ -181,9 +205,10 @@ export function showCodexOverlay(entries: readonly CodexEntry[]): Promise<void> 
         ${cornerFlourish().replace('orn-corner', 'orn-corner br')}
         <div class="codex-title">주문 도감</div>
         ${divider()}
-        <div class="codex-sub">${entries.length > 0 ? `새겨진 주문 ${entries.length}종` : '비어 있는 책'}</div>
+        <div class="codex-sub">${currentEntries.length > 0 ? `새겨진 주문 ${currentEntries.length}종` : '비어 있는 책'}</div>
+        ${options.onSell ? `<div class="codex-tokens">✦ 주문 토큰 ${tokenBalance}</div>` : ''}
       </div>
-      <div class="codex-sortbar">${entries.length > 0 ? sortButtons : ''}</div>
+      <div class="codex-sortbar">${currentEntries.length > 0 ? sortButtons : ''}</div>
       <div class="codex-grid">${tiles}</div>
       <div class="codex-detail"><div class="codex-detail-hint">타일에 커서를 올리면 상세가 나타난다</div></div>
       <div class="codex-foot"><b>ESC</b> 또는 바깥을 클릭해 닫기</div>
@@ -193,11 +218,29 @@ export function showCodexOverlay(entries: readonly CodexEntry[]): Promise<void> 
     const showDetail = (entry: CodexEntry): void => {
       const flavor = entry.flavor
         ? `<div class="codex-detail-flavor">“${escapeHtml(entry.flavor)}”</div>` : '';
+      const saleAmount = options.saleValueFor?.(entry) ?? 0;
+      const sellable = Boolean(options.onSell) && isCodexEntrySellable(entry) && saleAmount > 0;
+      const saleControl = options.onSell
+        ? (sellable
+          ? `<button class="codex-sell" type="button">연구 기록으로 전환 · +${saleAmount} 토큰</button>`
+          : '<div class="codex-sold">다음 전환은 이 주문을 한 번 더 시전한 뒤 가능합니다.</div>')
+        : '';
       detail.innerHTML = `
         <div class="codex-detail-name" style="color:${tileColors(entry).core}">${escapeHtml(entry.name)}</div>
         <div class="codex-detail-sum">${escapeHtml(entry.summary)}</div>
         ${flavor}
-        <div class="codex-detail-meta">${escapeHtml(metaLine(entry))}</div>`;
+        <div class="codex-detail-meta">${escapeHtml(metaLine(entry))}</div>
+        ${saleControl}`;
+      detail.querySelector<HTMLButtonElement>('.codex-sell')?.addEventListener('click', () => {
+        const result = options.onSell?.(entry);
+        if (!result || result.amount <= 0) return;
+        currentEntries = markCodexEntrySold(currentEntries, entry);
+        tokenBalance = result.tokenBalance;
+        const updated = currentEntries.find((candidate) => (
+          candidate.name === entry.name && candidate.firstCastAt === entry.firstCastAt
+        ));
+        render(updated);
+      });
     };
     panel.querySelectorAll<HTMLElement>('.codex-tile').forEach((el) => {
       const entry = sorted[Number(el.dataset.idx)];
@@ -208,6 +251,7 @@ export function showCodexOverlay(entries: readonly CodexEntry[]): Promise<void> 
     panel.querySelectorAll<HTMLElement>('.codex-sortbtn').forEach((el) => {
       el.addEventListener('click', () => { sortMode = el.dataset.sort as CodexSortMode; render(); });
     });
+    if (selectedEntry) showDetail(selectedEntry);
   };
 
   render();

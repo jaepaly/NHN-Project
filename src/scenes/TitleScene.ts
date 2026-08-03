@@ -1,6 +1,13 @@
 import Phaser from 'phaser';
 import { applyWorldFx } from '../render/postFx';
-import { loadCodex } from '../spell/spellCodex';
+import {
+  codexTokenSignature,
+  isCodexEntrySellable,
+  loadCodex,
+  markCodexEntrySold,
+  saveCodex,
+  spellTokenValueForSales,
+} from '../spell/spellCodex';
 import { showCodexOverlay } from '../ui/codexOverlay';
 import { clearRunHud } from '../ui/runHud';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
@@ -10,7 +17,7 @@ import { UI_COLOR, UI_FONT } from '../ui/uiTokens';
 import { DEMO_BUILD_OPTIONS, demoBuildFromOptionId, requestDemoRun } from '../run/demoLoadout';
 import { GameAudio } from '../audio/gameAudio';
 import { showRewardCards } from '../ui/rewardCardOverlay';
-import { loadMetaProfile } from '../meta/metaProfile';
+import { applySpellTokenSale, loadMetaProfile, saveMetaProfile } from '../meta/metaProfile';
 
 const TITLE_COLORS = {
   background: 0x05060f,
@@ -24,6 +31,7 @@ const TITLE_COLORS = {
 export class TitleScene extends Phaser.Scene {
   private starting = false;
   private audio!: GameAudio;
+  private tokenReadout?: Phaser.GameObjects.Text;
 
   /** 도감·설정이 열려 있는 동안 시작 트리거(클릭·Enter)를 막는다 */
   private codexOpen = false;
@@ -182,7 +190,7 @@ export class TitleScene extends Phaser.Scene {
   /** 꾸미기 상점 연결 전에도 메타 재화의 존재와 현재 보유량을 로비에서 일관되게 보여 준다. */
   private createTokenReadout(width: number): void {
     const tokens = loadMetaProfile(window.localStorage).spellTokens;
-    this.add.text(width - 28, 28, `✦ 주문 토큰 ${tokens}`, {
+    this.tokenReadout = this.add.text(width - 28, 28, `✦ 주문 토큰 ${tokens}`, {
       fontFamily: UI_FONT.serif,
       fontSize: '15px',
       color: UI_COLOR.warm,
@@ -215,7 +223,24 @@ export class TitleScene extends Phaser.Scene {
     if (this.codexOpen || this.starting) return;
     this.codexOpen = true;
     try {
-      await showCodexOverlay(loadCodex(window.localStorage));
+      let profile = loadMetaProfile(window.localStorage);
+      const saleValueFor = (entry: import('../spell/spellCodex').CodexEntry): number => (
+        spellTokenValueForSales(profile.spellTokenSales[codexTokenSignature(entry)] ?? 0)
+      );
+      await showCodexOverlay(loadCodex(window.localStorage), {
+        tokenBalance: profile.spellTokens,
+        saleValueFor,
+        onSell: (entry) => {
+          if (!isCodexEntrySellable(entry)) return null;
+          const sale = applySpellTokenSale(profile, codexTokenSignature(entry), saleValueFor(entry));
+          if (sale.amount <= 0) return null;
+          profile = sale.profile;
+          saveMetaProfile(profile, window.localStorage);
+          saveCodex(window.localStorage, markCodexEntrySold(loadCodex(window.localStorage), entry));
+          return { amount: sale.amount, tokenBalance: profile.spellTokens };
+        },
+      });
+      this.tokenReadout?.setText(`✦ 주문 토큰 ${profile.spellTokens}`);
       GameAudio.playOneShot(this, 'ui-confirm', loadSettings(window.localStorage));
     } finally {
       // 같은 프레임의 씬 pointerdown이 시작을 못 물게 한 틱 늦게 푼다

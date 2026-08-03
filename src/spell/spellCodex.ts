@@ -33,6 +33,10 @@ export interface CodexEntry {
   firstCastAt: number;
   lastCastAt: number;
   castCount: number;
+  /** 마지막으로 연구 토큰으로 전환했을 때의 시전 횟수. 이후 한 번 더 써야 재전환할 수 있다. */
+  lastSoldCastCount?: number;
+  /** 자유 텍스트 이름이 아닌 판정 결과 구조를 기준으로 한 연구 교환 키. */
+  tokenSignature?: string;
 }
 
 export const CODEX_CONFIG = {
@@ -40,6 +44,8 @@ export const CODEX_CONFIG = {
   /** 저장 상한 — 초과 시 가장 오래 안 쓴 항목부터 밀려난다 */
   maxEntries: 120,
 } as const;
+
+export const SPELL_TOKEN_VALUES = [10, 5, 2, 1] as const;
 
 const SIZE_LABELS: Record<SpellSpec['size'], string> = {
   small: '소형', medium: '중형', large: '대형', huge: '초대형',
@@ -75,6 +81,10 @@ export function codexEntryFromSpec(spec: SpellSpec, at: number): CodexEntry {
     firstCastAt: at,
     lastCastAt: at,
     castCount: 1,
+    tokenSignature: [
+      spec.effect, spec.element_primary, spec.element_secondary ?? 'none', spec.form, spec.size,
+      ...[...spec.status].sort(), spec.shape?.kind ?? 'arc', spec.behavior ? 'behavior' : 'plain',
+    ].join(':'),
   };
 }
 
@@ -92,7 +102,32 @@ export function codexEntryFromSequence(
     firstCastAt: at,
     lastCastAt: at,
     castCount: 1,
+    tokenSignature: `sequence:${element}:${plan.sequences.length}`,
   };
+}
+
+/** 같은 이름이 아니라 판정된 주문 구조가 같을 때 같은 토큰 가치 하락표를 공유한다. */
+export function codexTokenSignature(entry: CodexEntry): string {
+  return entry.tokenSignature
+    ?? [entry.element, entry.elementSecondary ?? 'none', entry.form ?? 'sequence', entry.size ?? 'medium'].join(':');
+}
+
+export function spellTokenValueForSales(previousSales: number): number {
+  const safeSales = Number.isFinite(previousSales) ? Math.max(0, Math.floor(previousSales)) : 0;
+  return SPELL_TOKEN_VALUES[Math.min(safeSales, SPELL_TOKEN_VALUES.length - 1)];
+}
+
+export function isCodexEntrySellable(entry: CodexEntry): boolean {
+  return entry.castCount > Math.max(0, entry.lastSoldCastCount ?? 0);
+}
+
+/** 판매 표식은 도감에 남겨, 같은 기록을 닫았다 열어도 중복 판매할 수 없게 한다. */
+export function markCodexEntrySold(entries: readonly CodexEntry[], entry: CodexEntry): CodexEntry[] {
+  return entries.map((candidate) => (
+    candidate.name === entry.name && candidate.firstCastAt === entry.firstCastAt
+      ? { ...candidate, lastSoldCastCount: candidate.castCount }
+      : candidate
+  ));
 }
 
 /**

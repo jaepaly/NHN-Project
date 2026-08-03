@@ -1,14 +1,18 @@
 import assert from 'node:assert/strict';
 import {
   CODEX_CONFIG,
+  codexTokenSignature,
   codexEntryFromSequence,
   codexEntryFromSpec,
+  isCodexEntrySellable,
   loadCodex,
   mergeCodexEntry,
+  markCodexEntrySold,
   recordCodexEntry,
   saveCodex,
   sortCodex,
   sortCodexForDisplay,
+  spellTokenValueForSales,
 } from '../src/spell/spellCodex';
 import type { SpellSpec } from '../src/spell/types';
 
@@ -36,9 +40,19 @@ for (const token of ['빙결+대지', '투사체', '대형', '위력 62']) {
 }
 assert.equal(entry.flavor, '서리가 대지를 꿰뚫는다');
 assert.equal(entry.castCount, 1);
+assert.ok(codexTokenSignature(entry).includes('damage:ice:earth:bolt'));
+assert.deepEqual([0, 1, 2, 3, 9].map(spellTokenValueForSales), [10, 5, 2, 1, 1]);
+assert.equal(isCodexEntrySellable(entry), true);
+const soldEntry = markCodexEntrySold([entry], entry)[0];
+assert.equal(isCodexEntrySellable(soldEntry), false);
+assert.equal(isCodexEntrySellable(mergeCodexEntry([soldEntry], { ...entry, lastCastAt: 2000 })[0]), true);
 
 // 1-b) 형상·행동 설계는 요약에 표식이 남는다 (발견의 기록)
 const shaped = codexEntryFromSpec({ ...spec, shape: { kind: 'ring' } }, 1000);
+assert.equal(
+  codexTokenSignature(entry),
+  codexTokenSignature(codexEntryFromSpec({ ...spec, name: 'different wording' }, 1000)),
+);
 assert.ok(shaped.summary.includes('형상 설계'));
 const behaved = codexEntryFromSpec(
   { ...spec, behavior: { steps: [{ kind: 'dash', seconds: 1 }], loop: false } },
