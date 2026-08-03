@@ -14,7 +14,7 @@ const MIN = ALTAR_OFFER_CONFIG.minMaxHp;
 // ⚠️ 최상위(50)가 **둘**이다 (총괄 지적 2026-07-31: 한 런에서 제단을 2회 이상 만나는
 // 플레이어). 에코(시간축)와 파문(공간축)이 같은 값·같은 급이되 결이 다르다.
 // 그래서 "오름차순"이 아니라 "비내림차순"이다.
-assert.deepEqual(ALTAR_TIERS.map((t) => t.cost), [10, 25, 50, 50], '10 / 25 / 50 / 50');
+assert.deepEqual(ALTAR_TIERS.map((t) => t.cost), [10, 25, 50], '10 / 25 / 50');
 assert.equal(
   new Set(ALTAR_TIERS.map((t) => t.kind)).size, ALTAR_TIERS.length,
   '보상 종류가 서로 다르다 — 같은 종류가 둘이면 하나는 죽은 등급이다',
@@ -116,10 +116,9 @@ for (const maxHp of [30, 35, 40, 60, 75, 100, 200]) {
     );
   });
 }
-const ownedAwaken = drawAltarOffer(100, 'fire', ['awaken']);
-assert.equal(ownedAwaken[1].altar?.locked, true, '한 번 산 제단 각성은 같은 런에서 다시 살 수 없다');
-assert.equal(ownedAwaken[1].kind, 'altar-leave', '이미 산 제단 각성은 효과 없는 잠금 카드가 된다');
-assert.ok(ownedAwaken[1].description.includes('이미'), '재구매 잠금 사유를 카드에 표시한다');
+const repeatAwaken = drawAltarOffer(100, 'fire', ['awaken']);
+assert.equal(repeatAwaken[1].altar?.locked, false, '제단 각성은 다른 원소에 한 번 더 새길 수 있다');
+assert.equal(repeatAwaken[1].kind, 'awaken', '두 번째 각성도 제단 거래로 제시된다');
 
 // 6) 각성 대상이 없으면 그 등급만 잠긴다 — 아무 원소나 주면 대가만 날린다
 const noElement = drawAltarOffer(100, null);

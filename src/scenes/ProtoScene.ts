@@ -91,7 +91,7 @@ import type { BuildChip } from '../run/buildChipModel';
 import { buildChipModel } from '../run/buildChipModel';
 import { bandAffordances, reachableBand } from '../run/incantBands';
 import { drawTreasureReward } from '../combat-core/run/treasureRewardConfig';
-import { ALTAR_OFFER_CONFIG, drawAltarOffer } from '../combat-core/run/altarOffer';
+import { ALTAR_OFFER_CONFIG, drawAltarOffer, drawHighAltarOptions } from '../combat-core/run/altarOffer';
 import { inheritCandidates } from '../combat-core/run/runInheritance';
 import type { AltarTierKind } from '../combat-core/run/altarOffer';
 import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomRewardScale';
@@ -656,6 +656,9 @@ export class ProtoScene extends Phaser.Scene {
   private awakenings: AwakeningState = {};
   /** 제단 최상위 거래 — 수동 단일 영창이 한 번 더 울린다 (#214). 런 리셋에서 끈다 */
   private echoUnlocked = false;
+  private starburstUnlocked = false;
+  private meteorUnlocked = false;
+  private trailUnlocked = false;
   /** 파문 — 수동 영창이 다른 적에게 번진다 (제단 최상위, 에코와 같은 급) */
   private rippleUnlocked = false;
   /** 이 런에서 산 제단 등급 — 같은 것을 두 번 사면 최대 체력만 날린다 */
@@ -682,6 +685,7 @@ export class ProtoScene extends Phaser.Scene {
   private pendingRunTransition: { delayMs: number; run: () => void } | null = null;
   /** 제단 각성 갈래 선택 중에는 다음 방 전환도 붙잡는다. */
   private altarAwakeningSelecting = false;
+  private altarHighSelecting = false;
 
   private readonly combatRunController: CombatRunController = new CombatRunController({
     playerState: this.playerState,
@@ -1467,13 +1471,11 @@ export class ProtoScene extends Phaser.Scene {
               + ALTAR_OFFER_CONFIG.allAffinityBonus;
           }
           this.combatRunController.seedAffinity(raised);
-          this.ownedAltarKinds.push('all-affinity');
           this.announceSystemMessage('모든 원소가 함께 깊어졌다', '#8fe3c8', 2600);
           return;
         }
         if (chosen.kind === 'ripple') {
           this.rippleUnlocked = true;
-          this.ownedAltarKinds.push('ripple');
           this.announceBanner({
             title: '영창 파문 — 말이 옆으로 번진다',
             lines: ['수동 단일 영창이 가까운 다른 적에게 · 시퀀스는 번지지 않는다'],
@@ -1484,7 +1486,6 @@ export class ProtoScene extends Phaser.Scene {
         }
         if (chosen.kind === 'echo') {
           this.echoUnlocked = true;
-          this.ownedAltarKinds.push('echo');
           this.announceBanner({
             title: '영창 에코 — 말이 두 번 울린다',
             lines: ['수동 단일 영창이 한 번 더 · 시퀀스는 울리지 않는다'],
@@ -1496,8 +1497,11 @@ export class ProtoScene extends Phaser.Scene {
         if (chosen.kind === 'awaken' && chosen.element) {
           // 제단은 대가를 먼저 치른 뒤 runUiBinding 후속 단계에서 갈래를 직접 고른다.
           // 무작위 결과를 주면 최대 생명 25의 거래가 도박으로 읽힌다.
-          this.ownedAltarKinds.push('awaken');
           this.altarAwakeningSelecting = true;
+          return;
+        }
+        if (chosen.kind === 'altar-high') {
+          this.altarHighSelecting = true;
           return;
         }
         return; // 거절·잠김
@@ -2107,8 +2111,12 @@ export class ProtoScene extends Phaser.Scene {
     this.playerState.reset();
     // 제단 능력도 비운다 — 그래야 다음 런 제단이 다시 의미를 갖는다
     this.echoUnlocked = false;
+    this.starburstUnlocked = false;
+    this.meteorUnlocked = false;
+    this.trailUnlocked = false;
     this.rippleUnlocked = false;
     this.altarAwakeningSelecting = false;
+    this.altarHighSelecting = false;
     this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.runMovementDistance = 0;
@@ -2152,8 +2160,12 @@ export class ProtoScene extends Phaser.Scene {
     this.shockCooldowns.clear();
     this.awakenings = {};
     this.echoUnlocked = false;
+    this.starburstUnlocked = false;
+    this.meteorUnlocked = false;
+    this.trailUnlocked = false;
     this.rippleUnlocked = false;
     this.altarAwakeningSelecting = false;
+    this.altarHighSelecting = false;
     this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
@@ -2179,8 +2191,12 @@ export class ProtoScene extends Phaser.Scene {
     this.shockCooldowns.clear();
     this.awakenings = {};
     this.echoUnlocked = false;
+    this.starburstUnlocked = false;
+    this.meteorUnlocked = false;
+    this.trailUnlocked = false;
     this.rippleUnlocked = false;
     this.altarAwakeningSelecting = false;
+    this.altarHighSelecting = false;
     this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
@@ -3368,7 +3384,7 @@ export class ProtoScene extends Phaser.Scene {
    * 붙잡을 이유가 없으므로 종전대로 즉시 예약한다.
    */
   private transitionNeedsRoomChoice(): boolean {
-    return this.altarAwakeningSelecting || this.mapGraph.choices().length > 0;
+    return this.altarAwakeningSelecting || this.altarHighSelecting || this.mapGraph.choices().length > 0;
   }
 
   /**
@@ -3745,7 +3761,21 @@ export class ProtoScene extends Phaser.Scene {
 
   /** 제단 각성의 두 번째 선택 — 거래 대가를 낸 뒤 성질은 플레이어가 결정한다. */
   async resolveRewardFollowup(chosen: RewardOption): Promise<void> {
-    if (!chosen.altar || chosen.kind !== 'awaken' || !chosen.element) return;
+    if (!chosen.altar) return;
+    if (chosen.kind === 'altar-high') {
+      try {
+        const picked = await showRewardCards(drawHighAltarOptions(this.ownedAltarKinds), {
+          kicker: 'HIGH ALTAR ARCANA',
+          title: '고위 제단술 하나를 새긴다',
+          contextLines: ['한 런에 같은 제단술은 한 번만 선택할 수 있다'],
+        });
+        this.applyHighAltar(picked.kind);
+      } finally {
+        this.altarHighSelecting = false;
+      }
+      return;
+    }
+    if (chosen.kind !== 'awaken' || !chosen.element) return;
     try {
       const element = chosen.element;
       const picked = await showRewardCards(awakeningOptions(element), {
@@ -3766,6 +3796,25 @@ export class ProtoScene extends Phaser.Scene {
     } finally {
       this.altarAwakeningSelecting = false;
     }
+  }
+
+  private applyHighAltar(kind: RewardOption['kind']): void {
+    if (!['echo', 'starburst', 'meteor', 'trail'].includes(kind)) return;
+    this.ownedAltarKinds.push(kind as AltarTierKind);
+    if (kind === 'echo') this.echoUnlocked = true;
+    if (kind === 'starburst') this.starburstUnlocked = true;
+    if (kind === 'meteor') this.meteorUnlocked = true;
+    if (kind === 'trail') this.trailUnlocked = true;
+    const titles: Record<string, string> = {
+      echo: '영창 메아리', starburst: '성운 분열', meteor: '원소 낙성', trail: '마력 궤적',
+    };
+    this.audio.playSfx('ui-confirm');
+    this.announceBanner({
+      title: `${titles[kind]} — 제단술이 깨어났다`,
+      lines: ['수동 단일 영창에 새 장면이 더해진다 · 시퀀스 제외'],
+      color: 0xd0a8ff,
+      holdMs: 3000,
+    });
   }
 
   /**
@@ -5712,6 +5761,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
       this.scheduleSpellEcho(effectiveSpec);
       this.scheduleSpellRipple(effectiveSpec);
+      this.scheduleHighAltarFlourishes(effectiveSpec);
       this.playerState.startCastLock(); // 신속 영창 감소분 반영된 입력락
       this.playCastFlare();
     } finally {
@@ -5775,6 +5825,34 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       if (!this.scene?.isActive?.()) return;
       this.audio.playCast(spec.element_primary);
     });
+  }
+
+  private scheduleHighAltarFlourishes(spec: SpellSpec): void {
+    const target = this.nearestEnemy();
+    if (!target) return;
+    const fire = (delayMs: number, powerScale: number, x: number, y: number, form: SpellSpec['form']): void => {
+      this.time.delayedCall(delayMs, () => {
+        if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
+        this.applySpellEffect(
+          { ...spec, form, power: Math.max(1, Math.round(spec.power * powerScale)) },
+          new Phaser.Math.Vector2(x, y), false, 1, { decorVfxScale: 0.48 },
+        );
+        this.audio.playCast(spec.element_primary);
+      });
+    };
+    if (this.starburstUnlocked) {
+      for (let i = 0; i < 5; i += 1) {
+        const enemy = this.enemies.filter((candidate) => candidate.alive)[i % Math.max(1, this.enemies.filter((candidate) => candidate.alive).length)] ?? target;
+        fire(140 + i * 90, 0.28, enemy.x, enemy.y, 'bolt');
+      }
+    }
+    if (this.meteorUnlocked) fire(430, 0.9, target.x, target.y, 'nova');
+    if (this.trailUnlocked) {
+      for (let i = 1; i <= 3; i += 1) {
+        const t = i / 4;
+        fire(170 + i * 120, 0.35, Phaser.Math.Linear(this.player.x, target.x, t), Phaser.Math.Linear(this.player.y, target.y, t), 'zone');
+      }
+    }
   }
 
   private scheduleSpellEcho(spec: SpellSpec): void {

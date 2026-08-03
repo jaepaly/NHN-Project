@@ -83,11 +83,26 @@ export const ALTAR_OFFER_CONFIG = {
 } as const;
 
 /** 거래 등급 — 대가(최대 체력)와 보상이 한 장에 묶인다 */
-export type AltarTierKind = 'all-affinity' | 'awaken' | 'echo' | 'ripple';
+export type AltarTierKind = 'all-affinity' | 'awaken' | 'altar-high' | 'echo' | 'ripple' | 'starburst' | 'meteor' | 'trail';
 
 export interface AltarTier {
   cost: number;
   kind: AltarTierKind;
+}
+
+export type HighAltarKind = 'echo' | 'starburst' | 'meteor' | 'trail';
+
+const HIGH_ALTAR_OFFERS: Readonly<Record<HighAltarKind, Pick<RewardOption, 'title' | 'description'>>> = {
+  echo: { title: '영창 메아리', description: '반투명 분신이 화면 다른 곳에서 같은 영창을 되울린다\n수동 단일 영창만 · 시퀀스 제외' },
+  starburst: { title: '성운 분열', description: '원소 파편 다섯 개가 적을 향해 연속으로 쏟아진다\n수동 단일 영창만 · 시퀀스 제외' },
+  meteor: { title: '원소 낙성', description: '잠시 뒤 적 위치에 원소 마법진과 큰 폭발이 떨어진다\n수동 단일 영창만 · 시퀀스 제외' },
+  trail: { title: '마력 궤적', description: '영창이 지나간 길에 원소 잔류장이 세 번 피어난다\n수동 단일 영창만 · 시퀀스 제외' },
+};
+
+export function drawHighAltarOptions(ownedKinds: readonly AltarTierKind[]): RewardOption[] {
+  return (Object.keys(HIGH_ALTAR_OFFERS) as HighAltarKind[])
+    .filter((kind) => !ownedKinds.includes(kind))
+    .map((kind) => ({ id: `altar-high-${kind}`, kind, ...HIGH_ALTAR_OFFERS[kind] }));
 }
 
 /**
@@ -107,8 +122,7 @@ export interface AltarTier {
 export const ALTAR_TIERS: readonly AltarTier[] = [
   { cost: 10, kind: 'all-affinity' },
   { cost: 25, kind: 'awaken' },
-  { cost: 50, kind: 'echo' },
-  { cost: 50, kind: 'ripple' },
+  { cost: 50, kind: 'altar-high' },
 ];
 
 /** 대가를 치른 뒤의 체력. 현재 체력은 새 최대치로 클램프된다. */
@@ -140,9 +154,8 @@ function tierDescription(tier: AltarTier, awakenElement: SpellElement | null): s
       return awakenElement
         ? `${ELEMENT_LABELS[awakenElement]} 각성을 지금 연다\n대가를 치른 뒤 작열·연환·낙인 중 직접 선택`
         : '각성을 지금 연다\n대가를 치른 뒤 성질을 직접 선택';
-    case 'ripple':
-      return `수동 영창이 **다른 적에게** 번진다 (위력 ${Math.round(ALTAR_OFFER_CONFIG.ripple.powerScale * 100)}%)`
-        + `\n가장 가까운 다른 적 ${ALTAR_OFFER_CONFIG.ripple.maxTargets}체까지 · 시퀀스 제외`;
+    case 'altar-high':
+      return '고위 제단술 네 갈래 중 하나를 직접 선택\n영창 메아리 · 성운 분열 · 원소 낙성 · 마력 궤적';
     case 'echo':
     default:
       return `반투명 분신이 화면 안 다른 곳에서 영창을 되울린다 (위력 ${Math.round(ALTAR_OFFER_CONFIG.echo.powerScale * 100)}%)`
@@ -168,22 +181,19 @@ export function drawAltarOffer(
    * ⚠️ 종전엔 이 정보가 없어 2회차 제단이 이미 가진 능력을 또 제시했다. 에코는
    * boolean이라 두 번 사도 아무 일도 안 일어나는데 **최대 체력 50은 그대로 나간다.**
    */
-  ownedKinds: readonly AltarTierKind[] = [],
+  _ownedKinds: readonly AltarTierKind[] = [],
 ): RewardOption[] {
   const options: RewardOption[] = ALTAR_TIERS.map((tier) => {
-    const owned = ownedKinds.includes(tier.kind);
-    const affordable = !owned
-      && canAffordAltarTier(maxHp, tier.cost)
-      && (tier.kind !== 'awaken' || awakenElement !== null);
+    const affordable = canAffordAltarTier(maxHp, tier.cost)
+      && (tier.kind !== 'awaken' || awakenElement !== null)
+      && (tier.kind !== 'altar-high' || drawHighAltarOptions(_ownedKinds).length > 0);
     const locked = !affordable;
     const title = !locked
       ? `생명 −${tier.cost}`
-      : owned ? '이미 지녔다' : `봉인됨 · 생명 −${tier.cost}`;
+      : `봉인됨 · 생명 −${tier.cost}`;
     const description = !locked
       ? tierDescription(tier, awakenElement)
-      : owned
-        ? '이미 이 힘을 지녔다 — 같은 것을 두 번 살 수는 없다'
-        : (tier.kind === 'awaken' && awakenElement === null
+      : (tier.kind === 'awaken' && awakenElement === null
           ? '아직 어떤 원소도 부르지 못한다 — 먼저 영창하라'
           : `최대 생명이 ${ALTAR_OFFER_CONFIG.minMaxHp} 아래로 내려간다`);
     return {

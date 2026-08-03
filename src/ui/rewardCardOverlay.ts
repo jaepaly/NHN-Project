@@ -197,7 +197,11 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   // 제단 전용 (#214)
   'altar-leave': 'DEPART',
   'all-affinity': 'ATTUNE',
+  'altar-high': 'HIGH ARCANA',
   echo: 'ECHO',
+  starburst: 'STAR BURST',
+  meteor: 'METEOR',
+  trail: 'TRAIL',
   ripple: 'RIPPLE',
 };
 
@@ -300,7 +304,7 @@ export function showRewardCards(
   framing: CardFraming = {},
 ): Promise<RewardOption> {
   if (activeCleanup) throw new Error('reward overlay already open');
-  const shown = options.slice(0, 3);
+  const shown = options.slice(0, 4);
   const wrap = ensureDom();
 
   const titleText = framing.title ?? '공명의 대가를 선택하라';
@@ -380,7 +384,7 @@ export function showRewardCards(
 
     // 캡처 단계에서 키를 소비 — Phaser(window 버블 리스너)·영창 바와 충돌 방지
     const onKeyDown = (e: KeyboardEvent): void => {
-      const hotkey = ['1', '2', '3'].indexOf(e.key);
+      const hotkey = ['1', '2', '3', '4'].indexOf(e.key);
       if (hotkey !== -1 && hotkey < shown.length) {
         e.preventDefault(); e.stopImmediatePropagation();
         finish(hotkey);
