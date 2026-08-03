@@ -19,6 +19,11 @@ import {
   normalizeJudgeOutput,
   promoteCastSpellToAtomicPlan,
 } from './judge-output.js';
+import {
+  buildJudgeTimingLog,
+  sanitizeRequestId,
+  sha256Hex,
+} from './observability.js';
 
 const GEMINI_URL =
   // 모델 핀 고정(2026-07-22): `-latest` 자동 갱신으로 요청 규격이 바뀌는 문제 방지.
@@ -265,6 +270,7 @@ function corsHeaders(origin) {
       'X-Incant-Cached-Tokens',
       'X-Incant-Judge-Retry',
       'X-Incant-Diagnostic-Version',
+      'X-Incant-Request-Id',
     ].join(', '),
     'Content-Type': 'application/json; charset=utf-8',
   };
@@ -414,11 +420,13 @@ export default {
       return evolveName(request, env, cors);
     }
     let text;
+    let requestId;
     let castMode = 'normal';
     let resonance = null;
     try {
       const body = await request.json();
       text = String(body.text ?? '').slice(0, 60);
+      requestId = sanitizeRequestId(body.requestId ?? request.headers.get('X-Incant-Request-Id'));
       castMode = body.castMode === 'ultimate' ? 'ultimate' : 'normal';
       resonance = castMode === 'ultimate' ? sanitizeUltimateResonance(body.resonance) : null;
     } catch {
@@ -442,11 +450,17 @@ export default {
     let outputTokens = 0;
     let cachedTokens = 0;
     let retryReason = 'none';
+    const attempts = [];
+    const requestStartedAt = performance.now();
+    const inputHash = await sha256Hex(text);
     const requestGemini = async (prompt) => {
-      geminiAttempts += 1;
+      const attempt = geminiAttempts + 1;
+      geminiAttempts = attempt;
       const startedAt = performance.now();
+      let status = null;
+      let error = null;
       try {
-        return await fetch(`${GEMINI_URL}?key=${env.GEMINI_API_KEY}`, {
+        const response = await fetch(`${GEMINI_URL}?key=${env.GEMINI_API_KEY}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -457,8 +471,20 @@ export default {
             },
           }),
         });
+        status = response.status;
+        return response;
+      } catch (cause) {
+        error = cause?.name ?? 'network_error';
+        throw cause;
       } finally {
-        geminiElapsedMs += performance.now() - startedAt;
+        const elapsedMs = performance.now() - startedAt;
+        geminiElapsedMs += elapsedMs;
+        attempts.push({
+          attempt,
+          status,
+          elapsedMs: Math.round(elapsedMs),
+          ...(error ? { error } : {}),
+        });
       }
     };
     const recordUsage = (responseData) => {
@@ -475,8 +501,25 @@ export default {
       'X-Incant-Output-Tokens': String(outputTokens),
       'X-Incant-Cached-Tokens': String(cachedTokens),
       'X-Incant-Judge-Retry': retryReason,
-      'X-Incant-Diagnostic-Version': '8',
+      'X-Incant-Diagnostic-Version': '9',
+      'X-Incant-Request-Id': requestId,
     });
+    const logTiming = (outcome, validation, extra = {}) => {
+      console.log(JSON.stringify(buildJudgeTimingLog({
+        requestId,
+        route: path,
+        inputLength: text.length,
+        inputHash,
+        attempts,
+        retryReason,
+        outcome,
+        validation,
+        elapsedMs: Math.round(performance.now() - requestStartedAt),
+        geminiElapsedMs: Math.round(geminiElapsedMs),
+        colo: request.cf?.colo,
+        ...extra,
+      })));
+    };
 
     const judgePrompt = castMode === 'ultimate'
       ? `${JUDGE_PROMPT}${ULTIMATE_PROMPT}${ultimateResonancePrompt(resonance)}`
@@ -485,9 +528,10 @@ export default {
 
     if (!geminiRes.ok) {
       const detail = await geminiRes.text().catch(() => '');
+      logTiming('upstream_error', 'not_applicable', { upstreamStatus: geminiRes.status });
       return new Response(
         JSON.stringify({ error: 'upstream', status: geminiRes.status, detail: detail.slice(0, 500) }),
-        { status: 502, headers: cors },
+        { status: 502, headers: diagnosticHeaders() },
       );
     }
 
@@ -504,6 +548,7 @@ export default {
       parsed = parseJudgeJson(json);
     } catch {
       retryReason = 'json-syntax';
+      logTiming('invalid_llm_output', 'parse_failed');
       return new Response(
         JSON.stringify({ error: 'invalid llm output', retrySuppressed: 'json-syntax' }),
         { status: 502, headers: diagnosticHeaders() },
@@ -547,6 +592,11 @@ export default {
       capSpellPlanPower(parsed);
     }
     const normalized = normalizeJudgeOutput(parsed);
+    logTiming(
+      normalized.value?.disposition ?? 'unknown',
+      retryTriggerReason ? 'contract_retry_suppressed' : 'valid',
+      { retryTriggerReason },
+    );
     return new Response(JSON.stringify(normalized.value), {
       status: 200,
       headers: diagnosticHeaders(),
