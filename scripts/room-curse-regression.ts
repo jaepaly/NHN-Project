@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   ROOM_CURSE_CONFIG,
   isInsideCurseCircle,
@@ -20,4 +21,10 @@ assert.equal(silenceManaDrainPerSecond(100), 5);
 assert.equal(silenceManaDrainPerSecond(0), 0);
 assert.equal(silenceManaDrainPerSecond(Number.NaN), 0);
 
-console.log('Room curse regression: MapGraph trap config·circle guard·silence drain 3군 통과');
+const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+assert.ok(
+  scene.includes("behaviorUsesAnyElement(behavior, ['light', 'fire', 'lightning'])"),
+  '암전은 빛·불·번개 원소로 밝힐 수 있어야 한다',
+);
+
+console.log('Room curse regression: MapGraph trap config·circle guard·silence drain·blackout elements 4군 통과');

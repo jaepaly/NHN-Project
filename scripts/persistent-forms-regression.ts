@@ -103,15 +103,14 @@ assert.equal(controls.movementMultiplierFor(boss), 1);
   assert.equal(isBattlefieldWall(wall({ effect: 'heal' })), false, 'heal은 벽이 아니다');
 }
 
-// 7) 일반 영창은 기존 지속 form을 교체하지만, 필살영창 plan 내부 wall/orbit은 함께 유지한다.
+// 7) 일반·필살영창 모두 지속 form을 함께 유지하되 오래된 것부터 6개 상한으로 정리한다.
 {
   const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   assert.ok(scene.includes('private activeWalls: ActiveWall[] = []'));
   assert.ok(scene.includes('private activeOrbits: ActiveOrbit[] = []'));
-  assert.ok(scene.includes("plan.castMode === 'ultimate'"), '필살 plan만 지속 form 중첩을 허용한다');
-  assert.ok(scene.includes('stackPersistentForms,'), 'sequence 실행 옵션으로 중첩 계약을 전달한다');
-  assert.ok(scene.includes('if (!options?.stackPersistentForms) this.clearActiveWall()'));
-  assert.ok(scene.includes('if (!options?.stackPersistentForms) this.clearActiveOrbit()'));
+  assert.ok(!scene.includes('stackPersistentForms'), '일반·필살 사이에 지속 form 중첩 차이를 두지 않는다');
+  assert.ok(!scene.includes('if (!options?.stackPersistentForms) this.clearActiveWall()'));
+  assert.ok(!scene.includes('if (!options?.stackPersistentForms) this.clearActiveOrbit()'));
   assert.ok(scene.includes('while (this.activeWalls.length >= 6)'), 'wall 중첩 상한');
   assert.ok(scene.includes('while (this.activeOrbits.length >= 6)'), 'orbit 중첩 상한');
 }

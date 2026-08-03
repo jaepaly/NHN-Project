@@ -548,8 +548,6 @@ interface SpellExecutionOptions {
    * 나오는 드문 시전이라 여기만 특별하게 둔다.
    */
   fusionRelease?: boolean;
-  /** 같은 필살영창 plan 안의 지속 form은 서로 교체하지 않고 함께 유지한다. */
-  stackPersistentForms?: boolean;
 }
 
 interface EnemyKnockbackState {
@@ -2825,7 +2823,10 @@ export class ProtoScene extends Phaser.Scene {
 
   private stopCastingForRunPause(): void {
     if (this.incanting) this.closeIncant();
-    if (this.casting) this.finishCastingUx();
+    if (this.casting) {
+      this.resetMovementKeys();
+      this.finishCastingUx();
+    }
     // 검사 모드가 열린 채 방 클리어·사망·런 종료로 넘어가면 time.paused가 남아
     // 보상 화면의 타이머·연출이 전부 멈춘다 — 여기서 반드시 되돌린다.
     this.closeBuildInspect();
@@ -5590,7 +5591,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private finishCastingUx(): void {
-    this.resetMovementKeys();
     this.casting = false;
     this.clearSequenceProgress();
     this.setTimeScale(1);
@@ -6459,7 +6459,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           !blackoutIlluminated
           && this.activeRoomCurse?.kind === 'blackout'
           && this.blackoutCurseField
-          && behaviorUsesAnyElement(behavior, ['light', 'fire'])
+          && behaviorUsesAnyElement(behavior, ['light', 'fire', 'lightning'])
         ) {
           this.blackoutCurseField.illuminate();
           blackoutIlluminated = true;
@@ -6475,7 +6475,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
             behavior,
             targetState,
             repeatPowerScale,
-            plan.castMode === 'ultimate',
             plan.castMode === 'normal',
             allowEcho,
           );
@@ -6563,7 +6562,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     behavior: FormBehavior,
     targetState: SequenceTargetState,
     repeatPowerScale: number,
-    stackPersistentForms = false,
     researchEligible = true,
     allowEcho = false,
   ): SpellSpec {
@@ -6609,7 +6607,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       controlDurationScale: tuningScale(tuning, 'duration'),
       controlStrengthScale: tuningScale(tuning, 'strength'),
       shieldAmountScale: tuningScale(tuning, 'amount'),
-      stackPersistentForms,
       onAffectEnemy: (enemy) => {
         if (targetState.lockedEnemy?.alive) return;
         targetState.lockedEnemy = enemy;
@@ -6987,7 +6984,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     spec: SpellSpec,
     options?: SpellExecutionOptions,
   ): void {
-    if (!options?.stackPersistentForms) this.clearActiveWall();
     while (this.activeWalls.length >= 6) this.clearActiveWall(this.activeWalls[0]);
     const target = spec.target === 'self'
       ? this.nearestEnemy()
@@ -7081,7 +7077,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private createOrbit(spec: SpellSpec, options?: SpellExecutionOptions): void {
-    if (!options?.stackPersistentForms) this.clearActiveOrbit();
     while (this.activeOrbits.length >= 6) this.clearActiveOrbit(this.activeOrbits[0]);
     const palette = ELEMENT_PALETTES[spec.element_primary];
     const count = orbitCount(spec.size);
