@@ -6534,7 +6534,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const origin = view
           ? new Phaser.Math.Vector2(view.x, view.y)
           : new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
-        this.applySpellEffect(request.spell, origin, true, 1);
+        for (let i = 0; i < request.burstCount; i += 1) {
+          this.time.delayedCall(i * 110, () => {
+            if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
+            this.applySpellEffect(
+              { ...request.spell, power: Math.max(1, Math.round(request.spell.power * (i === 0 ? 1 : 0.55))) },
+              origin, true, 1, { decorVfxScale: 1 + i * 0.12 },
+            );
+          });
+        }
         continue;
       }
       // 치유·수호는 적이 없어도 실제로 일한다 — 여기서 빛나는 건 허공 연출이 아니다
