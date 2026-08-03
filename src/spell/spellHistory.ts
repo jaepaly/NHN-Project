@@ -139,6 +139,9 @@ export class SpellHistory {
   private entries: SpellHistoryEntry[] = [];
   private casts: SpellCastRecord[] = [];
   private behaviorUsages: SpellBehaviorUsageEntry[] = [];
+  /** Repeat penalty state is reset per loop while memory history remains available. */
+  private repeatEntryStart = 0;
+  private repeatCastStart = 0;
 
   /**
    * 검증된 cast 주문을 기록한다. R1이 **마나 지불 후 발동이 확정된 시점**에 호출한다.
@@ -210,7 +213,8 @@ export class SpellHistory {
   /** 이 문장이 지금까지 기록된 횟수 (정규화 기준) */
   countOf(rawText: string): number {
     const key = normalizeSpellText(rawText);
-    return this.casts.reduce((n, e) => (e.normalized === key ? n + 1 : n), 0);
+    return this.casts.slice(this.repeatCastStart)
+      .reduce((n, e) => (e.normalized === key ? n + 1 : n), 0);
   }
 
   /**
@@ -220,7 +224,7 @@ export class SpellHistory {
   countOfSimilar(rawText: string, spell: Parameters<typeof spellSignature>[0]): number {
     const key = normalizeSpellText(rawText);
     const signature = spellSignature(spell);
-    return this.entries.reduce(
+    return this.entries.slice(this.repeatEntryStart).reduce(
       (n, e) => (e.normalized !== key && spellSignature(toSignatureInput(e)) === signature ? n + 1 : n),
       0,
     );
@@ -261,6 +265,12 @@ export class SpellHistory {
     return this.behaviorUsages;
   }
 
+  /** Keep memory/boss history, but start repeat penalty calculation from the next loop. */
+  resetRepeatPenalty(): void {
+    this.repeatEntryStart = this.entries.length;
+    this.repeatCastStart = this.casts.length;
+  }
+
   /** 기록 건수 */
   get size(): number {
     return this.casts.length;
@@ -283,6 +293,8 @@ export class SpellHistory {
     this.entries = [];
     this.casts = [];
     this.behaviorUsages = [];
+    this.repeatEntryStart = 0;
+    this.repeatCastStart = 0;
   }
 }
 

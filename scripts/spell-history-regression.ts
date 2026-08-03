@@ -164,4 +164,10 @@ assert.equal(h4.bossMemory().dominantElement, null, '비면 null');
   );
 }
 
-console.log('SpellHistory regression: 기록·반복패널티·정규화·요약·리셋·스펙기반우회차단 8군 통과');
+// Loop transition resets only repeat penalty; a new cast in the next loop is full power.
+const loopReset = new SpellHistory();
+loopReset.record({ rawText: 'loop spell', spell: spell(), source: 'mock', castAt: nextTime() });
+assert.equal(loopReset.repeatMultiplier('loop spell'), REPEAT_PENALTY.perReuse);
+loopReset.resetRepeatPenalty();
+assert.equal(loopReset.repeatMultiplier('loop spell'), 1, 'next loop starts without prior repeat penalty');
+console.log('SpellHistory regression: 기록·반복패널티·정규화·요약·리셋·루프경계·스펙기반우회차단 9군 통과');
