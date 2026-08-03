@@ -111,7 +111,8 @@ export class TitleScene extends Phaser.Scene {
     };
     makeTab(width * 0.25, '〔 주문 도감 〕', () => { void this.openCodex(); });
     makeTab(width * 0.5, '〔 설정 〕', () => { void this.openSettings(); });
-    makeTab(width * 0.75, '〔 상점 · 준비 중 〕');
+    // 상점은 아직 상품 UI가 없으므로 로비를 유지한다. 이후 상점 오버레이도 도감처럼 암막 없이 연다.
+    makeTab(width * 0.75, '〔 상점 · 준비 중 〕', () => undefined);
   }
 
   /**

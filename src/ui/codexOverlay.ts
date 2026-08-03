@@ -19,7 +19,7 @@ const CSS = `
 #${WRAP_ID} {
   position: fixed; inset: 0; z-index: ${UI_LAYER.codex};
   display: grid; place-items: center;
-  background: rgba(6, 5, 10, 0.9);
+  background: transparent;
   opacity: 0; visibility: hidden; transition: opacity 200ms ease;
   font-family: ${UI_FONT.sans};
 }
@@ -109,7 +109,6 @@ ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .codex-claim:hover { border-color: ${UI_COLOR.warm}; background: rgba(164, 123, 43, 0.38); }
 #${WRAP_ID} .codex-sold { margin-top: 9px; font-size: 13px; color: #7981a4; }
 #${WRAP_ID} .codex-detail-action { display: flex; justify-content: flex-end; margin: 18px 22px 8px 0; }
-#${WRAP_ID} .codex-tokens { font-size: 14px; color: ${UI_COLOR.warm}; white-space: nowrap; }
 #${WRAP_ID} .codex-claim-all {
   margin-left: auto; padding: 7px 12px; border: 1px solid ${UI_COLOR.borderStrong}; border-radius: 7px;
   background: rgba(104, 78, 34, 0.2); color: ${UI_COLOR.accentGlow}; font: inherit; font-size: 13px; cursor: pointer;
@@ -224,7 +223,6 @@ export function showCodexOverlay(
         <div class="codex-title">주문 도감</div>
         ${divider()}
         <div class="codex-sub">${currentEntries.length > 0 ? `새겨진 주문 ${currentEntries.length}종` : '비어 있는 책'}</div>
-        ${options.onClaimToken ? `<div class="codex-tokens">✦ 주문 토큰 ${tokenBalance}</div>` : ''}
       </div>
       <div class="codex-sortbar">
         ${currentEntries.length > 0 ? sortButtons : ''}
