@@ -242,6 +242,8 @@ function ensureDom(): HTMLElement {
  * 반짝이는 금빛 테두리로 한눈에 티가 나게 한다 (총괄 요청).
  */
 export function isRareReward(option: RewardOption): boolean {
+  // 빌드 프리셋은 보상의 희귀도가 아니라 출발 방식 선택이다.
+  if (option.id.startsWith('demo-build-')) return false;
   return option.kind === 'evolve' || option.kind === 'chorus-awaken';
 }
 

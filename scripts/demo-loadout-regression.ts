@@ -33,7 +33,11 @@ const makeController = () => new CombatRunController({ playerState: new PlayerCo
 {
   const spirits = new SpiritManager();
   applyDemoBuildLoadout('spirits', spirits, makeController());
-  assert.deepEqual(spirits.entries.map(entry => entry.element).sort(), ['fire', 'lightning']);
+  assert.equal(spirits.entries.length, 2);
+  const fusion = spirits.entries.find(entry => entry.fused);
+  assert.deepEqual(fusion?.elements, ['fire', 'ice']);
+  assert.equal(fusion?.level, 3, 'fused spirit uses the actual fusion upgrade level');
+  assert.equal(spirits.entries.find(entry => entry.element === 'lightning')?.level, 1);
 }
 
 {

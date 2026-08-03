@@ -119,7 +119,7 @@ export const DEMO_BUILD_OPTIONS: readonly RewardOption[] = [
   {
     id: 'demo-build-spirits', kind: 'spirit', element: 'wind',
     title: '정령 지휘자',
-    description: '불·번개 정령과 함께 시작\n영창으로 전장을 열고 정령에게 마무리를 맡긴다',
+    description: '불+얼음 융합 정령과 번개 정령으로 시작\n영창으로 전장을 열고 정령에게 마무리를 맡긴다',
   },
 ];
 
@@ -193,9 +193,11 @@ export function applyDemoBuildLoadout(
     affinitySink.activateElementalChorus();
     return;
   }
-  for (const element of ['fire', 'lightning'] as const) {
-    spiritManager.applyReward(spiritCard(element, 1));
-  }
+  spiritManager.applyReward(spiritCard('fire', 1));
+  spiritManager.applyReward(spiritCard('ice', 1));
+  const candidate = spiritManager.fuseCandidate();
+  if (candidate) spiritManager.fuse(candidate.spiritIds, '극설의 화염 정령');
+  spiritManager.applyReward(spiritCard('lightning', 1));
 }
 
 /**
