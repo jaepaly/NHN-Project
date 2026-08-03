@@ -3755,16 +3755,9 @@ export class ProtoScene extends Phaser.Scene {
       const zonesOfKind = this.floorHazards.filter((zone) => zone.kind === kind);
       if (zonesOfKind.length === 0) continue;
       const view = this.add.graphics().setDepth(-1.5);
-      const [glow, body, edge] = kind === 'lava'
-        ? [0x5a1e00, 0xff6a1a, 0xffb066]
-        : [0x0e2e12, 0x39b54a, 0x9be89b];
-      for (const zone of zonesOfKind) {
-        view.fillStyle(glow, 0.28).fillCircle(zone.x, zone.y, zone.radius + 6);
-        view.fillStyle(body, 0.30).fillCircle(zone.x, zone.y, zone.radius);
-        view.lineStyle(2, edge, 0.7).strokeCircle(zone.x, zone.y, zone.radius);
-      }
       this.floorHazardViews.set(kind, view);
     }
+    this.renderFloorHazardViews();
     this.floorHazardTickCooldown = FLOOR_HAZARD_CONFIG.tickIntervalSeconds;
   }
 
@@ -3881,6 +3874,7 @@ export class ProtoScene extends Phaser.Scene {
   private updateFloorHazards(deltaSeconds: number): void {
     if (this.floorHazards.length === 0) return;
     this.floorHazardPlayer = advanceFloorHazardTimers(this.floorHazardPlayer, deltaSeconds);
+    this.renderFloorHazardViews();
     this.syncFloorHazardImmunityView();
     this.floorHazardTickCooldown = Math.max(0, this.floorHazardTickCooldown - deltaSeconds);
     if (this.floorHazardTickCooldown > 0) return;
@@ -3892,6 +3886,58 @@ export class ProtoScene extends Phaser.Scene {
   private syncFloorHazardImmunityView(): void {
     for (const [kind, view] of this.floorHazardViews) {
       view.setAlpha(isFloorHazardImmune(this.floorHazardPlayer, kind) ? 0.3 : 1);
+    }
+  }
+
+  /** 용암은 균열·기포, 독지대는 소용돌이·포자로 읽히도록 장판 자체를 움직인다. */
+  private renderFloorHazardViews(): void {
+    const phase = this.time.now / 700;
+    for (const kind of FLOOR_HAZARD_KINDS) {
+      const view = this.floorHazardViews.get(kind);
+      if (!view) continue;
+      view.clear();
+      for (const zone of this.floorHazards.filter((entry) => entry.kind === kind)) {
+        const pulse = 1 + Math.sin(phase + zone.x * 0.01) * 0.035;
+        if (kind === 'lava') {
+          view.fillStyle(0x421000, 0.42).fillCircle(zone.x, zone.y, zone.radius + 10 * pulse);
+          view.fillStyle(0xc83712, 0.5).fillCircle(zone.x, zone.y, zone.radius);
+          view.fillStyle(0xff8b28, 0.38).fillCircle(zone.x, zone.y, zone.radius * 0.72);
+          for (let i = 0; i < 6; i += 1) {
+            const angle = i * Math.PI * 2 / 6 + phase * 0.14;
+            const distance = zone.radius * (0.28 + (i % 3) * 0.15);
+            const radius = 7 + (i % 2) * 4 + Math.sin(phase + i) * 2;
+            view.fillStyle(0xffd166, 0.55).fillCircle(
+              zone.x + Math.cos(angle) * distance,
+              zone.y + Math.sin(angle) * distance,
+              radius,
+            );
+          }
+          view.lineStyle(3, 0xffcf70, 0.88).strokeCircle(zone.x, zone.y, zone.radius * 0.96);
+          view.lineStyle(2, 0x6d1605, 0.8);
+          for (let i = 0; i < 7; i += 1) {
+            const angle = i * Math.PI * 2 / 7 + 0.24;
+            view.beginPath()
+              .moveTo(zone.x + Math.cos(angle) * zone.radius * 0.2, zone.y + Math.sin(angle) * zone.radius * 0.2)
+              .lineTo(zone.x + Math.cos(angle + 0.18) * zone.radius * 0.78, zone.y + Math.sin(angle + 0.18) * zone.radius * 0.78)
+              .strokePath();
+          }
+          continue;
+        }
+        view.fillStyle(0x071c10, 0.48).fillCircle(zone.x, zone.y, zone.radius + 10 * pulse);
+        view.fillStyle(0x166c32, 0.46).fillCircle(zone.x, zone.y, zone.radius);
+        view.lineStyle(3, 0xa8ff8a, 0.82).strokeCircle(zone.x, zone.y, zone.radius * 0.96);
+        view.lineStyle(2, 0x7ee86d, 0.46).strokeCircle(zone.x, zone.y, zone.radius * 0.64);
+        for (let i = 0; i < 8; i += 1) {
+          const angle = i * Math.PI * 2 / 8 - phase * 0.2;
+          const distance = zone.radius * (0.3 + (i % 3) * 0.16);
+          const radius = 4 + (i % 3) * 3 + Math.sin(phase * 1.4 + i) * 1.5;
+          view.fillStyle(0xc9ff88, 0.48).fillCircle(
+            zone.x + Math.cos(angle) * distance,
+            zone.y + Math.sin(angle) * distance,
+            radius,
+          );
+        }
+      }
     }
   }
 
@@ -6045,10 +6091,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const controlX = (fromX + toX) * 0.5 + side * bend;
     const controlY = (fromY + toY) * 0.5 - 86 - (index % 2) * 42;
     const trail = this.add.graphics().setDepth(22).setBlendMode(Phaser.BlendModes.ADD);
-    const aura = this.add.circle(fromX, fromY, 30, color, 0.2).setDepth(22)
+    const aura = this.add.circle(fromX, fromY, 18, color, 0.16).setDepth(22)
       .setBlendMode(Phaser.BlendModes.ADD);
-    const shard = this.add.star(fromX, fromY, 6, 8, 19, 0xf8fbff, 1).setDepth(23)
-      .setStrokeStyle(4, color, 1).setBlendMode(Phaser.BlendModes.ADD);
+    const shard = this.add.star(fromX, fromY, 6, 5, 12, 0xf8fbff, 1).setDepth(23)
+      .setStrokeStyle(2, color, 0.9).setBlendMode(Phaser.BlendModes.ADD);
     const progress = { value: 0 };
     this.tweens.add({
       targets: progress,
@@ -6059,9 +6105,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const t = progress.value;
         const x = (1 - t) ** 2 * fromX + 2 * (1 - t) * t * controlX + t ** 2 * toX;
         const y = (1 - t) ** 2 * fromY + 2 * (1 - t) * t * controlY + t ** 2 * toY;
-        shard.setPosition(x, y).setRotation(t * Math.PI * 3 * side).setScale(1.35 - t * 0.35);
-        aura.setPosition(x, y).setScale(1.2 - t * 0.45).setAlpha(0.23 - t * 0.16);
-        trail.clear().lineStyle(9, color, 0.7).beginPath().moveTo(fromX, fromY);
+        shard.setPosition(x, y).setRotation(t * Math.PI * 3 * side).setScale(1.05 - t * 0.3);
+        aura.setPosition(x, y).setScale(1.05 - t * 0.35).setAlpha(0.18 - t * 0.12);
+        trail.clear().lineStyle(5, color, 0.5).beginPath().moveTo(fromX, fromY);
         for (let sample = 1; sample <= 12; sample += 1) {
           const u = t * sample / 12;
           trail.lineTo(
