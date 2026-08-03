@@ -804,3 +804,9 @@ fizzle/blocked는 마나·쿨다운·기록 모두 노카운트. 판정~대사 �
 
 - "게임이 굴러가게"의 남은 큰 축은 **R1(이도원) 전투 코어**(적·웨이브·HP). R2 판정은 준비됨.
 - 렌더링: spellRenderer는 현재 bolt/nova만 구현 → 시각 유사. R1 담당.
+## 최신 Judge Worker 데모 재배포 (2026-08-01)
+
+- [x] PR #319 반영 후 `incant-judge-proxy`에 Worker 배포
+- [x] Version `910ddc84-902b-4562-bbce-634bb35df0b7` 및 URL 확인
+- [x] 관련 회귀·production build·Wrangler dry-run 통과
+- [x] 실요청 HTTP 200·Gemini 685ms·attempts 1·retry none·diagnostic v8 확인
