@@ -212,9 +212,7 @@ import { drawRewardOptions, RUN_REWARD_CONFIG } from '../combat-core/run/rewardC
 import { AFFINITY_ROWS, affinityHudRows, rankAffinities } from '../combat-core/run/useAffinity';
 import { ENGRAVE_CONFIG, EngraveManager } from '../combat-core/engrave/engraveManager';
 import { SpiritManager, spiritElementStatuses } from '../combat-core/spirit/spiritManager';
-import {
-  resolveSelfBuff, SELF_BUFF_CONFIG, formatSelfBuffStatus, selfBuffColor,
-} from '../combat-core/player/selfBuffConfig';
+import { resolveSelfBuff, formatSelfBuffStatus, selfBuffColor } from '../combat-core/player/selfBuffConfig';
 import { EnemyAilmentState } from '../combat-core/status/enemyAilmentState';
 import {
   AILMENT_CONFIG,
@@ -6749,19 +6747,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   /**
-   * 자기 강화(buff) — "이동속도 빠르게"·"무적"·"돌진" 등 자기 대상 표현을 실제 효과로.
+   * 자기 강화(buff) — "이동속도 빠르게"·"무적" 등 자기 대상 표현을 실제 효과로.
    * 원소·주문명·위력으로 버프 종류/세기를 정한다(selfBuffConfig, 순수 함수).
    */
   private castSelfBuff(spec: SpellSpec): void {
     const outcome = resolveSelfBuff(spec.element_primary, spec.name, spec.power);
-    if (outcome.kind === 'dash') {
-      this.performDash(outcome.distance);
-      this.announceSystemMessage(
-        `${outcome.label}!`,
-        paletteColorToCss(ELEMENT_PALETTES[spec.element_primary].core),
-      );
-      return;
-    }
     this.playerState.applyTimedBuff(outcome.buff, outcome.multiplier, outcome.seconds);
     this.showBuffAura(outcome.color, outcome.seconds);
     const magnitude = outcome.buff === 'ward'
@@ -6771,45 +6761,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       `${outcome.label} · ${magnitude} · ${outcome.seconds.toFixed(1)}s`,
       paletteColorToCss(outcome.color),
     );
-  }
-
-  /** 돌진 — 최근 이동 방향(없으면 가까운 적)으로 순간 이동 + 짧은 무적. */
-  private performDash(distance: number): void {
-    const dir = this.lastMoveDir.clone();
-    if (dir.lengthSq() === 0) {
-      const enemy = this.nearestEnemy();
-      if (enemy) dir.set(enemy.x - this.player.x, enemy.y - this.player.y);
-      else dir.set(0, -1);
-    }
-    if (dir.lengthSq() === 0) dir.set(0, -1);
-    dir.normalize();
-    const targetX = Phaser.Math.Clamp(
-      this.player.x + dir.x * distance,
-      this.worldBounds.left + 22,
-      this.worldBounds.right - 22,
-    );
-    const targetY = Phaser.Math.Clamp(
-      this.player.y + dir.y * distance,
-      this.worldBounds.top + 22,
-      this.worldBounds.bottom - 22,
-    );
-    // 돌진 관통감 — 짧은 무적(ward 0배)
-    this.playerState.applyTimedBuff('ward', 0, SELF_BUFF_CONFIG.dash.iframeSeconds);
-    for (let i = 1; i <= 5; i += 1) {
-      const t = i / 6;
-      spawnTrailGhost(
-        this,
-        Phaser.Math.Linear(this.player.x, targetX, t),
-        Phaser.Math.Linear(this.player.y, targetY, t),
-        12,
-        0x8fa4ff,
-        this.player.depth - 1,
-      );
-    }
-    this.tweens.add({
-      targets: this.player, x: targetX, y: targetY, duration: 120, ease: 'Quad.easeOut',
-    });
-    requestCameraShake(this, 'weak');
   }
 
   /** 활성 버프 오라 — 플레이어 컨테이너 뒤에 색으로 표시, 지속시간 후 소멸. */
@@ -9084,6 +9035,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         );
         this.applySlow(enemy, spec.power, duration, movementMultiplier);
       }
+      this.applyOnHitStatuses(enemy, spec);
       this.applyStatusKnockback(enemy, spec, source.x, source.y);
       options?.onAffectEnemy?.(enemy);
     };

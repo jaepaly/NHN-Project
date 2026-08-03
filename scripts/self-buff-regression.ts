@@ -12,10 +12,10 @@ assert.equal((resolveSelfBuff('earth', '대지', 50) as { buff: string }).buff, 
 assert.equal((resolveSelfBuff('fire', '빠르게 달려라', 50) as { buff: string }).buff, 'haste', '이름 속도 > 원소');
 assert.equal((resolveSelfBuff('wind', '무적의 방패', 50) as { buff: string }).buff, 'ward', '이름 무적 > 원소');
 
-// 3) 돌진 — 지속 버프가 아니라 즉시 변위
+// 3) move 계약 제거 뒤 돌진 표현은 변위 없이 haste로 흡수한다.
 const dash = resolveSelfBuff('lightning', '번개처럼 돌진', 50);
-assert.equal(dash.kind, 'dash');
-assert.ok((dash as { distance: number }).distance > SELF_BUFF_CONFIG.dash.baseDistance, '위력이 거리를 늘림');
+assert.equal(dash.kind, 'buff');
+assert.equal(dash.buff, 'haste', '돌진 표현은 이동 대신 가속으로 해석');
 
 // 4) 무적 — 고위력 ward는 받는피해 0
 const invuln = resolveSelfBuff('earth', '철벽 방어', 100);
@@ -62,4 +62,4 @@ r.reset();
 assert.equal(r.damageOutMultiplier, 1, 'reset이 버프 청소');
 assert.equal(r.moveSpeedMultiplier, 1);
 
-console.log('SelfBuff regression: 원소/이름 매핑·돌진·무적·비례·타이머·ward감쇠·reset 8군 통과');
+console.log('SelfBuff regression: 원소/이름 매핑·돌진→가속·무적·비례·타이머·ward감쇠·reset 8군 통과');
