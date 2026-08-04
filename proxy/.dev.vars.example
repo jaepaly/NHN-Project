@@ -1,0 +1,7 @@
+# 이 파일을 proxy/.dev.vars로 복사한 뒤 개인 Gemini API 키를 입력하세요.
+# proxy/.dev.vars는 .gitignore에 포함되어 커밋되지 않습니다.
+GEMINI_API_KEY=replace_with_personal_key
+
+# GitHub Pages에서 Quick Tunnel을 직접 호출할 때만 해당 오리진을 지정합니다.
+# 로컬 Vite 개발 서버는 포트와 관계없이 자동 허용됩니다.
+# ALLOWED_ORIGIN=https://jaepaly.github.io
