@@ -4,6 +4,26 @@
 > 규칙: **푸시할 때마다 이 파일에 "현재 어디까지 했는지"를 갱신해서 함께 커밋한다.**
 > (팀 공용 1줄 기록은 [AI_USAGE_LOG.md](AI_USAGE_LOG.md), 이 파일은 R2 상세 로그)
 
+## ☐ 지금 작업 흐름 — #311 고정 리전 Cloud Run Gemini 프록시 (2026-08-04)
+
+> **목표**: Cloudflare Worker의 비결정적 egress로 재발하는 Gemini 지역 제한을 피하기 위해, Tokyo(`asia-northeast1`)에 고정 배포할 공용 Node 프록시를 추가한다. 기존 `worker.js` 판정 계약을 그대로 재사용하며, 라이브 URL 교체는 실제 200 검증 뒤에만 한다.
+
+**의존성·경계**
+
+- [x] PR #348은 timeout 재시도만 완화하고 지역 오류를 고치지 않으며, PR #346 로컬 터널은 개발·플레이테스트용임을 확인했다.
+- [x] 별도 `codex/issue-311-fixed-region-proxy` worktree를 최신 `origin/main`에서 만들고, 다른 진행 중인 #345 변경을 보존했다.
+- [~] Cloud Run 서비스 생성·Secret Manager 키 등록·실제 배포는 GCP 프로젝트 권한과 결제 계정 연결이 필요하므로, 사용자 확인 전에는 실행하지 않는다.
+
+**R2 작업**
+
+- [x] 기존 `proxy/worker.js`를 직접 호출하는 Node HTTP 어댑터와 `/health`를 구현하고, Cloud Run 전달 IP를 기존 rate-limit 헤더로 변환했다.
+- [x] Tokyo 고정 source 배포용 `proxy/package.json`·`.gcloudignore`, Secret Manager·`min-instances=0` 절차와 롤백 방법을 문서화했다.
+- [x] 실제 Gemini 호출 없이 어댑터 계약·키 미설정·health 회귀, 기존 judge fallback·timeout 재시도 회귀, 전체 97종·타입·프로덕션 build·diff check를 통과시켰다.
+- [ ] 전용 브랜치를 PR로 올려 팀 검토를 받고, 배포 권한이 생기면 Tokyo 실제 호출 200·지역 오류 0을 확인한 뒤에만 Pages 기본 URL을 전환한다.
+- [~] 이 PC에는 `gcloud`가 설치되어 있지 않고 GCP 프로젝트·결제 계정 권한도 확인할 수 없어, 서비스 생성·키 등록·실배포는 수행하지 않았다.
+
+---
+
 ## ☐ 지금 작업 흐름 — #314 Gemini 지연 재시도 예산 (2026-08-04)
 
 > **목표**: 정상 판정의 체감 대기는 5초 이내로 유지하면서, 간헐적인 Gemini 장기 지연 때문에 6초 뒤 MockJudge로 떨어지는 비율을 낮춘다. 전체 timeout을 늘리지 않고 첫 요청을 짧게 끊어 새 요청을 한 번만 시도한다.
