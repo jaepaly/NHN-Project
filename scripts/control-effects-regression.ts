@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   CONTROL_CONFIG,
   controlDurationFromPower,
@@ -108,3 +109,12 @@ assert.equal(cageState.movementMultiplierFor(rootedDead), 1);
 assert.deepEqual(cageState.clear(), [refreshTarget]);
 
 console.log('Control effects regression: cage 감금·둔화복구·재적용·정리 4군 통과');
+
+// 11) 표준 control 적중도 damage·지속형 control과 같은 상태이상 계약을 적용한다.
+const sceneSource = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+const controlHitSource = sceneSource.slice(
+  sceneSource.indexOf('  private onControlHit('),
+  sceneSource.indexOf('  private applyStatusKnockback(', sceneSource.indexOf('  private onControlHit(')),
+);
+assert.ok(controlHitSource.includes('this.applyOnHitStatuses(enemy, spec);'),
+  '표준 control 적중에서 burn/weaken/shock 등의 상태이상이 누락되면 안 된다');
