@@ -13,6 +13,9 @@
  * 굴러 밸런스가 터진다. 그래서 **사용 기여분에만 상한**을 두고(카드는 그 위로 무한),
  * 카드를 여전히 주력 레버로 남긴다.
  */
+import { ELEMENTS } from '../../spell/types';
+import type { SpellElement } from '../../spell/types';
+
 export const USE_AFFINITY = {
   /** 수동 시전 1회당 그 원소 친화 증가분 */
   perCast: 0.02,
@@ -27,8 +30,8 @@ export const USE_AFFINITY = {
  */
 export function accrueUseAffinity(
   addedSoFar: number,
-  perCast = USE_AFFINITY.perCast,
-  useCap = USE_AFFINITY.useCap,
+  perCast: number = USE_AFFINITY.perCast,
+  useCap: number = USE_AFFINITY.useCap,
 ): { added: number; nextAddedSoFar: number } {
   const safe = Number.isFinite(addedSoFar) ? Math.max(0, addedSoFar) : 0;
   const room = Math.max(0, useCap - safe);
@@ -36,8 +39,24 @@ export function accrueUseAffinity(
   return { added, nextAddedSoFar: safe + added };
 }
 
-/** HUD 친화 바에 동시에 세울 원소 수 — 주력 1 + 곁가지 2 (그 이상은 잡음) */
-export const AFFINITY_ROWS = 3;
+/** HUD 슬롯 수 — 8원소를 4행×2열로 항상 보여 숨은 성장 상태를 없앤다. */
+export const AFFINITY_ROWS = ELEMENTS.length;
+
+/**
+ * HUD 고정 원소 행. 순위로 위치를 바꾸면 성장할 때마다 색과 라벨이 자리를 바꿔
+ * 추적 비용이 커지므로, 원소 정본 순서를 유지하고 값이 없어도 0으로 표시한다.
+ */
+export function affinityHudRows(
+  affinity: Partial<Record<SpellElement, number>>,
+): Array<{ element: SpellElement; value: number }> {
+  return ELEMENTS.map((element) => {
+    const raw = affinity[element];
+    return {
+      element,
+      value: Number.isFinite(raw) ? Math.max(0, raw as number) : 0,
+    };
+  });
+}
 
 /**
  * 친화 순위 — 값이 큰 순으로 정렬해 상위 몇 개만 돌려준다.
@@ -47,13 +66,12 @@ export const AFFINITY_ROWS = 3;
  * 화면엔 아무 변화가 없어, "다른 속성은 안 오른다"로 읽혔다. 성장이 일어나는데
  * 화면이 부정하면 플레이어는 그 선택지를 지워버린다.
  *
- * 그래도 상위 몇 개만 세우는 이유: 이 게임의 친화 설계는 **집중형 보상**이다
- * (useCap 0.45 · 카드로만 그 위). 8개를 다 늘어놓으면 "고루 찍어라"로 잘못 읽힌다.
- * 주력을 맨 위 큰 바로 두고 나머지는 작게 — 둘 다 사실대로 보인다.
+ * HUD 위치는 `affinityHudRows`가 고정하고, 이 순위는 주력 강조·계승 후보처럼
+ * 값의 우선순위가 필요한 곳에서만 쓴다.
  */
 export function rankAffinities<T extends string>(
   affinity: Partial<Record<T, number>>,
-  limit = AFFINITY_ROWS,
+  limit: number = AFFINITY_ROWS,
 ): Array<{ element: T; value: number }> {
   const rows: Array<{ element: T; value: number }> = [];
   for (const [element, raw] of Object.entries(affinity) as Array<[T, number | undefined]>) {

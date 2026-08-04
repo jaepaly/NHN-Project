@@ -5,6 +5,8 @@ import { FRAME_CONFIG, deckledPoints } from '../src/render/grimoireFrameGeometry
 import {
   AFFINITY_PANEL_LAYOUT,
   affinityBarY,
+  affinityColumnWidth,
+  affinityColumnX,
   affinityLabelY,
   affinityPanelGeometry,
 } from '../src/ui/combatHudLayout';
@@ -298,6 +300,13 @@ import {
   // **모든 오버레이가 장식을 쓰는가.** 만들어만 두면 아무 소용이 없다.
   for (const name of overlays) {
     const src = readFileSync(`src/ui/${name}.ts`, 'utf8');
+    // 도감 헤더는 긴 제목·토큰과 코너 장식이 겹치므로, 네 귀퉁이 장식 대신
+    // 중앙 괘선을 고정하는 예외 레이아웃을 쓴다.
+    if (name === 'codexOverlay') {
+      assert.ok(/divider\(\)/.test(src), `${name}: 중앙 구획 괘선이 없다`);
+      assert.ok(/codex-head \.orn-divider/.test(src), `${name}: 괘선이 헤더 중앙에 고정되지 않았다`);
+      continue;
+    }
     assert.ok(
       /cornerFlourish\(\)/.test(src),
       `${name}: 모서리 장식이 없다 — 판만 있으면 "상자에 색만"으로 돌아간다`,
@@ -540,13 +549,13 @@ import {
 
   // 친화도는 전투 HUD 바깥의 독립된 판이다. 장식 갈고리가 외곽을 조금 넘기 때문에
   // 텍스트만 6px 아래에 붙이면 화면에서는 두 창이 겹쳐 보인다(총괄 제보).
-  const hud = { y: 18, height: 130 };
-  const affinity = affinityPanelGeometry(hud.y, hud.height, 3);
+  const hud = { x: 18, y: 18, width: 300, height: 130 };
+  const affinity = affinityPanelGeometry(hud.y, hud.height, 8);
   assert.ok(
     affinity.top - (hud.y + hud.height) >= 12,
     `전투 HUD와 친화도 패널 간격이 너무 좁다 (${AFFINITY_PANEL_LAYOUT.gap}px)`,
   );
-  for (let index = 0; index < 3; index += 1) {
+  for (let index = 0; index < 8; index += 1) {
     const labelY = affinityLabelY(affinity.top, index);
     const barY = affinityBarY(affinity.top, index);
     assert.ok(labelY >= affinity.top, `${index}행 라벨이 패널 위로 나갔다`);
@@ -556,6 +565,17 @@ import {
       `${index}행 바가 패널 아래로 나갔다`,
     );
   }
+  const columnWidth = affinityColumnWidth(hud.width);
+  const leftX = affinityColumnX(hud.x, hud.width, 0);
+  const rightX = affinityColumnX(hud.x, hud.width, 4);
+  assert.ok(columnWidth < hud.width / 2, '친화 게이지는 기존 전폭의 절반보다 짧아야 한다');
+  assert.ok(rightX > leftX + columnWidth, '좌우 칼럼 사이에 간격이 있어야 한다');
+  assert.ok(rightX + columnWidth <= hud.x + hud.width, '오른쪽 게이지가 패널 밖으로 나가지 않는다');
+  assert.equal(
+    affinityLabelY(affinity.top, 0),
+    affinityLabelY(affinity.top, 4),
+    '좌우 첫 원소는 같은 행에 놓인다',
+  );
   assert.ok(
     /drawGrimoirePanel\(g, HUD\.x, panel\.top, HUD\.width, panel\.height/.test(scene),
     '친화도 행은 좌표만 떨어뜨리지 말고 독립된 마도서 판 안에 있어야 한다',

@@ -41,7 +41,8 @@ type StaticRewardKind = Exclude<
   // 제단 전용·특수 보상은 일반 3택 풀에 절대 섞이지 않는다.
   // ⚠️ 여기에 안 넣으면 `buildOption`의 switch가 그 종류를 안 다뤄 반환이 없다 —
   // tsc가 "ending return statement가 없다"로 잡는다(ripple 추가 때 실제로 걸렸다).
-  'engrave' | 'spirit' | 'evolve' | 'awaken' | 'altar-leave' | 'all-affinity' | 'echo' | 'ripple'
+  'engrave' | 'spirit' | 'evolve' | 'awaken' | 'altar-leave' | 'legacy-skip' | 'all-affinity' | 'altar-high'
+  | 'echo' | 'ripple' | 'starburst' | 'meteor' | 'trail' | 'chorus-awaken'
 >;
 
 /**

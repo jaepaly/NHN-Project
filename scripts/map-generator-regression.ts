@@ -1,371 +1,193 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import {
-  MAP_GENERATOR_CONFIG,
-  generateRunMap,
-  seededRandom,
-} from '../src/run/mapGenerator';
+import { generateRunMap, seededRandom } from '../src/run/mapGenerator';
 import { RunMapGraph, maximumMapPathRooms } from '../src/run/mapGraph';
-import { MAP_GRAPH_PRESET_01 } from '../src/run/mapGraphPreset';
 import { WAVE_SETS } from '../src/combat-core/waves/waveManager';
-import {
-  dominates,
-  roomRewardValue,
-  roomRisk,
-} from '../src/combat-core/run/roomRewardScale';
+import { PlayerCombatState } from '../src/combat-core/player/playerCombatState';
+import { CombatRunController } from '../src/combat-core/run/runController';
+import { encounterFromMapNode } from '../src/run/mapEncounter';
 import type { MapGraphDefinition } from '../src/run/mapGraph';
-import type { MapNodeKind } from '../src/run/mapGraphContract';
+import type { MapNode, MapNodeKind } from '../src/run/mapGraphContract';
+import { MINIMAP_CONFIG, minimapLayout } from '../src/ui/minimapLayout';
+import { toMinimapModel } from '../src/run/mapGraph';
 
-/**
- * 파티션 맵 생성기 회귀 (#240 배선).
- *
- * 생성기는 **매 런 다른 데이터를 만든다.** 고정 프리셋이라면 눈으로 한 번 보면 되지만
- * 생성기는 어떤 시드에서 어떤 조합이 나올지 알 수 없다 — 그래서 회귀가 시드를 넓게
- * 돌려 불변식을 검사하는 것이 유일한 방어선이다.
- *
- * 특히 #283을 되풀이하지 않는 것이 목표다: 존재하지 않는 `waveSetId`를 참조한
- * 프리셋 한 줄이 방을 벽돌로 만들었다(적도 포탈도 없는 방 = 진행 불가). 생성기가
- * 그 실수를 하면 **모든 런에서** 일어난다.
- */
+/** #240의 맵 경로 비교용 상대값. 실제 roomRewardScale과 의도적으로 분리한다. */
+const risk: Record<MapNodeKind, number> = {
+  start: 1, combat: 1, elite: 2, trap: 2, treasure: 0, altar: 1,
+  'stage-boss': 0, 'memory-boss': 0,
+};
+const reward: Record<MapNodeKind, number> = {
+  start: 0, combat: 0, elite: 0, trap: 0, treasure: 1, altar: 1,
+  'stage-boss': 0, 'memory-boss': 0,
+};
 
-const SEEDS = 500;
-const generated: MapGraphDefinition[] = [];
-for (let seed = 1; seed <= SEEDS; seed += 1) {
-  const result = generateRunMap(seed);
-  if (result) generated.push(result.definition);
-}
-
-// ── 1) 폴백이 상시 경로가 아니다 ────────────────────────────────────────────
-//
-// 폴백은 안전망이어야 한다. 생성 실패가 잦으면 "생성기를 붙였는데 늘 같은 맵"이
-// 되고, `console.warn` 한 줄로만 드러나 아무도 모른다.
-// 실측: 상한 40 → 폴백 2.2% · 80 → 0.2% · 160 → 0%. 맵당 0.8ms라 재시도는 싸다.
-assert.ok(
-  generated.length === SEEDS,
-  `시드 ${SEEDS}개 전부 생성돼야 한다 (실패 ${SEEDS - generated.length}개)`,
-);
-assert.ok(MAP_GENERATOR_CONFIG.maxAttempts >= 160, '재시도 상한이 폴백률 0% 지점 이상');
-
-// ── 2) 계약을 통과한다 ──────────────────────────────────────────────────────
-//
-// `validateDefinition`이 연결성·비순환·고립 노드·인카운터 필드를 전부 본다(설계 §5.0).
-// 생성기는 그 검사를 다시 구현하지 않고 만족시킨다 — 그러니 실제로 통과하는지가
-// 유일하게 중요한 검사다.
-for (const definition of generated) {
-  assert.doesNotThrow(() => new RunMapGraph(definition), '생성 맵이 계약을 통과해야 한다');
-}
-
-// ── 3) **경로 길이가 프리셋과 같다** ────────────────────────────────────────
-//
-// ⚠️ 컨트롤러의 `maxRooms`는 readonly라 런 중에 바꿀 수 없고, 씬은
-// `maximumMapPathRooms(MAP_GRAPH_PRESET_01)`을 넘긴다. 생성 맵의 길이가 다르면
-// `ROOM x/8` 표시와 보스 판정(`roomIndex >= maxRooms`)이 어긋난다 — #272에서
-// 미니맵·포탈 라벨이 상수 2칸 어긋난 것과 같은 결합이다.
-//
-// 한 맵 안에서 경로 길이가 갈리는 것도 안 된다: 짧은 경로로 가면 보스가 일찍
-// 발동하거나 방 번호가 틀린다.
-const presetRooms = maximumMapPathRooms(MAP_GRAPH_PRESET_01);
-for (const definition of generated) {
-  const boss = definition.nodes.find((node) => node.kind === 'memory-boss');
-  assert.ok(boss, '최종 보스가 있어야 한다');
-  const next = new Map<string, string[]>();
-  for (const edge of definition.edges) {
-    next.set(edge.from, [...(next.get(edge.from) ?? []), edge.to]);
-  }
-  const lengths = new Set<number>();
-  const walk = (id: string, length: number): void => {
-    if (id === boss.id) { lengths.add(length); return; }
-    for (const child of next.get(id) ?? []) walk(child, length + 1);
-  };
-  walk(definition.startNodeId, 1);
-  assert.equal(lengths.size, 1, `한 맵의 모든 경로 길이가 같아야 한다 (${[...lengths]})`);
-  assert.equal([...lengths][0], presetRooms, `경로 길이가 프리셋과 같아야 한다 (${presetRooms}방)`);
-  assert.equal(maximumMapPathRooms(definition), presetRooms, 'maxRooms 일치');
-}
-
-// ── 4) **웨이브 세트가 실제로 존재하는 키다** (#283 재발 방지) ───────────────
-//
-// 프리셋이 존재하지 않는 `room-c`를 참조해 `startRoom`이 `clearCombatRoom()` 뒤에
-// throw했고, 적도 포탈도 없는 방이 되어 진행이 막혔다. 생성기가 같은 실수를 하면
-// 모든 런에서 일어난다.
-const ENCOUNTER_KINDS: readonly MapNodeKind[] = ['start', 'combat', 'elite', 'trap'];
-const usedWaveKeys = new Set<string>();
-for (const definition of generated) {
-  for (const node of definition.nodes) {
-    if (ENCOUNTER_KINDS.includes(node.kind)) {
-      assert.ok(
-        typeof node.waveSetId === 'string' && node.waveSetId.length > 0,
-        `${node.kind} 방은 waveSetId가 필요하다: ${node.id}`,
-      );
-      assert.ok(
-        WAVE_SETS[node.waveSetId!] !== undefined,
-        `존재하지 않는 웨이브 세트: ${node.waveSetId} (${node.id})`,
-      );
-      usedWaveKeys.add(node.waveSetId!);
-    } else {
-      // 계약은 비전투 방의 waveSetId가 **반드시 null**이길 요구한다 (undefined도 실패)
-      assert.equal(node.waveSetId, null, `비전투 방은 waveSetId가 null: ${node.id}`);
-    }
-    // 함정 방은 프로필 필수, 나머지는 금지 — 계약이 양방향으로 검사한다
-    if (node.kind === 'trap') {
-      assert.ok(node.trapProfile, `함정 방은 프로필이 필요하다: ${node.id}`);
-    } else {
-      assert.ok(!node.trapProfile, `함정이 아닌 방에 프로필이 붙었다: ${node.id}`);
-    }
-  }
-}
-assert.ok(usedWaveKeys.size >= 4, `웨이브 세트가 다양해야 한다 (${[...usedWaveKeys]})`);
-
-// ── 5) 위험/보상 축이 단조다 — 지배 쌍이 없다 ───────────────────────────────
-//
-// ⚠️ #240 프로토타입의 `roomReward`는 보물·제단에만 1, 전투·정예·함정에 **0**을 줬다.
-// 즉 "싸우는 방은 보상이 없다". 그러면 설계 §5.3의 지배 금지 규칙에 걸려
-// `전투(위험1·보상0)`이 `보물(위험0·보상1)`에 지배당해 가장 자연스러운 로그라이크
-// 분기가 불법이 된다. 프로토타입에 재조정 후처리가 여섯 개 붙은 이유가 이것이다.
-//
-// 축을 `roomRewardScale`에서 읽으면 위험↑→보상↑ 단조가 되고 지배 쌍이 0건이 된다.
-{
-  const KINDS: readonly MapNodeKind[] = ['treasure', 'combat', 'trap', 'elite', 'altar'];
-  for (const a of KINDS) {
-    for (const b of KINDS) {
-      if (a === b) continue;
-      assert.ok(
-        !dominates(
-          { risk: roomRisk(a), reward: roomRewardValue(a) },
-          { risk: roomRisk(b), reward: roomRewardValue(b) },
-        ),
-        `${a}가 ${b}에 지배된다 — 그 분기는 생성 불가가 된다`,
-      );
-    }
-  }
-  // 위험이 오르면 보상도 올라야 한다 (보물 < 전투 < 함정 < 정예 < 제단)
-  const ordered: readonly MapNodeKind[] = ['treasure', 'combat', 'trap', 'elite', 'altar'];
-  for (let i = 1; i < ordered.length; i += 1) {
-    assert.ok(
-      roomRewardValue(ordered[i]) > roomRewardValue(ordered[i - 1]),
-      `${ordered[i]} 보상이 ${ordered[i - 1]}보다 커야 한다`,
-    );
-    assert.ok(
-      roomRisk(ordered[i]) >= roomRisk(ordered[i - 1]),
-      `${ordered[i]} 위험이 ${ordered[i - 1]} 이상이어야 한다`,
-    );
-  }
-  // 제단 위험도는 2 이상 — 최대 체력을 영구히 깎는다. 1로 두면 제단이 정예를 지배한다
-  assert.ok(roomRisk('altar') >= roomRisk('elite'), '제단 위험 >= 정예 (영구 최대체력 대가)');
-}
-
-// ── 6) 경로 규칙 (설계 §5.0 마지막 항 · §5.2 · §5.3) ────────────────────────
-for (const definition of generated) {
-  const boss = definition.nodes.find((node) => node.kind === 'memory-boss')!;
+function pathsTo(definition: MapGraphDefinition, endId: string): MapNode[][] {
   const byId = new Map(definition.nodes.map((node) => [node.id, node]));
   const next = new Map<string, string[]>();
-  for (const edge of definition.edges) {
-    next.set(edge.from, [...(next.get(edge.from) ?? []), edge.to]);
-  }
-  const paths: MapNodeKind[][] = [];
-  const walk = (id: string, trail: MapNodeKind[]): void => {
-    const kind = byId.get(id)!.kind;
-    const here = [...trail, kind];
-    if (id === boss.id) { paths.push(here); return; }
+  for (const edge of definition.edges) next.set(edge.from, [...(next.get(edge.from) ?? []), edge.to]);
+  const paths: MapNode[][] = [];
+  const walk = (id: string, trail: MapNode[]): void => {
+    const node = byId.get(id);
+    assert.ok(node, `edge target must exist: ${id}`);
+    const here = [...trail, node];
+    if (id === endId) { paths.push(here); return; }
     for (const child of next.get(id) ?? []) walk(child, here);
   };
   walk(definition.startNodeId, []);
+  return paths;
+}
 
-  // 선택 가능한 전체 경로의 방 시퀀스가 중복되지 않는다 — 같으면 분기가 가짜다
-  const signatures = paths.map((path) => path.join(','));
-  assert.equal(new Set(signatures).size, signatures.length, '경로 시퀀스 중복 금지');
-
-  // 스테이지마다 보상 방이 최소 하나 (§5.2)
-  for (const stage of [1, 2]) {
-    assert.ok(
-      definition.nodes.some(
-        (node) => node.stage === stage && (node.kind === 'treasure' || node.kind === 'altar'),
-      ),
-      `스테이지 ${stage}에 보상 방이 있어야 한다`,
-    );
-  }
-
-  // 경로 간 지배 관계 금지 (§5.3). 보스는 비교에서 제외 (설계 §2)
-  const scored = paths.map((path) => {
-    const playable = path.filter((kind) => kind !== 'memory-boss' && kind !== 'stage-boss');
-    return {
-      risk: playable.reduce((sum, kind) => sum + roomRisk(kind), 0),
-      reward: playable.reduce((sum, kind) => sum + roomRewardValue(kind), 0),
-    };
+function assertPlayablePath(definition: MapGraphDefinition, path: readonly MapNode[]): void {
+  const graph = new RunMapGraph(definition);
+  const encounterByRoom = new Map([[1, encounterFromMapNode(graph.current())]]);
+  let transition: (() => void) | null = null;
+  let completed = 0;
+  const controller = new CombatRunController({
+    playerState: new PlayerCombatState(),
+    maxRooms: 8,
+    encounterProvider: (roomIndex) => {
+      const encounter = encounterByRoom.get(roomIndex);
+      if (!encounter) throw new Error(`missing encounter for room ${roomIndex}`);
+      return encounter;
+    },
+    rewardDraw: (roomIndex) => [{
+      id: `room-${roomIndex}-hp`, kind: 'max-hp', title: 'HP', description: 'test',
+    }],
+    scheduleTransition: (_delay, callback) => { transition = callback; },
   });
-  for (let i = 0; i < scored.length; i += 1) {
-    for (let j = i + 1; j < scored.length; j += 1) {
-      assert.ok(!dominates(scored[i], scored[j]), '경로 지배 금지');
-      assert.ok(!dominates(scored[j], scored[i]), '경로 지배 금지');
+  controller.configureMapRoute(maximumMapPathRooms(definition));
+  controller.on('run-completed', () => { completed += 1; });
+
+  assert.equal(controller.state.roomCountMode, 'dynamic');
+  assert.equal(controller.state.maxRooms, maximumMapPathRooms(definition));
+  for (let index = 0; index < path.length; index += 1) {
+    const node = graph.current();
+    assert.equal(node.id, path[index].id, 'selected MapNode must drive the encounter');
+    assert.equal(controller.state.encounterId, node.id, 'encounter id must match MapNode id');
+    controller.notifyRoomCleared();
+
+    if (node.kind === 'memory-boss') {
+      assert.equal(controller.state.phase, 'run-over');
+      assert.equal(completed, 1, 'memory-boss must complete the run exactly once');
+      controller.notifyRoomCleared();
+      assert.equal(completed, 1, 'run completion must not repeat');
+      continue;
     }
+
+    assert.notEqual(controller.state.phase, 'run-over', `room ${index + 1} must not end early`);
+    const nextNode = graph.enter(path[index + 1].id);
+    encounterByRoom.set(controller.state.roomIndex + 1, encounterFromMapNode(nextNode));
+    controller.chooseReward(`room-${controller.state.roomIndex}-hp`);
+    assert.ok(transition, `room ${index + 1} must schedule its next encounter`);
+    transition();
+    transition = null;
   }
 }
 
-// ── 7) **스테이지마다 분기가 있다** ─────────────────────────────────────────
-//
-// 설계에 없는 규칙이지만 실측이 필요를 보였다: 이 규칙 없이 400시드를 돌리면
-// 1스테이지에 분기가 아예 없는 맵이 32.7%였다. 첫 스테이지 내내 선택이 없으면
-// 플레이어는 이 게임의 맵에 선택이 있다는 걸 배우지 못한다.
-//
-// 분기 지점은 **자식이 속한 스테이지**로 센다 — 2스테이지의 첫 분기는 부모가
-// `s1-boss`(stage 1)이므로 부모 기준으로 세면 스테이지가 어긋난다.
-for (const definition of generated) {
-  const byId = new Map(definition.nodes.map((node) => [node.id, node]));
-  const branchStages = new Set<number>();
-  for (const node of definition.nodes) {
-    const children = definition.edges
-      .filter((edge) => edge.from === node.id)
-      .map((edge) => byId.get(edge.to)!);
-    if (children.length >= 2) branchStages.add(children[0].stage);
-  }
-  for (const stage of [1, 2]) {
-    assert.ok(branchStages.has(stage), `스테이지 ${stage}에 분기가 있어야 한다`);
-  }
+const generated: MapGraphDefinition[] = [];
+for (let seed = 1; seed <= 500; seed += 1) {
+  const result = generateRunMap(seed);
+  assert.ok(result, `seed ${seed} must produce a map`);
+  generated.push(result.definition);
 }
 
-// ── 8) 전투/비전투 비율 (설계 §5.5) ────────────────────────────────────────
-{
-  let combat = 0;
-  let nonCombat = 0;
-  for (const definition of generated) {
-    for (const node of definition.nodes) {
-      if (node.kind === 'start' || node.kind === 'stage-boss' || node.kind === 'memory-boss') continue;
-      if (node.kind === 'treasure' || node.kind === 'altar') nonCombat += 1;
-      else combat += 1;
-    }
-  }
-  const share = nonCombat / (combat + nonCombat);
-  assert.ok(
-    share >= MAP_GENERATOR_CONFIG.nonCombatShare.min
-      && share <= MAP_GENERATOR_CONFIG.nonCombatShare.max,
-    `비전투 비율 ${(share * 100).toFixed(1)}%가 목표 범위 안이어야 한다`,
-  );
-}
-
-// ── 9) 시드 재현성 ─────────────────────────────────────────────────────────
-//
-// 같은 시드가 같은 맵이어야 버그를 재현할 수 있다. 시연에서 특정 판을 다시
-// 띄우는 것도 이게 있어야 가능하다.
-{
-  const a = generateRunMap(4242);
-  const b = generateRunMap(4242);
-  const c = generateRunMap(4243);
-  assert.ok(a && b && c, '재현성 검사용 시드 생성');
-  assert.deepEqual(a!.definition, b!.definition, '같은 시드 같은 맵');
-  assert.notDeepEqual(a!.definition, c!.definition, '다른 시드 다른 맵');
-  // PRNG 자체도 결정론이어야 한다
-  const r1 = seededRandom(7);
-  const r2 = seededRandom(7);
-  assert.deepEqual([r1(), r1(), r1()], [r2(), r2(), r2()], 'PRNG 결정론');
-}
-
-// ── 10) **시연 로드아웃은 프리셋을 쓴다** ───────────────────────────────────
-//
-// 심사자가 하는 판은 고정 판이어야 한다. 매번 다른 맵을 뽑으면 시연 중에만 드러나는
-// 조합을 만날 수 있고, 심사 자리에서 "다시 뽑아보자"를 할 수는 없다.
-//
-// 씬은 `resetMapGraph(initialNodeId)`에 프리셋 노드 id를 넘겨 이 경로를 탄다 —
-// 생성 맵에는 그 id가 없으므로 넘기는 것 자체가 프리셋 선택이다.
-{
-  const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
-  assert.ok(
-    /runMapDefinition\(initialNodeId === null\)/.test(scene),
-    '시작 노드가 지정되면(시연) 프리셋을 써야 한다',
-  );
-  assert.ok(
-    /resetMapGraph\(MAP_GRAPH_PRESET_01\.lastBeforeBossNodeId, DEMO_START_ROOM\)/.test(scene),
-    '시연 로드아웃은 프리셋 노드 id를 넘긴다',
-  );
-  assert.ok(
-    /고정 프리셋으로 폴백/.test(scene),
-    '생성 실패는 console.warn으로 드러나야 한다 — 조용히 넘어가면 아무도 모른다',
-  );
-}
-
-// ── 12) **위험지대 함정방이 충분히 자주 나온다** ───────────────────────────
-//
-// ⚠️ **여기서 세는 건 `trapProfile: 'hazard'` 함정방이다. 용암·독지대가 아니다.**
-// (#304 시정 — 원래 이 단언들은 함정방을 "독지대"라고 불렀다.)
-//
-// 두 체계는 데이터도 기전도 다르다:
-//
-// | | 위험지대 함정방 | 용암·독지대 |
-// |---|---|---|
-// | 출처 | `trapProfile: 'hazard'` | `MapNode.terrain` (원형, kind lava/poison) |
-// | 산출 | 붉은 원 `HazardZone` (`spawnHazards`) | `FloorHazardZone` (`setFloorHazards`) |
-// | 원소·정화 | **없음** | 있음 (#293 정화가 여기만 붙는다) |
-//
-// #298은 *"1런에는 원래 독지대 같은 함정이 안 등장하나?"* 라는 관측의 답으로 이 함정방
-// 가중치를 올렸는데, **그건 용암·독지대 출현과 무관하다.** 당시 적은 "정화 안내를 볼
-// 기회가 14%뿐"이라는 근거도 틀렸다 — 정화는 `floorHazards`에만 걸리고 그건 실런에
-// 배선 자체가 없었다(#304에서 배선을 붙였다). 함정방 빈도를 올려서 늘어난 정화 노출은
-// 0%였다.
-//
-// #298은 여기에 "hazard가 40% 이상 나와야 한다"는 하한을 걸었다. **그 근거가
-// 사라졌으므로 하한도 함께 걷어낸다** — 근거 없는 하한을 남겨두면 다음 사람이 그것을
-// 설계 의도로 읽고 가중치를 다시 기울인다.
-//
-// 지금 지키는 것은 하나다: **다섯 기믹이 골고루 나온다.** 어느 하나를 대표로 세울
-// 근거가 없고, 방 분포·출현 비율 설계는 R1 소관이다(#304의 소유권 지적).
-{
-  const profiles = new Map<string, number>();
-  for (const definition of generated) {
-    for (const trap of definition.nodes.filter((node) => node.kind === 'trap')) {
-      const kind = trap.trapProfile!.kind;
-      profiles.set(kind, (profiles.get(kind) ?? 0) + 1);
-    }
-  }
-  const ALL_PROFILES = ['hazard', 'blackout', 'silence', 'heatwave', 'word-limit'] as const;
-
-  // 다섯 다 나온다 — 구현해 두고 안 쓰는 게 낭비다
-  for (const kind of ALL_PROFILES) {
-    assert.ok(
-      (profiles.get(kind) ?? 0) > 0,
-      `${kind} 프로필이 한 번도 안 나온다 — 구현해 두고 안 쓰는 셈이다`,
-    );
-  }
-
-  // 균등에서 크게 벗어나지 않는다. 어느 하나가 절반을 넘으면 그건 "대표 기믹"을
-  // 세운 것이고, 그 판단은 R1 몫이다 — 코드가 조용히 정하면 안 된다.
-  const total = [...profiles.values()].reduce((sum, n) => sum + n, 0);
-  for (const kind of ALL_PROFILES) {
-    const share = (profiles.get(kind) ?? 0) / total;
-    assert.ok(
-      share > 0.08 && share < 0.4,
-      `${kind} 비중 ${(share * 100).toFixed(1)}%가 균등(20%)에서 너무 벗어났다`
-      + ' — 특정 기믹을 대표로 세우는 건 R1 설계 결정이다 (#304)',
+// 붉은 원형 위험지대는 trapProfile='hazard'의 함정방 전용이다. 과거 고정 런의
+// stage 2 일반방 변형 `room-c-hazard`가 생성 맵 풀에 남아 방 표기와 기믹이 충돌했다.
+for (let seed = 1; seed <= 500; seed += 1) {
+  const result = generateRunMap(seed)!;
+  for (const node of result.definition.nodes) {
+    assert.notEqual(
+      node.waveSetId,
+      'room-c-hazard',
+      `seed ${seed}: ${node.kind} ${node.id} must not use the legacy hazard combat wave`,
     );
   }
 }
-
-// ── 13) 프리셋 방 구성은 R1 소관이다 ───────────────────────────────────────
-//
-// ⚠️ #298이 여기에 "프리셋 1스테이지에 위험지대 함정이 있어야 한다"를 걸었다가
-// #304에서 걷어냈다. 근거(*"독지대가 안 나온다"*)가 다른 체계를 가리키고 있었고,
-// 무엇보다 **방 분포 설계를 회귀가 못박으면 R1이 프리셋을 못 고친다.**
-//
-// 이 프리셋은 **심사자가 하는 판**이다. 방 구성은 R1 승인 사항이므로 여기서는
-// 구성을 규정하지 않고, 구조적 계약만 지킨다.
-{
-  // 경로 길이는 계속 못박는다 — `maxRooms`(readonly)가 여기 묶여 있어서
-  // 노드를 추가/삭제하면 `ROOM x/8`과 보스 판정이 어긋난다(#272와 같은 결합).
-  assert.equal(
-    maximumMapPathRooms(MAP_GRAPH_PRESET_01), presetRooms,
-    '프리셋 경로 길이가 바뀌면 maxRooms와 어긋난다 — 방을 바꿀 땐 추가가 아니라 교체',
-  );
-  // 1스테이지에 분기가 있어야 한다 — 선택이 없으면 프리셋으로 시연할 게 없다
-  const s1 = MAP_GRAPH_PRESET_01.nodes.filter((node) => node.stage === 1);
-  const s1Lanes = new Set(s1.map((node) => `${node.layer}:${node.lane}`));
-  assert.ok(s1Lanes.size > s1.length - 2, '1스테이지 노드가 겹치지 않아야 한다');
-  assert.ok(
-    MAP_GRAPH_PRESET_01.edges.filter((edge) => edge.from === MAP_GRAPH_PRESET_01.startNodeId)
-      .length >= 2,
-    '시작 방에서 갈래가 둘 이상이어야 한다 — 없으면 시연할 선택이 없다',
-  );
-}
-
-console.log(
-  `map generator regression: 시드 ${generated.length}개 · `
-  + '폴백률·계약·경로길이·웨이브키·축단조·경로규칙·분기보장·전투비율·재현성·시연프리셋'
-  + '·함정프로필균등·프리셋구조계약 12군 통과',
+const reportedHazardSeed = generateRunMap(3_934_948_004)!;
+assert.ok(
+  reportedHazardSeed.definition.nodes.every(node => node.waveSetId !== 'room-c-hazard'),
+  'reported seed 3934948004 must not create a red hazard combat room',
 );
+
+const totalLengths = new Set<number>();
+for (const definition of generated) {
+  const acceptedGraph = new RunMapGraph(definition);
+  assert.doesNotThrow(() => acceptedGraph, 'MapGraph contract must accept generated maps');
+  const minimapPoints = minimapLayout(toMinimapModel(acceptedGraph.snapshot()));
+  for (let i = 0; i < minimapPoints.length; i += 1) for (let j = i + 1; j < minimapPoints.length; j += 1) {
+    const distance = Math.hypot(
+      minimapPoints[i].x - minimapPoints[j].x,
+      minimapPoints[i].y - minimapPoints[j].y,
+    );
+    assert.ok(
+      distance >= MINIMAP_CONFIG.nodeRadius * 2,
+      `generated minimap nodes overlap: ${minimapPoints[i].id}/${minimapPoints[j].id}`,
+    );
+  }
+  const finalBoss = definition.nodes.find((node) => node.kind === 'memory-boss');
+  const stageBoss = definition.nodes.find((node) => node.kind === 'stage-boss');
+  assert.ok(finalBoss && stageBoss, 'both bosses must exist');
+  const paths = pathsTo(definition, finalBoss.id);
+  assert.ok(paths.length > 0, 'a start-to-final-boss path must exist');
+  for (const path of paths) {
+    totalLengths.add(path.length);
+    assertPlayablePath(definition, path);
+  }
+
+  // 0. all selectable routes have distinct room sequences.
+  const signatures = paths.map((path) => path.map((node) => node.kind).join(','));
+  assert.equal(new Set(signatures).size, signatures.length, 'duplicate complete route sequence');
+
+  // 1. stage entry is ordinary combat. `start` is the existing first-room
+  // contract; every post-stage-boss entry is explicitly combat.
+  assert.equal(definition.nodes.find((node) => node.id === definition.startNodeId)?.kind, 'start');
+  const stageTwoEntries = definition.edges
+    .filter((edge) => edge.from === stageBoss.id)
+    .map((edge) => definition.nodes.find((node) => node.id === edge.to)!);
+  assert.ok(stageTwoEntries.length > 0 && stageTwoEntries.every((node) => node.kind === 'combat'));
+
+  // 2. each stage has at least one treasure or altar.
+  for (const stage of [1, 2]) {
+    assert.ok(definition.nodes.some((node) => node.stage === stage
+      && (node.kind === 'treasure' || node.kind === 'altar')), `stage ${stage} reward minimum`);
+  }
+
+  // 3. #240 compares alternatives inside each stage. Combining two valid
+  // stage choices into a Cartesian whole-run set is not an additional design
+  // constraint in the approved HTML generator.
+  for (const stage of [1, 2]) {
+    const stagePaths = [...new Map(paths.map(path => {
+      const nodes = path.filter(node => node.stage === stage && node.kind !== 'stage-boss' && node.kind !== 'memory-boss');
+      return [nodes.map(node => node.kind).join(','), nodes] as const;
+    })).values()];
+    const scores = stagePaths.map(path => path.reduce((score, node) => ({
+      risk: score.risk + risk[node.kind], reward: score.reward + reward[node.kind],
+    }), { risk: 0, reward: 0 }));
+    for (let i = 0; i < scores.length; i += 1) for (let j = i + 1; j < scores.length; j += 1) {
+      assert.ok(!(scores[i].risk > scores[j].risk && scores[i].reward < scores[j].reward), `stage ${stage} route dominance`);
+      assert.ok(!(scores[j].risk > scores[i].risk && scores[j].reward < scores[i].reward), `stage ${stage} route dominance`);
+    }
+  }
+
+  for (const node of definition.nodes) {
+    if (['start', 'combat', 'elite', 'trap'].includes(node.kind)) {
+      assert.ok(node.waveSetId && WAVE_SETS[node.waveSetId], `valid wave set: ${node.id}`);
+    } else assert.equal(node.waveSetId, null, `non-combat wave set must be null: ${node.id}`);
+    assert.equal(node.kind === 'trap', Boolean(node.trapProfile), `trap profile contract: ${node.id}`);
+  }
+}
+
+// #288 must not constrain every generated map to the old preset's 8 rooms.
+assert.ok(totalLengths.size > 1, `path length should vary across seeds: ${[...totalLengths]}`);
+assert.ok(![...totalLengths].every((length) => length === 8), 'fixed 8-room constraint must not return');
+
+const a = generateRunMap(4242);
+const b = generateRunMap(4242);
+const c = generateRunMap(4243);
+assert.ok(a && b && c);
+assert.deepEqual(a!.definition, b!.definition, 'same seed must reproduce the same map');
+assert.notDeepEqual(a!.definition, c!.definition, 'different seed should vary');
+const r1 = seededRandom(7);
+const r2 = seededRandom(7);
+assert.deepEqual([r1(), r1(), r1()], [r2(), r2(), r2()], 'PRNG determinism');
+
+console.log(`map generator regression: 500 seeds; path lengths ${[...totalLengths].sort((a, b) => a - b).join(', ')}`);

@@ -48,12 +48,13 @@ assert.equal(representativeBuildLabel(null, 'wall'), '벽 중심');
 assert.equal(representativeBuildLabel(null, null), '아직 형성되지 않음');
 assert.equal(META_UNLOCK_LABELS['basic-research'], '기본 연구');
 assert.equal(researchContractSummaryLabel({
-  id: 'ward-study',
+  id: 'spirit-resonance',
   element: null,
   progress: 3,
   goal: 3,
   completed: true,
   rewardInsight: 3,
+  usedElements: [],
   usedForms: [],
 }), '수호 연구 3/3 · 완료 +3');
 

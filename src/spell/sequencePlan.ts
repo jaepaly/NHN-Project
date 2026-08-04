@@ -48,6 +48,14 @@ export interface FormBehavior {
 
 export type SpellBehavior = WaitBehavior | FormBehavior;
 
+export function sequencePlanHasActionBehavior(
+  plan: Pick<SpellPlan, 'sequences'>,
+): boolean {
+  return plan.sequences.some((sequence) => sequence.behaviors.some((behavior) => (
+    behavior.type === 'form' && (behavior.spec.behavior?.steps.length ?? 0) > 0
+  )));
+}
+
 /** 실제 behavior가 사용하는 원소 집합. wait은 비원소이며 form은 보조 원소까지 포함한다. */
 export function behaviorElements(behavior: SpellBehavior): SpellElement[] {
   if (behavior.type === 'wait') return [];

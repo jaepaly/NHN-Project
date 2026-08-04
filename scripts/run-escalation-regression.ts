@@ -21,7 +21,6 @@ const t1 = runEscalationProfile(mk({ clears: 0, recentDominantForms: ['bolt'] })
 assert.equal(t1.tier, 1);
 assert.deepEqual(t1.weakenedForms, [], '티어1 약화 없음');
 assert.equal(t1.weakenMultiplier, 1);
-assert.equal(t1.gimmicksUnlocked, false);
 assert.equal(t1.bossDualResistance, false);
 
 // 3) 티어2 — 과의존 **폼** 런-전체 약화 시작 (#171: 원소→폼 전환, 중복 제거)
@@ -29,10 +28,8 @@ const t2 = runEscalationProfile(mk({ clears: 1, recentDominantForms: ['bolt', 'b
 assert.equal(t2.tier, 2);
 assert.deepEqual(t2.weakenedForms, ['bolt', 'nova'], '중복 제거');
 assert.ok(Math.abs(t2.weakenMultiplier - 0.85) < 1e-9, '티어2 약화 0.85');
-assert.equal(t2.gimmicksUnlocked, false);
 
 // 4) 티어3 — 방 기믹 해금 / 티어4 — 보스 이중 저항
-assert.equal(runEscalationProfile(mk({ clears: 2 })).gimmicksUnlocked, true, '티어3 기믹');
 assert.equal(runEscalationProfile(mk({ clears: 2 })).bossDualResistance, false);
 assert.equal(runEscalationProfile(mk({ clears: 3 })).bossDualResistance, true, '티어4 이중 저항');
 

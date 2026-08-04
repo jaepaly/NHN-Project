@@ -27,10 +27,19 @@ export type RewardKind =
   // ── 제단 전용 (#214) — 일반 3택 풀에는 절대 섞이지 않는다 ──────────────
   /** 대가 없이 나간다 — 제단을 거절하는 선택지 */
   | 'altar-leave'
+  /** 유산을 꺼내지 않고 새 런의 발견으로 빌드를 시작한다. */
+  | 'legacy-skip'
   /** 모든 원소 친화 상승 — 일반 풀은 랜덤 1원소만 준다 */
   | 'all-affinity'
+  /** 제단의 생명 −50 고위 제단술 선택으로 들어가는 거래 카드 */
+  | 'altar-high'
   /** 영창 에코 — 수동 단일 주문이 **같은 자리에** 한 번 더 울린다 (시간축) */
   | 'echo'
+  | 'starburst'
+  | 'meteor'
+  | 'trail'
+  /** 조건을 만족한 개별 친화도를 공통 합주 친화도로 직접 전환한다. */
+  | 'chorus-awaken'
   /**
    * 영창 파문 — 수동 단일 주문이 **다른 적에게** 번진다 (공간축).
    * 에코와 같은 값·같은 급이되 축이 다르다 — 한 런에서 제단을 두 번 만나는
@@ -142,6 +151,8 @@ export interface RunStateSnapshot {
   /** 1부터 시작 */
   roomIndex: number;
   maxRooms: number;
+  /** Fixed runs may show a denominator; branching maps cannot know it before choices resolve. */
+  roomCountMode?: 'fixed' | 'dynamic';
   stage: 1 | 2;
   encounterId: string;
   encounterKind: EncounterKind;
@@ -154,6 +165,10 @@ export interface RunStateSnapshot {
   readonly rewards: readonly RewardOption[];
   /** 원소별 위력 배율 보너스 (0.15 = +15%) — HUD 요약 표시용 */
   elementalAffinity: Partial<Record<SpellElement, number>>;
+  /** 합주 개화 뒤 모든 원소가 공유하는 친화도. null이면 개별 친화 단계다. */
+  chorusAffinity: number | null;
+  /** 세 원소 친화 조건을 충족해, 다음 보상에서 합주 전환을 선택할 수 있다. */
+  chorusAvailable: boolean;
 }
 
 export interface RunEvents {

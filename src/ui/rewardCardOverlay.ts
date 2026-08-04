@@ -74,6 +74,16 @@ ${ornamentCss(WRAP_ID)}
   flex: 0 0 46px; filter: ${UI_MATERIAL.gildEdge};
 }
 #${WRAP_ID} .reward-title .orn-sigil.mirrored { transform: scaleX(-1); }
+#${WRAP_ID} .reward-detail-panel {
+  display: none; margin: 14px auto 16px; max-width: 590px; min-height: 104px;
+  padding: 15px 19px; box-sizing: border-box; text-align: left;
+  border: 1px solid color-mix(in srgb, ${UI_COLOR.accent} 52%, ${UI_COLOR.border});
+  border-radius: 9px; background: rgba(11, 9, 18, 0.86);
+  box-shadow: inset 0 0 28px rgba(94, 111, 225, 0.08), 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+#${WRAP_ID} .reward-detail-panel.active { display: block; }
+#${WRAP_ID} .reward-detail-title { font-size: 17px; font-weight: 700; color: ${UI_COLOR.textBright}; }
+#${WRAP_ID} .reward-detail-copy { margin-top: 7px; white-space: pre-line; font-size: 14px; line-height: 1.7; color: ${UI_COLOR.textSoft}; }
 #${WRAP_ID} .reward-cards { display: flex; gap: 20px; justify-content: center; }
 #${WRAP_ID} .reward-card {
   --card-core: ${UI_COLOR.accent}; --card-glow: ${UI_COLOR.borderStrong};
@@ -101,6 +111,11 @@ ${ornamentCss(WRAP_ID)}
   box-shadow: ${UI_MATERIAL.paperShadowLift},
               inset 0 0 0 1px color-mix(in srgb, var(--card-core) 30%, transparent);
 }
+#${WRAP_ID} .reward-card:disabled {
+  cursor: not-allowed; opacity: 0.42; filter: grayscale(0.72);
+  transform: rotate(var(--card-tilt, 0deg)) translateY(var(--card-lift, 0px));
+}
+#${WRAP_ID} .reward-card:disabled:hover { border-color: color-mix(in srgb, var(--card-core) 42%, ${UI_COLOR.border}); box-shadow: ${UI_MATERIAL.paperShadow}, ${UI_MATERIAL.rule}; }
 #${WRAP_ID} .reward-card:focus-visible { outline: 2px solid var(--card-core); outline-offset: 3px; }
 /* 상위 선택지(진화·융합) — 반짝이는 금빛 테두리로 한눈에 티가 난다 */
 #${WRAP_ID} .reward-card--rare {
@@ -158,6 +173,16 @@ ${ornamentCss(WRAP_ID)}
   /* 설명의 의도된 구획(시작/목표/단계)을 카드에서도 보존한다. */
   white-space: pre-line;
 }
+#${WRAP_ID} .card-detail {
+  position: absolute; z-index: 4; left: 50%; bottom: 38px; width: 224px;
+  padding: 10px 12px; box-sizing: border-box; border: 1px solid var(--card-core);
+  border-radius: 7px; background: rgba(10, 8, 17, .97); color: ${UI_COLOR.textSoft};
+  box-shadow: 0 7px 18px rgba(0, 0, 0, .5); font-size: 12px; line-height: 1.55;
+  opacity: 0; pointer-events: none; transform: translate(-50%, 8px); transition: opacity 120ms ease, transform 120ms ease;
+}
+#${WRAP_ID} .reward-card:hover .card-detail, #${WRAP_ID} .reward-card:focus .card-detail, #${WRAP_ID} .reward-card.focused .card-detail {
+  opacity: 1; transform: translate(-50%, 0);
+}
 #${WRAP_ID} .card-kind {
   position: absolute; left: 0; right: 0; bottom: 14px;
   font-size: 11px; letter-spacing: 0.18em; color: var(--card-core); opacity: 0.9;
@@ -196,10 +221,28 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   awaken: 'AWAKEN',
   // 제단 전용 (#214)
   'altar-leave': 'DEPART',
+  'legacy-skip': 'BLANK PAGE',
   'all-affinity': 'ATTUNE',
+  'altar-high': 'HIGH ARCANA',
   echo: 'ECHO',
+  starburst: 'STAR BURST',
+  meteor: 'METEOR',
+  trail: 'TRAIL',
+  'chorus-awaken': 'ASCENDANT CHORUS',
   ripple: 'RIPPLE',
 };
+
+function altarGlyph(kind: RewardOption['kind']): string | null {
+  if (kind === 'chorus-awaken') {
+    return `<span aria-label="무지개 합주 룬" style="font-size:31px;background:linear-gradient(135deg,#ff6f8f 0%,#ffd166 22%,#8cf0b5 43%,#72cfff 63%,#9c7dff 82%,#ed8cff 100%);-webkit-background-clip:text;background-clip:text;color:transparent">✦</span>`;
+  }
+  const icons: Partial<Record<RewardOption['kind'], string>> = {
+    'all-affinity': '✦', awaken: '☽', 'altar-high': '✥', echo: '♙',
+    starburst: '✹', meteor: '☄', trail: '⌁',
+  };
+  const icon = icons[kind];
+  return icon ? `<span style="font-size:31px;color:#fff">${icon}</span>` : null;
+}
 
 function ensureDom(): HTMLElement {
   if (!document.getElementById(STYLE_ID)) {
@@ -225,7 +268,9 @@ function ensureDom(): HTMLElement {
  * 반짝이는 금빛 테두리로 한눈에 티가 나게 한다 (총괄 요청).
  */
 export function isRareReward(option: RewardOption): boolean {
-  return option.kind === 'evolve';
+  // 빌드 프리셋은 보상의 희귀도가 아니라 출발 방식 선택이다.
+  if (option.id.startsWith('demo-build-')) return false;
+  return option.kind === 'evolve' || option.kind === 'chorus-awaken';
 }
 
 function cardColors(option: RewardOption): { core: string; glow: string } {
@@ -237,6 +282,7 @@ function cardColors(option: RewardOption): { core: string; glow: string } {
   if (option.kind === 'swift-incant') return { core: UI_COLOR.warm, glow: '#8a6420' };
   if (option.kind === 'mana-surge') return { core: UI_SEMANTIC.mana, glow: '#3f5a8a' };
   if (option.kind === 'ward-start') return { core: UI_SEMANTIC.shield, glow: '#3a6f80' };
+  if (option.kind === 'chorus-awaken') return { core: '#b68cff', glow: '#5ed9c9' };
   return { core: UI_COLOR.accent, glow: UI_COLOR.borderStrong };
 }
 
@@ -259,6 +305,12 @@ export interface CardFraming {
    * 쓰이는 순간(무엇을 더할지 고르는 방 클리어 화면)으로 자리를 옮겼다.
    */
   contextLines?: string[];
+  /** 카드 본문을 가리지 않는 호버 상세. 각성처럼 수치·조건 설명이 긴 선택지에 쓴다. */
+  detailFor?: (option: RewardOption) => string | null;
+  /** 선택 카드의 상세를 패널로 크게 보여 준다. 연구처럼 설명이 긴 3택에 사용한다. */
+  detailPanelFor?: (option: RewardOption) => string | null;
+  /** 잠긴 제단 거래처럼 표시만 하고 선택할 수 없는 카드. */
+  disabledFor?: (option: RewardOption) => boolean;
 }
 
 function escapeText(text: string): string {
@@ -300,7 +352,7 @@ export function showRewardCards(
   framing: CardFraming = {},
 ): Promise<RewardOption> {
   if (activeCleanup) throw new Error('reward overlay already open');
-  const shown = options.slice(0, 3);
+  const shown = options.slice(0, 4);
   const wrap = ensureDom();
 
   const titleText = framing.title ?? '공명의 대가를 선택하라';
@@ -315,6 +367,10 @@ export function showRewardCards(
         ${titleSigil()}<span>${escapeText(titleText)}</span>${titleSigil().replace('orn-sigil', 'orn-sigil mirrored')}
       </h2>
       ${divider()}
+      <section class="reward-detail-panel" aria-live="polite">
+        <div class="reward-detail-title"></div>
+        <div class="reward-detail-copy"></div>
+      </section>
       <div class="reward-cards"></div>
       <div class="reward-hint"><b>A/D + Enter</b> · 숫자키 또는 카드 클릭</div>
       ${(framing.contextLines ?? []).filter(Boolean).length > 0
@@ -323,19 +379,32 @@ export function showRewardCards(
     : ''}
     </div>`;
   const cardsEl = wrap.querySelector('.reward-cards')!;
+  const detailPanel = wrap.querySelector<HTMLElement>('.reward-detail-panel')!;
+  const detailPanelTitle = detailPanel.querySelector<HTMLElement>('.reward-detail-title')!;
+  const detailPanelCopy = detailPanel.querySelector<HTMLElement>('.reward-detail-copy')!;
 
   return new Promise<RewardOption>((resolve) => {
     let focusIdx = 0;
     const buttons: HTMLButtonElement[] = [];
 
+    const isDisabled = (idx: number): boolean => Boolean(framing.disabledFor?.(shown[idx]));
     const finish = (idx: number): void => {
+      if (isDisabled(idx)) return;
       cleanup();
       resolve(shown[idx]);
     };
 
     const setFocus = (idx: number): void => {
-      focusIdx = (idx + shown.length) % shown.length;
+      let candidate = (idx + shown.length) % shown.length;
+      for (let attempts = 0; attempts < shown.length && isDisabled(candidate); attempts += 1) {
+        candidate = (candidate + 1) % shown.length;
+      }
+      focusIdx = candidate;
       buttons.forEach((b, i) => b.classList.toggle('focused', i === focusIdx));
+      const detail = framing.detailPanelFor?.(shown[focusIdx]) ?? null;
+      detailPanel.classList.toggle('active', detail !== null);
+      detailPanelTitle.textContent = detail ? shown[focusIdx].title : '';
+      detailPanelCopy.textContent = detail ?? '';
       buttons[focusIdx].focus({ preventScroll: true });
     };
 
@@ -345,6 +414,8 @@ export function showRewardCards(
       btn.type = 'button';
       const rare = isRareReward(option);
       btn.className = rare ? 'reward-card reward-card--rare' : 'reward-card';
+      const disabled = isDisabled(i);
+      btn.disabled = disabled;
       btn.style.setProperty('--card-core', core);
       btn.style.setProperty('--card-glow', glow);
       // 각도는 아주 작게(0.6도 안쪽) — 크면 장난스러워진다
@@ -356,14 +427,21 @@ export function showRewardCards(
         <div class="card-glyph"></div>
         <div class="card-title"></div>
         <div class="card-desc"></div>
+        <div class="card-detail" role="tooltip"></div>
         <div class="card-kind">${
           option.element ? `${ELEMENT_LABELS[option.element]} ${KIND_LABELS[option.kind]}` : KIND_LABELS[option.kind]
         }</div>`;
       btn.querySelector('.card-title')!.textContent = option.title;
       btn.querySelector('.card-desc')!.textContent = option.description;
+      const detail = framing.detailFor?.(option) ?? null;
+      const detailEl = btn.querySelector<HTMLElement>('.card-detail')!;
+      if (detail) detailEl.textContent = detail;
+      else detailEl.remove();
       // 폼 글리프 — 씬이 알려준 카드만. 스탯 보상 등 폼이 없는 카드는 원형 그대로.
       const form = framing.formFor?.(option) ?? null;
+      const altarIcon = altarGlyph(option.kind);
       if (form) btn.querySelector('.card-glyph')!.innerHTML = glyphSvg(form);
+      else if (altarIcon) btn.querySelector('.card-glyph')!.innerHTML = altarIcon;
       // 이미 보유 배지 — "친화를 더 쌓을까, 갈아탈까"의 근거 (게임성 ②)
       const ownedLabel = framing.ownedLabelFor?.(option) ?? null;
       if (ownedLabel) {
@@ -372,15 +450,17 @@ export function showRewardCards(
         badge.textContent = ownedLabel;
         btn.appendChild(badge);
       }
-      btn.addEventListener('click', () => finish(i));
-      btn.addEventListener('mouseenter', () => setFocus(i));
+      if (!disabled) {
+        btn.addEventListener('click', () => finish(i));
+        btn.addEventListener('mouseenter', () => setFocus(i));
+      }
       cardsEl.appendChild(btn);
       buttons.push(btn);
     });
 
     // 캡처 단계에서 키를 소비 — Phaser(window 버블 리스너)·영창 바와 충돌 방지
     const onKeyDown = (e: KeyboardEvent): void => {
-      const hotkey = ['1', '2', '3'].indexOf(e.key);
+      const hotkey = ['1', '2', '3', '4'].indexOf(e.key);
       if (hotkey !== -1 && hotkey < shown.length) {
         e.preventDefault(); e.stopImmediatePropagation();
         finish(hotkey);

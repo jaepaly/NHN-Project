@@ -12,7 +12,7 @@ import {
   spiritInterval,
 } from '../src/combat-core/spirit/spiritManager';
 import type { RewardOption, SpiritRole } from '../src/run/runContract';
-import type { SpellElement, SpellForm } from '../src/spell/types';
+import type { SpellElement } from '../src/spell/types';
 
 const baseRewards: RewardOption[] = [
   { id: 'hp', kind: 'max-hp', title: 'HP', description: 'test' },
@@ -55,44 +55,26 @@ const first = injected.find((option) => option.kind === 'spirit');
 assert.ok(first?.spirit);
 assert.equal(manager.applyReward(first)?.level, 1);
 
-// 2) 최대 2슬롯, 순차 Lv3 강화, 잘못된 레벨과 세 번째 슬롯을 거부한다.
+// 2) 최대 2슬롯. 같은 정령을 다시 뽑아 레벨을 올릴 수 없고 세 번째 슬롯도 거부한다.
 assert.equal(manager.applyReward(reward('attack-water', 'attack', 1, 'water'))?.level, 1);
 assert.equal(manager.entries.length, SPIRIT_CONFIG.maxSlots);
 assert.equal(manager.applyReward(reward('heal', 'heal', 1)), null);
 assert.equal(manager.applyReward(reward('attack-fire', 'attack', 3, 'fire')), null);
-assert.equal(manager.applyReward(reward('attack-fire', 'attack', 2, 'fire'))?.level, 2);
-assert.equal(manager.applyReward(reward('attack-fire', 'attack', 3, 'fire'))?.level, 3);
+assert.equal(manager.applyReward(reward('attack-fire', 'attack', 2, 'fire')), null);
+assert.equal(manager.applyReward(reward('attack-fire', 'attack', 1, 'fire')), null);
 
-// 3) 8원소 공격 정령은 Lv1 bolt, Lv2부터 지정 폼, Lv3 상태·대형화를 사용한다.
-const forms: Record<SpellElement, SpellForm> = {
-  fire: 'nova',
-  water: 'wave',
-  lightning: 'chain',
-  ice: 'cage',
-  earth: 'zone',
-  wind: 'bolt',
-  light: 'beam',
-  dark: 'rain',
-};
-for (const [element, form] of Object.entries(forms) as Array<[SpellElement, SpellForm]>) {
+// 3) 공격 정령은 모두 단일 투사체를 사용하고, 원소별 상태만 가진다.
+const elements: readonly SpellElement[] = [
+  'fire', 'water', 'lightning', 'ice', 'earth', 'wind', 'light', 'dark',
+];
+for (const element of elements) {
   const attack = new SpiritManager();
   attack.applyReward(reward(`attack-${element}`, 'attack', 1, element));
   const lv1 = attack.update(spiritInterval('attack', 1));
   assert.equal(lv1[0].kind, 'attack');
   if (lv1[0].kind !== 'attack') throw new Error('expected attack pulse');
   assert.equal(lv1[0].spell.form, 'bolt');
-  attack.applyReward(reward(`attack-${element}`, 'attack', 2, element));
-  const lv2 = attack.update(spiritInterval('attack', 2));
-  assert.equal(lv2[0].kind, 'attack');
-  if (lv2[0].kind !== 'attack') throw new Error('expected attack pulse');
-  assert.equal(lv2[0].spell.form, form);
-  attack.applyReward(reward(`attack-${element}`, 'attack', 3, element));
-  const lv3 = attack.update(spiritInterval('attack', 3));
-  assert.equal(lv3[0].kind, 'attack');
-  if (lv3[0].kind !== 'attack') throw new Error('expected attack pulse');
-  assert.equal(lv3[0].spell.size, 'large');
-  assert.ok(lv3[0].spell.status.length > 0);
-  assert.equal(lv3[0].spell.cost, 0);
+  assert.equal(lv1[0].spell.cost, 0);
 }
 
 // 4) 치유·수호 펄스와 긴 프레임의 catch-up, reset을 검증한다.

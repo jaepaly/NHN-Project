@@ -82,8 +82,8 @@ const graph = new RunMapGraph(MAP_GRAPH_PRESET_01);
 const trap = graph.snapshot().nodes.find((node) => node.id === 's2-trap');
 assert.equal(trap?.kind, 'trap');
 assert.equal(trap?.trapProfile?.kind, 'hazard');
-assert.equal(trap?.waveSetId, 'trap-hazard');
-assert.equal(WAVE_SETS['trap-hazard'].some((wave) => wave.hazard === true), false,
+assert.equal(trap?.waveSetId, 't3-b');
+assert.equal(WAVE_SETS['t3-b'].some((wave) => wave.hazard === true), false,
   'trap node owns the hazard field; its enemy wave must not spawn legacy hazards');
 
 const missingProfile = {
@@ -95,6 +95,16 @@ const missingProfile = {
 assert.throws(() => new RunMapGraph(missingProfile), /requires a trap profile/);
 
 const sceneSource = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+assert.match(
+  sceneSource,
+  /hazardEntryGraceRemaining = 1\.25/,
+  'trap hazards must provide an entry grace period before dealing damage',
+);
+assert.match(
+  sceneSource,
+  /placement\.radius \+ PLAYER_HIT_RADIUS \+ 48/,
+  'trap circles must exclude the actual player spawn radius',
+);
 const roomClearedHandler = sceneSource.match(
   /on\('room-cleared',[\s\S]*?\n    \}\);/,
 )?.[0] ?? '';

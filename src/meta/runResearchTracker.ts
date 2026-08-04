@@ -8,6 +8,7 @@ import {
 } from './discoverySignature';
 import type { MetaRunOutcome } from './metaProfile';
 import {
+  advanceSpiritResonance,
   advanceResearchContract,
   startResearchContract,
   type ActiveResearchContract,
@@ -93,6 +94,11 @@ export class RunResearchTracker {
     return discovered;
   }
 
+  recordSpiritResearch(event: 'acquired' | 'fused'): void {
+    if (!this.activeResearch) return;
+    this.activeResearch = advanceSpiritResonance(this.activeResearch, event).contract;
+  }
+
   private advanceResearch(specs: readonly SpellSpec[]): void {
     if (!this.activeResearch) return;
     this.activeResearch = advanceResearchContract(this.activeResearch, specs).contract;
@@ -145,7 +151,11 @@ export class RunResearchTracker {
       researchInsight,
       newSignatures: [...this.newSignatures],
       research: this.activeResearch
-        ? { ...this.activeResearch, usedForms: [...this.activeResearch.usedForms] }
+        ? {
+          ...this.activeResearch,
+          usedElements: [...this.activeResearch.usedElements],
+          usedForms: [...this.activeResearch.usedForms],
+        }
         : null,
     };
   }

@@ -1,5 +1,6 @@
 
 import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL } from './uiTokens';
+import { formatRunElapsed } from '../combat-core/run/runTimer';
 import {
   cornerFlourish, deckleMask, divider, ornamentCss,
 } from './grimoireOrnament';
@@ -89,7 +90,9 @@ export interface RunSummaryData {
   result: 'victory' | 'defeat';
   roomIndex: number;
   maxRooms: number;
+  roomCountMode?: 'fixed' | 'dynamic';
   totalCasts: number;
+  elapsedMs: number;
   dominantElement: SpellElement | null;
   dominantForm: SpellForm | null;
   recentSpellNames: string[];
@@ -167,10 +170,13 @@ export function showRunSummaryOverlay(data: RunSummaryData): Promise<void> {
       ${divider()}
       <div class="summary-sub">${victory
         ? '모든 방을 정화했다'
-        : `ROOM ${data.roomIndex}/${data.maxRooms} 에서 쓰러졌다`}</div>
+        : data.roomCountMode === 'dynamic'
+          ? `ROOM ${data.roomIndex} 에서 쓰러졌다`
+          : `ROOM ${data.roomIndex}/${data.maxRooms} 에서 쓰러졌다`}</div>
       <div class="summary-book">
         <div class="book-title">이번 런의 주문서</div>
         <div class="book-row">대표 빌드 <b>${escapeHtml(buildLabel)}</b> · 수동 영창 <b>${data.totalCasts}</b>회</div>
+        <div class="book-row">RUN TIME <b>${formatRunElapsed(data.elapsedMs)}</b> <span class="meta-sub">PAUSE EXCLUDED</span></div>
         <div class="book-row">${spells}</div>
       </div>
       <div class="summary-meta-grid">

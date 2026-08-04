@@ -27,7 +27,7 @@ import type { SpiritManager } from '../combat-core/spirit/spiritManager';
  * 갈라져 물고 참격이 연참으로 터지는 게 필요해서 터지는 그림이 된다.
  * 그리고 바로 다음이 최종 보스라 짧게 만져도 끝을 본다.
  */
-export const DEMO_START_ROOM = 7;
+export const DEMO_START_ROOM = 1;
 
 /** 시연 각인 — 둘 다 Lv3까지 올린 뒤 진화시킨다 (원소 본성·3발 분산·연출 격상) */
 export interface DemoEngrave {
@@ -102,6 +102,34 @@ export const DEMO_SAMPLE_INCANTATIONS: readonly string[] = [
   '번개가 적에서 적으로 연쇄한다',
 ];
 
+/** 타이틀의 "각성한 영창가" 진입에서 고르는 즉시 플레이 가능한 빌드 견본. */
+export type DemoBuildId = 'specialist' | 'chorus' | 'spirits';
+
+export const DEMO_BUILD_OPTIONS: readonly RewardOption[] = [
+  {
+    id: 'demo-build-specialist', kind: 'affinity', element: 'fire',
+    title: '홍염의 전문가',
+    description: '불 친화 110%로 시작\n한 원소의 영창을 정교하게 다듬어 보스를 압도한다',
+  },
+  {
+    id: 'demo-build-chorus', kind: 'chorus-awaken',
+    title: '무지개 합주자',
+    description: '원소 합주 1단계로 시작\n어떤 원소 영창이든 공명 파편이 뒤따른다',
+  },
+  {
+    id: 'demo-build-spirits', kind: 'spirit', element: 'wind',
+    title: '정령 지휘자',
+    description: '불+얼음 융합 정령과 번개 정령으로 시작\n영창으로 전장을 열고 정령에게 마무리를 맡긴다',
+  },
+];
+
+export function demoBuildFromOptionId(id: string): DemoBuildId | null {
+  if (id === 'demo-build-specialist') return 'specialist';
+  if (id === 'demo-build-chorus') return 'chorus';
+  if (id === 'demo-build-spirits') return 'spirits';
+  return null;
+}
+
 const engraveCard = (key: string, level: number): RewardOption => ({
   id: `demo-engrave-${key}-${level}`,
   kind: 'engrave',
@@ -139,12 +167,33 @@ export function applyDemoLoadout(
     }
     engraveManager.evolve(entry.key, entry.evolvedName);
   }
-  for (const spirit of DEMO_SPIRITS) {
-    for (let level = 1; level <= spirit.level; level += 1) {
-      spiritManager.applyReward(spiritCard(spirit.element, level));
-    }
-  }
+  for (const spirit of DEMO_SPIRITS) spiritManager.applyReward(spiritCard(spirit.element, 1));
   affinitySink.seedAffinity(DEMO_AFFINITY);
+}
+
+/** 선택한 견본 빌드만 주입한다. 실제 매니저/컨트롤러 경로를 사용해 전투 규칙을 우회하지 않는다. */
+export function applyDemoBuildLoadout(
+  build: DemoBuildId,
+  spiritManager: SpiritManager,
+  affinitySink: {
+    seedAffinity(affinity: Readonly<Partial<Record<SpellElement, number>>>): void;
+    activateElementalChorus(): boolean;
+  },
+): void {
+  if (build === 'specialist') {
+    affinitySink.seedAffinity({ fire: 1.1 });
+    return;
+  }
+  if (build === 'chorus') {
+    affinitySink.seedAffinity({ fire: 0.15, ice: 0.15, lightning: 0.15 });
+    affinitySink.activateElementalChorus();
+    return;
+  }
+  spiritManager.applyReward(spiritCard('fire', 1));
+  spiritManager.applyReward(spiritCard('ice', 1));
+  const candidate = spiritManager.fuseCandidate();
+  if (candidate) spiritManager.fuse(candidate.spiritIds, '극설의 화염 정령');
+  spiritManager.applyReward(spiritCard('lightning', 1));
 }
 
 /**
@@ -155,15 +204,15 @@ export function applyDemoLoadout(
  * 반면 이 플래그는 create()에서 읽어 처리하므로 생성 시점과 무관하다.
  * 1회성이라 다음 런(타이틀에서 일반 시작)에 새지 않는다.
  */
-let demoRunRequested = false;
+let demoRunRequested: DemoBuildId | null = null;
 
-export function requestDemoRun(): void {
-  demoRunRequested = true;
+export function requestDemoRun(build: DemoBuildId): void {
+  demoRunRequested = build;
 }
 
 /** 요청을 읽고 **비운다**. 두 번째 create에서 다시 시연으로 시작하면 안 된다. */
-export function consumeDemoRunRequest(): boolean {
+export function consumeDemoRunRequest(): DemoBuildId | null {
   const requested = demoRunRequested;
-  demoRunRequested = false;
+  demoRunRequested = null;
   return requested;
 }

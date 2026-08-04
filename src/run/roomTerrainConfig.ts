@@ -77,6 +77,8 @@ export const ROOM_TERRAIN_BOUNDS = {
 export const TERRAIN_KEEPOUTS = {
   /** 도착 지점 (#245 계약: 항상 왼쪽 중앙) */
   arrival: { x: 176, y: 640, radius: 120 },
+  /** 전투의 중심은 회피·교전·보스 대치용으로 비워 둔다. */
+  arenaCenter: { x: ROOM_TERRAIN_BOUNDS.centerX, y: ROOM_TERRAIN_BOUNDS.centerY, radius: 180 },
   /** 출구 포탈 두 슬롯 (오른쪽 가장자리) */
   exits: [
     { x: 1840, y: 538, radius: 90 },
@@ -135,13 +137,19 @@ const ELITE_LAYOUT: readonly TerrainBlock[] = [
   { x: 1480, y: 360, half: 52 },
 ];
 
+const ELITE_LAYOUT_VARIANTS: readonly (readonly TerrainBlock[])[] = [
+  ELITE_LAYOUT,
+  [{ x: 720, y: 820, half: 62 }, { x: 1210, y: 410, half: 62 }, { x: 1510, y: 890, half: 52 }],
+  [{ x: 700, y: 480, half: 62 }, { x: 1120, y: 900, half: 62 }, { x: 1540, y: 690, half: 52 }],
+];
+
 /**
  * 방 종류·스테이지 → 장벽 배치. 비어 있는 종류는 **의도적으로** 비어 있다
  * (위 문서 주석의 "여덟 종류 중 둘에만 둔다" 참조).
  */
-export function terrainForRoom(kind: MapNodeKind, stage: 1 | 2): readonly TerrainBlock[] {
+export function terrainForRoom(kind: MapNodeKind, stage: 1 | 2, variant = 0): readonly TerrainBlock[] {
   if (kind === 'combat') return stage === 2 ? COMBAT_STAGE2 : COMBAT_STAGE1;
-  if (kind === 'elite') return ELITE_LAYOUT;
+  if (kind === 'elite') return ELITE_LAYOUT_VARIANTS[Math.abs(variant) % ELITE_LAYOUT_VARIANTS.length];
   return [];
 }
 
@@ -211,16 +219,22 @@ export const FLOOR_HAZARD_MARGIN = TERRAIN_PLAYER_RADIUS;
  *    회귀가 좌표를 직접 검사한다
  */
 const FLOOR_HAZARD_COMBAT_STAGE1: readonly MapTerrainCircle[] = [
-  { kind: 'poison', x: 960, y: 640, radius: 110 },
+  { kind: 'poison', x: 1200, y: 430, radius: 110 },
 ];
 
 const FLOOR_HAZARD_COMBAT_STAGE2: readonly MapTerrainCircle[] = [
-  { kind: 'lava', x: 960, y: 640, radius: 110 },
+  { kind: 'lava', x: 1220, y: 830, radius: 110 },
 ];
 
 const FLOOR_HAZARD_ELITE: readonly MapTerrainCircle[] = [
-  { kind: 'poison', x: 960, y: 640, radius: 100 },
+  { kind: 'poison', x: 1220, y: 440, radius: 100 },
   { kind: 'lava', x: 620, y: 900, radius: 90 },
+];
+
+const FLOOR_HAZARD_ELITE_VARIANTS: readonly (readonly MapTerrainCircle[])[] = [
+  FLOOR_HAZARD_ELITE,
+  [{ kind: 'poison', x: 720, y: 430, radius: 100 }, { kind: 'lava', x: 1320, y: 760, radius: 90 }],
+  [{ kind: 'poison', x: 1380, y: 460, radius: 100 }, { kind: 'lava', x: 600, y: 820, radius: 90 }],
 ];
 
 export interface MapTerrainCircle {
@@ -234,11 +248,12 @@ export interface MapTerrainCircle {
 export function floorHazardsForRoom(
   kind: MapNodeKind,
   stage: 1 | 2,
+  variant = 0,
 ): readonly MapTerrainCircle[] {
   if (kind === 'combat') {
     return stage === 2 ? FLOOR_HAZARD_COMBAT_STAGE2 : FLOOR_HAZARD_COMBAT_STAGE1;
   }
-  if (kind === 'elite') return FLOOR_HAZARD_ELITE;
+  if (kind === 'elite') return FLOOR_HAZARD_ELITE_VARIANTS[Math.abs(variant) % FLOOR_HAZARD_ELITE_VARIANTS.length];
   return [];
 }
 
@@ -309,7 +324,7 @@ export function floorHazardBlocksEntry(
     const reach = zone.radius + spot.radius + FLOOR_HAZARD_MARGIN;
     return dx * dx + dy * dy < reach * reach;
   };
-  if (hits(TERRAIN_KEEPOUTS.arrival)) return true;
+  if (hits(TERRAIN_KEEPOUTS.arrival) || hits(TERRAIN_KEEPOUTS.arenaCenter)) return true;
   return TERRAIN_KEEPOUTS.exits.some(hits);
 }
 

@@ -55,7 +55,11 @@ export function buildMetaRunSummary(
     researchInsight: run.researchInsight,
     newSignatures: [...run.newSignatures],
     research: run.research
-      ? { ...run.research, usedForms: [...run.research.usedForms] }
+      ? {
+        ...run.research,
+        usedElements: [...run.research.usedElements],
+        usedForms: [...run.research.usedForms],
+      }
       : null,
     nextUnlock,
     insightToNextUnlock: nextUnlock ? nextUnlock.threshold - totalInsight : 0,

@@ -46,7 +46,9 @@ export function representativeBuildLabel(
 export function researchContractSummaryLabel(contract: ActiveResearchContract): string {
   const title = contract.id === 'elemental-focus' && contract.element
     ? `원소 심화 · ${ELEMENT_LABELS[contract.element]}`
-    : '수호 연구';
+    : contract.id === 'variation-study'
+      ? '만물의 변주'
+      : '수호 연구';
   return `${title} ${contract.progress}/${contract.goal}`
     + (contract.completed ? ` · 완료 +${contract.rewardInsight}` : '');
 }

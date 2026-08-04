@@ -17,7 +17,7 @@ export const MAP_GRAPH_PRESET_01: MapGraphDefinition = {
   startNodeId: 's1-start',
   lastBeforeBossNodeId: 's2-elite',
   nodes: [
-    { id: 's1-start', stage: 1, kind: 'start', layer: 0, lane: 0, waveSetId: 'room-a', ...emptyRoom },
+    { id: 's1-start', stage: 1, kind: 'start', layer: 0, lane: 0, waveSetId: 't1-a', ...emptyRoom },
     /**
      * 1스테이지 분기의 싸우는 쪽 — 일반 전투방.
      *
@@ -31,27 +31,26 @@ export const MAP_GRAPH_PRESET_01: MapGraphDefinition = {
      * 게다가 방 분포 설계는 R1 소관인데 승인 없이 일반 전투 노드를 함정으로 바꿨다.
      * 이 프리셋은 **심사자가 하는 판**이라 더더욱 임의로 기울이면 안 된다.
      */
-    { id: 's1-combat', stage: 1, kind: 'combat', layer: 1, lane: 0, waveSetId: 'room-b', ...emptyRoom },
+    { id: 's1-combat', stage: 1, kind: 'combat', layer: 1, lane: 0, waveSetId: 't1-b', ...emptyRoom },
     { id: 's1-treasure', stage: 1, kind: 'treasure', layer: 1, lane: 1, waveSetId: null, ...emptyRoom },
-    { id: 's1-elite', stage: 1, kind: 'elite', layer: 2, lane: 0, waveSetId: 'elite', ...emptyRoom },
+    { id: 's1-elite', stage: 1, kind: 'elite', layer: 2, lane: 0, waveSetId: 't2-a', ...emptyRoom },
     { id: 's1-boss', stage: 1, kind: 'stage-boss', layer: 3, lane: 0, waveSetId: null, ...emptyRoom },
-    // ⚠️ 'room-c'는 WAVE_SETS에 없다 — 실제 키는 room-c-shield / room-c-hazard 두 변형이다.
     // 그래서 5번 방에서 startRoom이 예외를 던져 몹도 포탈도 없는 빈 방이 됐다(총괄 제보).
-    // 그래프에는 변형(variants) 개념이 없어 하나를 골라야 한다 — 실드 파수꾼이 별개
-    // 기믹이라 shield를 택했다. 두 변형을 살릴지는 R1 판단(#283).
-    { id: 's2-combat', stage: 2, kind: 'combat', layer: 4, lane: 0, waveSetId: 'room-c-shield', ...emptyRoom },
+    // 과거 room-c-hazard 변형은 별도 함정방 계약이 생긴 뒤에도 남아 일반방 표기와
+    // 붉은 위험지대 기믹을 충돌시켰으므로 제거했다.
+    { id: 's2-combat', stage: 2, kind: 'combat', layer: 4, lane: 0, waveSetId: 't3-a', ...emptyRoom },
     {
       id: 's2-trap',
       stage: 2,
       kind: 'trap',
       layer: 5,
       lane: 0,
-      waveSetId: 'trap-hazard',
+      waveSetId: 't3-b',
       trapProfile: TRAP_ROOM_PROFILES.hazard,
       ...emptyRoom,
     },
     { id: 's2-altar', stage: 2, kind: 'altar', layer: 5, lane: 1, waveSetId: null, ...emptyRoom },
-    { id: 's2-elite', stage: 2, kind: 'elite', layer: 6, lane: 0, waveSetId: 'elite', ...emptyRoom },
+    { id: 's2-elite', stage: 2, kind: 'elite', layer: 6, lane: 0, waveSetId: 't3-c', ...emptyRoom },
     { id: 's2-memory-boss', stage: 2, kind: 'memory-boss', layer: 7, lane: 0, waveSetId: null, ...emptyRoom },
   ],
   edges: [
@@ -66,5 +65,34 @@ export const MAP_GRAPH_PRESET_01: MapGraphDefinition = {
     { from: 's2-trap', to: 's2-elite' },
     { from: 's2-altar', to: 's2-elite' },
     { from: 's2-elite', to: 's2-memory-boss' },
+  ],
+};
+
+/** 빌드 견본 런: 분기와 위험방은 남기되 어떤 길을 골라도 제단을 반드시 지난다. */
+export const MAP_GRAPH_BUILD_PRESET: MapGraphDefinition = {
+  startNodeId: 'build-start',
+  lastBeforeBossNodeId: 'build-elite',
+  nodes: [
+    { id: 'build-start', stage: 1, kind: 'start', layer: 0, lane: 0, waveSetId: 't1-a', ...emptyRoom },
+    { id: 'build-combat', stage: 1, kind: 'combat', layer: 1, lane: -1, waveSetId: 't1-b', ...emptyRoom },
+    {
+      id: 'build-trap', stage: 1, kind: 'trap', layer: 1, lane: 1, waveSetId: 't1-c',
+      trapProfile: TRAP_ROOM_PROFILES.hazard, ...emptyRoom,
+    },
+    { id: 'build-elite-1', stage: 1, kind: 'elite', layer: 2, lane: 0, waveSetId: 't2-a', ...emptyRoom },
+    { id: 'build-altar', stage: 1, kind: 'altar', layer: 3, lane: 0, waveSetId: null, ...emptyRoom },
+    { id: 'build-combat-2', stage: 2, kind: 'combat', layer: 4, lane: 0, waveSetId: 't3-a', ...emptyRoom },
+    { id: 'build-elite', stage: 2, kind: 'elite', layer: 5, lane: 0, waveSetId: 't3-b', ...emptyRoom },
+    { id: 'build-memory-boss', stage: 2, kind: 'memory-boss', layer: 6, lane: 0, waveSetId: null, ...emptyRoom },
+  ],
+  edges: [
+    { from: 'build-start', to: 'build-combat' },
+    { from: 'build-start', to: 'build-trap' },
+    { from: 'build-combat', to: 'build-elite-1' },
+    { from: 'build-trap', to: 'build-elite-1' },
+    { from: 'build-elite-1', to: 'build-altar' },
+    { from: 'build-altar', to: 'build-combat-2' },
+    { from: 'build-combat-2', to: 'build-elite' },
+    { from: 'build-elite', to: 'build-memory-boss' },
   ],
 };

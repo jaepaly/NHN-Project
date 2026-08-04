@@ -40,6 +40,26 @@ import type { MinimapModel } from '../src/run/mapGraphContract';
   assert.equal(byId.get('boss')!.x, width - padding, '보스는 오른쪽 끝');
 }
 
+// ── #240 연속 lane: layer별 재정렬 없이 stage 전체 Y축 유지 ──────────
+{
+  const continuous: MinimapModel = {
+    nodes: [
+      { id: 'upper-a', kind: 'combat', status: 'current', stage: 1, layer: 0, lane: -0.5 },
+      { id: 'lower-a', kind: 'combat', status: 'reachable', stage: 1, layer: 0, lane: 1.5 },
+      // 이 layer에는 아래 갈래 하나뿐이어도 중앙으로 튀면 안 된다.
+      { id: 'lower-only', kind: 'combat', status: 'unvisited', stage: 1, layer: 1, lane: 1.5 },
+      { id: 'upper-b', kind: 'combat', status: 'unvisited', stage: 1, layer: 2, lane: -0.5 },
+      { id: 'lower-b', kind: 'combat', status: 'unvisited', stage: 1, layer: 2, lane: 1.5 },
+    ],
+    edges: [],
+  };
+  const byId = new Map(minimapLayout(continuous).map(point => [point.id, point] as const));
+  assert.equal(byId.get('lower-a')!.y, byId.get('lower-only')!.y, '같은 lane은 단독 layer에서도 Y 유지');
+  assert.equal(byId.get('lower-only')!.y, byId.get('lower-b')!.y, '같은 lane은 전 구간 Y 유지');
+  assert.equal(byId.get('upper-a')!.y, byId.get('upper-b')!.y, '위 갈래 Y 유지');
+  assert.ok(byId.get('upper-a')!.y < byId.get('lower-a')!.y, '원본 lane 순서 보존');
+}
+
 // ── 방어: 단일 노드·NaN layer·빈 모델 ────────────────────────────────
 {
   assert.deepEqual(minimapLayout({ nodes: [], edges: [] }), [], '빈 모델 안전');

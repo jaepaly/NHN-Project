@@ -25,20 +25,25 @@ export interface MinimapPoint {
 
 /**
  * layer → x(좌→우 진행), lane → y. 총괄 스케치와 같은 가로 흐름 — 보스가 오른쪽 끝.
- * 같은 layer의 lane들은 세로로 균등 분배하고, lane이 1개면 세로 중앙.
+ * #240 HTML과 같이 stage 전체의 min/max lane을 고정 축으로 사용한다. layer마다
+ * 재정렬하면 짧은 갈래의 노드가 중앙으로 튀어 실제 lane 전환처럼 보인다.
  */
 export function minimapLayout(model: MinimapModel): MinimapPoint[] {
   const { width, height, padding } = MINIMAP_CONFIG;
-  // 입구에서 정규화 — NaN layer/lane이 Map 키·laneCount로 번지면 좌표 전체가 NaN이 된다.
+  // 입구에서 비정상값만 정규화한다. 음수·소수 lane은 생성기의 실제 좌표다.
   const nodes = model.nodes.map((node) => ({
     ...node,
-    layer: clampFinite(node.layer),
-    lane: clampFinite(node.lane),
+    stage: typeof node.stage === 'number' && Number.isFinite(node.stage) ? node.stage : 1,
+    layer: finiteOrZero(node.layer, true),
+    lane: finiteOrZero(node.lane, false),
   }));
   const maxLayer = nodes.length > 0 ? Math.max(...nodes.map((node) => node.layer)) : 0;
-  const laneCounts = new Map<number, number>();
+  const laneBounds = new Map<number, { min: number; max: number }>();
   for (const node of nodes) {
-    laneCounts.set(node.layer, Math.max(laneCounts.get(node.layer) ?? 0, node.lane + 1));
+    const current = laneBounds.get(node.stage);
+    laneBounds.set(node.stage, current
+      ? { min: Math.min(current.min, node.lane), max: Math.max(current.max, node.lane) }
+      : { min: node.lane, max: node.lane });
   }
 
   const innerW = width - padding * 2;
@@ -46,16 +51,21 @@ export function minimapLayout(model: MinimapModel): MinimapPoint[] {
   return nodes.map((node) => ({
     id: node.id,
     x: padding + (maxLayer > 0 ? (node.layer / maxLayer) * innerW : innerW / 2),
-    y: laneY(node, laneCounts.get(node.layer) ?? 1, padding, innerH),
+    y: laneY(node, laneBounds.get(node.stage), padding, innerH),
   }));
 }
 
-function laneY(node: MinimapNode, laneCount: number, padding: number, innerH: number): number {
-  if (!Number.isFinite(laneCount) || laneCount <= 1) return padding + innerH / 2;
-  const lane = Math.min(node.lane, laneCount - 1);
-  return padding + (lane / (laneCount - 1)) * innerH;
+function laneY(
+  node: MinimapNode,
+  bounds: { min: number; max: number } | undefined,
+  padding: number,
+  innerH: number,
+): number {
+  if (!bounds || bounds.min === bounds.max) return padding + innerH / 2;
+  return padding + ((node.lane - bounds.min) / (bounds.max - bounds.min)) * innerH;
 }
 
-function clampFinite(value: number): number {
-  return Number.isFinite(value) ? Math.max(0, value) : 0;
+function finiteOrZero(value: number | undefined, clampPositive: boolean): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  return clampPositive ? Math.max(0, value) : value;
 }

@@ -1,13 +1,25 @@
 import Phaser from 'phaser';
 import { applyWorldFx } from '../render/postFx';
-import { loadCodex } from '../spell/spellCodex';
+import {
+  codexTokenSignature,
+  isCodexEntryTokenClaimable,
+  loadCodex,
+  markCodexEntryTokenClaimed,
+  saveCodex,
+  spellTokenValueForClaims,
+} from '../spell/spellCodex';
 import { showCodexOverlay } from '../ui/codexOverlay';
 import { clearRunHud } from '../ui/runHud';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { loadSettings } from '../run/gameSettings';
 import { setVfxBrightness } from '../render/vfxBrightness';
 import { UI_COLOR, UI_FONT } from '../ui/uiTokens';
-import { requestDemoRun } from '../run/demoLoadout';
+import { DEMO_BUILD_OPTIONS, demoBuildFromOptionId, requestDemoRun } from '../run/demoLoadout';
+import { GameAudio } from '../audio/gameAudio';
+import { showRewardCards } from '../ui/rewardCardOverlay';
+import { showShopOverlay } from '../ui/shopOverlay';
+import { applySpellTokenClaim, loadMetaProfile, saveMetaProfile } from '../meta/metaProfile';
+import { requestPracticeRun } from '../dev/practiceMode';
 
 const TITLE_COLORS = {
   background: 0x05060f,
@@ -20,6 +32,8 @@ const TITLE_COLORS = {
 
 export class TitleScene extends Phaser.Scene {
   private starting = false;
+  private audio!: GameAudio;
+  private tokenReadout?: Phaser.GameObjects.Text;
 
   /** 도감·설정이 열려 있는 동안 시작 트리거(클릭·Enter)를 막는다 */
   private codexOpen = false;
@@ -29,6 +43,12 @@ export class TitleScene extends Phaser.Scene {
 
   constructor() {
     super('title');
+  }
+
+  preload(): void {
+    GameAudio.preloadSfx(this, 'title-start');
+    GameAudio.preloadSfx(this, 'ui-confirm');
+    GameAudio.preloadBgm(this, 'title');
   }
 
   create(): void {
@@ -46,14 +66,19 @@ export class TitleScene extends Phaser.Scene {
     this.drawBackground(width, height);
     this.createArcaneSeal(width / 2, height * 0.44);
     this.createTitle(width, height);
+    this.createTokenReadout(width);
     this.createStartPrompt(width, height);
     this.createLobbyTabs(width, height);
     this.createDemoTab(width, height);
+    if (import.meta.env.DEV) this.createPracticeTab(width, height);
     // 밝기 막은 탭보다 위에 — 타이틀엔 지켜야 할 HUD가 없다
     this.brightnessVeil = this.add.graphics().setScrollFactor(0).setDepth(50).setVisible(false);
     // 이펙트 밝기도 여기서 반영한다 — 타이틀에서 조절하고 바로 시작하면
     // 전투 씬이 loadSettings로 다시 읽지만, 그 사이 타이틀 연출은 이미 이 값을 쓴다
     const saved = loadSettings(window.localStorage);
+    this.audio = new GameAudio(this);
+    this.audio.applySettings(saved);
+    this.audio.playBgm('title');
     setVfxBrightness(saved.vfxBrightness);
     this.applyBrightness(saved.brightness);
 
@@ -71,43 +96,48 @@ export class TitleScene extends Phaser.Scene {
   }
 
   /**
-   * 로비 탭 줄 — 주문 도감 · 설정 (총괄: "시작 화면을 로비처럼").
-   * 하단은 시연 탭이 이미 쓰고 있어 두 항목을 한 줄에 나란히 놓는다.
+   * 로비 탭 줄 — 주문 도감 · 설정 · 상점. 상점은 꾸미기 연결 전까지 안내용이다.
    */
   private createLobbyTabs(width: number, height: number): void {
-    const makeTab = (x: number, label: string, onPick: () => void): void => {
+    const makeTab = (x: number, label: string, onPick?: () => void): void => {
       const tab = this.add.text(x, height * 0.885, label, {
         fontFamily: UI_FONT.serif,
         fontSize: '15px',
         color: UI_COLOR.accent,
         letterSpacing: 2,
-      }).setOrigin(0.5).setAlpha(0.75).setInteractive({ useHandCursor: true });
+      }).setOrigin(0.5).setAlpha(onPick ? 0.75 : 0.42);
+      if (!onPick) return;
+      tab.setInteractive({ useHandCursor: true });
       tab.on('pointerover', () => tab.setAlpha(1).setColor(UI_COLOR.textBright));
       tab.on('pointerout', () => tab.setAlpha(0.75).setColor(UI_COLOR.accent));
       tab.on('pointerdown', onPick);
     };
-    makeTab(width / 2 - 78, '〔 주문 도감 〕', () => { void this.openCodex(); });
-    makeTab(width / 2 + 78, '〔 설정 〕', () => { void this.openSettings(); });
+    makeTab(width * 0.25, '〔 주문 도감 〕', () => { void this.openCodex(); });
+    makeTab(width * 0.5, '〔 설정 〕', () => { void this.openSettings(); });
+    makeTab(width * 0.75, '〔 상점 〕', () => { void this.openShop(); });
   }
 
   /**
    * 설정 — 전투 중 일시정지 메뉴와 **같은 순수 코어**(gameSettings)를 쓴다.
-   * 타이틀엔 오디오가 없어(GameAudio는 ProtoScene 소유) 볼륨은 소리로 확인되지 않고
-   * 저장만 된다. 밝기는 여기서도 즉시 반영해 조절이 눈으로 확인되게 한다.
+   * 타이틀의 시작음도 저장된 SFX 볼륨을 쓰지만, 슬라이더 조절 중 미리듣지는 않는다.
+   * 밝기는 여기서도 즉시 반영해 조절이 눈으로 확인되게 한다.
    */
   private async openSettings(): Promise<void> {
     if (this.codexOpen || this.starting) return;
     this.codexOpen = true; // 시작 트리거 차단 — 도감과 같은 가드를 공유한다
     try {
       await showSettingsOverlay({
-        audioNote: '소리 크기는 전투에서 적용된다 · 밝기는 지금 바로',
+        audioNote: '소리 크기는 시작·전투에서 적용된다 · 밝기는 지금 바로',
         onChange: (settings) => {
           // 이펙트 밝기는 막이 아니라 렌더러 배율이라 여기서도 같이 반영해야
           // 설정을 닫고 바로 시작했을 때 첫 시전부터 적용된다
           setVfxBrightness(settings.vfxBrightness);
           this.applyBrightness(settings.brightness);
+          this.audio.applySettings(settings);
         },
+        mute: { get: () => this.audio.muted, toggle: () => this.audio.toggleMute() },
       });
+      GameAudio.playOneShot(this, 'ui-confirm', loadSettings(window.localStorage));
     } finally {
       this.time.delayedCall(50, () => { this.codexOpen = false; });
     }
@@ -159,16 +189,94 @@ export class TitleScene extends Phaser.Scene {
 
     tab.on('pointerover', () => { tab.setAlpha(1).setColor('#ffe6a3'); hint.setAlpha(1); });
     tab.on('pointerout', () => { tab.setAlpha(0.75).setColor('#ffd166'); hint.setAlpha(0.8); });
-    tab.on('pointerdown', () => this.startGame(true));
+    tab.on('pointerdown', () => { void this.openDemoBuildChoice(); });
+  }
+
+  /** 개발 중 피해 숫자·지속형·합주를 반복 관찰하는 정지 허수아비 방. */
+  private createPracticeTab(width: number, height: number): void {
+    const tab = this.add.text(width - 112, height - 28, '〔 피해 연습실 〕', {
+      fontFamily: UI_FONT.serif,
+      fontSize: '13px',
+      color: '#8fe3c8',
+      letterSpacing: 1.5,
+    }).setOrigin(0.5).setAlpha(0.72).setInteractive({ useHandCursor: true });
+    tab.on('pointerover', () => tab.setAlpha(1).setColor('#c7f9e0'));
+    tab.on('pointerout', () => tab.setAlpha(0.72).setColor('#8fe3c8'));
+    tab.on('pointerdown', () => {
+      if (this.codexOpen || this.starting) return;
+      requestPracticeRun();
+      this.startGame();
+    });
+  }
+
+  /** 꾸미기 상점 연결 전에도 메타 재화의 존재와 현재 보유량을 로비에서 일관되게 보여 준다. */
+  private createTokenReadout(width: number): void {
+    const tokens = loadMetaProfile(window.localStorage).spellTokens;
+    this.tokenReadout = this.add.text(width - 28, 28, `✦ 주문 토큰 ${tokens}`, {
+      fontFamily: UI_FONT.serif,
+      fontSize: '15px',
+      color: UI_COLOR.warm,
+      stroke: UI_COLOR.ink,
+      strokeThickness: 3,
+      letterSpacing: 1.2,
+    }).setOrigin(1, 0.5).setAlpha(0.9);
+  }
+
+  private async openDemoBuildChoice(): Promise<void> {
+    if (this.codexOpen || this.starting) return;
+    this.codexOpen = true;
+    try {
+      const selected = await showRewardCards([...DEMO_BUILD_OPTIONS], {
+        kicker: 'BUILD PRESET',
+        title: '어떤 각성의 길을 걸을까',
+        contextLines: ['선택한 빌드의 핵심 성장 상태로 시작한다', '분기 맵의 모든 경로는 제단을 지난다'],
+      });
+      const build = demoBuildFromOptionId(selected.id);
+      if (!build) return;
+      requestDemoRun(build);
+      this.codexOpen = false;
+      this.startGame();
+    } finally {
+      if (!this.starting) this.codexOpen = false;
+    }
   }
 
   private async openCodex(): Promise<void> {
     if (this.codexOpen || this.starting) return;
     this.codexOpen = true;
     try {
-      await showCodexOverlay(loadCodex(window.localStorage));
+      let profile = loadMetaProfile(window.localStorage);
+      const tokenRewardFor = (entry: import('../spell/spellCodex').CodexEntry): number => (
+        spellTokenValueForClaims(profile.spellTokenSales[codexTokenSignature(entry)] ?? 0)
+      );
+      await showCodexOverlay(loadCodex(window.localStorage), {
+        tokenBalance: profile.spellTokens,
+        tokenRewardFor,
+        onClaimToken: (entry) => {
+          if (!isCodexEntryTokenClaimable(entry)) return null;
+          const claim = applySpellTokenClaim(profile, codexTokenSignature(entry), tokenRewardFor(entry));
+          if (claim.amount <= 0) return null;
+          profile = claim.profile;
+          saveMetaProfile(profile, window.localStorage);
+          saveCodex(window.localStorage, markCodexEntryTokenClaimed(loadCodex(window.localStorage), entry));
+          return { amount: claim.amount, tokenBalance: profile.spellTokens };
+        },
+      });
+      this.tokenReadout?.setText(`✦ 주문 토큰 ${profile.spellTokens}`);
+      GameAudio.playOneShot(this, 'ui-confirm', loadSettings(window.localStorage));
     } finally {
       // 같은 프레임의 씬 pointerdown이 시작을 못 물게 한 틱 늦게 푼다
+      this.time.delayedCall(50, () => { this.codexOpen = false; });
+    }
+  }
+
+  private async openShop(): Promise<void> {
+    if (this.codexOpen || this.starting) return;
+    this.codexOpen = true;
+    try {
+      await showShopOverlay(loadMetaProfile(window.localStorage).spellTokens);
+      GameAudio.playOneShot(this, 'ui-confirm', loadSettings(window.localStorage));
+    } finally {
       this.time.delayedCall(50, () => { this.codexOpen = false; });
     }
   }
@@ -365,13 +473,15 @@ export class TitleScene extends Phaser.Scene {
     });
   }
 
-  private startGame(demo = false): void {
+  private startGame(): void {
     if (this.starting || this.codexOpen) return;
-    if (demo) requestDemoRun();
     this.starting = true;
     this.input.enabled = false;
+    GameAudio.playOneShot(this, 'title-start', loadSettings(window.localStorage));
     this.cameras.main.fadeOut(420, 5, 6, 15);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      // 시연 시작 경로에서도 shutdown 순서에 기대지 않고 타이틀 음악을 먼저 정리한다.
+      this.audio.stopBgm();
       this.scene.start('proto');
     });
   }

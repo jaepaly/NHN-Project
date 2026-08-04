@@ -141,6 +141,7 @@ export function toMinimapModel(state: MapGraphState): MinimapModel {
       id: node.id,
       kind: node.kind,
       status: node.status,
+      stage: node.stage,
       layer: node.layer,
       lane: node.lane,
     })),

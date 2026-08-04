@@ -4,6 +4,7 @@ import {
   BOSS_ARCANA_CONFIG,
   BOSS_SPELLBOOK,
   bossArcanaSpell,
+  bossArcanaTelegraphRadius,
 } from '../src/combat-core/boss/bossArcana';
 import { isInstantForm } from '../src/combat-core/boss/mirrorCast';
 import { BossPatternController } from '../src/combat-core/boss/bossPatternController';
@@ -54,7 +55,13 @@ import { FORMS, ELEMENTS } from '../src/spell/types';
   assert.ok(BOSS_ARCANA_CONFIG.pullDurationSeconds <= 2.5, '흡인이 너무 길다');
   assert.ok(BOSS_ARCANA_CONFIG.shroudSeconds <= 4,
     '장막이 너무 길다 — 길면 위협이 아니라 답답함이다');
-  assert.ok(BOSS_ARCANA_CONFIG.castTelegraphSeconds >= 0.4, '예고 없는 원소 마법은 불공정');
+  assert.ok(BOSS_ARCANA_CONFIG.castTelegraphSeconds >= 1, '예고 없는 원소 마법은 불공정');
+  const rain = BOSS_SPELLBOOK.find((spec) => spec.form === 'rain')!;
+  assert.ok(bossArcanaTelegraphRadius(rain) >= 150,
+    '빗발 장판은 실제 위험 범위를 예고해야 한다');
+  const nova = BOSS_SPELLBOOK.find((spec) => spec.form === 'nova')!;
+  assert.ok(bossArcanaTelegraphRadius(nova) > 90,
+    '폭발 주문도 작은 점 예고로 축소하면 안 된다');
 }
 
 // ── 패턴 편입: memory 보스 순환에 비전 마법이 실제로 나오는가 ─────────
@@ -99,6 +106,7 @@ import { FORMS, ELEMENTS } from '../src/spell/types';
     ["case 'mirror':", '패턴 스위치에 미러 재발동 케이스 없음'],
     ['this.queueMirrorCast(boss, true)', '미러 재발동이 force 없이 불림 — 1회 제한에 막힘'],
     ['this.updateBossArcana(d)', '비전 마법 타이머가 스케일 델타로 돌지 않음'],
+    ['bossArcanaTelegraphRadius(spec)', '비전 마법이 실제 범위를 반영한 낙성 예고를 쓰지 않음'],
     ['this.clearBossArcana()', '방 전환 시 장막·흡인·예고가 남는다'],
     ['|| this.blackoutCurseField', '암전 저주 방에서 장막이 겹쳐 아무것도 안 보이게 됨'],
   ] as const) {
