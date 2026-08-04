@@ -17,7 +17,8 @@
 - [x] 최신 `origin/main`으로 rebase를 시작했고, 코드 충돌 없이 AI 작업 기록 두 파일만 충돌함을 확인했다.
 - [x] #311 로컬 프록시 기록과 #314/#348 timeout 재시도 기록을 함께 보존해 충돌을 해소한다.
 - [x] 로컬 프록시 회귀·터널 health 스모크·#348 timeout 재시도 회귀·전체 97종, 타입 검사·프로덕션 build·diff check를 최신 main 기준으로 재실행했다.
-- [~] PR #346 브랜치를 `--force-with-lease`로 갱신하고 GitHub CI를 확인한 뒤, 팀 검토·병합 상태로 전달한다.
+- [x] PR #346 브랜치를 `--force-with-lease`로 갱신했고 GitHub `test`·`build`를 통과했다. PR 배포 skip은 PR 워크플로상 정상이다.
+- [~] 팀 검토·병합 대기 — 이 PR은 공용 Worker를 바꾸는 변경이 아니라 각 PC의 로컬 프록시 선택 경로를 추가한다.
 
 ---
 
