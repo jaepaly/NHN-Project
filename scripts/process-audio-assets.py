@@ -20,6 +20,14 @@ TARGET_PEAK_DBFS = {
     "sfx-route-transition.wav": -7.0,
     "sfx-title-start.wav": -7.0,
     "sfx-run-complete.wav": -7.0,
+    "sfx-trap-room-enter.wav": -7.0,
+    "sfx-elite-room-enter.wav": -7.0,
+    "sfx-ui-cursor-move.wav": -10.0,
+    "sfx-boss-volley-fire.wav": -7.0,
+    "sfx-boss-charge-start.wav": -7.0,
+    "sfx-boss-charge-end.wav": -8.0,
+    "sfx-boss-hazard-spawn.wav": -7.0,
+    "sfx-boss-summon.wav": -7.0,
 }
 DEFAULT_TARGET_PEAK_DBFS = -6.0
 THRESHOLD_DBFS = -50.0

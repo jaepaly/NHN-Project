@@ -2034,7 +2034,7 @@ export class ProtoScene extends Phaser.Scene {
         title: '주문서에서 유산을 꺼낸다',
         contextLines: ['유산 없이 시작해 이번 런의 새 발견으로 빌드를 정할 수도 있다'],
       });
-      this.audio.playSfx('ui-confirm');
+      this.audio.playSfx('reward-select');
       const entry = offers.find((e) => `legacy-${e.normalized}` === chosen.id);
       if (entry) {
         saveLastLegacySelection(entry.normalized);
@@ -2374,6 +2374,9 @@ export class ProtoScene extends Phaser.Scene {
       return;
     }
     this.activateRoomCurse(roomIndex);
+    const roomKind = this.mapGraph.current().kind;
+    if (roomKind === 'trap') this.audio.playSfx('trap-room-enter');
+    else if (roomKind === 'elite') this.audio.playSfx('elite-room-enter');
     if (this.isBossEncounter()) {
       this.startBossRoom(encounter.encounterKind === 'memory-boss');
       return;
@@ -3234,7 +3237,6 @@ export class ProtoScene extends Phaser.Scene {
       beamLine,
       caster: boss,
     };
-    this.audio.playSfx('boss-appear');
     requestCameraShake(this, 'weak', 1);
     this.announceSystemMessage(
       `보스가 『${spec.name}』을(를) 역영창한다 —`,
@@ -3277,6 +3279,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private fireMirrorCast(spec: SpellSpec, targetX: number, targetY: number): void {
+    this.audio.playMirrorCast(spec.element_primary);
     this.bossCastSpellAt(spec, targetX, targetY, MIRROR_CAST_CONFIG.damageScale);
     devInfo('[MirrorCast] fired', { spec: spec.name, targetX, targetY });
   }
@@ -3801,7 +3804,6 @@ export class ProtoScene extends Phaser.Scene {
    */
   private openRewardlessRoomChoice(): void {
     this.clearRoomFixture();
-    this.audio.playSfx('room-clear');
     this.combatRunController.notifyRoomCleared();
   }
 
@@ -4496,6 +4498,7 @@ if (applied) this.playPlayerHit();
       if (enemy instanceof BossEnemy) {
         if (wasCharging || enemy.charging) this.updateBossChargeTrail(enemy, deltaSeconds);
         if (wasCharging && !enemy.charging) {
+          this.audio.playSfx('boss-charge-end');
           this.showBossChargeShockwave(enemy.x, enemy.y, 0xd0a8ff);
           requestCameraShake(this, 'medium');
         }
@@ -4658,6 +4661,7 @@ if (applied) this.playPlayerHit(
         break;
       case 'charge-start':
         if (this.bossChargeTarget) {
+          this.audio.playSfx('boss-charge-start');
           requestCameraShake(this, 'weak');
           this.showBossChargeShockwave(boss.x, boss.y, 0xff5370);
           this.bossChargeTrailCooldown = 0;
@@ -4734,6 +4738,7 @@ if (applied) this.playPlayerHit(
   }
 
   private spawnBossVolley(boss: BossEnemy, angles: readonly number[]): void {
+    this.audio.playSfx('boss-volley-fire');
     this.showBossChargeShockwave(boss.x, boss.y, 0xff8f70);
     for (const angle of angles) {
       this.spawnEnemyProjectile({
@@ -4855,6 +4860,7 @@ if (applied) this.playPlayerHit(
   }
 
   private spawnBossSurroundMinions(): void {
+    this.audio.playSfx('boss-summon');
     for (let i = 0; i < 3; i++) {
       const angle = (Math.PI * 2 * i) / 3;
       const x = Phaser.Math.Clamp(this.player.x + Math.cos(angle) * 180, this.worldBounds.left + 30, this.worldBounds.right - 30);
@@ -4864,6 +4870,7 @@ if (applied) this.playPlayerHit(
   }
 
   private spawnBossEliteMinion(boss: BossEnemy): void {
+    this.audio.playSfx('boss-summon');
     const modifier = ELITE_MODIFIERS[this.bossEliteSummonIndex++ % ELITE_MODIFIERS.length];
     const angle = Math.random() * Math.PI * 2;
     const x = Phaser.Math.Clamp(
@@ -4880,6 +4887,7 @@ if (applied) this.playPlayerHit(
   }
 
   private spawnBossHazard(boss: BossEnemy): void {
+    this.audio.playSfx('boss-hazard-spawn');
     const enhanced = this.isMemoryBossEncounter()
       && boss.phase >= 2
       && this.bossResistance.counterStrategy === 'ranged';
@@ -7156,6 +7164,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (enemy instanceof BossEnemy && enemy.charging && !startedTouching) {
       enemy.cancelCharge();
       enemy.view.setPosition(previous.x, previous.y);
+      this.audio.playSfx('boss-charge-end');
+      this.showBossChargeShockwave(enemy.x, enemy.y, 0xd0a8ff);
+      requestCameraShake(this, 'medium');
       // 아래 일반 둔화(1.5초 ×0.6)를 건너뛴다.
       //
       // `enemyControlState.applySlow`는 배수를 `min(기존, 신규)`, 지속을
@@ -10032,6 +10043,7 @@ if (applied) this.playPlayerHit('strong');
   }
 
   private spawnBossMinions(boss: BossEnemy): void {
+    this.audio.playSfx('boss-summon');
     for (let i = 0; i < BOSS_CONFIG.minionsPerTrigger; i++) {
       const angle = Math.random() * Math.PI * 2;
       const x = Phaser.Math.Clamp(

@@ -48,6 +48,7 @@ export class TitleScene extends Phaser.Scene {
   preload(): void {
     GameAudio.preloadSfx(this, 'title-start');
     GameAudio.preloadSfx(this, 'ui-confirm');
+    GameAudio.preloadSfx(this, 'ui-cursor-move');
     GameAudio.preloadBgm(this, 'title');
   }
 
@@ -108,7 +109,10 @@ export class TitleScene extends Phaser.Scene {
       }).setOrigin(0.5).setAlpha(onPick ? 0.75 : 0.42);
       if (!onPick) return;
       tab.setInteractive({ useHandCursor: true });
-      tab.on('pointerover', () => tab.setAlpha(1).setColor(UI_COLOR.textBright));
+      tab.on('pointerover', () => {
+        this.audio.playSfx('ui-cursor-move');
+        tab.setAlpha(1).setColor(UI_COLOR.textBright);
+      });
       tab.on('pointerout', () => tab.setAlpha(0.75).setColor(UI_COLOR.accent));
       tab.on('pointerdown', onPick);
     };
@@ -187,7 +191,11 @@ export class TitleScene extends Phaser.Scene {
       },
     ).setOrigin(0.5).setAlpha(0.8);
 
-    tab.on('pointerover', () => { tab.setAlpha(1).setColor('#ffe6a3'); hint.setAlpha(1); });
+    tab.on('pointerover', () => {
+      this.audio.playSfx('ui-cursor-move');
+      tab.setAlpha(1).setColor('#ffe6a3');
+      hint.setAlpha(1);
+    });
     tab.on('pointerout', () => { tab.setAlpha(0.75).setColor('#ffd166'); hint.setAlpha(0.8); });
     tab.on('pointerdown', () => { void this.openDemoBuildChoice(); });
   }
@@ -200,7 +208,10 @@ export class TitleScene extends Phaser.Scene {
       color: '#8fe3c8',
       letterSpacing: 1.5,
     }).setOrigin(0.5).setAlpha(0.72).setInteractive({ useHandCursor: true });
-    tab.on('pointerover', () => tab.setAlpha(1).setColor('#c7f9e0'));
+    tab.on('pointerover', () => {
+      this.audio.playSfx('ui-cursor-move');
+      tab.setAlpha(1).setColor('#c7f9e0');
+    });
     tab.on('pointerout', () => tab.setAlpha(0.72).setColor('#8fe3c8'));
     tab.on('pointerdown', () => {
       if (this.codexOpen || this.starting) return;
