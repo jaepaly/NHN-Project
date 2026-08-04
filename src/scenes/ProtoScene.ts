@@ -254,6 +254,8 @@ import { showRewardCards } from '../ui/rewardCardOverlay';
 import { showAltarRiskConfirm } from '../ui/altarRiskConfirm';
 import { MinimapHud } from '../ui/minimapHud';
 import { MINIMAP_CONFIG } from '../ui/minimapLayout';
+import { RoomRadarHud } from '../ui/roomRadarHud';
+import { ROOM_RADAR_CONFIG } from '../ui/roomRadarModel';
 import { pushOutOfBlocks, segmentBlocked } from '../combat-core/combat/terrainBlock';
 import type { TerrainBlock } from '../combat-core/combat/terrainBlock';
 import {
@@ -427,7 +429,7 @@ const HUD = {
  * 종전엔 ROOM 칩(DOM)·WAVE 패널·미니맵이 **3단**으로 쌓여 있었다 (총괄 지적).
  */
 const RIGHT_PANEL = {
-  y: 18,
+  y: 18 + ROOM_RADAR_CONFIG.height + 10,
   /** 텍스트 위 여백 */
   padTop: 10,
   /** 텍스트 아래 여백 */
@@ -437,6 +439,7 @@ const RIGHT_PANEL = {
   /** 평시(2줄) 텍스트 높이 — 미니맵 초기 위치 계산용 */
   baseTextHeight: 35,
 } as const;
+const ROOM_RADAR_TOP = 18;
 
 /** 상태 텍스트 높이 → 패널 높이. 보스전(저항·관통 줄)에서 늘어난다. */
 function rightPanelHeight(textHeight: number): number {
@@ -1023,6 +1026,8 @@ export class ProtoScene extends Phaser.Scene {
   private devMinimap: MinimapHud | null = null;
   private devPortalField: PortalField | null = null;
   private runMinimap: MinimapHud | null = null;
+  /** #345 현재 전투방 위치 레이더 — 전체 경로 지도와 별개로 항상 갱신한다. */
+  private roomRadar!: RoomRadarHud;
   /** 방 중앙 설치물 (보물상자·제단) — 다가가야 보상이 열린다 (#214) */
   private roomFixture: RoomFixture | null = null;
   /**
@@ -1473,6 +1478,11 @@ export class ProtoScene extends Phaser.Scene {
     this.roomFixture?.update(this.player.x, this.player.y);
     // 숨겨져 있으면 다시 그리지 않는다 — 펄스는 보일 때만 의미가 있다
     if (this.shouldShowMinimap()) this.runMinimap?.pulse();
+    this.roomRadar.update(
+      this.worldBounds,
+      { x: this.player.x, y: this.player.y },
+      this.enemies,
+    );
     this.updateStatusText();
     this.updateSequenceProgress();
   }
@@ -2913,6 +2923,12 @@ export class ProtoScene extends Phaser.Scene {
       lineSpacing: 3,
       wordWrap: { width: 256, useAdvancedWrap: true },
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+
+    this.roomRadar = new RoomRadarHud(
+      this,
+      width - ROOM_RADAR_CONFIG.width - 18,
+      ROOM_RADAR_TOP,
+    );
 
     // 빌드 패널 — "지금 내가 뭘 들고 있나"를 상시 노출.
     // 우하단은 비어 있어 전투 시야를 가리지 않는다. 우상단은 ROOM/WAVE 전용으로 남긴다.
