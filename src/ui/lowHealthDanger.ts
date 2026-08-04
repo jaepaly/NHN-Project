@@ -2,8 +2,8 @@ export const LOW_HEALTH_DANGER = {
   enterRatio: 0.3,
   exitRatio: 0.35,
   periodMs: 1300,
-  minAlpha: 0.04,
-  maxAlpha: 0.13,
+  minAlpha: 0.052,
+  maxAlpha: 0.169,
   fadeOutMs: 240,
 } as const;
 
