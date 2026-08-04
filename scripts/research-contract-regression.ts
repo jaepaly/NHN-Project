@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { PlayerCombatState } from '../src/combat-core/player/playerCombatState';
 import { CombatRunController } from '../src/combat-core/run/runController';
-import { RUN_REWARD_CONFIG } from '../src/combat-core/run/rewardConfig';
 import { RunResearchTracker } from '../src/meta/runResearchTracker';
 import { applyMetaRunOutcome, EMPTY_META_PROFILE } from '../src/meta/metaProfile';
 import {
   advanceElementalFocusEchoCharge,
+  advanceSpiritResonance,
   advanceResearchContract,
   availableBasicResearchContracts,
   elementalFocusEchoUnlocked,
@@ -14,20 +13,18 @@ import {
   ELEMENTAL_FOCUS_START_AFFINITY,
   EXPANDED_RESEARCH_UNLOCK_INSIGHT,
   ELEMENTAL_FOCUS_MILESTONE_AFFINITY,
-  isWardResearchSupportSpell,
   RESEARCH_FIRST_REWARD,
   RESEARCH_REPEAT_REWARD,
+  RESEARCH_ELEMENTS,
   researchMilestoneReward,
   researchProgressSlots,
   spellMatchesElementalResearch,
   startResearchContract,
-  wardStudyIncomingDamageScale,
-  wardStudyPulseUnlocked,
+  spiritResonanceUnlocked,
   variationDiversityMaxBonus,
   VARIATION_DIVERSITY_MAX_BONUS,
-  WARD_STUDY_GUARD_DAMAGE_SCALE,
-  WARD_STUDY_MILESTONE_SHIELD,
-  WARD_STUDY_START_SHIELD,
+  SPIRIT_RESONANCE_MILESTONE_HASTE_SCALE,
+  SPIRIT_RESONANCE_START_HASTE_SCALE,
 } from '../src/meta/researchContract';
 import type { ResolvedSpellPlan } from '../src/spell/sequencePlan';
 import type { SpellEffect, SpellElement, SpellForm, SpellSpec } from '../src/spell/types';
@@ -58,24 +55,25 @@ assert.deepEqual(availableBasicResearchContracts({ insight: 20, totalRuns: 0 }, 
 assert.deepEqual(availableBasicResearchContracts({ insight: 3, totalRuns: 2 }, 'fire'), []);
 assert.deepEqual(
   availableBasicResearchContracts({ insight: 4, totalRuns: 1 }, null),
-  [{ id: 'ward-study' }],
+  [{ id: 'spirit-resonance' }],
 );
 assert.deepEqual(
   availableBasicResearchContracts({ insight: 4, totalRuns: 1 }, 'fire'),
-  [{ id: 'elemental-focus', element: 'fire' }, { id: 'ward-study' }],
+  [{ id: 'elemental-focus', element: 'fire' }, { id: 'spirit-resonance' }],
 );
 assert.deepEqual(
   availableBasicResearchContracts({ insight: EXPANDED_RESEARCH_UNLOCK_INSIGHT - 1, totalRuns: 1 }, 'fire'),
-  [{ id: 'elemental-focus', element: 'fire' }, { id: 'ward-study' }],
+  [{ id: 'elemental-focus', element: 'fire' }, { id: 'spirit-resonance' }],
 );
 assert.deepEqual(
   availableBasicResearchContracts({ insight: EXPANDED_RESEARCH_UNLOCK_INSIGHT, totalRuns: 1 }, 'fire'),
   [
     { id: 'elemental-focus', element: 'fire' },
-    { id: 'ward-study' },
+    { id: 'spirit-resonance' },
     { id: 'variation-study' },
   ],
 );
+assert.deepEqual(RESEARCH_ELEMENTS, ['fire', 'water', 'lightning', 'ice', 'earth', 'wind', 'light', 'dark']);
 
 // 최초 완료 +3, 다른 런의 반복 완료 +2.
 const firstFocus = startResearchContract({ id: 'elemental-focus', element: 'fire' }, []);
@@ -91,7 +89,7 @@ focus = advanceResearchContract(focus, [spell('damage', 'bolt', 'fire')]).contra
 const focusFirstReward = researchMilestoneReward(firstFocus, focus);
 assert.deepEqual(focusFirstReward, {
   affinity: ELEMENTAL_FOCUS_MILESTONE_AFFINITY,
-  shield: 0,
+  spiritHasteApplications: 0,
   milestones: 1,
 });
 assert.equal(elementalFocusSpatialScale(focus, spell('damage', 'bolt', 'fire')), 1.1);
@@ -115,48 +113,39 @@ assert.deepEqual(advanceElementalFocusEchoCharge(2), { charge: 0, triggered: tru
 assert.equal(researchProgressSlots(focus), '●●●');
 assert.deepEqual(researchMilestoneReward(focus, focus), {
   affinity: 0,
-  shield: 0,
+  spiritHasteApplications: 0,
   milestones: 0,
 }, '같은 상태를 재보고하면 단계 보상을 중복 지급하지 않음');
 
-// 수호 연구는 한 영창 안 지원 behavior 수와 무관하게 최대 +1.
-let ward = startResearchContract({ id: 'ward-study' }, []);
-const wardStart = ward;
-ward = advanceResearchContract(ward, [
-  spell('heal', 'nova', 'light'),
-  spell('shield', 'wall', 'earth'),
-  spell('control', 'cage', 'ice'),
-]).contract;
-assert.equal(ward.progress, 1);
-assert.deepEqual(researchMilestoneReward(wardStart, ward), {
+// 정령 연성은 영창이 아닌 실제 계약 2회와 공격 정령 융합 1회를 센다.
+let resonance = startResearchContract({ id: 'spirit-resonance' }, []);
+const resonanceStart = resonance;
+resonance = advanceResearchContract(resonance, [spell('damage', 'bolt', 'fire')]).contract;
+assert.equal(resonance.progress, 0, '영창만으로 연성 과제가 진행되면 안 된다');
+resonance = advanceSpiritResonance(resonance, 'acquired').contract;
+assert.equal(resonance.progress, 1);
+assert.deepEqual(researchMilestoneReward(resonanceStart, resonance), {
   affinity: 0,
-  shield: WARD_STUDY_MILESTONE_SHIELD,
+  spiritHasteApplications: 1,
   milestones: 1,
 });
-assert.equal(isWardResearchSupportSpell(spell('heal', 'nova', 'light')), true);
-assert.equal(isWardResearchSupportSpell(spell('damage', 'bolt', 'fire')), false);
-assert.equal(wardStudyIncomingDamageScale(ward, 20), 1, '수호 1단계에는 피해 감소 없음');
-ward = advanceResearchContract(ward, [spell('damage', 'bolt', 'fire')]).contract;
-assert.equal(ward.progress, 1);
-ward = advanceResearchContract(ward, [spell('buff', 'buff', 'wind')]).contract;
-assert.equal(wardStudyIncomingDamageScale(ward, 20), WARD_STUDY_GUARD_DAMAGE_SCALE);
-assert.equal(wardStudyIncomingDamageScale(ward, 0), 1, '보호막이 없으면 수호 감소 미적용');
-ward = advanceResearchContract(ward, [spell('control', 'zone', 'dark')]).contract;
-assert.equal(ward.completed, true);
-assert.equal(wardStudyPulseUnlocked(ward), true);
+resonance = advanceSpiritResonance(resonance, 'acquired').contract;
+resonance = advanceSpiritResonance(resonance, 'fused').contract;
+assert.equal(resonance.completed, true);
+assert.equal(spiritResonanceUnlocked(resonance), true);
 
 // 만물의 변주는 원소·형태의 더 적은 고유 개수를 단계로 삼고, 단계마다 상한을 올린다.
 let variation = startResearchContract({ id: 'variation-study' }, []);
 assert.equal(variation.goal, 4);
 assert.equal(researchProgressSlots(variation), '○○○○');
-assert.equal(variationDiversityMaxBonus(variation), 0.3);
+assert.equal(variationDiversityMaxBonus(variation), 0.4);
 variation = advanceResearchContract(variation, [
   spell('damage', 'bolt', 'fire', 'water'),
 ]).contract;
 assert.deepEqual(variation.usedElements, ['fire', 'water']);
 assert.deepEqual(variation.usedForms, ['bolt']);
 assert.equal(variation.progress, 1);
-assert.equal(variationDiversityMaxBonus(variation), 0.35);
+assert.ok(Math.abs(variationDiversityMaxBonus(variation) - 0.475) < 1e-9);
 variation = advanceResearchContract(variation, [spell('damage', 'beam', 'water')]).contract;
 assert.equal(variation.progress, 2);
 variation = advanceResearchContract(variation, [spell('control', 'wall', 'ice')]).contract;
@@ -167,9 +156,9 @@ assert.equal(variation.completed, true);
 assert.equal(variationDiversityMaxBonus(variation), VARIATION_DIVERSITY_MAX_BONUS);
 assert.equal(researchProgressSlots(variation), '●●●●');
 
-// Tracker는 필살영창을 연구에서 제외하고 완료 보상을 결과에 한 번만 싣는다.
+// Tracker는 정령 보상·융합만 반영하고 완료 보상을 결과에 한 번만 싣는다.
 const tracker = new RunResearchTracker();
-tracker.selectResearch({ id: 'ward-study' });
+tracker.selectResearch({ id: 'spirit-resonance' });
 const supportPlan: ResolvedSpellPlan = {
   name: '수호 연쇄',
   castMode: 'ultimate',
@@ -179,57 +168,56 @@ const supportPlan: ResolvedSpellPlan = {
     { type: 'form', spec: spell('shield', 'wall', 'earth') },
   ] }],
 };
-tracker.recordNormalPlan(supportPlan);
-assert.equal(tracker.snapshot().research?.progress, 0);
 supportPlan.castMode = 'normal';
 tracker.recordNormalPlan(supportPlan);
-tracker.recordNormalPlan(supportPlan);
-tracker.recordNormalPlan(supportPlan);
+assert.equal(tracker.snapshot().research?.progress, 0);
+tracker.recordSpiritResearch('acquired');
+tracker.recordSpiritResearch('acquired');
+tracker.recordSpiritResearch('fused');
 const outcome = tracker.outcome('lose');
 assert.equal(outcome.insightEarned, 4, '신규 발견 +1, 최초 연구 완료 +3');
-assert.deepEqual(outcome.completedContractIds, ['ward-study']);
+assert.deepEqual(outcome.completedContractIds, ['spirit-resonance']);
 const persisted = applyMetaRunOutcome(
   { ...EMPTY_META_PROFILE, discoveredSignatures: [], completedContractIds: [] },
   outcome,
 );
 assert.equal(persisted.insight, 4);
-assert.deepEqual(persisted.completedContractIds, ['ward-study']);
+assert.deepEqual(persisted.completedContractIds, ['spirit-resonance']);
 assert.equal(persisted.totalRuns, 1);
 
 tracker.beginContinuedLoop(
   outcome.discoveredSignatures,
-  ['ward-study'],
+  ['spirit-resonance'],
 );
 assert.equal(tracker.snapshot().research, null, '완료 연구는 심층 이어가기에서 재지급하지 않음');
 
 const incomplete = new RunResearchTracker();
-incomplete.selectResearch({ id: 'ward-study' });
-incomplete.recordNormalSpell(spell('heal', 'nova', 'light'));
+incomplete.selectResearch({ id: 'spirit-resonance' });
+incomplete.recordSpiritResearch('acquired');
 incomplete.beginContinuedLoop([], []);
 assert.equal(incomplete.snapshot().research?.progress, 1, '미완료 연구는 심층 이어가기에서 유지');
 
-// 시작 보너스는 일반 보상 카드 한 장 이하다.
-assert.ok(ELEMENTAL_FOCUS_START_AFFINITY <= RUN_REWARD_CONFIG.affinityBonus);
-assert.ok(WARD_STUDY_START_SHIELD <= RUN_REWARD_CONFIG.wardStartShield);
-const player = new PlayerCombatState();
-const controller = new CombatRunController({ playerState: player, maxRooms: 2 });
+// 시작 보너스는 원소 친화 및 정령 시전 간격에만 작은 가속을 준다.
+assert.ok(SPIRIT_RESONANCE_START_HASTE_SCALE < 1);
+assert.ok(SPIRIT_RESONANCE_MILESTONE_HASTE_SCALE < 1);
+const controller = new CombatRunController({ maxRooms: 2 });
 assert.deepEqual(controller.grantStartingAffinity('fire', ELEMENTAL_FOCUS_START_AFFINITY), {
   added: 0.15,
   total: 0.15,
 });
 assert.equal(controller.state.elementalAffinity.fire, 0.15);
-assert.equal(player.addShield(WARD_STUDY_START_SHIELD), 20);
 
 const sceneSource = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
 assert.ok(sceneSource.includes('availableBasicResearchContracts('), '첫 런·통찰·직전 원소 선택 조건 배선');
+assert.ok(sceneSource.includes('Phaser.Utils.Array.GetRandom([...RESEARCH_ELEMENTS])'), '원소 심화가 이전 런 우세 원소 대신 무작위 원소를 제시한다');
 assert.ok(sceneSource.includes('grantStartingAffinity('), '원소 심화 시작 보너스 배선');
-assert.ok(sceneSource.includes('addShield(WARD_STUDY_START_SHIELD)'), '수호 연구 시작 보너스 배선');
+assert.ok(sceneSource.includes("recordSpiritResearch('acquired')"), '정령 계약 연구 진행 배선');
+assert.ok(sceneSource.includes("recordSpiritResearch('fused')"), '정령 융합 연구 진행 배선');
 assert.ok(sceneSource.includes('reportResearchAdvance(previousResearch)'), '일반 단일·시퀀스 진행 피드백 배선');
 assert.ok(sceneSource.includes('researchMilestoneReward(previous, current)'), '단계별 즉시 보상 배선');
 assert.ok(sceneSource.includes('researchProgressSlots(research)'), '상시 연구 진행 슬롯 HUD 배선');
 assert.ok(sceneSource.includes('scheduleElementalResearchEcho(executedSpecs)'), '시퀀스 공명 재시전 배선');
-assert.ok(sceneSource.includes('applyWardResearchCastPerks(previousResearch'), '수호 지속 특성 배선');
-assert.ok(sceneSource.includes('wardStudyIncomingDamageScale('), '수호 피해 감소 배선');
+assert.ok(sceneSource.includes('enableFusionResonance()'), '정령 연성 완료 특성 배선');
 assert.ok(sceneSource.includes('variationDiversityMaxBonus('), '변주 단계별 다양성 상한 배선');
 assert.ok(sceneSource.includes('원소 ${contract.usedElements.length}/${contract.goal}'), '변주 원소·형태 HUD 배선');
 assert.ok(sceneSource.includes("actionState = 'RESEARCH SELECT'"), '연구 선택 중 전투 정지 HUD');

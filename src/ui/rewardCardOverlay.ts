@@ -74,6 +74,16 @@ ${ornamentCss(WRAP_ID)}
   flex: 0 0 46px; filter: ${UI_MATERIAL.gildEdge};
 }
 #${WRAP_ID} .reward-title .orn-sigil.mirrored { transform: scaleX(-1); }
+#${WRAP_ID} .reward-detail-panel {
+  display: none; margin: 14px auto 16px; max-width: 590px; min-height: 104px;
+  padding: 15px 19px; box-sizing: border-box; text-align: left;
+  border: 1px solid color-mix(in srgb, ${UI_COLOR.accent} 52%, ${UI_COLOR.border});
+  border-radius: 9px; background: rgba(11, 9, 18, 0.86);
+  box-shadow: inset 0 0 28px rgba(94, 111, 225, 0.08), 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+#${WRAP_ID} .reward-detail-panel.active { display: block; }
+#${WRAP_ID} .reward-detail-title { font-size: 17px; font-weight: 700; color: ${UI_COLOR.textBright}; }
+#${WRAP_ID} .reward-detail-copy { margin-top: 7px; white-space: pre-line; font-size: 14px; line-height: 1.7; color: ${UI_COLOR.textSoft}; }
 #${WRAP_ID} .reward-cards { display: flex; gap: 20px; justify-content: center; }
 #${WRAP_ID} .reward-card {
   --card-core: ${UI_COLOR.accent}; --card-glow: ${UI_COLOR.borderStrong};
@@ -101,6 +111,11 @@ ${ornamentCss(WRAP_ID)}
   box-shadow: ${UI_MATERIAL.paperShadowLift},
               inset 0 0 0 1px color-mix(in srgb, var(--card-core) 30%, transparent);
 }
+#${WRAP_ID} .reward-card:disabled {
+  cursor: not-allowed; opacity: 0.42; filter: grayscale(0.72);
+  transform: rotate(var(--card-tilt, 0deg)) translateY(var(--card-lift, 0px));
+}
+#${WRAP_ID} .reward-card:disabled:hover { border-color: color-mix(in srgb, var(--card-core) 42%, ${UI_COLOR.border}); box-shadow: ${UI_MATERIAL.paperShadow}, ${UI_MATERIAL.rule}; }
 #${WRAP_ID} .reward-card:focus-visible { outline: 2px solid var(--card-core); outline-offset: 3px; }
 /* 상위 선택지(진화·융합) — 반짝이는 금빛 테두리로 한눈에 티가 난다 */
 #${WRAP_ID} .reward-card--rare {
@@ -291,6 +306,10 @@ export interface CardFraming {
   contextLines?: string[];
   /** 카드 본문을 가리지 않는 호버 상세. 각성처럼 수치·조건 설명이 긴 선택지에 쓴다. */
   detailFor?: (option: RewardOption) => string | null;
+  /** 선택 카드의 상세를 패널로 크게 보여 준다. 연구처럼 설명이 긴 3택에 사용한다. */
+  detailPanelFor?: (option: RewardOption) => string | null;
+  /** 잠긴 제단 거래처럼 표시만 하고 선택할 수 없는 카드. */
+  disabledFor?: (option: RewardOption) => boolean;
 }
 
 function escapeText(text: string): string {
@@ -347,6 +366,10 @@ export function showRewardCards(
         ${titleSigil()}<span>${escapeText(titleText)}</span>${titleSigil().replace('orn-sigil', 'orn-sigil mirrored')}
       </h2>
       ${divider()}
+      <section class="reward-detail-panel" aria-live="polite">
+        <div class="reward-detail-title"></div>
+        <div class="reward-detail-copy"></div>
+      </section>
       <div class="reward-cards"></div>
       <div class="reward-hint"><b>A/D + Enter</b> · 숫자키 또는 카드 클릭</div>
       ${(framing.contextLines ?? []).filter(Boolean).length > 0
@@ -355,19 +378,32 @@ export function showRewardCards(
     : ''}
     </div>`;
   const cardsEl = wrap.querySelector('.reward-cards')!;
+  const detailPanel = wrap.querySelector<HTMLElement>('.reward-detail-panel')!;
+  const detailPanelTitle = detailPanel.querySelector<HTMLElement>('.reward-detail-title')!;
+  const detailPanelCopy = detailPanel.querySelector<HTMLElement>('.reward-detail-copy')!;
 
   return new Promise<RewardOption>((resolve) => {
     let focusIdx = 0;
     const buttons: HTMLButtonElement[] = [];
 
+    const isDisabled = (idx: number): boolean => Boolean(framing.disabledFor?.(shown[idx]));
     const finish = (idx: number): void => {
+      if (isDisabled(idx)) return;
       cleanup();
       resolve(shown[idx]);
     };
 
     const setFocus = (idx: number): void => {
-      focusIdx = (idx + shown.length) % shown.length;
+      let candidate = (idx + shown.length) % shown.length;
+      for (let attempts = 0; attempts < shown.length && isDisabled(candidate); attempts += 1) {
+        candidate = (candidate + 1) % shown.length;
+      }
+      focusIdx = candidate;
       buttons.forEach((b, i) => b.classList.toggle('focused', i === focusIdx));
+      const detail = framing.detailPanelFor?.(shown[focusIdx]) ?? null;
+      detailPanel.classList.toggle('active', detail !== null);
+      detailPanelTitle.textContent = detail ? shown[focusIdx].title : '';
+      detailPanelCopy.textContent = detail ?? '';
       buttons[focusIdx].focus({ preventScroll: true });
     };
 
@@ -377,6 +413,8 @@ export function showRewardCards(
       btn.type = 'button';
       const rare = isRareReward(option);
       btn.className = rare ? 'reward-card reward-card--rare' : 'reward-card';
+      const disabled = isDisabled(i);
+      btn.disabled = disabled;
       btn.style.setProperty('--card-core', core);
       btn.style.setProperty('--card-glow', glow);
       // 각도는 아주 작게(0.6도 안쪽) — 크면 장난스러워진다
@@ -411,8 +449,10 @@ export function showRewardCards(
         badge.textContent = ownedLabel;
         btn.appendChild(badge);
       }
-      btn.addEventListener('click', () => finish(i));
-      btn.addEventListener('mouseenter', () => setFocus(i));
+      if (!disabled) {
+        btn.addEventListener('click', () => finish(i));
+        btn.addEventListener('mouseenter', () => setFocus(i));
+      }
       cardsEl.appendChild(btn);
       buttons.push(btn);
     });
