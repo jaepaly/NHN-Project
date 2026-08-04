@@ -73,6 +73,7 @@ export function bindRunUi(controller: RunController, hooks: RunUiHooks = {}): vo
         ownedLabelFor: (option) => ownedLabelFor(option, ownedAtOffer),
         formFor: hooks.formFor,
         contextLines,
+        disabledFor: (option) => option.altar?.locked === true,
       });
       if (!(await hooks.confirmRewardSelection?.(chosen) ?? true)) {
         await chooseReward();

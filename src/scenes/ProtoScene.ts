@@ -297,12 +297,14 @@ import {
   mirrorImpactHitsPlayer,
   pickMirrorSpell,
 } from '../combat-core/boss/mirrorCast';
-import { BOSS_ARCANA_CONFIG, bossArcanaSpell } from '../combat-core/boss/bossArcana';
+import { BOSS_ARCANA_CONFIG, bossArcanaSpell, bossArcanaTelegraphRadius } from '../combat-core/boss/bossArcana';
 import {
   addEntry,
-  bestEntryFromRun,
+  bestEntriesFromRun,
   loadGrimoire,
+  loadLastLegacySelection,
   offerEntries,
+  saveLastLegacySelection,
   saveGrimoire,
   specFromEntry,
 } from '../spell/grimoire';
@@ -339,18 +341,14 @@ import {
   ELEMENTAL_FOCUS_ECHO_POWER_SCALE,
   ELEMENTAL_FOCUS_MILESTONE_AFFINITY,
   ELEMENTAL_FOCUS_START_AFFINITY,
-  isWardResearchSupportSpell,
+  RESEARCH_ELEMENTS,
   researchMilestoneReward,
   researchProgressSlots,
   spellMatchesElementalResearch,
   variationDiversityMaxBonus,
-  wardStudyIncomingDamageScale,
-  wardStudyPulseUnlocked,
-  WARD_STUDY_GUARD_DAMAGE_SCALE,
-  WARD_STUDY_MILESTONE_SHIELD,
-  WARD_STUDY_PULSE_KNOCKBACK,
-  WARD_STUDY_PULSE_RADIUS,
-  WARD_STUDY_START_SHIELD,
+  spiritResonanceUnlocked,
+  SPIRIT_RESONANCE_MILESTONE_HASTE_SCALE,
+  SPIRIT_RESONANCE_START_HASTE_SCALE,
   type ActiveResearchContract,
   type ResearchContractSelection,
 } from '../meta/researchContract';
@@ -1609,7 +1607,12 @@ export class ProtoScene extends Phaser.Scene {
       }
       const engraved = this.engraveManager.applyReward(chosen);
       const spirit = this.spiritManager.applyReward(chosen);
-      if (spirit) this.syncSpiritViews();
+      if (spirit) {
+        const previousResearch = this.runResearchTracker.snapshot().research;
+        this.runResearchTracker.recordSpiritResearch('acquired');
+        this.reportResearchAdvance(previousResearch);
+        this.syncSpiritViews();
+      }
       const message = engraved
         ? `${engraved.spell.name} · 각인 Lv${engraved.level}`
         : spirit
@@ -1696,11 +1699,7 @@ export class ProtoScene extends Phaser.Scene {
   /** 적이 주는 피해 — 이어가기 루프 난이도(loopDamageScale)를 반영해 감쇠 전 원본에 곱한다 */
   private damagePlayer(amount: number): { hpDamage: number; shieldDamage: number } {
     const scale = loopDamageScale(this.combatRunController.state.loopIndex);
-    const researchScale = wardStudyIncomingDamageScale(
-      this.runResearchTracker.snapshot().research,
-      this.playerState.shield,
-    );
-    const result = this.playerState.takeDamage(amount * scale * researchScale);
+    const result = this.playerState.takeDamage(amount * scale);
     if (result.hpDamage > 0) this.audio.playSfx('player-hit');
     return result;
   }
@@ -1748,11 +1747,10 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private async offerResearchContract(): Promise<void> {
-    const memory = loadRunMemory();
-    const previousDominantElement = memory.recentDominantElements.at(-1) ?? null;
+    const elementalFocusElement = Phaser.Utils.Array.GetRandom([...RESEARCH_ELEMENTS]);
     const contracts = availableBasicResearchContracts(
       this.metaProfile,
-      previousDominantElement,
+      elementalFocusElement,
     );
     if (contracts.length === 0) return;
 
@@ -1763,10 +1761,7 @@ export class ProtoScene extends Phaser.Scene {
           kind: 'affinity' as const,
           element: contract.element,
           title: `원소 심화 · ${ELEMENT_LABELS[contract.element]}`,
-          description: `시작 · ${ELEMENT_LABELS[contract.element]} 친화 +15%\n`
-            + `목표 · 서로 다른 ${ELEMENT_LABELS[contract.element]} 형태 3종\n`
-            + `단계 · 새 형태마다 친화 +${Math.round(ELEMENTAL_FOCUS_MILESTONE_AFFINITY * 100)}% · 주문 범위 +10%\n`
-            + `완료 · ${ELEMENTAL_FOCUS_ECHO_EVERY_CASTS}회마다 ${Math.round(ELEMENTAL_FOCUS_ECHO_POWER_SCALE * 100)}% 공명 재시전`,
+          description: `${ELEMENT_LABELS[contract.element]} 영창 전문화\n서로 다른 형태 3종 시전`,
         };
       }
       if (contract.id === 'variation-study') {
@@ -1774,19 +1769,14 @@ export class ProtoScene extends Phaser.Scene {
           id: `research-${contract.id}`,
           kind: 'all-affinity' as const,
           title: '만물의 변주',
-          description: '목표 · 일반 수동 영창으로 원소 4종 · 형태 4종\n'
-            + '단계 · 원소·형태 짝이 늘 때마다 다양성 최대 +5%\n'
-            + '완료 · 최근과 완전히 다른 영창 피해 최대 ×1.50',
+          description: '여러 원소·형태 영창\n다양할수록 더 강한 피해',
         };
       }
       return {
           id: `research-${contract.id}`,
           kind: 'ward-start' as const,
-          title: '수호 연구',
-          description: `시작 · 보호막 +${WARD_STUDY_START_SHIELD}\n`
-            + '목표 · 지원 영창 3회\n'
-            + `단계 · 인정마다 보호막 +${WARD_STUDY_MILESTONE_SHIELD} · 2단계부터 피해 -${Math.round((1 - WARD_STUDY_GUARD_DAMAGE_SCALE) * 100)}%\n`
-            + '완료 · 지원 영창마다 보호막 보충·결계 파동',
+          title: '정령 연성',
+          description: '정령 계약·융합 가속\n정령 2체 계약 · 1회 융합',
       };
     });
 
@@ -1796,6 +1786,16 @@ export class ProtoScene extends Phaser.Scene {
         kicker: 'ARCANE RESEARCH',
         title: '이번 런의 연구 주제를 고른다',
         contextLines: ['완료한 연구와 통찰은 승패와 관계없이 런 결산에 기록된다'],
+        detailPanelFor: (option) => {
+          if (option.id === 'research-elemental-focus') {
+            const element = option.element ? ELEMENT_LABELS[option.element] : '대상 원소';
+            return `시작 · ${element} 친화 +15%\n목표 · 서로 다른 ${element} 형태 3종 시전\n단계 · 새 형태마다 친화 +${Math.round(ELEMENTAL_FOCUS_MILESTONE_AFFINITY * 100)}%, 주문 범위 +10%\n완료 · ${ELEMENTAL_FOCUS_ECHO_EVERY_CASTS}회마다 위력 ${Math.round(ELEMENTAL_FOCUS_ECHO_POWER_SCALE * 100)}% 공명 재시전`;
+          }
+          if (option.id === 'research-variation-study') {
+            return '즉시 · 다양한 영창 피해 최대 ×1.40\n목표 · 일반 수동 영창으로 원소 4종 · 형태 4종\n단계 · 새 원소·형태를 발견할 때마다 다양성 피해 상한 +7.5%\n완료 · 최근과 완전히 다른 영창 피해 최대 ×1.70';
+          }
+          return '시작 · 정령 자동 시전 약 11% 가속\n목표 · 정령 2체 계약 · 공격 정령 1회 융합\n단계 · 새 정령을 계약할 때마다 자동 시전 약 11% 추가 가속\n완료 · 융합 정령이 주·부속성의 상태 효과를 함께 적용';
+        },
       });
       const selected = contracts.find((contract) => chosen.id === `research-${contract.id}`);
       if (!selected) return;
@@ -1830,8 +1830,11 @@ export class ProtoScene extends Phaser.Scene {
       this.syncElementalChorus();
       return;
     }
-    if (selection.id === 'ward-study') {
-      this.playerState.addShield(WARD_STUDY_START_SHIELD);
+    if (selection.id === 'spirit-resonance') {
+      this.spiritManager.applyHaste(
+        SPIRIT_RESONANCE_START_HASTE_SCALE,
+        RUN_REWARD_CONFIG.spiritHasteFloorMultiplier,
+      );
     }
   }
 
@@ -1839,7 +1842,7 @@ export class ProtoScene extends Phaser.Scene {
     if (contract.id === 'elemental-focus' && contract.element) {
       return `원소 심화 · ${ELEMENT_LABELS[contract.element]}`;
     }
-    return contract.id === 'variation-study' ? '만물의 변주' : '수호 연구';
+    return contract.id === 'variation-study' ? '만물의 변주' : '정령 연성';
   }
 
   private researchGoal(contract: ActiveResearchContract): string {
@@ -1848,7 +1851,7 @@ export class ProtoScene extends Phaser.Scene {
     }
     return contract.id === 'variation-study'
       ? `일반 수동 영창으로 원소 ${contract.goal}종 · 형태 ${contract.goal}종 사용`
-      : `회복·보호막·강화·제어 영창 ${contract.goal}회 성공`;
+      : '정령 2체 계약 · 공격 정령 1회 융합';
   }
 
   private researchPerkSummary(contract: ActiveResearchContract): string {
@@ -1864,11 +1867,8 @@ export class ProtoScene extends Phaser.Scene {
     if (contract.id === 'variation-study') {
       return `다양성 최대 ×${(1 + variationDiversityMaxBonus(contract)).toFixed(3).replace(/0$/, '')}`;
     }
-    if (contract.completed) return `지원 영창 보호막 +${WARD_STUDY_MILESTONE_SHIELD} · 결계 파동`;
-    if (contract.progress >= 2) {
-      return `보호막 중 피해 -${Math.round((1 - WARD_STUDY_GUARD_DAMAGE_SCALE) * 100)}%`;
-    }
-    return contract.progress > 0 ? '다음 단계 · 보호막 중 피해 감소' : '첫 단계 · 보호막 즉시 보충';
+    if (contract.completed) return '융합 정령 · 주·부속성 상태 동시 적용';
+    return `정령 계약 ${contract.spiritAcquisitions ?? 0}/2 · 융합 ${contract.spiritFusions ?? 0}/1`;
   }
 
   private reportResearchAdvance(previous: ActiveResearchContract | null): void {
@@ -1894,9 +1894,19 @@ export class ProtoScene extends Phaser.Scene {
         this.player.y,
       );
       rewardLine = `${ELEMENT_LABELS[current.element]} 친화 +${Math.round(reward.affinity * 100)}% · 총 ${Math.round(result.total * 100)}%`;
-    } else if (current.id === 'ward-study' && reward.shield > 0) {
-      const added = this.playerState.addShield(reward.shield);
-      rewardLine = `연구 보호막 +${Math.round(added)}${added < reward.shield ? ' · 최대치 도달' : ''}`;
+    } else if (current.id === 'spirit-resonance' && reward.spiritHasteApplications > 0) {
+      let haste = this.spiritManager.haste;
+      for (let index = 0; index < reward.spiritHasteApplications; index += 1) {
+        haste = this.spiritManager.applyHaste(
+          SPIRIT_RESONANCE_MILESTONE_HASTE_SCALE,
+          RUN_REWARD_CONFIG.spiritHasteFloorMultiplier,
+        );
+      }
+      rewardLine = `정령 공명 · 시전 ${(1 / haste).toFixed(2)}배 속도`;
+    }
+    if (spiritResonanceUnlocked(current) && !previous?.completed) {
+      this.spiritManager.enableFusionResonance();
+      this.syncSpiritViews();
     }
     const progressSubject = current.id === 'variation-study'
       ? [
@@ -1907,6 +1917,8 @@ export class ProtoScene extends Phaser.Scene {
           ? [`${newForms.map((form) => FORM_LABELS[form]).join('·')} 형태`]
           : []),
       ].join(' · ') + ' 발견'
+      : current.id === 'spirit-resonance'
+        ? `정령 계약 ${current.spiritAcquisitions ?? 0}/2 · 융합 ${current.spiritFusions ?? 0}/1`
       : newForms.length > 0
         ? `${newForms.map((form) => FORM_LABELS[form]).join('·')} 형태 발견`
         : '지원 영창 인정';
@@ -1939,59 +1951,10 @@ export class ProtoScene extends Phaser.Scene {
       return `${researchProgressSlots(contract)} 원소 ${contract.usedElements.length}/${contract.goal}`
         + ` · 형태 ${contract.usedForms.length}/${contract.goal}`;
     }
+    if (contract.id === 'spirit-resonance') {
+      return `${researchProgressSlots(contract)} 계약 ${contract.spiritAcquisitions ?? 0}/2 · 융합 ${contract.spiritFusions ?? 0}/1`;
+    }
     return `${researchProgressSlots(contract)} ${contract.progress}/${contract.goal}`;
-  }
-
-  /** 완료된 수호 연구를 일회성 체크리스트가 아니라 남은 런의 전투 규칙으로 유지한다. */
-  private applyWardResearchCastPerks(
-    previous: ActiveResearchContract | null,
-    specs: readonly SpellSpec[],
-  ): void {
-    const current = this.runResearchTracker.snapshot().research;
-    if (!wardStudyPulseUnlocked(current) || !specs.some(isWardResearchSupportSpell)) return;
-
-    // 완료를 만든 세 번째 영창은 reportResearchAdvance에서 단계 보호막을 이미 받는다.
-    // 완료 이후 영창부터 같은 양을 계속 보충해 연구 선택이 런의 플레이 패턴으로 남는다.
-    if (previous?.completed) {
-      const added = this.playerState.addShield(WARD_STUDY_MILESTONE_SHIELD);
-      this.announceSystemMessage(
-        `수호 공명 · 보호막 +${Math.round(added)} · 결계 파동`,
-        UI_SEMANTIC.shield,
-        2200,
-      );
-    }
-    this.playWardResearchPulse();
-  }
-
-  private playWardResearchPulse(): void {
-    if (!this.isCombatActive()) return;
-    const x = this.player.x;
-    const y = this.player.y - 12;
-    const ring = this.add.circle(x, y, WARD_STUDY_PULSE_RADIUS, 0x72f1b8, 0.08)
-      .setStrokeStyle(4, 0x8fa4ff, 0.9)
-      .setScale(0.24)
-      .setDepth(28);
-    this.tweens.add({
-      targets: ring,
-      scale: 1,
-      alpha: 0,
-      duration: 360,
-      ease: 'Cubic.easeOut',
-      onComplete: () => ring.destroy(),
-    });
-    for (const enemy of this.enemies) {
-      if (!enemy.alive || enemy.kind === 'boss') continue;
-      if (Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y) > WARD_STUDY_PULSE_RADIUS) continue;
-      const direction = new Phaser.Math.Vector2(enemy.x - x, enemy.y - y);
-      if (direction.lengthSq() === 0) direction.set(0, -1);
-      direction.normalize();
-      this.requestEnemyKnockback(
-        enemy,
-        direction.x,
-        direction.y,
-        WARD_STUDY_PULSE_KNOCKBACK,
-      );
-    }
   }
 
   /** 완료 뒤 대상 원소 수동 영창 세 번마다 가장 강한 폼 하나를 낮은 위력으로 되울린다. */
@@ -2037,7 +2000,12 @@ export class ProtoScene extends Phaser.Scene {
   private async offerLegacyEngrave(): Promise<void> {
     const book = loadGrimoire();
     this.grimoireCount = book.length; // 런 시작마다 1회 — HUD 캐시 갱신
-    const offers = offerEntries(book);
+    const offers = offerEntries(
+      book,
+      undefined,
+      this.engraveRewardRand,
+      loadLastLegacySelection(),
+    );
     if (offers.length === 0) return;
 
     this.legacySelecting = true;
@@ -2058,13 +2026,21 @@ export class ProtoScene extends Phaser.Scene {
           engrave: { spellKey: entry.normalized, level: 1 },
         };
       });
+      options.push({
+        id: 'legacy-skip',
+        kind: 'legacy-skip',
+        title: '빈 주문서로 시작',
+        description: '유산 각인 없이 출발\n이번 런의 새 영창으로 빌드를 만든다',
+      });
       const chosen = await showRewardCards(options, {
         kicker: 'GRIMOIRE',
         title: '주문서에서 유산을 꺼낸다',
+        contextLines: ['유산 없이 시작해 이번 런의 새 발견으로 빌드를 정할 수도 있다'],
       });
       this.audio.playSfx('ui-confirm');
       const entry = offers.find((e) => `legacy-${e.normalized}` === chosen.id);
       if (entry) {
+        saveLastLegacySelection(entry.normalized);
         // 후보로 등록한 뒤 각인 — 이후 보상에서 같은 주문 강화 카드도 자연히 이어진다
         this.engraveManager.rememberManualCast(entry.normalized, specFromEntry(entry));
         const engraved = this.engraveManager.applyReward(chosen);
@@ -2096,9 +2072,12 @@ export class ProtoScene extends Phaser.Scene {
     // 주문서 유산 기록 — 런을 클리어(승리)했을 때만. 큰 주문 하나 쓰고 자살해 유산을 파밍하는
     // 치즈를 막고, 유산 각인을 "클리어 보상"으로 만든다. (보스 기억은 위에서 승패 무관 유지)
     if (result !== 'win') return;
-    const best = bestEntryFromRun(this.spellHistory, result);
-    if (best) {
-      const updated = addEntry(loadGrimoire(), best);
+    const entries = bestEntriesFromRun(this.spellHistory, result);
+    if (entries.length > 0) {
+      const updated = entries.reduce(
+        (book, entry) => addEntry(book, entry),
+        loadGrimoire(),
+      );
       saveGrimoire(updated);
       this.grimoireCount = updated.length;
     }
@@ -3360,8 +3339,11 @@ export class ProtoScene extends Phaser.Scene {
     const pal = ELEMENT_PALETTES[spec.element_primary];
     const targetX = this.player.x;
     const targetY = this.player.y;
-    const marker = this.add.graphics().setDepth(6);
-    marker.lineStyle(2, pal.core, 0.85).strokeCircle(targetX, targetY, 36);
+    const marker = this.add.graphics().setDepth(this.dangerTelegraphDepth());
+    const radius = bossArcanaTelegraphRadius(spec);
+    marker.fillStyle(pal.glow, 0.16).fillCircle(targetX, targetY, radius);
+    marker.lineStyle(3, pal.core, 0.95).strokeCircle(targetX, targetY, radius);
+    marker.lineStyle(1, pal.accent, 0.72).strokeCircle(targetX, targetY, Math.max(18, radius - 10));
     this.pendingBossArcana = {
       spec,
       targetX,
@@ -5660,7 +5642,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const previousResearch = this.runResearchTracker.snapshot().research;
       this.runResearchTracker.recordNormalPlan(plan);
       this.reportResearchAdvance(previousResearch);
-      this.applyWardResearchCastPerks(previousResearch, formSpecs);
     }
     if (import.meta.env.DEV) {
       void postPlayLog({
@@ -5808,7 +5789,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const previousResearch = this.runResearchTracker.snapshot().research;
         this.runResearchTracker.recordNormalSpell(spec);
         this.reportResearchAdvance(previousResearch);
-        this.applyWardResearchCastPerks(previousResearch, [spec]);
       }
 
       if (!fusedSpec && this.fusionGauge.charge(castPlan.spend, {
@@ -7375,6 +7355,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       });
       const fused = this.spiritManager.fuse(data.spiritIds, name);
       if (fused) {
+        const previousResearch = this.runResearchTracker.snapshot().research;
+        this.runResearchTracker.recordSpiritResearch('fused');
+        this.reportResearchAdvance(previousResearch);
         this.syncSpiritViews();
         this.playEvolutionBurst(data.elements[0]);
         this.announceBanner({ title: `정령 융합 — 『${name}』`, color: 0xffd166, holdMs: 2800 });

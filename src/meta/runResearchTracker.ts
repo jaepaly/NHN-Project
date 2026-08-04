@@ -8,6 +8,7 @@ import {
 } from './discoverySignature';
 import type { MetaRunOutcome } from './metaProfile';
 import {
+  advanceSpiritResonance,
   advanceResearchContract,
   startResearchContract,
   type ActiveResearchContract,
@@ -91,6 +92,11 @@ export class RunResearchTracker {
     )));
     this.advanceResearch(specs);
     return discovered;
+  }
+
+  recordSpiritResearch(event: 'acquired' | 'fused'): void {
+    if (!this.activeResearch) return;
+    this.activeResearch = advanceSpiritResonance(this.activeResearch, event).contract;
   }
 
   private advanceResearch(specs: readonly SpellSpec[]): void {

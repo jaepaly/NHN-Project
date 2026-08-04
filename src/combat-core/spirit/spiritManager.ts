@@ -103,6 +103,7 @@ export class SpiritManager {
   private slots: SpiritState[] = [];
   /** 신속 정령 보상 — 주기·발당 위력에 함께 곱한다(예산 중립). 1=기본, 0.5=2배 속사 하한 */
   private hasteMultiplier = 1;
+  private fusionResonance = false;
 
   injectReward(
     options: readonly RewardOption[],
@@ -212,7 +213,7 @@ export class SpiritManager {
       spirit.remainingSeconds -= delta;
       const interval = intervalFor(spirit) * this.hasteMultiplier;
       while (spirit.remainingSeconds <= 0) {
-        requests.push(pulseFor(spirit));
+        requests.push(pulseFor(spirit, this.fusionResonance));
         spirit.remainingSeconds += interval;
       }
     }
@@ -226,6 +227,11 @@ export class SpiritManager {
   reset(): void {
     this.slots = [];
     this.hasteMultiplier = 1;
+    this.fusionResonance = false;
+  }
+
+  enableFusionResonance(): void {
+    this.fusionResonance = true;
   }
 
   private createRewardOption(roomIndex: number, rand: () => number): RewardOption | null {
@@ -273,7 +279,7 @@ function intervalFor(spirit: Pick<SpiritState, 'role' | 'level'>): number {
   return spiritInterval(spirit.role, spirit.level);
 }
 
-function pulseFor(spirit: SpiritState): SpiritPulseRequest {
+function pulseFor(spirit: SpiritState, fusionResonance: boolean): SpiritPulseRequest {
   // 신속 정령은 순수 빈도 증가다(위력 보정 없음) — 스택할수록 실질 DPS/HPS가 오른다.
   // 이것이 소환사 빌드의 투자 축(총괄 결정): 정령 카드를 쌓으면 오토 비중이 40%를 넘어간다.
   if (spirit.role === 'heal') {
@@ -293,7 +299,7 @@ function pulseFor(spirit: SpiritState): SpiritPulseRequest {
   return {
     kind: 'attack',
     spiritId: spirit.spiritId,
-    spell: attackSpell(spirit.element ?? 'light', spirit.level, spirit),
+    spell: attackSpell(spirit.element ?? 'light', spirit.level, spirit, fusionResonance),
   };
 }
 
@@ -301,13 +307,16 @@ function attackSpell(
   element: SpellElement,
   level: SpiritLevel,
   state?: Pick<SpiritState, 'elementSecondary' | 'elements' | 'fusedName' | 'slotWeight'>,
+  fusionResonance = false,
 ): SpellSpec {
   const fusedElements = state?.elements ?? (state?.elementSecondary ? [element, state.elementSecondary] : [element]);
   const fused = fusedElements.length > 1;
   const size: SpellSize = fused
     ? 'huge' // 융합체는 격상의 시각적 정점
     : level === 1 ? 'small' : level === 2 ? 'medium' : 'large';
-  const status = spiritElementStatuses(element);
+  const status = fused && fusionResonance
+    ? [...new Set(fusedElements.flatMap(spiritElementStatuses))]
+    : spiritElementStatuses(element);
   return {
     name: state?.fusedName ?? `${ELEMENT_LABELS[element]} 정령 Lv${level}`,
     effect: 'damage',

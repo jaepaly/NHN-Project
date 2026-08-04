@@ -17,8 +17,11 @@ import type { SpellHistory } from './spellHistory';
  */
 
 const STORAGE_KEY = 'incant:grimoire:v1:entries';
-/** 주문서 보관 상한 — 위력 상위 N개만 남긴다 (무한 누적 방지) */
-export const GRIMOIRE_CAPACITY = 12;
+const LAST_LEGACY_STORAGE_KEY = 'incant:grimoire:v1:last-legacy';
+/** 원소별 두 유산까지 보관해 한 원소의 고위력 주문 독식을 막는다. */
+export const GRIMOIRE_PER_ELEMENT_CAPACITY = 2;
+/** 8원소 × 2칸. 다양한 유산을 남기되 무한 누적은 막는다. */
+export const GRIMOIRE_CAPACITY = 16;
 /** 런 시작 시 제시할 유산 후보 수 */
 export const GRIMOIRE_OFFER_COUNT = 3;
 
@@ -62,12 +65,20 @@ export function bestEntryFromRun(
   result: 'win' | 'lose',
   now: number = Date.now(),
 ): GrimoireEntry | null {
-  let best: GrimoireEntry | null = null;
+  return bestEntriesFromRun(history, result, 1, now)[0] ?? null;
+}
+
+/** 승리한 런에서 원소·형태가 다른 고위력 주문을 최대 N개 기록한다. */
+export function bestEntriesFromRun(
+  history: SpellHistory,
+  result: 'win' | 'lose',
+  count: number = GRIMOIRE_OFFER_COUNT,
+  now: number = Date.now(),
+): GrimoireEntry[] {
+  const candidates: GrimoireEntry[] = [];
   for (const entry of history.all) {
     if (entry.effect !== 'damage') continue;
-    // 패널티 전 원 위력으로 비교 — 반복 시전으로 깎인 값은 주문의 본래 격이 아니다
-    if (best && entry.basePower <= best.power) continue;
-    best = {
+    candidates.push({
       normalized: entry.normalized,
       rawText: entry.rawText,
       name: entry.name,
@@ -76,9 +87,18 @@ export function bestEntryFromRun(
       power: entry.basePower,
       result,
       recordedAt: now,
-    };
+    });
   }
-  return best;
+  const selected: GrimoireEntry[] = [];
+  const usedSignatures = new Set<string>();
+  for (const entry of candidates.sort((a, b) => b.power - a.power)) {
+    if (selected.length >= Math.max(1, count)) break;
+    const signature = `${entry.element}:${entry.form}`;
+    if (usedSignatures.has(signature)) continue;
+    selected.push(entry);
+    usedSignatures.add(signature);
+  }
+  return selected;
 }
 
 /**
@@ -92,9 +112,24 @@ export function addEntry(
   const merged = entries.filter((e) => e.normalized !== entry.normalized);
   const previous = entries.find((e) => e.normalized === entry.normalized);
   merged.push(previous && previous.power > entry.power ? previous : entry);
-  return merged
-    .sort((a, b) => b.power - a.power)
-    .slice(0, GRIMOIRE_CAPACITY);
+  const retained: GrimoireEntry[] = [];
+  for (const element of ELEMENTS) {
+    const byPower = merged
+      .filter((candidate) => candidate.element === element)
+      .sort((a, b) => b.power - a.power || b.recordedAt - a.recordedAt);
+    const forms = new Set<SpellForm>();
+    for (const candidate of byPower) {
+      if (retained.filter((item) => item.element === element).length >= GRIMOIRE_PER_ELEMENT_CAPACITY) break;
+      if (forms.has(candidate.form)) continue;
+      retained.push(candidate);
+      forms.add(candidate.form);
+    }
+    for (const candidate of byPower) {
+      if (retained.filter((item) => item.element === element).length >= GRIMOIRE_PER_ELEMENT_CAPACITY) break;
+      if (!retained.includes(candidate)) retained.push(candidate);
+    }
+  }
+  return retained.sort((a, b) => b.power - a.power || b.recordedAt - a.recordedAt).slice(0, GRIMOIRE_CAPACITY);
 }
 
 /**
@@ -104,23 +139,50 @@ export function addEntry(
 export function offerEntries(
   entries: readonly GrimoireEntry[],
   count: number = GRIMOIRE_OFFER_COUNT,
+  rand: () => number = Math.random,
+  excludedNormalized: string | null = null,
 ): GrimoireEntry[] {
-  const sorted = [...entries].sort((a, b) => b.power - a.power);
-  const picked: GrimoireEntry[] = [];
-  const usedElements = new Set<SpellElement>();
-  for (const entry of sorted) {
-    if (picked.length >= count) break;
-    if (usedElements.has(entry.element)) continue;
-    picked.push(entry);
-    usedElements.add(entry.element);
-  }
-  // 원소 다양성만으로 다 못 채우면 남은 상위권으로 보충
-  for (const entry of sorted) {
-    if (picked.length >= count) break;
-    if (picked.includes(entry)) continue;
-    picked.push(entry);
+  const sorted = [...entries].sort((a, b) => b.power - a.power || b.recordedAt - a.recordedAt);
+  const pool = sorted.filter((entry) => entry.normalized !== excludedNormalized);
+  const selectable = pool.length >= Math.min(count, sorted.length) ? pool : sorted;
+  if (selectable.length === 0) return [];
+
+  // 첫 장은 가장 강한 기준점. 나머지는 상위 85% 구간에서 무작위 변주를 제시한다.
+  const picked: GrimoireEntry[] = [selectable[0]];
+  const usedElements = new Set<SpellElement>([selectable[0].element]);
+  const usedForms = new Set<SpellForm>([selectable[0].form]);
+  while (picked.length < Math.min(count, selectable.length)) {
+    const remaining = selectable.filter((entry) => !picked.includes(entry));
+    const differentElement = remaining.filter((entry) => !usedElements.has(entry.element));
+    const differentForm = differentElement.filter((entry) => !usedForms.has(entry.form));
+    const candidates = (differentForm.length > 0 ? differentForm : differentElement.length > 0 ? differentElement : remaining);
+    const ceiling = candidates[0].power;
+    const highTier = candidates.filter((entry) => entry.power >= ceiling * 0.85);
+    const index = randomIndex(highTier.length, rand);
+    const chosen = highTier[index];
+    picked.push(chosen);
+    usedElements.add(chosen.element);
+    usedForms.add(chosen.form);
   }
   return picked;
+}
+
+export function loadLastLegacySelection(storage: StorageLike | null = defaultStorage()): string | null {
+  try {
+    const value = storage?.getItem(LAST_LEGACY_STORAGE_KEY) ?? null;
+    return value && value.length <= 200 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastLegacySelection(normalized: string, storage: StorageLike | null = defaultStorage()): void {
+  if (!normalized || normalized.length > 200) return;
+  try {
+    storage?.setItem(LAST_LEGACY_STORAGE_KEY, normalized);
+  } catch {
+    // 유산 반복 방지는 선택적 편의 기능이다.
+  }
 }
 
 /** 유산 각인용 SpellSpec 복원 — 각인 슬롯에 Lv1로 장착된다 */
@@ -197,4 +259,10 @@ function normalizeEntry(value: unknown): GrimoireEntry[] {
     result: v.result === 'win' ? 'win' : 'lose',
     recordedAt: typeof v.recordedAt === 'number' ? v.recordedAt : 0,
   }];
+}
+
+function randomIndex(length: number, rand: () => number): number {
+  const raw = rand();
+  const safe = Number.isFinite(raw) ? Math.max(0, Math.min(0.999999, raw)) : 0;
+  return Math.floor(safe * length);
 }

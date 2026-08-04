@@ -1,4 +1,6 @@
 import type { SpellSpec } from '../../spell/types';
+import { RAIN_CONFIG } from '../combat/areaSpellConfig';
+import { SPELL_DAMAGE_CONFIG } from '../combat/combatConfig';
 
 /**
  * 보스 비전(祕傳) 마법 — 최종(기억) 보스의 주문 목록과 제어 마법 수치 (총괄 발안 07-26).
@@ -15,7 +17,7 @@ export const BOSS_ARCANA_CONFIG = {
   /** 원소 마법 피해 배수 — 미러(0.35)보다 약간 약하게. 일상 패턴이지 필살기가 아니다 */
   damageScale: 0.3,
   /** 원소 마법 예고(초) — 가벼운 패턴이라 미러(1.1s)보다 짧다 */
-  castTelegraphSeconds: 0.6,
+  castTelegraphSeconds: 1.1,
   /**
    * 어둠 장막 지속(초) — 암전 저주(방 전체·상시)의 시야 시스템을 재사용하되
    * 짧은 방해로만. 길면 "답답함"이지 "위협"이 아니다.
@@ -63,4 +65,12 @@ export function bossArcanaSpell(index: number): SpellSpec {
   const safe = Number.isFinite(index) ? Math.abs(Math.floor(index)) : 0;
   const spec = BOSS_SPELLBOOK[safe % BOSS_SPELLBOOK.length];
   return { ...spec, status: [...spec.status] };
+}
+
+/** 표적 지점 예고는 실제 범위를 읽게 해야 회피가 성립한다. */
+export function bossArcanaTelegraphRadius(spec: Pick<SpellSpec, 'form' | 'size' | 'power'>): number {
+  const scale = spec.size === 'small' ? 0.6 : spec.size === 'large' ? 1.5 : spec.size === 'huge' ? 2.2 : 1;
+  if (spec.form === 'rain') return RAIN_CONFIG.baseAreaRadius * scale;
+  if (spec.form === 'nova') return (SPELL_DAMAGE_CONFIG.novaBaseRadius + Math.max(0, spec.power)) * scale;
+  return 48 * scale;
 }

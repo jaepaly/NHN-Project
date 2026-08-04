@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import {
   GRIMOIRE_CAPACITY,
+  GRIMOIRE_PER_ELEMENT_CAPACITY,
   addEntry,
   bestEntryFromRun,
+  bestEntriesFromRun,
+  loadLastLegacySelection,
   loadGrimoire,
   offerEntries,
+  saveLastLegacySelection,
   saveGrimoire,
   specFromEntry,
 } from '../src/spell/grimoire';
@@ -27,11 +31,11 @@ function spell(
 }
 
 function entry(
-  normalized: string, element: SpellElement, power: number,
+  normalized: string, element: SpellElement, power: number, form: SpellForm = 'bolt',
 ): GrimoireEntry {
   return {
     normalized, rawText: normalized, name: normalized,
-    element, form: 'bolt', power, result: 'win', recordedAt: 1,
+    element, form, power, result: 'win', recordedAt: 1,
   };
 }
 
@@ -78,8 +82,11 @@ function entry(
   book = addEntry(book, entry('화염구', 'fire', 40));
   assert.equal(book[0].power, 80, '약한 재기록은 무시');
 
-  for (let i = 0; i < 20; i++) book = addEntry(book, entry(`주문${i}`, 'water', i + 1));
-  assert.equal(book.length, GRIMOIRE_CAPACITY, '상한 유지');
+  for (let i = 0; i < 20; i++) {
+    book = addEntry(book, entry(`주문${i}`, 'water', i + 1, i % 2 === 0 ? 'bolt' : 'nova'));
+  }
+  assert.equal(book.filter((item) => item.element === 'water').length, GRIMOIRE_PER_ELEMENT_CAPACITY, '원소별 보관 상한');
+  assert.equal(book.length, 1 + GRIMOIRE_PER_ELEMENT_CAPACITY, '한 원소의 고위력 주문이 주문서를 독식하지 않음');
   assert.ok(book.every((e, i, arr) => i === 0 || arr[i - 1].power >= e.power), '위력 내림차순');
   assert.equal(book[0].power, 80, '최강 주문은 밀려나지 않음');
 }
@@ -93,7 +100,15 @@ function entry(
   const offered = offerEntries(book, 3);
   assert.equal(offered.length, 3);
   assert.equal(new Set(offered.map((e) => e.element)).size, 3, '서로 다른 원소 3종');
-  assert.equal(offered[0].name, '화염1', '각 원소의 최강 주문 우선');
+  assert.equal(offered[0].name, '화염1', '첫 후보는 안정적인 최강 기준점');
+
+  const variedBook: GrimoireEntry[] = [
+    entry('화염 볼트', 'fire', 90, 'bolt'), entry('화염 파동', 'fire', 85, 'wave'),
+    entry('빙결 감옥', 'ice', 84, 'cage'), entry('번개 사슬', 'lightning', 83, 'chain'),
+  ];
+  const varied = offerEntries(variedBook, 3, () => 0.99, '화염 볼트');
+  assert.equal(varied[0].normalized, '화염 파동', '직전 선택 유산은 다음 후보에서 제외');
+  assert.equal(new Set(varied.map((item) => item.form)).size, 3, '변주 후보는 형태도 겹치지 않게 우선 구성');
 
   // 원소가 부족하면 상위권으로 보충 (후보 수는 유지)
   const monoBook: GrimoireEntry[] = [
@@ -105,6 +120,12 @@ function entry(
 
   assert.deepEqual(offerEntries([], 3), [], '빈 주문서는 빈 후보');
   assert.equal(offerEntries(book, 10).length, book.length, '보유보다 많이 요구해도 보유분까지만');
+
+  const history = new SpellHistory();
+  history.record({ rawText: '불 화살', spell: spell('불 화살', 'fire', 80, 'damage', 'bolt'), source: 'mock', castAt: 1 });
+  history.record({ rawText: '불 폭발', spell: spell('불 폭발', 'fire', 75, 'damage', 'nova'), source: 'mock', castAt: 2 });
+  history.record({ rawText: '물 파도', spell: spell('물 파도', 'water', 70, 'damage', 'wave'), source: 'mock', castAt: 3 });
+  assert.deepEqual(bestEntriesFromRun(history, 'win').map((item) => item.form), ['bolt', 'nova', 'wave'], '승리 런의 서로 다른 원소·형태 유산 기록');
 }
 
 // 4) 각인용 spec 복원 — 광역 폼은 area로
@@ -132,6 +153,9 @@ function entry(
   saveGrimoire(book, storage);
   assert.ok([...store.keys()][0].startsWith('incant:grimoire:v1:'), '버전 접두사 키');
   assert.deepEqual(loadGrimoire(storage), book, '왕복 보존');
+  assert.equal(loadLastLegacySelection(storage), null, '아직 고른 유산 없음');
+  saveLastLegacySelection('화염구', storage);
+  assert.equal(loadLastLegacySelection(storage), '화염구', '직전 선택 유산 저장');
 
   assert.deepEqual(loadGrimoire(null), [], 'storage 없으면 빈 주문서');
   store.set('incant:grimoire:v1:entries', '{not json');
