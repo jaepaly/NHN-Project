@@ -97,12 +97,12 @@ for (const kind of FLOOR_HAZARD_KINDS) {
   assert.ok(hint.length > 0, `${kind} 힌트가 비면 안 된다`);
 }
 
-// ── 5) 씬이 실제로 붙였는가 — 그리고 **HUD 박스는 건드리지 않았는가** ───────
+// ── 5) 씬이 실제로 붙였는가 — 정화 안내는 우측 상태 패널에 남는가 ───────────
 //
-// ⚠️ HUD 박스는 높이가 고정이고 친화 바·쿨다운 바가 `HUD.y + HUD.height` 기준으로
-// 붙는다. 거기에 행을 늘리면 그것들이 전부 밀린다 — 총괄이 제보한 "숫자랑 바랑
-// 겹침"과 같은 부류의 사고다. 그래서 우측 패널(내용에 맞춰 늘어나고 미니맵이 따라
-// 내려온다)에 붙였다. 나중에 누가 HUD로 옮기려 하면 이 단언이 먼저 걸린다.
+// #345에서 플레이어 HP·마나·실드는 우하단으로 이동했다. 위험지대 정화는 플레이어
+// 수치가 아니라 **현재 방 상태**이므로, 이동한 상태판에 섞지 않고 우측 `waveText`
+// 패널에만 남겨야 한다. 예전의 좌상단 HUD 높이(130px) 고정 단언은 이 재배치와
+// 충돌하므로, 실제 정보 소속을 검증한다.
 {
   const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   assert.ok(
@@ -123,10 +123,10 @@ for (const kind of FLOOR_HAZARD_KINDS) {
   );
   assert.ok(viaCleanse.length >= 7, `분기가 7개 이상이어야 한다 (현재 ${viaCleanse.length})`);
 
-  // HUD 상수는 그대로다 — 행을 늘려 박스를 키우지 않았다
+  // 정화는 우측 방 상태 패널에서만 읽는다. 우하단 HP·마나·실드 판의 책임이 아니다.
   assert.ok(
-    /height: 130,/.test(scene),
-    'HUD 박스 높이를 바꾸지 않았다 (친화 바·쿨다운 바가 이 값 기준으로 붙는다)',
+    !/VITAL_HUD[\s\S]{0,500}cleanseReadoutLine|cleanseReadoutLine[\s\S]{0,500}VITAL_HUD/.test(scene),
+    '정화 안내를 우하단 플레이어 상태판에 섞지 않는다',
   );
 }
 
