@@ -264,6 +264,11 @@ import {
   compactVitalGeometry as vitalHudGeometry,
   compactVitalRowY as vitalRowY,
 } from '../ui/combatHudPlacement';
+import {
+  LOW_HEALTH_DANGER,
+  lowHealthDangerAlpha,
+  nextLowHealthDangerActive,
+} from '../ui/lowHealthDanger';
 import { pushOutOfBlocks, segmentBlocked } from '../combat-core/combat/terrainBlock';
 import type { TerrainBlock } from '../combat-core/combat/terrainBlock';
 import {
@@ -849,6 +854,10 @@ export class ProtoScene extends Phaser.Scene {
 
   /** 밝기 오버레이 — 1 미만은 검은 막, 초과는 흰 막 (깊이 98: 월드 위·HUD 아래) */
   private brightnessVeil!: Phaser.GameObjects.Graphics;
+  /** HP 30% 이하에서만 켜지는 단일 적색 맥동. HUD(99+) 아래, 월드 위에 둔다. */
+  private lowHealthDangerVeil!: Phaser.GameObjects.Graphics;
+  private lowHealthDangerActive = false;
+  private lowHealthDangerFade: Phaser.Tweens.Tween | null = null;
 
   private buildInspectPlate!: Phaser.GameObjects.Graphics;
 
@@ -2824,6 +2833,13 @@ export class ProtoScene extends Phaser.Scene {
     this.hudGraphics = this.add.graphics()
       .setScrollFactor(0)
       .setDepth(99);
+    this.lowHealthDangerVeil = this.add.graphics()
+      .fillStyle(0x8f071d, 1)
+      .fillRect(0, 0, width, height)
+      .setScrollFactor(0)
+      .setDepth(96)
+      .setAlpha(0)
+      .setVisible(false);
 
     const vital = vitalHudGeometry(width, height, BUILD_CHIP.size * 2 + BUILD_CHIP.gap);
     this.statusText = this.add.text(AFFINITY_HUD.x, AFFINITY_HUD.y, 'READY', {
@@ -7388,6 +7404,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const hp = Math.ceil(this.playerState.hp);
     const mana = Math.floor(this.playerState.mana);
     const shield = Math.ceil(this.playerState.shield);
+    const hpRatio = Phaser.Math.Clamp(this.playerState.hp / this.playerState.maxHp, 0, 1);
+    this.updateLowHealthDanger(hpRatio);
     const runState = this.combatRunController.state;
     let actionState = 'READY';
     if (!this.playerState.alive) actionState = 'DEAD';
@@ -8246,6 +8264,34 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       roomGeneration: copy.scope === 'room' ? this.bannerRoomGeneration : null,
     });
     this.drainBannerQueue();
+  }
+
+  /** 단일 저체력 효과: 30% 진입, 35% 해제, 그 사이는 직전 상태를 유지한다. */
+  private updateLowHealthDanger(hpRatio: number): void {
+    const nextActive = nextLowHealthDangerActive(this.lowHealthDangerActive, hpRatio);
+    if (nextActive && !this.lowHealthDangerActive) {
+      this.lowHealthDangerFade?.stop();
+      this.lowHealthDangerFade = null;
+      this.lowHealthDangerVeil.setVisible(true);
+    } else if (!nextActive && this.lowHealthDangerActive) {
+      this.lowHealthDangerFade?.stop();
+      this.lowHealthDangerFade = this.tweens.add({
+        targets: this.lowHealthDangerVeil,
+        alpha: 0,
+        duration: LOW_HEALTH_DANGER.fadeOutMs,
+        ease: 'Sine.easeOut',
+        onComplete: () => {
+          this.lowHealthDangerVeil.setVisible(false);
+          this.lowHealthDangerFade = null;
+        },
+      });
+    }
+    this.lowHealthDangerActive = nextActive;
+    if (this.lowHealthDangerActive) {
+      this.lowHealthDangerVeil
+        .setVisible(true)
+        .setAlpha(lowHealthDangerAlpha(this.time.now));
+    }
   }
 
   /** 보스 체력바(위쪽)를 가리지 않도록 반대편 아래에 전용 정보를 붙인다. */
