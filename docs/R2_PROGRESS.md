@@ -19,7 +19,7 @@
 - [x] 기존 `proxy/worker.js`를 직접 호출하는 Node HTTP 어댑터와 `/health`를 구현하고, Cloud Run 전달 IP를 기존 rate-limit 헤더로 변환했다.
 - [x] Tokyo 고정 source 배포용 `proxy/package.json`·`.gcloudignore`, Secret Manager·`min-instances=0` 절차와 롤백 방법을 문서화했다.
 - [x] 실제 Gemini 호출 없이 어댑터 계약·키 미설정·health 회귀, 기존 judge fallback·timeout 재시도 회귀, 전체 97종·타입·프로덕션 build·diff check를 통과시켰다.
-- [ ] 전용 브랜치를 PR로 올려 팀 검토를 받고, 배포 권한이 생기면 Tokyo 실제 호출 200·지역 오류 0을 확인한 뒤에만 Pages 기본 URL을 전환한다.
+- [x] 전용 브랜치를 PR #350으로 올렸고 GitHub `test`·`build`를 통과했다. 배포 권한이 생기면 Tokyo 실제 호출 200·지역 오류 0을 확인한 뒤에만 Pages 기본 URL을 전환한다.
 - [~] 이 PC에는 `gcloud`가 설치되어 있지 않고 GCP 프로젝트·결제 계정 권한도 확인할 수 없어, 서비스 생성·키 등록·실배포는 수행하지 않았다.
 
 ---
