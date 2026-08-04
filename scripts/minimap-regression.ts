@@ -61,6 +61,22 @@ import type { MinimapModel } from '../src/run/mapGraphContract';
 }
 
 // ── 방어: 단일 노드·NaN layer·빈 모델 ────────────────────────────────
+// ESC 확대 배치: 동일 렌더러가 위치·크기·깊이를 함께 갱신한다.
+{
+  const hud = readFileSync('src/ui/minimapHud.ts', 'utf8');
+  assert.ok(
+    /export interface MinimapHudLayout/.test(hud)
+      && /setLayout\(layout: MinimapHudLayout\)/.test(hud),
+    '일반 HUD와 ESC 화면이 같은 미니맵 렌더러의 레이아웃만 바꿔 써야 한다',
+  );
+  assert.ok(
+    /const width = MINIMAP_CONFIG\.width \* scale;/.test(hud)
+      && /x: point\.x \* scale/.test(hud)
+      && /g\.lineStyle\(\(walked \? 2 : 1\) \* scale/.test(hud),
+    '확대 시 패널·노드·경로선이 함께 확대되어야 한다',
+  );
+}
+
 {
   assert.deepEqual(minimapLayout({ nodes: [], edges: [] }), [], '빈 모델 안전');
 

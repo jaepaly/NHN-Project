@@ -439,7 +439,10 @@ interface PauseRow {
  * 밝게 남기는 논리는 이 메인 화면에만 필요하지, 설정 하위 화면엔 필요 없다.
  */
 /** 일시정지 메뉴 세로 배치 — 여기서만 쓰인다 */
-const PAUSE_LAYOUT = { titleY: 186, firstY: 252, rowGap: 42 } as const;
+const PAUSE_LAYOUT = { titleY: 222, firstY: 288, rowGap: 42 } as const;
+
+/** ESC 화면에서만 쓰는 전체 경로 지도. 메뉴 위에 크게 두어 경로를 먼저 읽게 한다. */
+const PAUSE_MAP = { top: 16, scale: 1.2, depth: 104 } as const;
 
 const PAUSE_MAIN: readonly PauseRow[] = [
   { id: 'resume', label: '게임 재개' },
@@ -835,8 +838,6 @@ export class ProtoScene extends Phaser.Scene {
 
   /** 현재 런의 재현용 맵 시드. 생성 맵이 아닌 시연·폴백은 null이다. */
   private currentMapSeed: number | null = null;
-
-  private pauseMapSeedText!: Phaser.GameObjects.Text;
 
   private pauseMenuItems: Phaser.GameObjects.Text[] = [];
 
@@ -3677,11 +3678,12 @@ export class ProtoScene extends Phaser.Scene {
 
   private refreshMinimap(): void {
     if (!this.runMinimap) {
-      // 상단 우측 — ROOM 칩(DOM) 아래. 전투 중에도 떠 있어야 "어디까지 왔나"가 읽힌다.
+      const mapWidth = MINIMAP_CONFIG.width * PAUSE_MAP.scale;
       this.runMinimap = new MinimapHud(
         this,
-        this.scale.width - 306,
-        ROOM_RADAR_TOP + ROOM_RADAR_CONFIG.height + ROOM_NOTICE.gap,
+        (this.scale.width - mapWidth) / 2,
+        PAUSE_MAP.top,
+        { scale: PAUSE_MAP.scale, depth: PAUSE_MAP.depth },
       );
     }
     this.runMinimap.update(toMinimapModel(this.mapGraph.snapshot()));
@@ -3707,7 +3709,20 @@ export class ProtoScene extends Phaser.Scene {
 
   /** 가시성 동기화 — update와 상태 전환 지점에서 호출 (setVisible은 동일 값이면 무해) */
   private syncMinimapVisibility(): void {
-    this.runMinimap?.setVisible(this.shouldShowMinimap());
+    const visible = this.shouldShowMinimap();
+    if (visible) this.placePauseMinimap();
+    this.runMinimap?.setVisible(visible);
+  }
+
+  /** 전체 경로는 전투 HUD가 아니라 ESC 검사 화면의 주 정보다. */
+  private placePauseMinimap(): void {
+    const mapWidth = MINIMAP_CONFIG.width * PAUSE_MAP.scale;
+    this.runMinimap?.setLayout({
+      x: (this.scale.width - mapWidth) / 2,
+      y: PAUSE_MAP.top,
+      scale: PAUSE_MAP.scale,
+      depth: PAUSE_MAP.depth,
+    });
   }
 
   private destroyRunMapUi(): void {
@@ -7616,14 +7631,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       letterSpacing: 6,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(106).setVisible(false);
 
-    this.pauseMapSeedText = this.add.text(width - 162, 0, '', {
-      fontFamily: 'Consolas, monospace',
-      fontSize: '12px',
-      color: UI_COLOR.textMuted,
-      letterSpacing: 1,
-    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100).setVisible(false);
-
-
     this.pauseMenuItems = PAUSE_MAIN.map((_, i) => this.add.text(
       width / 2,
       PAUSE_LAYOUT.firstY + i * PAUSE_LAYOUT.rowGap,
@@ -7703,15 +7710,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.pauseDim.setVisible(visible);
     this.pauseMenuPlate.setVisible(visible);
     this.pauseMenuTitle.setVisible(visible);
-    this.pauseMapSeedText.setVisible(visible);
     this.pauseMenuItems.forEach((t) => t.setVisible(false));
     if (!visible) return;
 
     const { width } = this.scale;
     this.pauseMenuTitle.setText('일시정지');
-    this.pauseMapSeedText.setText(this.currentMapSeed === null
-      ? '맵 시드  고정 프리셋'
-      : `맵 시드  ${this.currentMapSeed}`);
     PAUSE_MAIN.forEach((row, i) => {
       const selected = i === this.pauseMenuIndex;
       const label = row.id === 'quit' && this.quitArmed ? '정말 나갈까? 한 번 더' : row.label;
@@ -8071,10 +8074,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       drawGrimoirePanel(g, width - ROOM_RADAR_CONFIG.width - 18, noticeTop,
         ROOM_RADAR_CONFIG.width, noticeHeight, 0.82);
     }
-    const minimapTop = noticeTop + noticeHeight + ROOM_NOTICE.gap;
     this.waveText.setPosition(width - 18, noticeTop + ROOM_NOTICE.padTop);
-    this.runMinimap?.setTop(minimapTop);
-    this.pauseMapSeedText?.setPosition(width - 162, minimapTop + MINIMAP_CONFIG.height + 7);
   }
 
   /**
