@@ -827,6 +827,8 @@ export class ProtoScene extends Phaser.Scene {
   private affinityLabelTexts: Phaser.GameObjects.Text[] = [];
   /** 필살기(융합) 게이지 라벨 — 하단 중앙 미터 위 (충전%·준비 알림) */
   private fusionLabelText!: Phaser.GameObjects.Text;
+  /** #345 상단 중앙 런 타이머 — 우측 정보 패널과 중복 표시하지 않는다. */
+  private runTimerText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
   /** 빌드 칩 — 각인 2 + 정령 2를 우하단 2×2 아이콘 그리드로 (buildChipModel) */
   private buildChipRoot!: Phaser.GameObjects.Container;
@@ -2911,6 +2913,16 @@ export class ProtoScene extends Phaser.Scene {
       strokeThickness: 4,
       align: 'center',
     }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(100);
+
+    this.runTimerText = this.add.text(width / 2, 14, '00:00.0', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '14px',
+      fontStyle: 'bold',
+      color: '#d8def4',
+      stroke: '#05060f',
+      strokeThickness: 3,
+      letterSpacing: 1.4,
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
 
     this.waveText = this.add.text(width - 34, RIGHT_PANEL.y + 10, '', {
       fontFamily: 'Consolas, monospace',
@@ -7466,8 +7478,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           : []),
       ]
       : [];
+    this.runTimerText.setText(formatRunElapsed(this.runElapsedMs));
     const withCleanse = (lines: readonly string[]): string => [
-      `RUN ${formatRunElapsed(this.runElapsedMs)}`,
       ...lines,
       ...researchLines,
       ...(cleanseLine ? [cleanseLine] : []),
