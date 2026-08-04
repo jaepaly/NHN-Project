@@ -441,7 +441,7 @@ interface PauseRow {
  */
 /** 일시정지 메뉴 세로 배치 — 여기서만 쓰인다 */
 // 지도 아래와 필살영창 게이지 위의 여백을 비슷하게 맞춘다.
-const PAUSE_LAYOUT = { titleY: 382, firstY: 448, rowGap: 42 } as const;
+const PAUSE_LAYOUT = { titleY: 320, firstY: 386, rowGap: 42 } as const;
 
 /** ESC 화면에서만 쓰는 전체 경로 지도. 메뉴 위에 크게 두어 경로를 먼저 읽게 한다. */
 const PAUSE_MAP = { top: 56, scale: 1.2, depth: 104 } as const;
