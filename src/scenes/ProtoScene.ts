@@ -439,10 +439,10 @@ interface PauseRow {
  * 밝게 남기는 논리는 이 메인 화면에만 필요하지, 설정 하위 화면엔 필요 없다.
  */
 /** 일시정지 메뉴 세로 배치 — 여기서만 쓰인다 */
-const PAUSE_LAYOUT = { titleY: 222, firstY: 288, rowGap: 42 } as const;
+const PAUSE_LAYOUT = { titleY: 262, firstY: 328, rowGap: 42 } as const;
 
 /** ESC 화면에서만 쓰는 전체 경로 지도. 메뉴 위에 크게 두어 경로를 먼저 읽게 한다. */
-const PAUSE_MAP = { top: 16, scale: 1.2, depth: 104 } as const;
+const PAUSE_MAP = { top: 56, scale: 1.2, depth: 104 } as const;
 
 const PAUSE_MAIN: readonly PauseRow[] = [
   { id: 'resume', label: '게임 재개' },
