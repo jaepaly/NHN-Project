@@ -1,4 +1,5 @@
 /** R1 전투 코어의 웨이브 구성과 진행 상태. */
+import { ENCOUNTER_PRESETS } from './encounterPresets';
 export interface WaveDefinition {
   chaserCount: number;
   shooterCount: number;
@@ -19,6 +20,7 @@ export const WAVE_DEFINITIONS: readonly WaveDefinition[] = [
 ];
 
 export const WAVE_SETS: Readonly<Record<string, readonly WaveDefinition[]>> = {
+  ...Object.fromEntries(Object.values(ENCOUNTER_PRESETS).map((preset) => [preset.id, preset.waves])),
   legacy: WAVE_DEFINITIONS,
   'room-a': [
     { chaserCount: 4, shooterCount: 0, splitterCount: 0 },
