@@ -23,7 +23,7 @@ export const SFX_NAMES = [
   'boss-volley-fire',
   'boss-charge-start',
   'boss-charge-end',
-  'boss-hazard-spawn',
+  'boss-pattern-warning',
   'boss-summon',
 ] as const;
 
@@ -66,7 +66,7 @@ const SFX_KEYS: Record<SfxName, string> = {
   'boss-volley-fire': 'audio-sfx-boss-volley-fire',
   'boss-charge-start': 'audio-sfx-boss-charge-start',
   'boss-charge-end': 'audio-sfx-boss-charge-end',
-  'boss-hazard-spawn': 'audio-sfx-boss-hazard-spawn',
+  'boss-pattern-warning': 'audio-sfx-boss-pattern-warning',
   'boss-summon': 'audio-sfx-boss-summon',
 };
 
@@ -91,7 +91,7 @@ const SFX_POLICY: Partial<Record<SfxName, SfxPolicy>> = {
   'boss-volley-fire': { volumeScale: 0.9, cooldownMs: 250 },
   'boss-charge-start': { volumeScale: 0.9, cooldownMs: 250 },
   'boss-charge-end': { volumeScale: 1.2, cooldownMs: 250 },
-  'boss-hazard-spawn': { volumeScale: 0.85, cooldownMs: 500 },
+  'boss-pattern-warning': { volumeScale: 0.85, cooldownMs: 500 },
   'boss-summon': { volumeScale: 0.85, cooldownMs: 350 },
 };
 

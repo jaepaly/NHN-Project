@@ -20,7 +20,7 @@ const names = [
   'boss-volley-fire',
   'boss-charge-start',
   'boss-charge-end',
-  'boss-hazard-spawn',
+  'boss-pattern-warning',
   'boss-summon',
 ] as const;
 
@@ -66,13 +66,17 @@ assert.match(proto, /spawnBossVolley[\s\S]*?playSfx\('boss-volley-fire'\)/);
 assert.match(proto, /case 'charge-start':[\s\S]*?playSfx\('boss-charge-start'\)/);
 assert.match(proto, /wasCharging && !enemy\.charging[\s\S]*?playSfx\('boss-charge-end'\)/);
 assert.match(proto, /cancelCharge\(\)[\s\S]*?playSfx\('boss-charge-end'\)/);
-assert.match(proto, /spawnBossHazard[\s\S]*?playSfx\('boss-hazard-spawn'\)/);
+assert.match(proto, /case 'volley-telegraph':[\s\S]*?playSfx\('boss-pattern-warning'\)/);
+assert.match(proto, /case 'charge-telegraph':[\s\S]*?playSfx\('boss-pattern-warning'\)/);
+assert.match(proto, /case 'hazard':[\s\S]*?playSfx\('boss-pattern-warning'\)/);
+assert.doesNotMatch(proto, /boss-hazard-spawn/);
 assert.match(proto, /spawnBossMinions[\s\S]*?playSfx\('boss-summon'\)/);
 assert.match(proto, /fireMirrorCast[\s\S]*?playMirrorCast\(spec\.element_primary\)/);
 const queueMirrorCast = proto.slice(
   proto.indexOf('private queueMirrorCast'),
   proto.indexOf('private updateMirrorCast'),
 );
+assert.match(queueMirrorCast, /playSfx\('boss-pattern-warning'\)/);
 assert.doesNotMatch(queueMirrorCast, /playMirrorCast/, 'mirror sound belongs to actual fire, not telegraph');
 const openRewardlessRoomChoice = proto.slice(
   proto.indexOf('private openRewardlessRoomChoice'),

@@ -3207,6 +3207,7 @@ export class ProtoScene extends Phaser.Scene {
     // 재료가 없으면(수동 damage 주문 미달) 조용히 생략 — 밋밋한 미러는 역효과다.
     if (!spec) return;
     this.mirrorCastUsed = true;
+    this.audio.playSfx('boss-pattern-warning');
 
     const targetX = this.player.x;
     const targetY = this.player.y;
@@ -4633,6 +4634,7 @@ if (applied) this.playPlayerHit(
   private executeBossPattern(action: BossPatternAction, boss: BossEnemy): void {
     switch (action) {
       case 'volley-telegraph':
+        this.audio.playSfx('boss-pattern-warning');
         this.showBossVolleyTelegraph(
           boss,
           this.isMemoryBossEncounter()
@@ -4657,6 +4659,7 @@ if (applied) this.playPlayerHit(
         this.spawnBossEliteMinion(boss);
         break;
       case 'charge-telegraph':
+        this.audio.playSfx('boss-pattern-warning');
         this.showBossChargeTelegraph(boss);
         break;
       case 'charge-start':
@@ -4680,6 +4683,7 @@ if (applied) this.playPlayerHit(
         this.spawnBossSurroundMinions();
         break;
       case 'hazard':
+        this.audio.playSfx('boss-pattern-warning');
         requestCameraShake(this, 'medium');
         this.spawnBossHazard(boss);
         break;
@@ -4887,7 +4891,6 @@ if (applied) this.playPlayerHit(
   }
 
   private spawnBossHazard(boss: BossEnemy): void {
-    this.audio.playSfx('boss-hazard-spawn');
     const enhanced = this.isMemoryBossEncounter()
       && boss.phase >= 2
       && this.bossResistance.counterStrategy === 'ranged';

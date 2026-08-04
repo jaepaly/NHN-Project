@@ -2048,7 +2048,7 @@
 | 범위 | 방 진입 2종, UI 커서 반응 1종, 보스 패턴 실행음 5종의 생성·채택·통합 |
 | 상태 | 2차 사운드 패스 완료, Firefly 크레딧 복구 후 후속 4종 진행 |
 
-- 최초 7종에 카메라 흔들림과 맞물리는 `boss-charge-end`를 추가해 `trap-room-enter`, `elite-room-enter`, `ui-cursor-move`, `boss-volley-fire`, `boss-charge-start`, `boss-charge-end`, `boss-hazard-spawn`, `boss-summon` 8종을 최종 채택했다.
+- 최초 7종에 카메라 흔들림과 맞물리는 `boss-charge-end`를 추가해 `trap-room-enter`, `elite-room-enter`, `ui-cursor-move`, `boss-volley-fire`, `boss-charge-start`, `boss-charge-end`, `boss-pattern-warning`(최초 `boss-hazard-spawn`), `boss-summon` 8종을 최종 채택했다.
 - 후보 피드백에서 함정방은 발판 작동음이 아니라 방 전체의 저주 분위기 전환, 커서는 날카로운 틱 대신 둥근 중역 접촉, 장판은 타격음 대신 여러 영역의 지속 형성, 탄막은 단일 충격 대신 복수 투사체 확산으로 재설계했다. 돌진 종료는 여러 차례 재생성 끝에 파괴음보다 단일한 묵직한 정지와 저역 땅울림이 강한 `boss_charge_end_2212.wav`를 선택했다.
 - 사용자가 Adobe Firefly에서 생성·청취·채택한 원본을 -50dBFS 무음 정리, 후행 75ms, 20ms fade-out 후 OGG stereo 48kHz로 변환했다. 최종 길이는 함정 1.615초, 엘리트 1.625초, 커서 0.190초, 탄막 0.640초, 돌진 출발 0.655초, 돌진 종료 1.750초, 장판 1.835초, 소환 0.710초다.
 - 커서음은 DOM의 mouse pointerover와 keyboard/programmatic focusin을 함께 감지하고, 타이틀 Phaser 버튼에도 연결했다. 45ms 제한과 0.55 배율로 반복 피로를 억제한다.
@@ -2064,6 +2064,7 @@
 - 후속 신규 SFX 범위: 보스 `중력 인력`과 플레이어 `필살영창 진입`은 기존 소리 재사용보다 별도 위계가 필요하다고 확정했다. `boss-gravity-pull`은 0.6초 시각 예고 뒤 실제 1.6초 흡인이 시작될 때 한 번 재생하고, `ultimate-incant-enter`는 게이지가 준비된 Shift+Enter 입력으로 필살영창 창이 열린 직후 일반 `incant-enter` 대신 재생한다. 예고·종료음을 추가로 나누지 않고 우선 각 1종만 제작하며, 프롬프트·생성·통합은 후속이다.
 - 2차 작업 마감: Adobe Firefly 크레딧이 없어 추가 생성은 중단한다. 다음 사운드 패스의 확정 범위는 신규 `boss-gravity-pull`, `ultimate-incant-enter`와 기존 음색 교체 `reward-select`, `ui-cursor-move`의 4종이다. 이 4종은 2차 완료 범위에 포함하지 않으며 프롬프트·생성·채택·구현 모두 미수행 상태로 넘긴다. 최종 오디오 회귀, 전체 회귀 96종, production build, `git diff --check`가 통과했다.
 - 마감 후 플레이테스트 보정: 적 사망음은 상대적으로 크다는 결과에 따라 런타임 배율 0.6과 50ms 중복 제한을 적용했다. 미러 캐스트는 실제 발사 시점·배율 1.25로 옮긴 뒤에도 전혀 들리지 않아 단일 `detune -300`·`rate 0.9` 방식을 폐기했다. 실제 발사 순간 검증된 `incant-enter`를 재생하고 90ms 뒤 원소음을 배율 1.4·`detune -180`으로 내는 2단 피드백으로 바꿔 어택을 보존했다. 오디오·미러 회귀와 production build가 통과했다.
+- 공통 보스 경고음 전환: `boss-hazard-spawn`이 실제 장판 형성음보다 경고음처럼 들린다는 플레이테스트 판단을 수용해 에셋과 키를 `boss-pattern-warning`으로 재명명했다. 위험지대의 1.2초 경고 시작, 돌진·탄막의 0.7초 예고 시작, 미러 캐스트 후보가 실제로 성립한 예고 시작에 한 번씩 재생한다. 기존 장판 생성부의 전용 호출은 제거했으며 돌진 출발·탄막 발사·미러 발사 실행음은 유지한다. 소환·암전에는 공통 경고를 넣지 않았다. 오디오·보스·미러 회귀와 production build가 통과했다.
 
 ---
 ```
