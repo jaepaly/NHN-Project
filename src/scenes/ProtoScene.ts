@@ -258,6 +258,12 @@ import { RoomRadarHud } from '../ui/roomRadarHud';
 import { ROOM_RADAR_CONFIG } from '../ui/roomRadarModel';
 import { BossCombatInfoHud } from '../ui/bossCombatInfoHud';
 import { bossCombatInfoLines } from '../ui/bossCombatInfoModel';
+import {
+  COMPACT_AFFINITY_HUD as AFFINITY_HUD,
+  COMPACT_VITAL_HUD as VITAL_HUD,
+  compactVitalGeometry as vitalHudGeometry,
+  compactVitalRowY as vitalRowY,
+} from '../ui/combatHudPlacement';
 import { pushOutOfBlocks, segmentBlocked } from '../combat-core/combat/terrainBlock';
 import type { TerrainBlock } from '../combat-core/combat/terrainBlock';
 import {
@@ -395,37 +401,6 @@ const NO_BOSS_RESISTANCE: BossResistanceProfile = {
  * 친화 바가 이 박스 **아래**에 붙으므로(HUD.y + HUD.height 기준) 박스가 줄면
  * 친화 바도 함께 올라와 좌상단 전체가 조여진다.
  */
-const HUD = {
-  x: 18,
-  y: 18,
-  width: 300,
-  height: 130,
-  /** 스탯 행 시작 y (박스 상단 기준 오프셋) */
-  rowTop: 44,
-  /** 행 간격 — 종전 34에서 축소 */
-  rowPitch: 22,
-  /**
-   * ⚠️ 한 줄 배치의 함정 (총괄 제보: "숫자랑 바랑 겹침"):
-   * 라벨+수치를 한 텍스트로 두면 `SHIELD 100 / 100`이 x=138까지 뻗어 바(x=104)를 덮었다.
-   * 폰트 폭에 의존하는 배치는 내용이 길어지는 순간 깨진다.
-   *
-   * 그래서 **라벨(왼쪽 고정) · 바(가운데) · 수치(오른쪽 정렬)**로 셋을 분리한다.
-   * 수치는 origin(1,0)으로 박스 우측에 붙어 자라므로 어떤 값이 와도 바를 침범하지 않고,
-   * 바는 두 고정 좌표 사이라 폭이 항상 확정된다.
-   */
-  labelX: 14,
-  barX: 78,
-  /**
-   * 바 폭 — 수치 자리수가 늘어도(보상·제단으로 최대 체력이 4자리까지) 침범하지 않게
-   * 우측에 80px을 비워둔 값이다. 실측으로 잡았다: `100/100`(7자)이 47px, 4자리
-   * `1000/1000`(9자)이 60px.
-   */
-  barWidth: 140,
-  barHeight: 6,
-  /** 수치 오른쪽 끝 (박스 우측에서 안쪽으로) */
-  valueRight: 10,
-} as const;
-
 /**
  * 우상단 상태 패널 — ROOM·WAVE·BOSS를 한 판에 담는다.
  * 종전엔 ROOM 칩(DOM)·WAVE 패널·미니맵이 **3단**으로 쌓여 있었다 (총괄 지적).
@@ -450,9 +425,6 @@ function rightPanelHeight(textHeight: number): number {
 }
 
 /** 스탯 행 i(0=HP, 1=마나, 2=보호막)의 y 중심 */
-function hudRowY(index: number): number {
-  return HUD.y + HUD.rowTop + index * HUD.rowPitch;
-}
 
 interface PauseRow {
   id: 'resume' | 'settings' | 'quit';
@@ -2853,7 +2825,8 @@ export class ProtoScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(99);
 
-    this.statusText = this.add.text(HUD.x + 14, HUD.y + 12, 'READY', {
+    const vital = vitalHudGeometry(width, height, BUILD_CHIP.size * 2 + BUILD_CHIP.gap);
+    this.statusText = this.add.text(AFFINITY_HUD.x, AFFINITY_HUD.y, 'READY', {
       fontFamily: 'Consolas, monospace',
       fontSize: '14px',
       fontStyle: 'bold',
@@ -2861,44 +2834,48 @@ export class ProtoScene extends Phaser.Scene {
     }).setScrollFactor(0).setDepth(100);
     // 정적 라벨 — 값이 안 바뀌므로 한 번만 만든다
     (['HP', 'MANA', 'SHIELD'] as const).forEach((label, index) => {
-      this.add.text(HUD.x + HUD.labelX, hudRowY(index), label, {
+      this.add.text(vital.x + VITAL_HUD.labelX, vitalRowY(vital.y, index), label, {
         fontFamily: 'Consolas, monospace',
         fontSize: '11px',
         color: UI_COLOR.textMuted,
       }).setScrollFactor(0).setDepth(100);
     });
-    this.hpText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(0), '', {
+    this.hpText = this.add.text(vital.x + VITAL_HUD.width - VITAL_HUD.valueRight, vitalRowY(vital.y, 0), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: UI_SEMANTIC.hp,
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
-    this.manaText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(1), '', {
+    this.manaText = this.add.text(vital.x + VITAL_HUD.width - VITAL_HUD.valueRight, vitalRowY(vital.y, 1), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: UI_SEMANTIC.mana,
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
-    this.shieldText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(2), '', {
+    this.shieldText = this.add.text(vital.x + VITAL_HUD.width - VITAL_HUD.valueRight, vitalRowY(vital.y, 2), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: UI_SEMANTIC.shield,
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
-    this.attunementText = this.add.text(HUD.x + HUD.labelX, hudRowY(3) - 4, 'ARCANE // UNBOUND', {
+    this.attunementText = this.add.text(AFFINITY_HUD.x, AFFINITY_HUD.y + 18, 'ARCANE // UNBOUND', {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
       color: UI_COLOR.accent,
     }).setScrollFactor(0).setDepth(100);
     // 활성 자기 강화 — 종류·세기·남은 시간 (버프 없으면 빈 줄)
-    this.buffStatusText = this.add.text(HUD.x + 152, hudRowY(3) - 4, '', {
+    this.buffStatusText = this.add.text(AFFINITY_HUD.x + 128, AFFINITY_HUD.y + 18, '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
       fontStyle: 'bold',
       color: UI_SEMANTIC.buff,
     }).setScrollFactor(0).setDepth(100);
     // 친화 경험치 바 라벨 — 8원소를 왼쪽 4개·오른쪽 4개 고정 위치에 세운다.
-    const affinityPanel = affinityPanelGeometry(HUD.y, HUD.height, AFFINITY_ROWS);
+    const affinityPanel = affinityPanelGeometry(
+      AFFINITY_HUD.y,
+      AFFINITY_HUD.headerHeight,
+      AFFINITY_ROWS,
+    );
     this.affinityLabelTexts = Array.from({ length: AFFINITY_ROWS }, (_, i) =>
       this.add.text(
-        affinityColumnX(HUD.x, HUD.width, i),
+        affinityColumnX(AFFINITY_HUD.x, AFFINITY_HUD.width, i),
         affinityLabelY(affinityPanel.top, i),
         '',
         {
@@ -7445,8 +7422,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 라벨(HP/MANA/SHIELD)이 왼쪽에 따로 있으므로 수치만 적는다. 우측 정렬이라
     // 자리수가 늘어도 왼쪽으로 자라 바를 침범하지 않는다 — padStart 정렬이 필요 없다.
     this.hpText
-      .setText(`${hp}/${this.playerState.maxHp}`)
-      .setColor(heatwaveDamaging ? '#e0a860' : UI_SEMANTIC.hp);
+      .setText(`${hp <= this.playerState.maxHp * 0.3 ? '! ' : ''}${hp}/${this.playerState.maxHp}`)
+      .setColor(hp <= this.playerState.maxHp * 0.3
+        ? '#ff5c7a'
+        : heatwaveDamaging ? '#e0a860' : UI_SEMANTIC.hp);
     this.manaText.setText(`${mana}/${this.playerState.maxMana}`);
     this.shieldText.setText(`${shield}/${this.playerState.maxHp}`);
     this.drawBuildChips();
@@ -7987,46 +7966,48 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       });
     const heatPulse = 0.36 + Math.sin(this.time.now / 420) * 0.12;
     const g = this.hudGraphics.clear();
+    const { width, height } = this.scale;
+    const vital = vitalHudGeometry(width, height, BUILD_CHIP.size * 2 + BUILD_CHIP.gap);
 
     // 마도서 판 — 불규칙한 변 + 이중 괘선 + 모서리 갈고리.
     // 종전엔 `fillRoundedRect` + 1px 테두리였다(총괄 지적: "상자에 색만 칠한 느낌").
-    drawGrimoirePanel(g, HUD.x, HUD.y, HUD.width, HUD.height, 0.9);
+    drawGrimoirePanel(g, vital.x, vital.y, VITAL_HUD.width, VITAL_HUD.height, 0.9);
 
     // 라벨과 같은 줄에 — 텍스트 세로 중앙에 맞춰 바를 놓는다 (원점이 좌상단이므로 −3)
-    const barOffset = Math.round(HUD.barHeight / 2) + 1;
-    const rowBarY = (index: number): number => hudRowY(index) + barOffset;
+    const barOffset = Math.round(VITAL_HUD.barHeight / 2) + 1;
+    const rowBarY = (index: number): number => vitalRowY(vital.y, index) + barOffset;
     g.fillStyle(UI_HEX.track, 1);
     for (let index = 0; index < 3; index += 1) {
-      g.fillRoundedRect(HUD.barX, rowBarY(index), HUD.barWidth, HUD.barHeight, 3);
+      g.fillRoundedRect(vital.x + VITAL_HUD.barX, rowBarY(index), VITAL_HUD.barWidth, VITAL_HUD.barHeight, 3);
     }
     g.fillStyle(heatwaveDamaging ? 0xff734c : hex(UI_SEMANTIC.hp), 1);
-    g.fillRoundedRect(HUD.barX, rowBarY(0), HUD.barWidth * hpRatio, HUD.barHeight, 3);
+    g.fillRoundedRect(vital.x + VITAL_HUD.barX, rowBarY(0), VITAL_HUD.barWidth * hpRatio, VITAL_HUD.barHeight, 3);
     if (heatwaveDamaging && hpRatio > 0) {
-      const filledWidth = HUD.barWidth * hpRatio;
+      const filledWidth = VITAL_HUD.barWidth * hpRatio;
       const hpBarY = rowBarY(0);
       g.lineStyle(2, 0xffb15a, 0.52 + heatPulse * 0.38);
-      g.strokeRoundedRect(HUD.barX - 2, hpBarY - 2, HUD.barWidth + 4, HUD.barHeight + 4, 4);
+      g.strokeRoundedRect(vital.x + VITAL_HUD.barX - 2, hpBarY - 2, VITAL_HUD.barWidth + 4, VITAL_HUD.barHeight + 4, 4);
       // 막대 끝의 짧은 상승 입자: 전체 HUD가 아니라 열에 반응하는 HP라는 점만 알려 준다.
       for (let index = 0; index < 3; index += 1) {
         const progress = (this.time.now / 750 + index * 0.37) % 1;
-        const x = HUD.barX + Math.max(8, filledWidth - 7 - index * 7);
+        const x = vital.x + VITAL_HUD.barX + Math.max(8, filledWidth - 7 - index * 7);
         const y = hpBarY - 2 - progress * 10;
         g.fillStyle(0xffc06d, (1 - progress) * 0.7);
         g.fillCircle(x, y, 1.8 - progress * 0.55);
       }
     }
     g.fillStyle(hex(UI_SEMANTIC.mana), 1);
-    g.fillRoundedRect(HUD.barX, rowBarY(1), HUD.barWidth * manaRatio, HUD.barHeight, 3);
+    g.fillRoundedRect(vital.x + VITAL_HUD.barX, rowBarY(1), VITAL_HUD.barWidth * manaRatio, VITAL_HUD.barHeight, 3);
     g.fillStyle(hex(UI_SEMANTIC.shield), 1);
-    g.fillRoundedRect(HUD.barX, rowBarY(2), HUD.barWidth * shieldRatio, HUD.barHeight, 3);
+    g.fillRoundedRect(vital.x + VITAL_HUD.barX, rowBarY(2), VITAL_HUD.barWidth * shieldRatio, VITAL_HUD.barHeight, 3);
 
     g.fillStyle(UI_HEX.track, 1);
-    g.fillRoundedRect(HUD.x + 8, HUD.y + HUD.height - 5, HUD.width - 16, 3, 2);
+    g.fillRoundedRect(vital.x + 8, vital.y + VITAL_HUD.height - 5, VITAL_HUD.width - 16, 3, 2);
     g.fillStyle(cooldownRatio > 0 ? 0xffb86b : 0x72f1b8, 1);
     g.fillRoundedRect(
-      HUD.x + 8,
-      HUD.y + HUD.height - 5,
-      (HUD.width - 16) * (cooldownRatio > 0 ? 1 - cooldownRatio : 1),
+      vital.x + 8,
+      vital.y + VITAL_HUD.height - 5,
+      (VITAL_HUD.width - 16) * (cooldownRatio > 0 ? 1 - cooldownRatio : 1),
       3,
       2,
     );
@@ -8036,7 +8017,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     // 우상단 상태 패널 — 종전엔 ROOM 칩(DOM) 아래에 따로 떠서 우상단이 3단이었다.
     // ROOM을 이 패널 안으로 넣어(updateStatusText) 2단으로 줄였다 (총괄 지적).
-    const { width } = this.scale;
     // 패널은 **내용에 맞춰 늘어난다** — 보스전에서 저항·관통 줄이 붙으면 3~4줄이 되어
     // 고정 높이로는 텍스트가 패널을 넘고 미니맵과 겹쳤다. 평시(2줄)엔 그대로 조밀하다.
     const panelHeight = rightPanelHeight(this.waveText.height);
@@ -8066,16 +8046,16 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const state = this.combatRunController.state;
     const affinity = state.elementalAffinity;
     if (state.chorusAffinity !== null) {
-      const panel = affinityPanelGeometry(HUD.y, HUD.height, 1);
-      const barX = HUD.x + AFFINITY_PANEL_LAYOUT.padX;
-      const barW = HUD.width - AFFINITY_PANEL_LAYOUT.padX * 2;
+      const panel = affinityPanelGeometry(AFFINITY_HUD.y, AFFINITY_HUD.headerHeight, 1);
+      const barX = AFFINITY_HUD.x + AFFINITY_PANEL_LAYOUT.padX;
+      const barW = AFFINITY_HUD.width - AFFINITY_PANEL_LAYOUT.padX * 2;
       const barY = affinityBarY(panel.top, 0);
       const ratio = Phaser.Math.Clamp(
         state.chorusAffinity / ELEMENTAL_CHORUS.affinityCap,
         0,
         1,
       );
-      drawGrimoirePanel(g, HUD.x, panel.top, HUD.width, panel.height, 0.9);
+      drawGrimoirePanel(g, AFFINITY_HUD.x, panel.top, AFFINITY_HUD.width, panel.height, 0.9);
       g.fillStyle(UI_HEX.track, 0.9);
       g.fillRoundedRect(barX, barY, barW, AFFINITY_PANEL_LAYOUT.primaryBarHeight, 4);
       const rainbow = [0xff6b6b, 0xffd166, 0x72f1b8, 0x66d9ff, 0xb18cff];
@@ -8099,10 +8079,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
     const rows = affinityHudRows(affinity);
     const primaryElement = rankAffinities<SpellElement>(affinity, 1)[0]?.element ?? null;
-    const panel = affinityPanelGeometry(HUD.y, HUD.height, rows.length);
-    const barW = affinityColumnWidth(HUD.width);
+    const panel = affinityPanelGeometry(
+      AFFINITY_HUD.y,
+      AFFINITY_HUD.headerHeight,
+      rows.length,
+    );
+    const barW = affinityColumnWidth(AFFINITY_HUD.width);
 
-    drawGrimoirePanel(g, HUD.x, panel.top, HUD.width, panel.height, 0.82);
+    drawGrimoirePanel(g, AFFINITY_HUD.x, panel.top, AFFINITY_HUD.width, panel.height, 0.82);
 
     for (let i = 0; i < this.affinityLabelTexts.length; i += 1) {
       const label = this.affinityLabelTexts[i];
@@ -8119,7 +8103,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ? AFFINITY_PANEL_LAYOUT.primaryBarHeight
         : AFFINITY_PANEL_LAYOUT.secondaryBarHeight;
       const alpha = main ? 1 : row.value > 0 ? 0.72 : 0.5;
-      const barX = affinityColumnX(HUD.x, HUD.width, i);
+      const barX = affinityColumnX(AFFINITY_HUD.x, AFFINITY_HUD.width, i);
       const barY = affinityBarY(panel.top, i);
 
       g.fillStyle(UI_HEX.track, alpha);
