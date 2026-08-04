@@ -221,6 +221,7 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   awaken: 'AWAKEN',
   // 제단 전용 (#214)
   'altar-leave': 'DEPART',
+  'legacy-skip': 'BLANK PAGE',
   'all-affinity': 'ATTUNE',
   'altar-high': 'HIGH ARCANA',
   echo: 'ECHO',

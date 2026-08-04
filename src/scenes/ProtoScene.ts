@@ -2026,9 +2026,16 @@ export class ProtoScene extends Phaser.Scene {
           engrave: { spellKey: entry.normalized, level: 1 },
         };
       });
+      options.push({
+        id: 'legacy-skip',
+        kind: 'legacy-skip',
+        title: '빈 주문서로 시작',
+        description: '유산 각인 없이 출발\n이번 런의 새 영창으로 빌드를 만든다',
+      });
       const chosen = await showRewardCards(options, {
         kicker: 'GRIMOIRE',
         title: '주문서에서 유산을 꺼낸다',
+        contextLines: ['유산 없이 시작해 이번 런의 새 발견으로 빌드를 정할 수도 있다'],
       });
       this.audio.playSfx('ui-confirm');
       const entry = offers.find((e) => `legacy-${e.normalized}` === chosen.id);
