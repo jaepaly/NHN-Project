@@ -129,7 +129,7 @@ import { formatRunElapsed } from '../combat-core/run/runTimer';
 import { flooredResistMultiplier } from '../combat-core/combat/debuffFloor';
 import { showBossChoice, showDemoCompletionChoice } from '../ui/bossChoiceOverlay';
 import { showSystemBanner } from '../render/systemBanner';
-import { bossResistanceLines, bossResistanceReadout } from '../render/bossResistanceReadout';
+import { bossResistanceReadout } from '../render/bossResistanceReadout';
 import { playAwakeningBrandMark, playAwakeningSigil } from '../render/awakeningSigil';
 import {
   PARTICLE_TEXTURES, ensureParticleTextures, particleKey,
@@ -256,6 +256,8 @@ import { MinimapHud } from '../ui/minimapHud';
 import { MINIMAP_CONFIG } from '../ui/minimapLayout';
 import { RoomRadarHud } from '../ui/roomRadarHud';
 import { ROOM_RADAR_CONFIG } from '../ui/roomRadarModel';
+import { BossCombatInfoHud } from '../ui/bossCombatInfoHud';
+import { bossCombatInfoLines } from '../ui/bossCombatInfoModel';
 import { pushOutOfBlocks, segmentBlocked } from '../combat-core/combat/terrainBlock';
 import type { TerrainBlock } from '../combat-core/combat/terrainBlock';
 import {
@@ -829,6 +831,8 @@ export class ProtoScene extends Phaser.Scene {
   private fusionLabelText!: Phaser.GameObjects.Text;
   /** #345 상단 중앙 런 타이머 — 우측 정보 패널과 중복 표시하지 않는다. */
   private runTimerText!: Phaser.GameObjects.Text;
+  /** #345 보스전에서만 보스를 따라다니는 전용 전투 정보판. */
+  private bossCombatInfoHud!: BossCombatInfoHud;
   private waveText!: Phaser.GameObjects.Text;
   /** 빌드 칩 — 각인 2 + 정령 2를 우하단 2×2 아이콘 그리드로 (buildChipModel) */
   private buildChipRoot!: Phaser.GameObjects.Container;
@@ -1485,6 +1489,7 @@ export class ProtoScene extends Phaser.Scene {
       { x: this.player.x, y: this.player.y },
       this.enemies,
     );
+    this.updateBossCombatInfo();
     this.updateStatusText();
     this.updateSequenceProgress();
   }
@@ -2923,6 +2928,8 @@ export class ProtoScene extends Phaser.Scene {
       strokeThickness: 3,
       letterSpacing: 1.4,
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
+
+    this.bossCombatInfoHud = new BossCombatInfoHud(this);
 
     this.waveText = this.add.text(width - 34, RIGHT_PANEL.y + 10, '', {
       fontFamily: 'Consolas, monospace',
@@ -7493,25 +7500,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     } else if (this.practiceRun) {
       this.waveText.setText(withCleanse(['PRACTICE', '고정 표적 · 마나 자동 회복']));
     } else if (this.isBossEncounter()) {
-      const boss = this.enemies.find((enemy) => enemy.kind === 'boss');
-      // 저항을 상시 노출한다 — 보스 링 색만으로는 "무엇이 안 통하는지" 알 수 없다.
-      // 단, **마스터리로 관통한 원소는 저항으로 적지 않는다**(#171) — 실제론 온전히
-      // 들어가는데 화면이 "안 통한다"고 말하면 가장 키운 원소를 버리게 된다.
-      const readout = bossResistanceReadout(
-        this.sortedBossResistanceEntries().map(([element, multiplier]) => ({
-          element,
-          multiplier,
-          affinity: this.affinityFor(element),
-        })),
-        RESISTANCE.masteryImmunityAffinity,
-      );
-      // 한 줄에 한 사실 — 적 수를 저항 목록 꼬리에 붙이면 저항 정보처럼 읽힌다
-      // 수문장인지 기억의 주인인지가 한눈에 보여야 "이게 마지막인가"를 안다
       const bossLabel = this.mapGraph.current().kind === 'memory-boss' ? '기억의 주인' : '수문장';
-      const status = boss
-        ? `${bossLabel} ${Math.ceil(boss.hp)}/${boss.maxHp}  ·  ENEMIES ${this.enemies.length}`
-        : bossLabel;
-      this.waveText.setText(withCleanse([roomLine, ...bossResistanceLines(status, readout)]));
+      // HP·페이즈·저항·패턴은 보스 곁 정보판으로 이동했다. 우측에는 방 상태만 남겨
+      // 같은 수치를 시선이 먼 두 위치에서 중복해서 읽지 않게 한다.
+      this.waveText.setText(withCleanse([roomLine, bossLabel]));
     } else if (this.rewardlessNodeKind()) {
       // 무전투 방 — 웨이브가 없으니 "NEXT WAVE 0.0s"가 뜨면 안 된다
       this.waveText.setText(withCleanse([
@@ -8270,6 +8262,38 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       roomGeneration: copy.scope === 'room' ? this.bannerRoomGeneration : null,
     });
     this.drainBannerQueue();
+  }
+
+  /** 보스 체력바(위쪽)를 가리지 않도록 반대편 아래에 전용 정보를 붙인다. */
+  private updateBossCombatInfo(): void {
+    if (!this.isBossEncounter()) {
+      this.bossCombatInfoHud.hide();
+      return;
+    }
+    const boss = this.enemies.find(
+      (enemy): enemy is BossEnemy => enemy instanceof BossEnemy && enemy.alive,
+    );
+    if (!boss) {
+      this.bossCombatInfoHud.hide();
+      return;
+    }
+    const resistance = bossResistanceReadout(
+      this.sortedBossResistanceEntries().map(([element, multiplier]) => ({
+        element,
+        multiplier,
+        affinity: this.affinityFor(element),
+      })),
+      RESISTANCE.masteryImmunityAffinity,
+    );
+    const label = this.mapGraph.current().kind === 'memory-boss' ? '기억의 주인' : '수문장';
+    this.bossCombatInfoHud.update(boss.x, boss.y + 72, bossCombatInfoLines({
+      label,
+      hp: boss.hp,
+      maxHp: boss.maxHp,
+      phase: boss.phase,
+      counterStrategy: this.bossResistance.counterStrategy,
+      resistance,
+    }));
   }
 
   private affinityFor(element: SpellElement): number {
