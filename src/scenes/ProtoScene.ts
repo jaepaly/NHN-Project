@@ -8061,7 +8061,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     // ROOM/WAVE/ENEMIES는 현재 방 레이더 안으로 들어갔다. 위험지대 정화만 필요할 때
     // 레이더 아래 작은 판으로 보여 주고, ESC 전체 지도는 그 아래에 둔다.
-    const noticeHeight = roomNoticeHeight(this.waveText.height);
+    // Phaser Text는 빈 문자열이어도 폰트 행 높이를 유지한다. 높이만 보면 일반방에도
+    // 빈 정화 패널이 생기므로, 실제 문구가 있을 때만 패널 공간을 차지하게 한다.
+    const noticeHeight = this.waveText.text.trim().length > 0
+      ? roomNoticeHeight(this.waveText.height)
+      : 0;
     const noticeTop = ROOM_RADAR_TOP + ROOM_RADAR_CONFIG.height + ROOM_NOTICE.gap;
     if (noticeHeight > 0) {
       drawGrimoirePanel(g, width - ROOM_RADAR_CONFIG.width - 18, noticeTop,
