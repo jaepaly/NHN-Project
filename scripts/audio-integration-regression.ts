@@ -31,15 +31,16 @@ for (const name of names) {
 
 assert.match(audio, /'player-hit': \{ volumeScale: 1, cooldownMs: 90 \}/);
 assert.match(audio, /hit: \{ volumeScale: 0\.5, cooldownMs: 35 \}/);
+assert.match(audio, /'enemy-defeat': \{ volumeScale: 0\.6, cooldownMs: 50 \}/);
 assert.match(audio, /'mana-crystal-pickup': \{ volumeScale: 0\.65, cooldownMs: 110 \}/);
 assert.match(audio, /'trap-room-enter': \{ volumeScale: 1\.25, cooldownMs: 500 \}/);
 assert.match(audio, /'elite-room-enter': \{ volumeScale: 1\.25, cooldownMs: 500 \}/);
 assert.match(audio, /'boss-charge-end': \{ volumeScale: 1\.2, cooldownMs: 250 \}/);
 assert.match(audio, /altar: 1\.2/);
 assert.match(audio, /playMirrorCast\(element: SpellElement\)/);
-assert.match(audio, /settings\.sfxVolume \* 1\.25,[\s\S]*?detune: -300/);
-assert.match(audio, /detune: -300/);
-assert.match(audio, /rate: 0\.9/);
+assert.match(audio, /playSfx\('incant-enter'\)[\s\S]*?delayedCall\(90/);
+assert.match(audio, /settings\.sfxVolume \* 1\.4,[\s\S]*?detune: -180/);
+assert.doesNotMatch(audio, /playMirrorCast[\s\S]*?rate:/);
 assert.match(audio, /document\.addEventListener\('pointerover', this\.onDomPointerOver, true\)/);
 assert.match(audio, /document\.addEventListener\('focusin', this\.onDomFocusIn, true\)/);
 assert.match(title, /GameAudio\.preloadSfx\(this, 'title-start'\)/);

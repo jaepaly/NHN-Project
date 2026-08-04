@@ -78,6 +78,7 @@ interface SfxPolicy {
 const DEFAULT_SFX_POLICY: SfxPolicy = { volumeScale: 1, cooldownMs: 0 };
 const SFX_POLICY: Partial<Record<SfxName, SfxPolicy>> = {
   hit: { volumeScale: 0.5, cooldownMs: 35 },
+  'enemy-defeat': { volumeScale: 0.6, cooldownMs: 50 },
   'player-hit': { volumeScale: 1, cooldownMs: 90 },
   'mana-crystal-pickup': { volumeScale: 0.65, cooldownMs: 110 },
   'ui-confirm': { volumeScale: 0.9, cooldownMs: 80 },
@@ -189,12 +190,14 @@ export class GameAudio {
     });
   }
 
-  /** 미러 캐스트는 복제한 주 원소음을 낮고 느리게 변형해 보스의 시전으로 구분한다. */
+  /** 미러 캐스트는 영창 진입 뒤 원소 어택을 따로 내 보스 BGM 아래에서도 식별되게 한다. */
   playMirrorCast(element: SpellElement): void {
-    this.scene.sound.play(CAST_KEYS[element], {
-      volume: MASTER_VOLUME * this.settings.sfxVolume * 1.25,
-      detune: -300,
-      rate: 0.9,
+    this.playSfx('incant-enter');
+    this.scene.time.delayedCall(90, () => {
+      this.scene.sound.play(CAST_KEYS[element], {
+        volume: MASTER_VOLUME * this.settings.sfxVolume * 1.4,
+        detune: -180,
+      });
     });
   }
 
