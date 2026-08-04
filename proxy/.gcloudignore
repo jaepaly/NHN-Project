@@ -1,0 +1,9 @@
+# Keep local credentials and unrelated development output out of Cloud Build uploads.
+.git
+.gitignore
+.dev.vars
+.dev.vars.*
+*.local
+wrangler.local.toml
+node_modules
+coverage
