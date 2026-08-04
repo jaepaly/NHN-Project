@@ -19,7 +19,18 @@ import { MockJudge, precheckText } from './mockJudge';
 export const JUDGE_SCHEMA_VERSION = 2;
 export const JUDGE_PROMPT_VERSION = 'meaning-v2.31-ultimate-resonance-echo';
 const CACHE_PREFIX = `incant:judge:v${JUDGE_SCHEMA_VERSION}:${JUDGE_PROMPT_VERSION}:`;
-const JUDGE_TIMEOUT_MS = 6000;
+const JUDGE_ATTEMPT_TIMEOUT_MS = 2500;
+const JUDGE_MAX_ATTEMPTS = 2;
+
+interface JudgeRequestPolicy {
+  attemptTimeoutMs: number;
+  maxAttempts: number;
+}
+
+const DEFAULT_JUDGE_REQUEST_POLICY: JudgeRequestPolicy = {
+  attemptTimeoutMs: JUDGE_ATTEMPT_TIMEOUT_MS,
+  maxAttempts: JUDGE_MAX_ATTEMPTS,
+};
 
 export type JudgeFallbackReason =
   | 'timeout'
@@ -42,19 +53,23 @@ class JudgeHttpError extends Error {
   }
 }
 
+function isTimeoutError(error: unknown): boolean {
+  return (error as { name?: unknown })?.name === 'AbortError';
+}
+
 function fallbackReasonFromError(error: unknown): JudgeFallbackReason {
   if (error instanceof JudgeHttpError) {
     return error.upstreamStatus === undefined
       ? `http_${error.status}`
       : `http_${error.status}_upstream_${error.upstreamStatus}`;
   }
-  if ((error as { name?: unknown })?.name === 'AbortError') return 'timeout';
+  if (isTimeoutError(error)) return 'timeout';
   if (error instanceof SyntaxError) return 'invalid_response';
   return 'network_error';
 }
-/** 모든 정상 원격 판정의 공통 대기 상한. 인자는 기존 호출 계약 호환용이다. */
+/** 정상 원격 판정의 총 대기 예산(2.5초 timeout 재시도 1회). 인자는 기존 호출 계약 호환용이다. */
 export function judgeTimeoutMs(_text: string): number {
-  return JUDGE_TIMEOUT_MS;
+  return JUDGE_ATTEMPT_TIMEOUT_MS * JUDGE_MAX_ATTEMPTS;
 }
 
 export class GeminiJudge implements SpellJudge {
@@ -68,6 +83,7 @@ export class GeminiJudge implements SpellJudge {
   constructor(
     private readonly proxyUrl: string,
     fallback: SpellJudge = new MockJudge(),
+    private readonly requestPolicy: JudgeRequestPolicy = DEFAULT_JUDGE_REQUEST_POLICY,
   ) {
     this.fallback = fallback;
   }
@@ -93,7 +109,7 @@ export class GeminiJudge implements SpellJudge {
 
     // 2~3) 프록시 요청 + 스키마 재검증
     try {
-      const raw = await this.fetchWithTimeout(key, castMode, resonance);
+      const raw = await this.fetchWithFastRetry(key, castMode, resonance);
       const validated = validateJudgement(raw);
       // 필살영창 요청에 단일 주문이 돌아오면 일반 주문으로 자원을 소비시키지 않는다.
       // 모드 계약이 맞는 plan만 캐시하고, 나머지는 필살영창 Mock 폴백으로 복구한다.
@@ -121,14 +137,40 @@ export class GeminiJudge implements SpellJudge {
     return this.fallback.judge(text, options);
   }
 
-  /** 프록시에 POST하고 상한(단순 2.5초 / 복합 3.2초) 초과 시 abort. */
-  private async fetchWithTimeout(
+  /** timeout일 때만 즉시 한 번 새 요청으로 전환한다. */
+  private async fetchWithFastRetry(
     text: string,
     castMode: 'normal' | 'ultimate',
     resonance?: UltimateResonanceContext,
   ): Promise<unknown> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < this.requestPolicy.maxAttempts; attempt += 1) {
+      try {
+        return await this.fetchWithTimeout(
+          text,
+          castMode,
+          this.requestPolicy.attemptTimeoutMs,
+          resonance,
+        );
+      } catch (error) {
+        lastError = error;
+        const canRetry = isTimeoutError(error)
+          && attempt + 1 < this.requestPolicy.maxAttempts;
+        if (!canRetry) throw error;
+      }
+    }
+    throw lastError;
+  }
+
+  /** 프록시에 POST하고 시도별 2.5초 상한을 넘기면 abort. */
+  private async fetchWithTimeout(
+    text: string,
+    castMode: 'normal' | 'ultimate',
+    timeoutMs: number,
+    resonance?: UltimateResonanceContext,
+  ): Promise<unknown> {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), judgeTimeoutMs(text));
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       const res = await fetch(this.proxyUrl, {
         method: 'POST',
