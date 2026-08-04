@@ -16,6 +16,7 @@ export interface RoomRadarEntity extends RoomRadarPosition {
 export class RoomRadarHud {
   private readonly graphics: Phaser.GameObjects.Graphics;
   private readonly title: Phaser.GameObjects.Text;
+  private readonly status: Phaser.GameObjects.Text;
   private x: number;
   private y: number;
 
@@ -30,6 +31,13 @@ export class RoomRadarHud {
       color: '#c9d3ff',
       letterSpacing: 1.2,
     }).setScrollFactor(0).setDepth(100);
+    this.status = scene.add.text(x + ROOM_RADAR_CONFIG.padding, y + 23, '', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: '#72f1b8',
+      lineSpacing: 2,
+    }).setScrollFactor(0).setDepth(100);
   }
 
   setPosition(x: number, y: number): void {
@@ -37,6 +45,12 @@ export class RoomRadarHud {
     this.x = x;
     this.y = y;
     this.title.setPosition(x + ROOM_RADAR_CONFIG.padding, y + 8);
+    this.status.setPosition(x + ROOM_RADAR_CONFIG.padding, y + 23);
+  }
+
+  /** 현재 방 정보는 레이더 카드 안에서만 읽는다 — 별도 우측 상태판을 만들지 않는다. */
+  setStatus(roomLine: string, encounterLine: string): void {
+    this.status.setText(`${roomLine}\n${encounterLine}`);
   }
 
   update(
@@ -91,5 +105,6 @@ export class RoomRadarHud {
   destroy(): void {
     this.graphics.destroy();
     this.title.destroy();
+    this.status.destroy();
   }
 }

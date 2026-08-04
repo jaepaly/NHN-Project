@@ -258,6 +258,7 @@ import { RoomRadarHud } from '../ui/roomRadarHud';
 import { ROOM_RADAR_CONFIG } from '../ui/roomRadarModel';
 import { BossCombatInfoHud } from '../ui/bossCombatInfoHud';
 import { bossCombatInfoLines } from '../ui/bossCombatInfoModel';
+import { BossHealthBarHud } from '../ui/bossHealthBarHud';
 import {
   COMPACT_AFFINITY_HUD as AFFINITY_HUD,
   COMPACT_VITAL_HUD as VITAL_HUD,
@@ -410,23 +411,19 @@ const NO_BOSS_RESISTANCE: BossResistanceProfile = {
  * 우상단 상태 패널 — ROOM·WAVE·BOSS를 한 판에 담는다.
  * 종전엔 ROOM 칩(DOM)·WAVE 패널·미니맵이 **3단**으로 쌓여 있었다 (총괄 지적).
  */
-const RIGHT_PANEL = {
-  y: 18 + ROOM_RADAR_CONFIG.height + 10,
+const ROOM_NOTICE = {
+  /** 현재 방 레이더 아래의 희귀 위험지대 정화 안내 간격 */
+  gap: 8,
   /** 텍스트 위 여백 */
-  padTop: 10,
+  padTop: 7,
   /** 텍스트 아래 여백 */
-  padBottom: 12,
-  /** 패널과 미니맵 사이 간격 */
-  gap: 10,
-  /** 평시(2줄) 텍스트 높이 — 미니맵 초기 위치 계산용 */
-  baseTextHeight: 35,
+  padBottom: 8,
 } as const;
 const ROOM_RADAR_TOP = 18;
 
-/** 상태 텍스트 높이 → 패널 높이. 보스전(저항·관통 줄)에서 늘어난다. */
-function rightPanelHeight(textHeight: number): number {
+function roomNoticeHeight(textHeight: number): number {
   const h = Number.isFinite(textHeight) ? Math.max(0, textHeight) : 0;
-  return Math.round(RIGHT_PANEL.padTop + h + RIGHT_PANEL.padBottom);
+  return h > 0 ? Math.round(ROOM_NOTICE.padTop + h + ROOM_NOTICE.padBottom) : 0;
 }
 
 /** 스탯 행 i(0=HP, 1=마나, 2=보호막)의 y 중심 */
@@ -810,6 +807,8 @@ export class ProtoScene extends Phaser.Scene {
   private runTimerText!: Phaser.GameObjects.Text;
   /** #345 보스전에서만 보스를 따라다니는 전용 전투 정보판. */
   private bossCombatInfoHud!: BossCombatInfoHud;
+  /** #345 보스전에서만 화면 상단 중앙에 고정되는 HP·페이즈 바. */
+  private bossHealthBarHud!: BossHealthBarHud;
   private waveText!: Phaser.GameObjects.Text;
   /** 빌드 칩 — 각인 2 + 정령 2를 우하단 2×2 아이콘 그리드로 (buildChipModel) */
   private buildChipRoot!: Phaser.GameObjects.Container;
@@ -862,6 +861,11 @@ export class ProtoScene extends Phaser.Scene {
   private buildInspectPlate!: Phaser.GameObjects.Graphics;
 
   private buildInspectText!: Phaser.GameObjects.Text;
+
+  /** 연구는 전투 HUD가 아니라 ESC 검사 화면에서만 상세를 보인다. */
+  private researchInspectPlate!: Phaser.GameObjects.Graphics;
+
+  private researchInspectText!: Phaser.GameObjects.Text;
 
   private hoveredChipIndex = -1;
   /** 활성 자기 강화 표시 (종류·세기·남은 시간) */
@@ -2923,18 +2927,24 @@ export class ProtoScene extends Phaser.Scene {
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
 
     this.bossCombatInfoHud = new BossCombatInfoHud(this);
+    this.bossHealthBarHud = new BossHealthBarHud(this);
 
-    this.waveText = this.add.text(width - 34, RIGHT_PANEL.y + 10, '', {
+    // 위험지대 정화처럼 즉시 대응할 문구만 레이더 아래에 잠시 남긴다.
+    // ROOM/WAVE/ENEMIES·연구는 각각 레이더·ESC 검사로 책임을 분리했다.
+    this.waveText = this.add.text(
+      width - 18,
+      ROOM_RADAR_TOP + ROOM_RADAR_CONFIG.height + ROOM_NOTICE.gap + ROOM_NOTICE.padTop,
+      '',
+      {
       fontFamily: 'Consolas, monospace',
-      fontSize: '14px',
+      fontSize: '11px',
       fontStyle: 'bold',
-      color: '#72f1b8',
-      // 블록은 우측 고정(origin 1,0)이되 **안쪽은 왼쪽 정렬** — 우측 정렬은 오른쪽 끝만
-      // 맞고 줄 시작점이 어긋나 눈이 매 줄 시작을 다시 찾는다 (중앙 정렬 지적의 거울상).
+      color: '#ffd166',
       align: 'left',
       lineSpacing: 3,
-      wordWrap: { width: 256, useAdvancedWrap: true },
-    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+      wordWrap: { width: ROOM_RADAR_CONFIG.width - ROOM_RADAR_CONFIG.padding * 2, useAdvancedWrap: true },
+      },
+    ).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
 
     this.roomRadar = new RoomRadarHud(
       this,
@@ -2946,11 +2956,11 @@ export class ProtoScene extends Phaser.Scene {
     // 우하단은 비어 있어 전투 시야를 가리지 않는다. 우상단은 ROOM/WAVE 전용으로 남긴다.
     this.createBuildChips(width, height);
 
-    this.add.text(20, height - 28, 'WASD 이동  ·  ENTER 영창  ·  ESC 일시정지', {
+    this.add.text(width / 2, height - 20, 'WASD 이동  ·  ENTER 영창  ·  ESC 일시정지', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: '#59679d',
-    }).setScrollFactor(0).setDepth(100);
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
 
     this.sequenceProgressGraphics = this.add.graphics()
       .setScrollFactor(0)
@@ -3671,8 +3681,7 @@ export class ProtoScene extends Phaser.Scene {
       this.runMinimap = new MinimapHud(
         this,
         this.scale.width - 306,
-        // 초기 y는 평시 2줄 기준. 이후 drawHudBars가 패널 높이에 맞춰 옮긴다.
-        RIGHT_PANEL.y + rightPanelHeight(RIGHT_PANEL.baseTextHeight) + RIGHT_PANEL.gap,
+        ROOM_RADAR_TOP + ROOM_RADAR_CONFIG.height + ROOM_NOTICE.gap,
       );
     }
     this.runMinimap.update(toMinimapModel(this.mapGraph.snapshot()));
@@ -7457,68 +7466,39 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         .setColor(paletteColorToCss(selfBuffColor(buffs[0].kind)));
     }
     this.drawHudBars();
-    // ROOM은 종전에 별도 DOM 칩(runHud)이었다. 우상단이 3단(칩·패널·미니맵)이 되어
-    // 이 패널 첫 줄로 합쳤다 (총괄 지적) — 같은 정보군을 두 판에 나눌 이유가 없다.
+    // ROOM/WAVE/ENEMIES는 현재 방 레이더의 헤더가 유일한 위치다. 같은 정보를 레이더
+    // 아래 판에도 반복하면 전투 시야만 좁아지고, 사용자는 어느 쪽을 봐야 할지 잃는다.
     const roomLine = runState.roomCountMode === 'dynamic'
       ? `ROOM ${runState.roomIndex}`
       : `ROOM ${runState.roomIndex}/${runState.maxRooms}`;
-    // 위험지대 정화 — **지형이 깔린 방에서만** 한 줄 붙는다 (없으면 null).
-    // HUD 박스가 아니라 여기인 이유: HUD는 높이가 고정이고 친화 바·쿨다운 바가
-    // `HUD.y + HUD.height` 기준이라 행을 늘리면 전부 밀린다(총괄이 제보한 겹침과 같은
-    // 부류). 우측 패널은 이미 방 단위 정보를 담고 내용에 맞춰 늘어난다.
+    // 위험지대 정화는 즉시 회피/정화 판단에 쓰므로 전투 화면에 남긴다. 장기 목표인
+    // 연구는 ESC 검사에서만 보여 주어 현재 방 정보와 한 판에 섞지 않는다.
     const cleanseLine = cleanseReadoutLine(
       this.floorHazardPlayer,
       this.presentFloorHazardKinds(),
     );
-    const research = this.runResearchTracker.snapshot().research;
-    const researchLines = research
-      ? [
-        `RESEARCH · ${this.researchTitle(research)}`,
-        research.completed
-          ? `${researchProgressSlots(research)} ${this.researchPerkSummary(research)} · 통찰 +${research.rewardInsight}`
-          : `${this.researchProgressSummary(research)} · ${this.researchGoal(research)}`,
-        ...(!research.completed && research.progress > 0
-          ? [`효과 · ${this.researchPerkSummary(research)}`]
-          : []),
-      ]
-      : [];
     this.runTimerText.setText(formatRunElapsed(this.runElapsedMs));
-    const withCleanse = (lines: readonly string[]): string => [
-      ...lines,
-      ...researchLines,
-      ...(cleanseLine ? [cleanseLine] : []),
-    ].join('\n');
+    let encounterLine: string;
     if (runState.phase === 'run-over') {
-      this.waveText.setText(withCleanse([roomLine, 'RUN COMPLETE']));
+      encounterLine = 'RUN COMPLETE';
     } else if (runState.phase === 'reward-select') {
-      this.waveText.setText(withCleanse([roomLine, 'ROOM CLEAR']));
+      encounterLine = 'ROOM CLEAR';
     } else if (runState.phase === 'room-transition') {
-      this.waveText.setText(withCleanse([roomLine, `NEXT ROOM ${runState.roomIndex + 1}`]));
+      encounterLine = `NEXT ROOM ${runState.roomIndex + 1}`;
     } else if (this.practiceRun) {
-      this.waveText.setText(withCleanse(['PRACTICE', '고정 표적 · 마나 자동 회복']));
+      encounterLine = 'PRACTICE · 고정 표적';
     } else if (this.isBossEncounter()) {
-      const bossLabel = this.mapGraph.current().kind === 'memory-boss' ? '기억의 주인' : '수문장';
-      // HP·페이즈·저항·패턴은 보스 곁 정보판으로 이동했다. 우측에는 방 상태만 남겨
-      // 같은 수치를 시선이 먼 두 위치에서 중복해서 읽지 않게 한다.
-      this.waveText.setText(withCleanse([roomLine, bossLabel]));
+      encounterLine = `BOSS · ENEMIES ${this.enemies.length}`;
     } else if (this.rewardlessNodeKind()) {
-      // 무전투 방 — 웨이브가 없으니 "NEXT WAVE 0.0s"가 뜨면 안 된다
-      this.waveText.setText(withCleanse([
-        roomLine,
-        this.rewardlessNodeKind() === 'altar' ? '제단' : '보물방',
-      ]));
+      encounterLine = this.rewardlessNodeKind() === 'altar' ? 'ALTAR' : 'TREASURE';
     } else if (this.waveManager.phase === 'waiting') {
-      this.waveText.setText(withCleanse([
-        roomLine,
-        `NEXT WAVE ${this.waveManager.delayRemaining.toFixed(1)}s`,
-      ]));
+      encounterLine = `NEXT WAVE ${this.waveManager.delayRemaining.toFixed(1)}s`;
     } else {
-      this.waveText.setText(withCleanse([
-        roomLine,
-        `WAVE ${this.waveManager.currentWaveNumber}/${this.waveManager.totalWaves}`
-        + `  ·  ENEMIES ${this.enemies.length}`,
-      ]));
+      encounterLine = `WAVE ${this.waveManager.currentWaveNumber}/${this.waveManager.totalWaves}`
+        + ` · ENEMIES ${this.enemies.length}`;
     }
+    this.roomRadar.setStatus(roomLine, encounterLine);
+    this.waveText.setText(cleanseLine ?? '');
   }
 
   /**
@@ -7596,6 +7576,20 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       align: 'left',
       lineSpacing: 4,
       wordWrap: { width: BUILD_CHIP.tooltipWidth - 20, useAdvancedWrap: true },
+    }).setOrigin(0, 1).setScrollFactor(0).setDepth(104).setVisible(false);
+
+    this.researchInspectPlate = this.add.graphics()
+      .setScrollFactor(0)
+      .setDepth(103)
+      .setVisible(false);
+    this.researchInspectText = this.add.text(0, 0, '', {
+      fontFamily: '"Noto Serif KR", Consolas, monospace',
+      fontSize: '12px',
+      fontStyle: 'bold',
+      color: '#72f1b8',
+      align: 'left',
+      lineSpacing: 4,
+      wordWrap: { width: 240, useAdvancedWrap: true },
     }).setOrigin(0, 1).setScrollFactor(0).setDepth(104).setVisible(false);
   }
 
@@ -7931,6 +7925,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (!this.buildInspectOpen) {
       this.buildInspectPlate.setVisible(false);
       this.buildInspectText.setVisible(false);
+      this.researchInspectPlate.setVisible(false);
+      this.researchInspectText.setVisible(false);
       return;
     }
     const { width, height } = this.scale;
@@ -7956,6 +7952,36 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
     this.buildInspectPlate.setVisible(true);
     this.buildInspectText.setPosition(x + 10, y - 9).setVisible(true);
+    this.renderResearchInspect();
+  }
+
+  /** 연구는 장기 목표라 전투 HUD가 아니라 ESC 검사 화면의 좌하단에서만 읽는다. */
+  private renderResearchInspect(): void {
+    const g = this.researchInspectPlate.clear();
+    const research = this.runResearchTracker.snapshot().research;
+    if (!this.buildInspectOpen || !research) {
+      this.researchInspectPlate.setVisible(false);
+      this.researchInspectText.setVisible(false);
+      return;
+    }
+    const lines = [
+      `RESEARCH · ${this.researchTitle(research)}`,
+      research.completed
+        ? `${researchProgressSlots(research)} ${this.researchPerkSummary(research)} · 통찰 +${research.rewardInsight}`
+        : `${this.researchProgressSummary(research)} · ${this.researchGoal(research)}`,
+      ...(!research.completed && research.progress > 0
+        ? [`효과 · ${this.researchPerkSummary(research)}`]
+        : []),
+    ];
+    this.researchInspectText.setText(lines.join('\n'));
+    const { height } = this.scale;
+    const boxW = 260;
+    const boxH = this.researchInspectText.height + 18;
+    const x = 20;
+    const y = height - 24;
+    drawGrimoirePanel(g, x, y - boxH, boxW, boxH, 0.9);
+    this.researchInspectPlate.setVisible(true);
+    this.researchInspectText.setPosition(x + 10, y - 9).setVisible(true);
   }
 
   /**
@@ -8033,19 +8059,16 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.drawAffinityBar(g);
     this.drawFusionGauge(g);
 
-    // 우상단 상태 패널 — 종전엔 ROOM 칩(DOM) 아래에 따로 떠서 우상단이 3단이었다.
-    // ROOM을 이 패널 안으로 넣어(updateStatusText) 2단으로 줄였다 (총괄 지적).
-    // 패널은 **내용에 맞춰 늘어난다** — 보스전에서 저항·관통 줄이 붙으면 3~4줄이 되어
-    // 고정 높이로는 텍스트가 패널을 넘고 미니맵과 겹쳤다. 평시(2줄)엔 그대로 조밀하다.
-    const panelHeight = rightPanelHeight(this.waveText.height);
-    drawGrimoirePanel(g, width - 306, RIGHT_PANEL.y, 288, panelHeight, 0.86);
-    // 첫 줄(ROOM n/m)과 나머지를 가르는 구획 괘선 — 여백만으로 나누면 "칸"이 아니라
-    // "간격"이다. 줄이 늘어난 방(보스전 등)에서만 그린다
-    if (this.waveText.height > RIGHT_PANEL.baseTextHeight * 0.8) {
-      drawSectionRule(g, width - 306, RIGHT_PANEL.y + RIGHT_PANEL.padTop + 18, 288);
+    // ROOM/WAVE/ENEMIES는 현재 방 레이더 안으로 들어갔다. 위험지대 정화만 필요할 때
+    // 레이더 아래 작은 판으로 보여 주고, ESC 전체 지도는 그 아래에 둔다.
+    const noticeHeight = roomNoticeHeight(this.waveText.height);
+    const noticeTop = ROOM_RADAR_TOP + ROOM_RADAR_CONFIG.height + ROOM_NOTICE.gap;
+    if (noticeHeight > 0) {
+      drawGrimoirePanel(g, width - ROOM_RADAR_CONFIG.width - 18, noticeTop,
+        ROOM_RADAR_CONFIG.width, noticeHeight, 0.82);
     }
-    // 미니맵을 패널 아래로 — 높이가 바뀔 때만 옮긴다 (setTop이 동일 y면 no-op)
-    const minimapTop = RIGHT_PANEL.y + panelHeight + RIGHT_PANEL.gap;
+    const minimapTop = noticeTop + noticeHeight + ROOM_NOTICE.gap;
+    this.waveText.setPosition(width - 18, noticeTop + ROOM_NOTICE.padTop);
     this.runMinimap?.setTop(minimapTop);
     this.pauseMapSeedText?.setPosition(width - 162, minimapTop + MINIMAP_CONFIG.height + 7);
   }
@@ -8298,6 +8321,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private updateBossCombatInfo(): void {
     if (!this.isBossEncounter()) {
       this.bossCombatInfoHud.hide();
+      this.bossHealthBarHud.hide();
       return;
     }
     const boss = this.enemies.find(
@@ -8305,6 +8329,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     );
     if (!boss) {
       this.bossCombatInfoHud.hide();
+      this.bossHealthBarHud.hide();
       return;
     }
     const resistance = bossResistanceReadout(
@@ -8316,11 +8341,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       RESISTANCE.masteryImmunityAffinity,
     );
     const label = this.mapGraph.current().kind === 'memory-boss' ? '기억의 주인' : '수문장';
-    this.bossCombatInfoHud.update(boss.x, boss.y + 72, bossCombatInfoLines({
+    this.bossHealthBarHud.update({
       label,
       hp: boss.hp,
       maxHp: boss.maxHp,
       phase: boss.phase,
+    });
+    this.bossCombatInfoHud.update(boss.x, boss.y + 72, bossCombatInfoLines({
       counterStrategy: this.bossResistance.counterStrategy,
       resistance,
     }));

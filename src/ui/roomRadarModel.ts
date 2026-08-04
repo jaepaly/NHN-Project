@@ -18,9 +18,10 @@ export interface RoomRadarPoint {
 
 export const ROOM_RADAR_CONFIG = {
   width: 228,
-  height: 144,
+  height: 166,
   padding: 14,
-  headerHeight: 25,
+  /** 제목 + ROOM/WAVE/ENEMIES 두 줄. 별도 상태판을 만들지 않는다. */
+  headerHeight: 47,
   playerRadius: 4.5,
   enemyRadius: 3.5,
 } as const;
