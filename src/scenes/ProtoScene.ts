@@ -259,6 +259,7 @@ import { ROOM_RADAR_CONFIG } from '../ui/roomRadarModel';
 import { BossCombatInfoHud } from '../ui/bossCombatInfoHud';
 import { bossCombatInfoLines } from '../ui/bossCombatInfoModel';
 import { BossHealthBarHud } from '../ui/bossHealthBarHud';
+import { SpellCastLogHud } from '../ui/spellCastLogHud';
 import {
   COMPACT_AFFINITY_HUD as AFFINITY_HUD,
   COMPACT_VITAL_HUD as VITAL_HUD,
@@ -1020,6 +1021,8 @@ export class ProtoScene extends Phaser.Scene {
   private runMinimap: MinimapHud | null = null;
   /** #345 현재 전투방 위치 레이더 — 전체 경로 지도와 별개로 항상 갱신한다. */
   private roomRadar!: RoomRadarHud;
+  /** 좌하단의 짧은 영창·자동 발동 기록. 피해 틱은 여기 넣지 않는다. */
+  private spellCastLog!: SpellCastLogHud;
   /** 방 중앙 설치물 (보물상자·제단) — 다가가야 보상이 열린다 (#214) */
   private roomFixture: RoomFixture | null = null;
   /**
@@ -1975,6 +1978,7 @@ export class ProtoScene extends Phaser.Scene {
       '#8fa4ff',
       2200,
     );
+    this.recordSpellLog('auto', this.spellLogLabel(spec, '원소 공명'), spec.element_primary);
     this.time.delayedCall(320, () => {
       if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
       const echoSpec: SpellSpec = {
@@ -2252,6 +2256,7 @@ export class ProtoScene extends Phaser.Scene {
     this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
+    this.spellCastLog.clear();
     this.engraveManager.reset();
     this.spiritManager.reset();
     this.clearSpiritViews();
@@ -2288,6 +2293,7 @@ export class ProtoScene extends Phaser.Scene {
     this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
+    this.spellCastLog.clear();
     this.engraveManager.reset();
     this.spiritManager.reset();
     this.clearSpiritViews();
@@ -2952,6 +2958,7 @@ export class ProtoScene extends Phaser.Scene {
       width - ROOM_RADAR_CONFIG.width - 18,
       ROOM_RADAR_TOP,
     );
+    this.spellCastLog = new SpellCastLogHud(this);
 
     // 빌드 패널 — "지금 내가 뭘 들고 있나"를 상시 노출.
     // 우하단은 비어 있어 전투 시야를 가리지 않는다. 우상단은 ROOM/WAVE 전용으로 남긴다.
@@ -5753,6 +5760,17 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
     this.markOnboarded();
     this.clearIncantGuide();
+    const sequenceElement = sequenceElements[0] ?? 'light';
+    const sequenceForm = formSpecs[0]?.form ?? 'bolt';
+    this.recordSpellLog(
+      'manual',
+      `${ultimate ? '필살 · ' : ''}${this.spellLogLabel({
+        name: plan.name,
+        element_primary: sequenceElement,
+        form: sequenceForm,
+      })} · 연계 ${plan.sequences.length}`,
+      sequenceElement,
+    );
     this.beginSequenceExecutionUx(plan, resonanceNames);
     if (sequenceHistoryEntry.power < sequenceHistoryEntry.basePower) {
       const penaltyPct = Math.round(
@@ -5976,6 +5994,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.audio.playCast(effectiveSpec.element_primary);
       this.applySpellPalette(effectiveSpec);
       this.announceSpell(effectiveSpec);
+      this.recordSpellLog(
+        'manual',
+        this.spellLogLabel(effectiveSpec, fusedSpec ? '필살' : undefined),
+        effectiveSpec.element_primary,
+      );
       const fusionOptions = fusedSpec ? { fusionRelease: true } : undefined;
       const researchSpatialScale = fusedSpec
         ? 1
@@ -6246,6 +6269,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ? [target]
         : [];
     const count = Math.min(chorusProjectileCount(stage), targets.length);
+    if (count > 0) {
+      this.recordSpellLog(
+        'chorus',
+        `공명 파편 ${count}발 · ${ELEMENT_LABELS[spec.element_primary]}`,
+        spec.element_primary,
+      );
+    }
     for (let i = 0; i < count; i += 1) {
       const element = ELEMENTS[(ELEMENTS.indexOf(spec.element_primary) + i + 1) % ELEMENTS.length];
       const enemy = targets[i % targets.length];
@@ -6330,6 +6360,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       cloneLeadMs, cloneAlpha, cloneLifetimeMs,
     } = ALTAR_OFFER_CONFIG.echo;
     const count = 1 + (Math.random() < extraChance ? 1 : 0);
+    this.recordSpellLog(
+      'auto',
+      this.spellLogLabel(spec, count > 1 ? `메아리 ${count}중` : '메아리'),
+      spec.element_primary,
+    );
     for (let i = 1; i <= count; i += 1) {
       // 겹이 깊어질수록 옅어진다 — 원본 1.0 > 첫 분신 > 둘째 분신.
       // 같은 밝기로 세 발이 나가면 "왜 세 번인지" 읽히지 않는다.
@@ -6862,6 +6897,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         // 있었어도 마지막 적이 그 사이에 죽으면 남은 발이 허공에 터진다 —
         // 그래서 **클로저 안에서** 다시 본다.
         if (!this.hasLivingEnemy()) return;
+        if (request.delaySeconds === 0) {
+          this.recordSpellLog('auto', this.spellLogLabel(request.spell, '각인'), request.spell.element_primary);
+        }
         // 진화 각인의 3발은 **서로 다른 적**을 문다. Lv3는 한 놈에게 2발을 박아
         // 잡몹이 먼저 죽으면 나머지가 오버킬로 낭비됐다. 총피해는 그대로고
         // 분배만 달라진다 — 적이 하나면 자동으로 기존 동작으로 수렴한다.
@@ -6905,6 +6943,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         // 정령이 번쩍인다 — 각인이 허공에 터지던 것과 같은 종류의 문제다(총괄 제보).
         // 치유·수호 정령은 적과 무관하게 일하므로 아래에서 그대로 빛난다.
         if (!this.nearestEnemy()) continue;
+        this.recordSpellLog('auto', this.spellLogLabel(request.spell, '정령'), request.spell.element_primary);
         view?.pulse(this);
         const origin = view
           ? new Phaser.Math.Vector2(view.x, view.y)
@@ -7481,6 +7520,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         .setColor(paletteColorToCss(selfBuffColor(buffs[0].kind)));
     }
     this.drawHudBars();
+    this.spellCastLog.update(this.time.now);
     // ROOM/WAVE/ENEMIES는 현재 방 레이더의 헤더가 유일한 위치다. 같은 정보를 레이더
     // 아래 판에도 반복하면 전투 시야만 좁아지고, 사용자는 어느 쪽을 봐야 할지 잃는다.
     const roomLine = runState.roomCountMode === 'dynamic'
@@ -7707,6 +7747,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   /** 일시정지 메뉴 갱신 — 한 장짜리(재개·설정·나가기). */
   private renderPauseMenu(): void {
     const visible = this.buildInspectOpen;
+    this.spellCastLog.setVisible(!visible);
     this.pauseDim.setVisible(visible);
     this.pauseMenuPlate.setVisible(visible);
     this.pauseMenuTitle.setVisible(visible);
@@ -10163,6 +10204,28 @@ if (applied) this.playPlayerHit('strong');
   }
 
   /** 주문명 각인 연출 — "내 문장이 게임이 됐다"는 순간 (GDD §3.1) */
+  private spellLogLabel(
+    spec: Pick<SpellSpec, 'name' | 'element_primary' | 'form'>,
+    source?: string,
+  ): string {
+    const name = spec.name.length > 16 ? `${spec.name.slice(0, 15)}…` : spec.name;
+    const prefix = source ? `${source} · ` : '';
+    return `${prefix}『${name}』 · ${ELEMENT_LABELS[spec.element_primary]} ${FORM_LABELS[spec.form]}`;
+  }
+
+  private recordSpellLog(
+    kind: 'manual' | 'auto' | 'chorus',
+    label: string,
+    element: SpellElement,
+  ): void {
+    this.spellCastLog.push({
+      kind,
+      label,
+      color: paletteColorToCss(ELEMENT_PALETTES[element].accent),
+      now: this.time.now,
+    });
+  }
+
   private announceSpell(spec: SpellSpec): void {
     const { width, height } = this.scale;
     const pal = ELEMENT_PALETTES[spec.element_primary];
