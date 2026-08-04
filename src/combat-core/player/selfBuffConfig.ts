@@ -24,10 +24,9 @@ export interface TimedBuffOutcome {
 export type SelfBuffOutcome = TimedBuffOutcome;
 
 export const SELF_BUFF_CONFIG = {
-  haste: { perPower: 0.009, min: 1.15, max: 2.0, baseSeconds: 3, secPerPower: 0.05, color: 0x63e6be },
-  empower: { perPower: 0.007, min: 1.12, max: 1.8, baseSeconds: 3, secPerPower: 0.045, color: 0xffa62b },
-  // ward: 받는 피해 배율 = 1 - power/100 (위력100 → 0 = 무적). 강력하므로 지속은 짧게.
-  ward: { reducePerPower: 0.01, floor: 0, baseSeconds: 2, secPerPower: 0.03, color: 0x8fa4ff },
+  haste: { perPower: 0.005, min: 1.1, max: 1.4, baseSeconds: 5.5, secPerPower: 0.05, color: 0x63e6be },
+  empower: { perPower: 0.004, min: 1.08, max: 1.35, baseSeconds: 7.5, secPerPower: 0.05, color: 0xffa62b },
+  ward: { reducePerPower: 0.005, floor: 0.6, baseSeconds: 5.5, secPerPower: 0.05, color: 0x8fa4ff },
 } as const;
 
 const WARD_RE = /무적|불멸|무결|철벽|가호|방어막|갑옷|불사|invincible|immortal|impervious|guard|ward/i;

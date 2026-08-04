@@ -8,6 +8,13 @@ import {
 } from '../src/combat-core/waves/encounterPresets';
 import { generateRunMap } from '../src/run/mapGenerator';
 import { MAP_GRAPH_BUILD_PRESET, MAP_GRAPH_PRESET_01 } from '../src/run/mapGraphPreset';
+import {
+  BASIC_ATTACK_CONFIG,
+  CHASER_CONFIG,
+  SHIELD_SENTINEL_CONFIG,
+  SHOOTER_CONFIG,
+  SPLITTER_CONFIG,
+} from '../src/combat-core/combat/combatConfig';
 
 assert.doesNotThrow(validateEncounterPresets);
 assert.deepEqual(Object.values(PRESET_IDS_BY_TIER).flat(), Object.keys(ENCOUNTER_PRESETS));
@@ -26,8 +33,8 @@ for (const definition of [MAP_GRAPH_PRESET_01, MAP_GRAPH_BUILD_PRESET]) {
 
 const EXPECTED_COUNTS: Readonly<Record<string, readonly [number, number]>> = {
   't1-a': [9, 9], 't1-b': [9, 9], 't1-c': [9, 9],
-  't2-a': [10, 10], 't2-b': [8, 10], 't2-c': [10, 10],
-  't3-a': [11, 11], 't3-b': [9, 11], 't3-c': [10, 12],
+  't2-a': [10, 12], 't2-b': [10, 12], 't2-c': [10, 12],
+  't3-a': [13, 13], 't3-b': [11, 13], 't3-c': [11, 15],
 };
 
 for (const preset of Object.values(ENCOUNTER_PRESETS)) {
@@ -44,6 +51,46 @@ for (const preset of Object.values(ENCOUNTER_PRESETS)) {
     assert.ok(first.filter((modifier) => modifier === 'guard').length <= 1, `${preset.id}: guard cap`);
   });
 }
+
+const splitterDefense = SPLITTER_CONFIG.large.maxHp
+  + SPLITTER_CONFIG.small.maxHp * SPLITTER_CONFIG.splitCount;
+const sentinelDefense = SHIELD_SENTINEL_CONFIG.maxHp
+  + SHIELD_SENTINEL_CONFIG.shieldHitCapacity * BASIC_ATTACK_CONFIG.damage;
+const tierDefense = ([1, 2, 3] as const).map((tier) => {
+  const presets = PRESET_IDS_BY_TIER[tier].map((id) => ENCOUNTER_PRESETS[id]);
+  const total = presets.reduce((presetSum, preset) => presetSum + preset.waves.reduce(
+    (waveSum, wave, waveIndex) => waveSum
+      + wave.chaserCount * CHASER_CONFIG.maxHp
+      + wave.shooterCount * SHOOTER_CONFIG.maxHp
+      + wave.splitterCount * splitterDefense
+      + (wave.shieldSentinelCount ?? 0) * sentinelDefense
+      + preset.elitePlan[waveIndex].budget.guard * SHOOTER_CONFIG.maxHp * 0.4,
+    0,
+  ), 0);
+  return total / presets.length;
+});
+assert.ok(Math.abs(tierDefense[1] / tierDefense[0] - 1.25) < 0.02, 'T2 defense tracks the 1.25 target');
+assert.ok(Math.abs(tierDefense[2] / tierDefense[0] - 1.50) < 0.02, 'T3 defense tracks the 1.50 target');
+
+const shooterPressure = ([1, 2, 3] as const).map((tier) => {
+  const presets = PRESET_IDS_BY_TIER[tier].map((id) => ENCOUNTER_PRESETS[id]);
+  return presets.reduce((sum, preset) => sum + preset.waves.reduce(
+    (waveSum, wave) => waveSum + wave.shooterCount,
+    0,
+  ), 0) / presets.length;
+});
+assert.ok(Math.abs(shooterPressure[1] / shooterPressure[0] - 4 / 3) < 0.001, 'T2 shooter pressure tracks the 1.33 target');
+assert.ok(Math.abs(shooterPressure[2] / shooterPressure[0] - 5 / 3) < 0.001, 'T3 shooter pressure tracks the 1.67 target');
+
+const unstableBudgets = ([1, 2, 3] as const).map((tier) => PRESET_IDS_BY_TIER[tier]
+  .map((id) => ENCOUNTER_PRESETS[id])
+  .reduce((sum, preset) => sum + preset.elitePlan.reduce(
+    (planSum, wavePlan) => planSum + wavePlan.budget.unstable,
+    0,
+  ), 0) / PRESET_IDS_BY_TIER[tier].length);
+assert.ok(Math.abs(unstableBudgets[0] - 7 / 3) < 0.001, 'T1 unstable budget stays at 2.33');
+assert.ok(Math.abs(unstableBudgets[1] - 11 / 3) < 0.001, 'T2 unstable budget stays at 3.67');
+assert.ok(Math.abs(unstableBudgets[2] - 11 / 3) < 0.001, 'T3 unstable budget stays at 3.67');
 
 for (let seed = 1; seed <= 200; seed += 1) {
   const generated = generateRunMap(seed)!;

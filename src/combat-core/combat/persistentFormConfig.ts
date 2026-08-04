@@ -64,7 +64,7 @@ export const ORBIT_CONFIG = {
   } satisfies Record<SpellSpeed, number>,
   durationSeconds: 4,
   contactRadius: 16,
-  damageMultiplier: 0.35,
+  damageMultiplier: 0.45,
   repeatHitCooldownSeconds: 0.8,
 } as const;
 

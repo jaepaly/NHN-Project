@@ -2,7 +2,7 @@ export const CONTROL_CONFIG = {
   slowMovementMultiplier: 0.5,
   minimumDurationSeconds: 2,
   maximumDurationSeconds: 6,
-  durationSecondsPerPower: 0.04,
+  durationSecondsPerPower: 0.03,
   indicatorRadius: 28,
   indicatorColor: 0x8fd6ff,
 } as const;

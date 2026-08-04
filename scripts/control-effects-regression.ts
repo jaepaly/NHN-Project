@@ -14,15 +14,15 @@ function enemy(alive = true): CombatEnemy {
 // 1) power 기반 지속시간은 2~6초 범위로 고정된다.
 assert.equal(controlDurationFromPower(Number.NaN), 2);
 assert.equal(controlDurationFromPower(-10), 2);
-assert.equal(controlDurationFromPower(50), 4);
-assert.equal(controlDurationFromPower(100), 6);
+assert.equal(controlDurationFromPower(50), 3.5);
+assert.equal(controlDurationFromPower(100), 5);
 assert.equal(controlDurationFromPower(1000), 6);
 
 // 2) 둔화 중에는 이동 배율만 0.5가 된다.
 const state = new EnemyControlState();
 const target = enemy();
 assert.equal(state.movementMultiplierFor(target), 1);
-assert.equal(state.applySlow(target, 50), 4);
+assert.equal(state.applySlow(target, 50), 3.5);
 assert.equal(
   state.movementMultiplierFor(target),
   CONTROL_CONFIG.slowMovementMultiplier,
@@ -30,17 +30,17 @@ assert.equal(
 
 // 3) 시간은 실제 delta로 감소하고 만료 즉시 정상 배율로 돌아온다.
 assert.deepEqual(state.update(1.5), []);
-assert.equal(state.remainingFor(target), 2.5);
-assert.deepEqual(state.update(2.5), [target]);
+assert.equal(state.remainingFor(target), 2);
+assert.deepEqual(state.update(2), [target]);
 assert.equal(state.remainingFor(target), 0);
 assert.equal(state.movementMultiplierFor(target), 1);
 
 // 4) 재적중은 배율을 중첩하지 않고 더 긴 남은 시간만 유지한다.
 state.applySlow(target, 100);
 state.update(1);
-assert.equal(state.remainingFor(target), 5);
-assert.equal(state.applySlow(target, 0), 5);
-assert.equal(state.applySlow(target, 100), 6);
+assert.equal(state.remainingFor(target), 4);
+assert.equal(state.applySlow(target, 0), 4);
+assert.equal(state.applySlow(target, 100), 5);
 assert.equal(state.movementMultiplierFor(target), 0.5);
 
 // 5) 장판형 control은 power와 무관하게 짧은 override 수명을 사용한다.
@@ -84,12 +84,12 @@ assert.equal(cageState.movementMultiplierFor(boss), 0);
 assert.equal(cageState.rootRemainingFor(boss), 2);
 
 // 8) 감금과 둔화는 독립 수명이며, 감금 종료 뒤 남은 둔화로 복구된다.
-cageState.applySlow(boss, 50); // 4초 둔화
+cageState.applySlow(boss, 50); // 3.5초 둔화
 cageState.update(2);
 assert.equal(cageState.rootRemainingFor(boss), 0);
-assert.equal(cageState.remainingFor(boss), 2);
+assert.equal(cageState.remainingFor(boss), 1.5);
 assert.equal(cageState.movementMultiplierFor(boss), CONTROL_CONFIG.slowMovementMultiplier);
-cageState.update(2);
+cageState.update(1.5);
 assert.equal(cageState.movementMultiplierFor(boss), 1);
 
 // 9) cage 재적용은 중첩하지 않고 더 긴 남은 시간만 유지한다.

@@ -17,13 +17,13 @@ const dash = resolveSelfBuff('lightning', '번개처럼 돌진', 50);
 assert.equal(dash.kind, 'buff');
 assert.equal(dash.buff, 'haste', '돌진 표현은 이동 대신 가속으로 해석');
 
-// 4) 무적 — 고위력 ward는 받는피해 0
-const invuln = resolveSelfBuff('earth', '철벽 방어', 100);
-assert.equal(invuln.kind, 'buff');
-assert.equal((invuln as { multiplier: number }).multiplier, 0, '위력100 ward = 무적(0배)');
-assert.equal((invuln as { label: string }).label, '무적');
+// 4) ward는 무적이 되지 않고 최대 40% 감소로 제한한다.
+const cappedWard = resolveSelfBuff('earth', '철벽 방어', 100);
+assert.equal(cappedWard.kind, 'buff');
+assert.equal(cappedWard.multiplier, 0.6, '위력100 ward = 피해 40% 감소');
 const partial = resolveSelfBuff('earth', '방어', 50);
-assert.equal((partial as { multiplier: number }).multiplier, 0.5, '위력50 ward = 피해 절반');
+assert.equal(partial.multiplier, 0.75, '위력50 ward = 피해 25% 감소');
+assert.equal(partial.seconds, 8, '위력50 ward = 게임 시간 8초');
 
 // 5) 세기·지속이 위력에 비례 (haste)
 const weak = resolveSelfBuff('wind', '바람', 20) as { multiplier: number; seconds: number };
@@ -42,17 +42,16 @@ assert.equal(p.moveSpeedMultiplier, 1.5, '만료 전 유지');
 p.update(3.5);
 assert.equal(p.moveSpeedMultiplier, 1, '만료 후 복귀');
 
-// 7) ward가 받는 피해를 감쇠 (무적 = 0 피해)
+// 7) ward가 받는 피해를 감쇠
 const q = new PlayerCombatState();
-q.applyTimedBuff('ward', 0, 2); // 무적
+q.applyTimedBuff('ward', 0.6, 2);
 const before = q.hp;
 q.takeDamage(40);
-assert.equal(q.hp, before, '무적 중 피해 0');
-q.applyTimedBuff('ward', 0.5, 2); // 절반 (ward는 더 강한=낮은 쪽 유지, 0<0.5라 0 유지)
-q.update(3); // 무적 만료
+assert.equal(q.hp, before - 24, 'ward 0.6배');
+q.update(3);
 q.applyTimedBuff('ward', 0.5, 2);
 q.takeDamage(40);
-assert.equal(q.hp, before - 20, 'ward 0.5배 = 피해 절반');
+assert.equal(q.hp, before - 44, '새 ward 0.5배 = 피해 절반');
 
 // 8) empower = 주는피해 배율, reset이 버프 청소
 const r = new PlayerCombatState();
@@ -62,4 +61,4 @@ r.reset();
 assert.equal(r.damageOutMultiplier, 1, 'reset이 버프 청소');
 assert.equal(r.moveSpeedMultiplier, 1);
 
-console.log('SelfBuff regression: 원소/이름 매핑·돌진→가속·무적·비례·타이머·ward감쇠·reset 8군 통과');
+console.log('SelfBuff regression: 원소/이름 매핑·dash 제거·ward 상한·비례·타이머·감쇠·reset 8군 통과');

@@ -6,6 +6,7 @@ import {
 } from './grimoireOrnament';
 import type { MetaRunSummary } from '../meta/metaRunSummary';
 import type { SpellElement, SpellForm } from '../spell/types';
+import type { MapNodeKind } from '../run/mapGraphContract';
 import {
   discoverySignatureLabel,
   META_UNLOCK_LABELS,
@@ -78,6 +79,14 @@ ${ornamentCss(WRAP_ID)}
   padding: 4px 7px; border: 1px solid rgba(129, 151, 255, 0.35); border-radius: 999px;
   font-size: 11px; color: ${UI_COLOR.textSoft}; background: rgba(28, 36, 76, 0.58);
 }
+#${WRAP_ID} .debug-run-table { margin-top: 14px; text-align: left; }
+#${WRAP_ID} .debug-run-table table { width: 100%; border-collapse: collapse; margin-top: 7px; }
+#${WRAP_ID} .debug-run-table th, #${WRAP_ID} .debug-run-table td {
+  padding: 5px 7px; border-bottom: 1px solid rgba(129, 151, 255, 0.18);
+  font-size: 11px; color: ${UI_COLOR.textSoft};
+}
+#${WRAP_ID} .debug-run-table th { color: ${UI_COLOR.accent}; font-weight: 600; }
+#${WRAP_ID} .debug-run-table td:last-child, #${WRAP_ID} .debug-run-table th:last-child { text-align: right; }
 #${WRAP_ID} .summary-hint { margin-top: 20px; font-size: 13px; color: ${UI_COLOR.textMuted}; }
 #${WRAP_ID} .summary-hint b { color: ${UI_COLOR.text}; }
 @media (max-width: 620px) {
@@ -97,7 +106,23 @@ export interface RunSummaryData {
   dominantForm: SpellForm | null;
   recentSpellNames: string[];
   meta: MetaRunSummary;
+  debug?: {
+    mapSeed: number | null;
+    rooms: readonly {
+      roomIndex: number;
+      nodeId: string;
+      stage: number;
+      kind: MapNodeKind;
+      elapsedMs: number;
+    }[];
+  };
 }
+
+const DEBUG_ROOM_KIND_LABEL: Record<MapNodeKind, string> = {
+  start: '시작방', combat: '일반방', elite: '엘리트방',
+  'stage-boss': '스테이지 보스', 'memory-boss': '기억 보스',
+  treasure: '보물방', altar: '제단방', trap: '함정방',
+};
 
 function escapeHtml(value: string): string {
   return value
@@ -160,6 +185,20 @@ export function showRunSummaryOverlay(data: RunSummaryData): Promise<void> {
   const researchResult = data.meta.research
     ? `<div class="meta-sub">연구 · ${escapeHtml(researchContractSummaryLabel(data.meta.research))}</div>`
     : '';
+  const debugTable = data.debug
+    ? `<section class="summary-meta-card debug-run-table">
+        <div class="meta-title">DEV · ROOM TIMINGS</div>
+        <div class="meta-sub">맵 시드 · ${data.debug.mapSeed === null ? '고정 프리셋' : data.debug.mapSeed}</div>
+        <table>
+          <thead><tr><th>ROOM</th><th>STAGE</th><th>종류</th><th>NODE</th><th>클리어</th></tr></thead>
+          <tbody>${data.debug.rooms.map((room) => `<tr>
+            <td>${room.roomIndex}</td><td>${room.stage}</td>
+            <td>${DEBUG_ROOM_KIND_LABEL[room.kind]}</td><td>${escapeHtml(room.nodeId)}</td>
+            <td>${formatRunElapsed(room.elapsedMs)}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </section>`
+    : '';
   wrap.innerHTML = `
     <div class="ui-panel summary-panel">
       ${cornerFlourish().replace('orn-corner', 'orn-corner tl')}
@@ -192,6 +231,7 @@ export function showRunSummaryOverlay(data: RunSummaryData): Promise<void> {
           <div class="meta-sub">다음 해금 · ${escapeHtml(nextUnlock)}</div>
         </section>
       </div>
+      ${debugTable}
       <div class="summary-hint"><b>Enter</b> — 새로운 런 (보스는 이번 런을 기억한다…)</div>
     </div>`;
 
