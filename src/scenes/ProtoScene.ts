@@ -1797,6 +1797,18 @@ export class ProtoScene extends Phaser.Scene {
           description: '정령 계약·융합 가속\n정령 2체 계약 · 1회 융합',
       };
     });
+    for (const option of options) {
+      if (option.id === 'research-elemental-focus') {
+        option.title = `${option.element ? ELEMENT_LABELS[option.element] : '원소'} 원소 심화`;
+        option.description = '연구 대상 영창의 적중 잔광 강화 · 형태 3종 발견 시 완료 · 완료 후 3회마다 공명 메아리';
+      } else if (option.id === 'research-spirit-resonance') {
+        option.title = '정령 공명';
+        option.description = '정령 공격마다 공명 링 · 정령 2체 계약과 1회 융합 · 완료 시 합동 폭발';
+      } else if (option.id === 'research-variation-study') {
+        option.title = '만물 변주';
+        option.description = '새 속성·형태 발견 시 무지개 잔광 · 발견한 다양성에 따라 피해 강화';
+      }
+    }
 
     this.researchSelecting = true;
     try {
@@ -1805,6 +1817,16 @@ export class ProtoScene extends Phaser.Scene {
         title: '이번 런의 연구 주제를 고른다',
         contextLines: ['완료한 연구와 통찰은 승패와 관계없이 런 결산에 기록된다'],
         detailPanelFor: (option) => {
+          if (option.id === 'research-elemental-focus') {
+            const element = option.element ? ELEMENT_LABELS[option.element] : '원소';
+            return `시작 ${element} 친화도 +15%\n진행 중 적중 잔광 강화\n완료 시 3회마다 공명 메아리`;
+          }
+          if (option.id === 'research-spirit-resonance') {
+            return '정령 공격마다 공명 링\n정령 2체 계약 + 1회 융합\n완료 시 다중 속성 합동 폭발';
+          }
+          if (option.id === 'research-variation-study') {
+            return '새 속성·형태 발견 시 무지개 잔광\n발견한 다양성에 따라 피해 강화\n완료 시 강한 무지개 파동';
+          }
           if (option.id === 'research-elemental-focus') {
             const element = option.element ? ELEMENT_LABELS[option.element] : '대상 원소';
             return `시작 · ${element} 친화 +15%\n목표 · 서로 다른 ${element} 형태 3종 시전\n단계 · 새 형태마다 친화 +${Math.round(ELEMENTAL_FOCUS_MILESTONE_AFFINITY * 100)}%, 주문 범위 +10%\n완료 · ${ELEMENTAL_FOCUS_ECHO_EVERY_CASTS}회마다 위력 ${Math.round(ELEMENTAL_FOCUS_ECHO_POWER_SCALE * 100)}% 공명 재시전`;
