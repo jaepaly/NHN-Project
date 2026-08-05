@@ -11,12 +11,14 @@
 
 ## [R1] 3차 효과음 4종 후처리·게임 통합 (2026-08-05)
 
+- PR 준비 후 원격 최신 `main`의 후속 42개 커밋을 병합했다. `docs/AI_USAGE_LOG.md`는 양쪽 최신 기록을 모두 보존하고, `ProtoScene.ts`는 main의 HUD·연구·정령 변경을 기준으로 기존 사운드 재생 지점을 재이식했다.
 - 확정 후보 `boss_gravity_b.wav`, `ultimate-r10.wav`, `reward-select_r4_c.wav`, `ui-cursor-move_r4_c.wav`를 프로젝트 오디오 규칙으로 후처리했다. -50dBFS 활성 구간 탐지, 10ms 선행·75ms 후행 여유, 20ms 페이드아웃을 적용하고 중력·필살·보상은 -7dBFS, 커서는 -10dBFS로 피크 정규화한 뒤 stereo 48kHz·128kbps OGG로 변환했다.
 - 최종 길이는 `boss-gravity-pull` 1.915초, `ultimate-incant-enter` 1.930초, `reward-select` 1.195초, `ui-cursor-move` 0.285초다. 신규 OGG 2종을 추가하고 기존 보상·커서 OGG 2종을 교체했다.
 - `GameAudio`에 신규 키와 정책을 등록했다. 중력 인력음은 0.6초 예고가 끝나 실제 흡인이 시작되는 경계에서 한 번 재생하며 배율 0.9·재호출 제한 1000ms를 적용한다. 필살영창 입력창은 일반 `incant-enter` 대신 전용 `ultimate-incant-enter`를 재생한다.
 - 후처리 스크립트에 신규 두 파일의 -7dBFS 목표를 명시하고 오디오 회귀에 신규 에셋 존재, 중력 시작 경계, 일반/필살 진입음 분기를 추가했다.
 - 임시 OGG 변환 도구 설치가 `node_modules`를 변경해 최초 전체 회귀가 esbuild 실행 실패로 중단됐다. 저장소 의존 파일은 바뀌지 않았으며, 병렬 개발 서버 4개를 종료하지 않기 위해 별도 임시 디렉터리에서 `package-lock.json` 기준 의존성을 복원해 현재 모듈에 되채운 뒤 임시 디렉터리를 제거했다.
 - 오디오 통합 회귀, 보스 비전 회귀 6군, 전체 회귀 96종, `tsc --noEmit`, Vite production build가 통과했다. 이후 사용자 인게임 플레이테스트에서도 추가 조정 사항 없이 통과해 3차 사운드 작업을 PR 준비 완료 상태로 확정했다.
+- 최신 main 병합 후 오디오 통합 회귀, 확장된 전체 회귀 104종, `tsc --noEmit`, Vite production build를 다시 통과했다. PR #354의 제목과 설명은 한글로 갱신한다.
 
 ---
 

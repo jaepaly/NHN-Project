@@ -1,5 +1,7 @@
 import type { RewardOption } from '../run/runContract';
-import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL, UI_SEMANTIC } from './uiTokens';
+import {
+  UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL, UI_RAINBOW, UI_SEMANTIC, rainbowStops,
+} from './uiTokens';
 import {
   cornerFlourish, deckleMask, divider, ornamentCss, titleSigil, waxSeal,
 } from './grimoireOrnament';
@@ -133,6 +135,38 @@ ${ornamentCss(WRAP_ID)}
   box-shadow: ${UI_MATERIAL.paperShadowLift},
               inset 0 0 0 1px rgba(216, 187, 114, 0.3);
 }
+#${WRAP_ID} .reward-card--rainbow {
+  border-color: transparent;
+  background:
+    ${UI_MATERIAL.grain} padding-box,
+    linear-gradient(163deg, rgba(30, 22, 34, 0.97), rgba(16, 12, 20, 0.95)) padding-box,
+    linear-gradient(120deg, ${rainbowStops()}) border-box;
+  border: 2px solid transparent;
+  background-size: 100% 100%, 300% 100%;
+  animation: r3-rainbow-shimmer 3.2s linear infinite;
+}
+#${WRAP_ID} .reward-card--rainbow .card-glyph {
+  background: conic-gradient(${rainbowStops()});
+  filter: drop-shadow(0 0 14px #8fcfff);
+}
+#${WRAP_ID} .reward-card--spirit-fusion {
+  border-color: transparent;
+  background:
+    ${UI_MATERIAL.grain} padding-box,
+    linear-gradient(163deg, rgba(30, 22, 34, 0.97), rgba(16, 12, 20, 0.95)) padding-box,
+    linear-gradient(120deg, var(--spirit-spectrum)) border-box;
+  border: 2px solid transparent;
+  background-size: 100% 100%, 300% 100%;
+  animation: r3-rainbow-shimmer 3.2s linear infinite;
+}
+#${WRAP_ID} .reward-card--spirit-fusion .card-glyph {
+  background: conic-gradient(var(--spirit-spectrum));
+  filter: drop-shadow(0 0 14px var(--card-glow));
+}
+@keyframes r3-rainbow-shimmer {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 0 0, 300% 0; }
+}
 /* 봉랍 — 알약 배지(border-radius: 999px)를 대체한다. 알약은 웹 UI의 문법이고,
    마도서에서 "이것이 특별하다"를 말하는 물건은 밀랍 도장이다.
    카드 위에 **눌러 찍힌** 것이라 살짝 삐져나간다 — 안에 얌전히 들어가면 그냥 배지다 */
@@ -215,6 +249,8 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   'mana-surge': 'FLOW',
   'ward-start': 'WARD',
   'spirit-haste': 'TEMPO',
+  'spirit-recovery': 'RECOVERY',
+  'spirit-guard': 'GUARD',
   engrave: 'ENGRAVE',
   spirit: 'SPIRIT',
   evolve: 'EVOLVE',
@@ -234,7 +270,7 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
 
 function altarGlyph(kind: RewardOption['kind']): string | null {
   if (kind === 'chorus-awaken') {
-    return `<span aria-label="무지개 합주 룬" style="font-size:31px;background:linear-gradient(135deg,#ff6f8f 0%,#ffd166 22%,#8cf0b5 43%,#72cfff 63%,#9c7dff 82%,#ed8cff 100%);-webkit-background-clip:text;background-clip:text;color:transparent">✦</span>`;
+    return `<span aria-label="무지개 합주 룬" style="font-size:31px;background:linear-gradient(135deg,${UI_RAINBOW.map((color, index) => `${color} ${[0, 22, 43, 63, 82, 100][index]}%`).join(',')});-webkit-background-clip:text;background-clip:text;color:transparent">✦</span>`;
   }
   const icons: Partial<Record<RewardOption['kind'], string>> = {
     'all-affinity': '✦', awaken: '☽', 'altar-high': '✥', echo: '♙',
@@ -274,6 +310,7 @@ export function isRareReward(option: RewardOption): boolean {
 }
 
 function cardColors(option: RewardOption): { core: string; glow: string } {
+  if (option.id.endsWith('-chorus')) return { core: '#ed8cff', glow: '#72cfff' };
   if (option.element) {
     const pal = ELEMENT_PALETTES[option.element];
     return { core: paletteColorToCss(pal.core), glow: paletteColorToCss(pal.glow) };
@@ -414,6 +451,17 @@ export function showRewardCards(
       btn.type = 'button';
       const rare = isRareReward(option);
       btn.className = rare ? 'reward-card reward-card--rare' : 'reward-card';
+      if (option.id.endsWith('-chorus')) btn.classList.add('reward-card--rainbow');
+      const fusionElements = option.evolve?.target === 'spirit-fuse'
+        ? option.evolve.elements
+        : [];
+      if (fusionElements.length > 1) {
+        btn.classList.add('reward-card--spirit-fusion');
+        btn.style.setProperty(
+          '--spirit-spectrum',
+          fusionElements.map((element) => paletteColorToCss(ELEMENT_PALETTES[element].core)).join(', '),
+        );
+      }
       const disabled = isDisabled(i);
       btn.disabled = disabled;
       btn.style.setProperty('--card-core', core);

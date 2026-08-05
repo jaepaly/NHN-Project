@@ -104,6 +104,10 @@ export class SpiritManager {
   /** 신속 정령 보상 — 주기·발당 위력에 함께 곱한다(예산 중립). 1=기본, 0.5=2배 속사 하한 */
   private hasteMultiplier = 1;
   private fusionResonance = false;
+  private recoveryEnabled = false;
+  private recoveryRemainingSeconds: number = SPIRIT_CONFIG.utilityIntervals[0];
+  private guardEnabled = false;
+  private guardRemainingSeconds: number = SPIRIT_CONFIG.utilityIntervals[0];
 
   injectReward(
     options: readonly RewardOption[],
@@ -127,9 +131,16 @@ export class SpiritManager {
   applyReward(option: RewardOption): SpiritSnapshot | null {
     if (option.kind !== 'spirit' || !option.spirit) return null;
     const definition = DEFINITIONS.find((entry) => entry.spiritId === option.spirit?.spiritId);
-    if (!definition || definition.role !== option.spirit.role) return null;
+    if (
+      !definition
+      || definition.role !== option.spirit.role
+      || definition.role === 'heal'
+      || definition.role === 'guard'
+    ) return null;
 
-    if (this.slots.some((slot) => slot.spiritId === definition.spiritId)) return null;
+    // 카드 생성과 **같은 기준**으로 막는다. 생성부만 고치면 저장된 카드·다른 경로로
+    // 들어온 요청이 그대로 통과해 중복 원소가 계약된다
+    if (definition.element && this.ownedAttackElements().has(definition.element)) return null;
     if (option.spirit.level !== 1 || this.slotCount() >= SPIRIT_CONFIG.maxSlots) return null;
     const created: SpiritState = {
       ...definition,
@@ -142,19 +153,70 @@ export class SpiritManager {
     return snapshot(created);
   }
 
+  enableRecovery(): boolean {
+    if (this.recoveryEnabled) return false;
+    this.recoveryEnabled = true;
+    this.recoveryRemainingSeconds = SPIRIT_CONFIG.utilityIntervals[0] * this.hasteMultiplier;
+    return true;
+  }
+
+  enableGuard(): boolean {
+    if (this.guardEnabled) return false;
+    this.guardEnabled = true;
+    this.guardRemainingSeconds = SPIRIT_CONFIG.utilityIntervals[0] * this.hasteMultiplier;
+    return true;
+  }
+
   /** 융합 후보 — 공격 정령 2체 보유 시 (PROGRESSION_DESIGN §3). */
-  fuseCandidate(): { spiritIds: [string, string]; elements: [SpellElement, SpellElement] } | null {
+  /**
+   * 이미 보유한 공격 원소 — **융합체가 흡수한 원소까지 포함한다.**
+   *
+   * ⚠️ 중복 판정을 `spiritId`로 하면 안 된다. 융합체의 id는
+   * `fused-fire-water-lightning`이라 `attack-lightning`과 겹치지 않아, 이미 흡수한
+   * 원소가 다시 보상 카드로 나오고 **선택하면 계약까지 된다**(슬롯만 낭비하고
+   * 다시 융합해도 `new Set` 합집합이라 원소가 안 늘어난다).
+   * 총괄 제보: *"불+물+전기 상태인데 선택지 보상으로 전기 정령이 나옴."*
+   */
+  private ownedAttackElements(): Set<SpellElement> {
+    const owned = new Set<SpellElement>();
+    for (const slot of this.slots) {
+      if (slot.role !== 'attack') continue;
+      for (const element of slot.elements ?? (slot.element ? [slot.element] : [])) {
+        owned.add(element);
+      }
+    }
+    return owned;
+  }
+
+  /**
+   * 융합 후보 — 공격 정령 2체. **융합체도 후보다**(3속성 이상 융합의 정식 경로).
+   *
+   * ⚠️ `elements`는 두 정령의 **원소 전체 합집합**이다. 종전엔 정령마다 주속성 하나만
+   * 실어서(`[a.element, b.element]`), 불+물 융합체와 전기를 합칠 때 후보가
+   * `['fire','lightning']`이 되고 **물이 사라졌다** — 카드 제목·작명·연출이 전부 이
+   * 값을 쓰므로 총괄 제보 *"3가지 속성을 합치면 해당 속성 정보가 반영 안 된다"*가
+   * 여기서 나왔다. `fuse()`는 원래부터 합집합을 만들었으니 데이터가 아니라 보고가
+   * 어긋나 있었다.
+   */
+  fuseCandidate(): { spiritIds: [string, string]; elements: readonly SpellElement[] } | null {
     const attackers = this.slots.filter((slot) => slot.role === 'attack' && slot.element);
     if (attackers.length < 2) return null;
+    const [first, second] = attackers;
     return {
-      spiritIds: [attackers[0].spiritId, attackers[1].spiritId],
-      elements: [attackers[0].element!, attackers[1].element!],
+      spiritIds: [first.spiritId, second.spiritId],
+      elements: [...new Set([
+        ...(first.elements ?? [first.element!]),
+        ...(second.elements ?? [second.element!]),
+      ])],
     };
   }
 
   /**
-   * 정령 융합 — 공격 정령 2체를 소모해 주+부속성 이중 원소 정령 1체를 만든다.
-   * 융합체는 2슬롯을 점유하고 2슬롯 분량의 power 예산을 쓴다 (오토 40% 게이트 불변).
+   * 정령 융합 — 공격 정령 2체를 소모해 다원소 정령 1체를 만든다. 융합체도 다시
+   * 융합할 수 있어 3속성 이상이 나온다(`evolve-fuse-regression`의 '삼원 성운').
+   *
+   * 융합체는 **1슬롯만 점유**해 새 정령을 다시 영입할 여지를 남기고(회귀로 잠긴 의도),
+   * power는 원소 수로 나눠 총합이 2슬롯 예산을 넘지 않는다 (오토 40% 게이트 불변).
    */
   fuse(spiritIds: readonly string[], fusedName: string): SpiritSnapshot | null {
     if (spiritIds.length !== 2 || spiritIds[0] === spiritIds[1]) return null;
@@ -209,6 +271,30 @@ export class SpiritManager {
     if (delta === 0) return [];
 
     const requests: SpiritPulseRequest[] = [];
+    if (this.recoveryEnabled) {
+      this.recoveryRemainingSeconds -= delta;
+      const interval = SPIRIT_CONFIG.utilityIntervals[0] * this.hasteMultiplier;
+      while (this.recoveryRemainingSeconds <= 0) {
+        requests.push({
+          kind: 'heal',
+          spiritId: 'passive-recovery',
+          amount: SPIRIT_CONFIG.healAmounts[0],
+        });
+        this.recoveryRemainingSeconds += interval;
+      }
+    }
+    if (this.guardEnabled) {
+      this.guardRemainingSeconds -= delta;
+      const interval = SPIRIT_CONFIG.utilityIntervals[0] * this.hasteMultiplier;
+      while (this.guardRemainingSeconds <= 0) {
+        requests.push({
+          kind: 'guard',
+          spiritId: 'passive-guard',
+          amount: SPIRIT_CONFIG.guardAmounts[0],
+        });
+        this.guardRemainingSeconds += interval;
+      }
+    }
     for (const spirit of this.slots) {
       spirit.remainingSeconds -= delta;
       const interval = intervalFor(spirit) * this.hasteMultiplier;
@@ -228,6 +314,10 @@ export class SpiritManager {
     this.slots = [];
     this.hasteMultiplier = 1;
     this.fusionResonance = false;
+    this.recoveryEnabled = false;
+    this.recoveryRemainingSeconds = SPIRIT_CONFIG.utilityIntervals[0];
+    this.guardEnabled = false;
+    this.guardRemainingSeconds = SPIRIT_CONFIG.utilityIntervals[0];
   }
 
   enableFusionResonance(): void {
@@ -235,29 +325,50 @@ export class SpiritManager {
   }
 
   private createRewardOption(roomIndex: number, rand: () => number): RewardOption | null {
-    const candidates: Array<{ definition: SpiritDefinition; level: SpiritLevel }> = [];
+    const candidates: Array<{
+      definition: SpiritDefinition;
+      level: SpiritLevel;
+      kind: 'spirit' | 'spirit-recovery' | 'spirit-guard';
+    }> = [];
     if (this.slotCount() < SPIRIT_CONFIG.maxSlots) {
+      // 보유 원소로 거른다 — spiritId로 보면 융합체가 흡수한 원소를 못 걸러낸다
+      const owned = this.ownedAttackElements();
       for (const definition of DEFINITIONS) {
-        if (!this.slots.some((slot) => slot.spiritId === definition.spiritId)) {
-          candidates.push({ definition, level: 1 });
+        if (definition.role !== 'heal' && definition.role !== 'guard'
+          && (!definition.element || !owned.has(definition.element))) {
+          candidates.push({ definition, level: 1, kind: 'spirit' });
         }
       }
     }
+    if (!this.recoveryEnabled) {
+      const definition = DEFINITIONS.find((entry) => entry.role === 'heal');
+      if (definition) candidates.push({ definition, level: 1, kind: 'spirit-recovery' });
+    }
+    if (!this.guardEnabled) {
+      const definition = DEFINITIONS.find((entry) => entry.role === 'guard');
+      if (definition) candidates.push({ definition, level: 1, kind: 'spirit-guard' });
+    }
     if (candidates.length === 0) return null;
 
-    const { definition, level } = candidates[randomIndex(candidates.length, rand)];
+    const { definition, level, kind } = candidates[randomIndex(candidates.length, rand)];
     const element = definition.element;
     return {
       id: `room-${roomIndex}-spirit-${definition.spiritId}-lv${level}`,
-      kind: 'spirit',
-      title: spiritTitle(definition),
-      description: spiritDescription(definition, level),
+      kind,
+      title: kind === 'spirit-recovery'
+        ? '회복 공명'
+        : kind === 'spirit-guard' ? '수호 공명' : spiritTitle(definition),
+      description: kind === 'spirit-recovery'
+        ? `정령 슬롯을 차지하지 않음 · ${SPIRIT_CONFIG.utilityIntervals[0]}초마다 HP +${SPIRIT_CONFIG.healAmounts[0]}`
+        : kind === 'spirit-guard'
+          ? `정령 슬롯을 차지하지 않음 · ${SPIRIT_CONFIG.utilityIntervals[0]}초마다 보호막 +${SPIRIT_CONFIG.guardAmounts[0]}`
+        : spiritDescription(definition, level),
       element,
-      spirit: {
+      spirit: kind === 'spirit' ? {
         spiritId: definition.spiritId,
         role: definition.role,
         level,
-      },
+      } : undefined,
     };
   }
 }

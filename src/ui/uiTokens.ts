@@ -127,6 +127,24 @@ export const UI_SEMANTIC = {
   buff: '#a8d6bd',
 } as const;
 
+/**
+ * 무지개 램프 — **만물 변주(합주 빌드)의 색 문법.**
+ *
+ * 코덱스 작업이 이 6색을 보상 카드의 세 곳(테두리 그라디언트·회전 콘·룬 글자)에
+ * 그대로 복붙하면서 하드코딩 상한(85건)이 깨졌다. 같은 램프가 흩어져 있으면 나중에
+ * 한 색만 바꿔도 세 곳이 갈린다 — 그래서 여기로 올린다.
+ *
+ * 순서는 색상환 순(적→황→녹→청→자)이라 그라디언트로 이으면 무지개로 읽힌다.
+ */
+export const UI_RAINBOW = [
+  '#ff6f8f', '#ffd166', '#8cf0b5', '#72cfff', '#9c7dff', '#ed8cff',
+] as const;
+
+/** 무지개를 CSS 그라디언트 정지점 목록으로 — 끝에 첫 색을 되붙여 이음새를 없앤다 */
+export function rainbowStops(loop = true): string {
+  return loop ? [...UI_RAINBOW, UI_RAINBOW[0]].join(', ') : UI_RAINBOW.join(', ');
+}
+
 /** Phaser는 숫자 색을 쓴다 — 문자열 토큰을 한 곳에서 변환해 두 축이 안 갈리게 한다 */
 export function hex(color: string): number {
   return Number.parseInt(color.replace('#', ''), 16);

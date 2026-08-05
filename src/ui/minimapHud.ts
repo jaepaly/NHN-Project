@@ -46,16 +46,27 @@ const STYLE = {
   bossAccent: 0xb95f72,
 } as const;
 
+export interface MinimapHudLayout {
+  x: number;
+  y: number;
+  /** ESC 검사 화면에서는 같은 경로를 크게 읽는다. 기본값 1은 기존 크기다. */
+  scale?: number;
+  /** 일시정지 메뉴와의 정보 계층을 맞추는 HUD 깊이. */
+  depth?: number;
+}
+
 export class MinimapHud {
   private readonly graphics: Phaser.GameObjects.Graphics;
-  private readonly x: number;
+  private x: number;
   private y: number;
+  private scale: number;
   private lastModel: MinimapModel | null = null;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
+  constructor(scene: Phaser.Scene, x: number, y: number, options: Omit<MinimapHudLayout, 'x' | 'y'> = {}) {
     this.x = x;
     this.y = y;
-    this.graphics = scene.add.graphics().setScrollFactor(0).setDepth(99);
+    this.scale = this.normalizedScale(options.scale);
+    this.graphics = scene.add.graphics().setScrollFactor(0).setDepth(options.depth ?? 99);
   }
 
   update(model: MinimapModel): void {
@@ -68,9 +79,18 @@ export class MinimapHud {
    * 미니맵도 그만큼 내려와야 겹치지 않는다. 씬이 패널 높이 변화 시에만 호출한다.
    */
   setTop(y: number): void {
-    if (this.y === y) return;
-    this.y = y;
-    this.redraw();
+    this.setLayout({ x: this.x, y });
+  }
+
+  /** ESC 전용 확대 지도와 일반 HUD 지도를 같은 렌더러로 유지한다. */
+  setLayout(layout: MinimapHudLayout): void {
+    const nextScale = this.normalizedScale(layout.scale ?? this.scale);
+    const changed = this.x !== layout.x || this.y !== layout.y || this.scale !== nextScale;
+    this.x = layout.x;
+    this.y = layout.y;
+    this.scale = nextScale;
+    if (layout.depth !== undefined) this.graphics.setDepth(layout.depth);
+    if (changed) this.redraw();
   }
 
   /** 현재 노드 펄스용 — 씬 update에서 호출 (모델 불변 시 재계산 없이 다시 그림) */
@@ -92,14 +112,19 @@ export class MinimapHud {
     g.clear();
     if (!model || model.nodes.length === 0) return;
 
-    const { width, height, nodeRadius, currentRadius } = MINIMAP_CONFIG;
+    const scale = this.scale;
+    const width = MINIMAP_CONFIG.width * scale;
+    const height = MINIMAP_CONFIG.height * scale;
+    const nodeRadius = MINIMAP_CONFIG.nodeRadius * scale;
+    const currentRadius = MINIMAP_CONFIG.currentRadius * scale;
     // 마도서 판 — 일시정지를 열면 이 지도가 나온다. 옆의 HUD·상태 패널과 같은
     // 문법이어야 한 화면으로 읽힌다(총괄 지시)
     drawGrimoirePanel(g, this.x, this.y, width, height, STYLE.panelAlpha);
 
-    const points = new Map(
-      minimapLayout(model).map((point) => [point.id, point] as const),
-    );
+    const points = new Map(minimapLayout(model).map((point) => [point.id, {
+      x: point.x * scale,
+      y: point.y * scale,
+    }] as const));
     const nodesById = new Map(model.nodes.map((node) => [node.id, node] as const));
 
     // 엣지 먼저 (노드 아래 깔리게). 클리어된 경로는 밝게 — 지나온 길이 보인다.
@@ -109,7 +134,7 @@ export class MinimapHud {
       if (!from || !to) continue;
       const walked = nodesById.get(edge.from)?.status === 'cleared'
         && ['cleared', 'current'].includes(nodesById.get(edge.to)?.status ?? '');
-      g.lineStyle(walked ? 2 : 1, walked ? STYLE.edgeCleared : STYLE.edge, walked ? 0.9 : 0.55);
+      g.lineStyle((walked ? 2 : 1) * scale, walked ? STYLE.edgeCleared : STYLE.edge, walked ? 0.9 : 0.55);
       g.lineBetween(this.x + from.x, this.y + from.y, this.x + to.x, this.y + to.y);
     }
 
@@ -124,17 +149,17 @@ export class MinimapHud {
       if (node.status === 'current') {
         // 현재 위치 — 펄스 링. 미니맵에서 시선이 처음 가야 할 곳.
         const pulse = 0.5 + 0.5 * Math.abs(Math.sin(now / 260));
-        g.lineStyle(2, STYLE.node.current, 0.4 + 0.5 * pulse);
-        g.strokeCircle(px, py, currentRadius + 2 * pulse);
+        g.lineStyle(2 * scale, STYLE.node.current, 0.4 + 0.5 * pulse);
+        g.strokeCircle(px, py, currentRadius + 2 * scale * pulse);
       }
 
       const color = STYLE.node[node.status];
       const radius = node.status === 'current' ? currentRadius : nodeRadius;
       if (isBoss) {
         // 보스는 다이아몬드 — 색만으로는 "끝판"이 안 읽힌다
-        this.drawDiamond(px, py, radius + 2, color, node.status !== 'unvisited');
-        g.lineStyle(1.5, STYLE.bossAccent, 0.9);
-        this.strokeDiamond(px, py, radius + 2);
+        this.drawDiamond(px, py, radius + 2 * scale, color, node.status !== 'unvisited');
+        g.lineStyle(1.5 * scale, STYLE.bossAccent, 0.9);
+        this.strokeDiamond(px, py, radius + 2 * scale);
       } else if (node.kind === 'treasure' || node.kind === 'altar' || node.kind === 'trap') {
         // 특수 방은 사각 — 전투방(원)과 실루엣부터 다르게
         g.fillStyle(color, node.status === 'unvisited' ? 0.5 : 1);
@@ -170,6 +195,11 @@ export class MinimapHud {
       true,
       true,
     );
+  }
+
+  private normalizedScale(value: number | undefined): number {
+    const safe = Number.isFinite(value) ? value! : 1;
+    return Phaser.Math.Clamp(safe, 0.75, 2);
   }
 }
 

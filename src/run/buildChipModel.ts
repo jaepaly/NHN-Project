@@ -40,6 +40,8 @@ export interface BuildChip {
   element: SpellElement | null;
   /** 이중 원소(융합 정령·부속성) — 칩 투톤용 */
   elementSecondary: SpellElement | null;
+  /** All elemental components, including three-or-more-way fusions. */
+  elements: readonly SpellElement[];
   /** 실제 주문 폼. 정령은 폼이라는 개념이 없어 null */
   form: SpellForm | null;
   /**
@@ -98,6 +100,7 @@ function emptyChip(kind: BuildChipKind, slot: number): BuildChip {
     name: kind === 'engrave' ? '빈 각인 슬롯' : '빈 정령 슬롯',
     element: null,
     elementSecondary: null,
+    elements: [],
     form: null,
     glyph: null,
     level: 0,
@@ -126,6 +129,7 @@ function engraveChip(
     name: spell.name,
     element: spell.element_primary,
     elementSecondary: spell.element_secondary ?? null,
+    elements: [spell.element_primary, ...(spell.element_secondary ? [spell.element_secondary] : [])],
     form: spell.form,
     glyph: spell.form,
     level: entry.level,
@@ -140,7 +144,8 @@ function spiritChip(
   entry: SpiritSnapshot, slot: number, awakenings: AwakeningState,
 ): BuildChip {
   const roleLabel = ROLE_LABELS[entry.role];
-  const element = entry.element ?? spiritFallbackElement(entry.role);
+  const elements = entry.elements ?? [entry.element ?? spiritFallbackElement(entry.role)];
+  const element = elements[0] ?? spiritFallbackElement(entry.role);
   const detail = [`${roleLabel} 정령 · ${entry.intervalSeconds.toFixed(1)}초마다 발동`];
   if (entry.fused) {
     const elements = entry.elements ?? [element, ...(entry.elementSecondary ? [entry.elementSecondary] : [])];
@@ -155,7 +160,8 @@ function spiritChip(
     filled: true,
     name: entry.fusedName ?? `${roleLabel} 정령`,
     element,
-    elementSecondary: entry.elementSecondary ?? null,
+    elementSecondary: elements[1] ?? entry.elementSecondary ?? null,
+    elements,
     form: null,
     glyph: SPIRIT_GLYPH[entry.role],
     level: entry.level,

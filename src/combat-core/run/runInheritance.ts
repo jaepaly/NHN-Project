@@ -77,6 +77,29 @@ export function mutateInheritedAffinity(
   return { source, element, value: inheritedAffinity(highest), echoes };
 }
 
+/** Continue a chorus build as a weaker, mutated affinity with stage-based echoes. */
+export function mutateInheritedChorusAffinity(
+  chorusAffinity: number,
+  seed: number,
+): { source: SpellElement; element: SpellElement; value: number; echoes: readonly { element: SpellElement; value: number }[] } | null {
+  if (!Number.isFinite(chorusAffinity) || chorusAffinity <= 0) return null;
+  const next = (Math.abs(Math.floor(seed)) >>> 0) || 1;
+  const source = ELEMENTS[next % ELEMENTS.length];
+  const targets = ELEMENTS.filter((element) => element !== source);
+  const element = targets[(next >>> 8) % targets.length];
+  const stage = chorusStage({}, chorusAffinity);
+  const echoCount = stage === 0 ? 0 : stage;
+  const value = inheritedAffinity(chorusAffinity);
+  const echoes = targets
+    .filter((target) => target !== element)
+    .slice(0, echoCount)
+    .map((target) => ({
+      element: target,
+      value: Math.round(value * 0.4 * 100) / 100,
+    }));
+  return { source, element, value, echoes };
+}
+
 /**
  * 계승 후보 — 친화가 있는 원소를 높은 순으로.
  *

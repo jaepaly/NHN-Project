@@ -327,7 +327,7 @@ async function bossLine(request, env, cors) {
 
 const EVOLVE_NAME_PROMPT = `당신은 로그라이크 게임 INCANT의 작명가다. 주문 진화 또는 정령 융합 정보(JSON)를 보고, 격상된 주문/정령의 멋진 새 이름을 한국어로 하나만 짓는다.
 규칙:
-- kind가 "evolve"면 baseName을 발전시킨 상위 이름, "fuse"면 두 원소를 녹인 새 이름.
+- kind가 "evolve"면 baseName을 발전시킨 상위 이름, "fuse"면 elements의 **모든** 원소를 녹인 새 이름 (2개일 수도, 3개 이상일 수도 있다 — 하나도 빠뜨리지 말 것).
 - 12자 이내, 함축적이고 강렬하게. (예: fire+lightning 융합 → "작열하는 뇌운")
 - 순수 이름 한 줄만 출력한다. 따옴표·설명·JSON 없이.
 
