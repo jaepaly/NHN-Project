@@ -2,15 +2,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   ELEMENTAL_FOCUS_ECHO_POWER_SCALE,
-  SPIRIT_RESONANCE_BOLT_EVERY_ATTACKS,
-  SPIRIT_RESONANCE_BOLT_POWER_SCALE,
   VARIATION_WAVE_EVERY_SHIFTS,
   VARIATION_WAVE_POWER_SCALE,
   VARIATION_WAVE_RADIUS,
-  advanceSpiritResonanceBoltCharge,
   advanceVariationWaveCharge,
   researchChargePips,
-  spiritResonanceBoltSize,
+  spiritResonanceBoltElement,
+  spiritResonanceBoltPower,
+  SPIRIT_RESONANCE_BOLT_MANUAL_SCALE,
+  SPIRIT_RESONANCE_FALLBACK_POWER,
+  VARIATION_WAVE_MAX_TARGETS,
   spiritResonanceUnlocked,
   startResearchContract,
   variationCastKey,
@@ -31,21 +32,52 @@ import {
  * 심화 = 같은 원소 반복(깊이) · 변주 = 매번 다른 영창(넓이) · 공명 = 정령 자동(자동화).
  */
 
-// ── 1) 공명탄 충전 — 3회마다 발동 ───────────────────────────────────────────
+// ── 1) 공명탄 — 매회 발사 · 위력은 유저 영창에 공명한다 ────────────────────
+//
+// 충전식(3회마다 1발)은 두 겹으로 약했다: 위력 기준이 정령탄(7.5)이었고, 슬로모션이
+// 정령 시계를 세워 실효 주기가 ~33초였다. 총괄 결정으로 매회 발사 + 위력 기준을
+// **최근 수동 영창 평균**으로 교체 (연구주제 개편 2026-08-02).
 {
-  let charge = 0;
-  const fired: number[] = [];
-  for (let attack = 1; attack <= 9; attack += 1) {
-    const result = advanceSpiritResonanceBoltCharge(charge);
-    charge = result.charge;
-    if (result.triggered) fired.push(attack);
-  }
-  assert.deepEqual(fired, [3, 6, 9], '정령 공격 3회마다 정확히 발동해야 한다');
-  // 방어적 입력 — 카운터는 씬 필드라 리셋 타이밍에 이상값이 올 수 있다
-  for (const bad of [Number.NaN, -3, 2.7]) {
-    const result = advanceSpiritResonanceBoltCharge(bad);
-    assert.ok(Number.isFinite(result.charge) && result.charge >= 0, `충전 ${bad} 방어`);
-  }
+  // 위력 = 평균 × 0.12
+  assert.equal(
+    spiritResonanceBoltPower([50, 60, 70]),
+    Math.round(60 * SPIRIT_RESONANCE_BOLT_MANUAL_SCALE),
+    '공명탄 위력은 최근 수동 평균의 12%',
+  );
+  // 창 밖의 옛 기록은 잊는다 — "지금 빌드"를 따라가야 한다
+  assert.equal(
+    spiritResonanceBoltPower([999, 999, 50, 50, 50, 50, 50]),
+    Math.round(50 * SPIRIT_RESONANCE_BOLT_MANUAL_SCALE),
+    '창(5개) 밖의 옛 위력은 평균에 안 들어간다',
+  );
+  // 기록이 없으면 기준 위력 — 런 초반에 0이 되면 완료 직후 공명탄이 사라진다
+  assert.equal(
+    spiritResonanceBoltPower([]),
+    Math.round(SPIRIT_RESONANCE_FALLBACK_POWER * SPIRIT_RESONANCE_BOLT_MANUAL_SCALE),
+    '기록 없음 → 기준 위력',
+  );
+  assert.ok(spiritResonanceBoltPower([Number.NaN, -5, 0]) >= 1, '오염 입력 방어 · 최소 1');
+
+  // 융합 원소 교대 — 발마다 순환. 동시 이중 링은 #220을 치고, 교대는 보스 단일
+  // 내성도 절반은 뚫는다(융합의 존재 이유)
+  const fused = ['fire', 'ice'] as const;
+  assert.equal(spiritResonanceBoltElement(fused, 0), 'fire', '1발째 주 원소');
+  assert.equal(spiritResonanceBoltElement(fused, 1), 'ice', '2발째 보조 원소');
+  assert.equal(spiritResonanceBoltElement(fused, 2), 'fire', '3발째 다시 주 원소');
+  assert.equal(spiritResonanceBoltElement(['water'], 7), 'water', '단일 원소는 항상 그 색');
+  assert.equal(spiritResonanceBoltElement([], 0), 'light', '빈 배열 방어');
+  assert.equal(spiritResonanceBoltElement(fused, Number.NaN), 'fire', 'NaN 인덱스 방어');
+
+  // ⚠️ 오토 게이트(#67) 최악 산식 — 이 부등식이 배율 상향을 잡는다.
+  // 정령 2기 · 간격 6초 · 신속 하한 0.5 → 0.667발/초. 평균 위력 55, 수동 기준 16.7/s.
+  const worstBoltsPerSecond = 2 / (6 * 0.5);
+  const resonanceShare = (worstBoltsPerSecond * 55 * SPIRIT_RESONANCE_BOLT_MANUAL_SCALE) / 16.7;
+  const totalAutoShare = 0.4 /* 각인 상한 */ + 0.3 /* 정령 풀투자 */ + resonanceShare;
+  assert.ok(
+    totalAutoShare < 1,
+    `최악 오토 합산 ${(totalAutoShare * 100).toFixed(0)}% — 100%를 넘으면`
+    + ' "어떤 빌드로도 수동을 넘지 않는다" 불변식(#67)이 깨진다',
+  );
 }
 
 // ── 2) 변주 충전 — **직전과 다른 영창만** 충전한다 ──────────────────────────
@@ -123,7 +155,6 @@ import {
 {
   for (const [label, scale] of [
     ['원소 심화 메아리', ELEMENTAL_FOCUS_ECHO_POWER_SCALE],
-    ['정령 공명탄', SPIRIT_RESONANCE_BOLT_POWER_SCALE],
     ['변주 파동', VARIATION_WAVE_POWER_SCALE],
   ] as const) {
     assert.ok(
@@ -135,32 +166,54 @@ import {
     VARIATION_WAVE_RADIUS <= 500,
     '파동 반경이 방 절반을 넘으면 조준 없는 전멸기가 된다',
   );
-  assert.ok(SPIRIT_RESONANCE_BOLT_EVERY_ATTACKS >= 3, '공명탄 주기 하한');
   assert.ok(VARIATION_WAVE_EVERY_SHIFTS >= 3, '파동 충전 하한');
+  assert.ok(
+    VARIATION_WAVE_MAX_TARGETS <= 4,
+    '파동 대상 상한 — 정예 무리(4~6체)에서 +47~70%로 튀는 꼬리를 자른다',
+  );
 }
 
 // ── 5) 씬 배선 ──────────────────────────────────────────────────────────────
 {
   const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
 
-  // 공명탄 — 정령 공격 분기 안에서, 완료 게이트를 거쳐, 자동 시전으로
+  // 공명탄 — 정령 공격 분기 안에서, 완료 게이트를 거쳐, 매회 발사로
+  // ⚠️ 'power: ' 접두가 필요하다 — 같은 함수를 특성 요약 문구도 부르므로, 접두 없이
+  // 찾으면 indexOf가 그쪽(HUD 텍스트)을 잡아 아래 블록 검사가 전부 헛짚는다.
+  // 실제로 이 회귀를 처음 돌렸을 때 그렇게 실패했다.
+  const boltAnchor = 'power: spiritResonanceBoltPower(this.recentManualPowers),';
   assert.ok(
-    scene.includes('advanceSpiritResonanceBoltCharge(this.spiritResonanceBoltCharge)'),
-    '정령 공격이 공명탄 충전을 진행해야 한다',
+    scene.includes(boltAnchor),
+    '공명탄 위력이 최근 수동 영창 평균에서 와야 한다 — 정령탄 기준이면 다시 1/10로 약해진다',
   );
-  const boltAt = scene.indexOf('advanceSpiritResonanceBoltCharge(this.spiritResonanceBoltCharge)');
-  const boltBlock = scene.slice(boltAt - 400, boltAt + 1600);
+  const boltAt = scene.indexOf(boltAnchor);
+  const boltBlock = scene.slice(boltAt - 2200, boltAt + 400);
   assert.ok(
     boltBlock.includes('spiritResonanceUnlocked('),
     '공명탄은 완료 게이트를 거쳐야 한다',
   );
   assert.ok(
-    /SPIRIT_RESONANCE_BOLT_POWER_SCALE/.test(boltBlock),
-    '공명탄 위력은 상수에서 와야 한다',
+    !boltBlock.includes('advanceSpiritResonanceBoltCharge'),
+    '충전식이 남아 있으면 안 된다 — 매회 발사로 개편됐다',
+  );
+  assert.ok(
+    boltBlock.includes('spiritResonanceBoltElement('),
+    '융합 정령은 발마다 원소를 교대해야 한다',
+  );
+  assert.ok(
+    boltBlock.includes('this.spiritResonanceShotIndex += 1;'),
+    '교대 인덱스가 발마다 전진해야 한다 — 안 하면 항상 주 원소만 나온다',
   );
   assert.ok(
     boltBlock.includes('!this.hasLivingEnemy()) return;'),
-    '공명탄 지연 발도 발사 시점에 적을 다시 봐야 한다 — 예약 후 마지막 적이 죽으면 허공',
+    '공명탄 지연 발도 발사 시점에 적을 다시 봐야 한다',
+  );
+  // 수동 위력 기록 — 단일·시퀀스 두 경로 모두. 한쪽이 빠지면 그 빌드에서 위력이 굳는다
+  const recordCalls = scene.match(/this\.recordManualPowerForResonance\(/g) ?? [];
+  assert.ok(
+    recordCalls.length >= 2,
+    `수동 위력 기록 호출이 ${recordCalls.length}곳 — 단일 시전·시퀀스 두 경로 다 있어야 한다.`
+    + ' 한쪽이 빠지면 그 방식으로만 영창하는 빌드에서 공명탄 위력이 굳는다',
   );
 
   // 변주 파동 — 두 시전 경로 모두에서, 실피해가 있어야 한다
@@ -189,6 +242,10 @@ import {
     '파동 반경은 상수에서 와야 한다',
   );
   assert.ok(
+    waveBody.includes('.slice(0, VARIATION_WAVE_MAX_TARGETS)'),
+    '파동은 가까운 순으로 상한까지만 때려야 한다 — 정예 무리 스파이크 가드',
+  );
+  assert.ok(
     waveBody.includes('if (!this.hasLivingEnemy()) return;'),
     '빈 방에서는 파동이 침묵해야 한다 — 각인·정령과 같은 규칙',
   );
@@ -209,13 +266,13 @@ import {
   );
 
   // 카운터 리셋 — 런 리셋 2곳 모두에서. 남으면 새 런에서 이전 런의 충전이 이월된다
-  const resets = scene.match(/this\.spiritResonanceBoltCharge = 0;/g) ?? [];
+  const powerResets = scene.match(/this\.recentManualPowers = \[\];/g) ?? [];
   const waveResets = scene.match(/this\.variationWaveCharge = 0;/g) ?? [];
   const keyResets = scene.match(/this\.variationWaveLastKey = null;/g) ?? [];
   assert.ok(
-    resets.length >= 2 && waveResets.length >= 2 && keyResets.length >= 2,
-    `카운터 리셋이 부족하다 (공명탄 ${resets.length} · 파동 ${waveResets.length} ·`
-    + ` 키 ${keyResets.length}) — 런 리셋 2곳 모두에서 비워야 이월이 없다`,
+    powerResets.length >= 2 && waveResets.length >= 2 && keyResets.length >= 2,
+    `카운터 리셋이 부족하다 (위력창 ${powerResets.length} · 파동 ${waveResets.length} ·`
+    + ` 키 ${keyResets.length}) — 런 리셋에서 비워야 지난 런 위력이 이월되지 않는다`,
   );
 }
 
@@ -230,37 +287,31 @@ import {
 
   // 완료 전엔 null — 진행도는 HUD의 ●○○가 이미 보여주므로 겹치면 소음이다
   assert.equal(
-    researchChargePips(startResearchContract({ id: 'spirit-resonance' }, []),
-      { echo: 0, bolt: 2, wave: 0 }),
+    researchChargePips(startResearchContract({ id: 'variation-study' }, []),
+      { echo: 0, wave: 2 }),
     null,
     '미완료 연구는 핍을 만들지 않는다',
   );
-  assert.equal(researchChargePips(null, { echo: 0, bolt: 0, wave: 0 }), null, '연구 없음');
+  assert.equal(researchChargePips(null, { echo: 0, wave: 0 }), null, '연구 없음');
 
-  // 자기 연구의 카운터만 읽는다 — 다른 카운터가 차 있어도 무시
-  const boltPips = researchChargePips(spirit, { echo: 2, bolt: 1, wave: 2 });
-  assert.equal(boltPips?.filled, 1, '공명 핍은 bolt 카운터만 읽는다');
-  assert.equal(boltPips?.total, SPIRIT_RESONANCE_BOLT_EVERY_ATTACKS, '공명 핍 총수');
-  const wavePips = researchChargePips(variation, { echo: 2, bolt: 2, wave: 2 });
+  // 공명은 매회 발사(주기 없음)로 개편 — 핍이 없어야 한다. 충전이 없는데 원을
+  // 그리면 "언젠가 찬다"는 거짓 신호가 된다
+  assert.equal(
+    researchChargePips(spirit, { echo: 2, wave: 2 }),
+    null,
+    '완료된 공명도 핍이 없다 — 주기가 없는데 원을 그리면 거짓 신호다',
+  );
+  const wavePips = researchChargePips(variation, { echo: 2, wave: 2 });
   assert.equal(wavePips?.filled, 2, '변주 핍은 wave 카운터만 읽는다');
-  const echoPips = researchChargePips(focus, { echo: 1, bolt: 2, wave: 2 });
+  const echoPips = researchChargePips(focus, { echo: 1, wave: 2 });
   assert.equal(echoPips?.filled, 1, '심화 핍은 echo 카운터만 읽는다');
   assert.equal(echoPips?.element, 'ice', '심화 핍은 원소를 실어야 한다 (핍 색이 원소색)');
 
   // 방어적 입력 — 카운터는 씬 필드다
-  const dirty = researchChargePips(spirit, { echo: 0, bolt: Number.NaN, wave: 0 });
+  const dirty = researchChargePips(focus, { echo: Number.NaN, wave: 0 });
   assert.equal(dirty?.filled, 0, 'NaN 카운터는 0으로');
-  const over = researchChargePips(spirit, { echo: 0, bolt: 99, wave: 0 });
-  assert.equal(over?.filled, SPIRIT_RESONANCE_BOLT_EVERY_ATTACKS, '상한 클램프');
-}
-
-// ── 7) 공명탄 크기 격상 — 위력 대신 크기로 체감 (총괄 제보) ─────────────────
-{
-  assert.equal(spiritResonanceBoltSize('small'), 'medium', '소형 → 중형');
-  assert.equal(spiritResonanceBoltSize('medium'), 'large', '중형 → 대형');
-  // large·huge는 그대로 — 더 키우면 본탄보다 커 보여 "추가탄"으로 안 읽힌다
-  assert.equal(spiritResonanceBoltSize('large'), 'large', '대형은 유지');
-  assert.equal(spiritResonanceBoltSize('huge'), 'huge', '거대는 유지');
+  const over = researchChargePips(variation, { echo: 0, wave: 99 });
+  assert.equal(over?.filled, VARIATION_WAVE_EVERY_SHIFTS, '상한 클램프');
 }
 
 // ── 8) 핍 씬 배선 ───────────────────────────────────────────────────────────
@@ -278,8 +329,8 @@ import {
   // 없으면 세 번째 원이 차는 모습을 영영 못 본다
   const flashes = scene.match(/this\.researchChargeFlashUntil = this\.time\.now \+ 340;/g) ?? [];
   assert.equal(
-    flashes.length, 3,
-    `발동 플래시가 ${flashes.length}곳 — 메아리·공명탄·파동 세 지점 전부여야 한다`,
+    flashes.length, 2,
+    `발동 플래시가 ${flashes.length}곳 — 메아리·파동 두 지점이다 (공명은 매회 발사라 주기 플래시가 없다)`,
   );
   // ⚠️ #220: 항상 떠 있는 요소라 애니메이션·ADD 금지, 상태 변화 시에만 재작화
   const pipsAt = scene.indexOf('private updateResearchChargePips():');
@@ -294,11 +345,6 @@ import {
     pipsBody.includes('if (key === this.researchChargePipsKey) return;'),
     '상태가 같으면 다시 그리지 않아야 한다 — 매 프레임 재작화는 낭비다',
   );
-  // 크기 격상이 실제 시전에 적용된다
-  assert.ok(
-    scene.includes('size: spiritResonanceBoltSize(resonanceSpell.size),'),
-    '공명탄이 크기 격상을 실제로 써야 한다',
-  );
   // 씬 재시작 시 참조 정리 — 늦은 생성 객체라 낡은 참조가 남으면 죽은 객체를 만진다
   assert.ok(
     scene.includes('this.researchChargePipsGfx = null;'),
@@ -307,6 +353,6 @@ import {
 }
 
 console.log(
-  'research recurring regression: 공명탄주기·변주판별·잠금게이트·오토상한·씬배선'
-  + '·충전핍·크기격상·핍배선 8군 통과',
+  'research recurring regression: 공명탄매회·변주판별·잠금게이트·오토상한·씬배선'
+  + '·충전핍·핍배선 7군 통과',
 );

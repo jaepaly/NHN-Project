@@ -369,11 +369,12 @@ import {
   spiritResonanceUnlocked,
   SPIRIT_RESONANCE_MILESTONE_HASTE_SCALE,
   SPIRIT_RESONANCE_START_HASTE_SCALE,
-  advanceSpiritResonanceBoltCharge,
   advanceVariationWaveCharge,
   researchChargePips,
-  spiritResonanceBoltSize,
-  SPIRIT_RESONANCE_BOLT_POWER_SCALE,
+  spiritResonanceBoltElement,
+  spiritResonanceBoltPower,
+  SPIRIT_RESONANCE_POWER_WINDOW,
+  VARIATION_WAVE_MAX_TARGETS,
   VARIATION_WAVE_POWER_SCALE,
   VARIATION_WAVE_RADIUS,
   variationCastKey,
@@ -1087,8 +1088,10 @@ export class ProtoScene extends Phaser.Scene {
   private researchSelecting = false;
   /** 원소 심화 완료 뒤 공명 재시전을 결정하는 수동 영창 카운터. */
   private elementalResearchEchoCharge = 0;
-  /** 정령 공명 완료 뒤 공명탄을 결정하는 정령 공격 카운터 (3회마다 1발). */
-  private spiritResonanceBoltCharge = 0;
+  /** 공명탄 위력 기준 — 최근 수동 영창 위력 (좁은 창이라 "지금 빌드"를 따라간다) */
+  private recentManualPowers: number[] = [];
+  /** 융합 정령 공명탄의 원소 교대 인덱스 (발마다 순환) */
+  private spiritResonanceShotIndex = 0;
   /** 만물 변주 완료 뒤 무지개 파동을 결정하는 변주 카운터 (직전과 다른 영창 3회). */
   private variationWaveCharge = 0;
   private variationWaveLastKey: string | null = null;
@@ -1899,7 +1902,7 @@ export class ProtoScene extends Phaser.Scene {
         option.description = '연구 대상 영창의 적중 잔광 강화 · 형태 3종 발견 시 완료 · 완료 후 3회마다 공명 메아리';
       } else if (option.id === 'research-spirit-resonance') {
         option.title = '정령 공명';
-        option.description = '정령 공격마다 공명 링 · 정령 2체 계약과 1회 융합 · 완료 시 합동 폭발';
+        option.description = '정령 2체 계약과 1회 융합 · 완료 시 정령 공격마다 내 영창 위력에 공명하는 추가탄';
       } else if (option.id === 'research-variation-study') {
         option.title = '만물 변주';
         option.description = '새 속성·형태 발견 시 무지개 잔광 · 발견한 다양성에 따라 피해 강화';
@@ -1930,7 +1933,7 @@ export class ProtoScene extends Phaser.Scene {
           if (option.id === 'research-variation-study') {
             return '즉시 · 다양한 영창 피해 최대 ×1.40\n목표 · 일반 수동 영창으로 원소 4종 · 형태 4종\n단계 · 새 원소·형태를 발견할 때마다 다양성 피해 상한 +7.5%\n완료 · 최근과 완전히 다른 영창 피해 최대 ×1.70';
           }
-          return '시작 · 정령 자동 시전 약 11% 가속\n목표 · 정령 2체 계약 · 공격 정령 1회 융합\n단계 · 새 정령을 계약할 때마다 자동 시전 약 11% 추가 가속\n완료 · 융합 정령이 주·부속성의 상태 효과를 함께 적용';
+          return '시작 · 정령 자동 시전 약 11% 가속\n목표 · 정령 2체 계약 · 공격 정령 1회 융합\n단계 · 새 정령을 계약할 때마다 자동 시전 약 11% 추가 가속\n완료 · 정령 공격마다 최근 영창 위력의 12% 공명탄 (융합체는 원소 교대)';
         },
       });
       const selected = contracts.find((contract) => chosen.id === `research-${contract.id}`);
@@ -2003,7 +2006,9 @@ export class ProtoScene extends Phaser.Scene {
     if (contract.id === 'variation-study') {
       return `다양성 최대 ×${(1 + variationDiversityMaxBonus(contract)).toFixed(3).replace(/0$/, '')}`;
     }
-    if (contract.completed) return '융합 정령 · 주·부속성 상태 동시 적용';
+    if (contract.completed) {
+      return `공명탄 · 위력 ${spiritResonanceBoltPower(this.recentManualPowers)} (내 영창의 12%)`;
+    }
     return `정령 계약 ${contract.spiritAcquisitions ?? 0}/2 · 융합 ${contract.spiritFusions ?? 0}/1`;
   }
 
@@ -2244,6 +2249,17 @@ export class ProtoScene extends Phaser.Scene {
    * (`advanceVariationWaveCharge`) — 직전과 (원소, 형태)가 같으면 충전이 멈추므로
    * 같은 주문 난사로는 못 채운다.
    */
+  /** 공명탄 위력 기준 갱신 — 최근 수동 영창 위력의 좁은 창 (연구와 무관하게 기록만) */
+  private recordManualPowerForResonance(specs: readonly SpellSpec[]): void {
+    for (const spec of specs) {
+      if (!Number.isFinite(spec.power) || spec.power <= 0) continue;
+      this.recentManualPowers.push(spec.power);
+    }
+    if (this.recentManualPowers.length > SPIRIT_RESONANCE_POWER_WINDOW) {
+      this.recentManualPowers = this.recentManualPowers.slice(-SPIRIT_RESONANCE_POWER_WINDOW);
+    }
+  }
+
   private scheduleVariationWave(spec: SpellSpec): void {
     const research = this.runResearchTracker.snapshot().research;
     if (!variationWaveUnlocked(research)) return;
@@ -2265,12 +2281,16 @@ export class ProtoScene extends Phaser.Scene {
         || !this.isCombatActive() || !this.hasLivingEnemy()) return;
       this.playVariationWaveVfx();
       const damage = spellImpactDamageFromPower(spec.power, VARIATION_WAVE_POWER_SCALE);
-      for (const enemy of this.enemies) {
-        if (!enemy.alive) continue;
-        const distance = Phaser.Math.Distance.Between(
-          this.player.x, this.player.y, enemy.x, enemy.y,
-        );
-        if (distance > VARIATION_WAVE_RADIUS) continue;
+      // 대상 상한 — 정예 무리에서 +47~70%로 튀는 위쪽 꼬리를 자른다. 가까운 순서라
+      // "파동이 미치는 범위"라는 그림과도 맞는다 (먼 적이 살아남는 게 자연스럽다)
+      const targets = this.enemies
+        .filter((enemy) => enemy.alive
+          && Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y)
+            <= VARIATION_WAVE_RADIUS)
+        .sort((a, b) => Phaser.Math.Distance.Between(this.player.x, this.player.y, a.x, a.y)
+          - Phaser.Math.Distance.Between(this.player.x, this.player.y, b.x, b.y))
+        .slice(0, VARIATION_WAVE_MAX_TARGETS);
+      for (const enemy of targets) {
         this.damageEnemy(
           enemy,
           this.spellDamageAgainst(enemy, spec, damage),
@@ -2303,7 +2323,6 @@ export class ProtoScene extends Phaser.Scene {
     const flashing = this.time.now < this.researchChargeFlashUntil;
     const pips = researchChargePips(this.runResearchTracker.snapshot().research, {
       echo: this.elementalResearchEchoCharge,
-      bolt: this.spiritResonanceBoltCharge,
       wave: this.variationWaveCharge,
     });
     const visible = pips !== null && this.playerState.alive
@@ -2324,11 +2343,10 @@ export class ProtoScene extends Phaser.Scene {
 
     // 색 — 연구마다 다르다. 변주는 핍마다 다른 색(파동 3겹과 같은 색)이라
     // "서로 다른 영창"이라는 규칙이 색으로도 읽힌다
+    // 공명은 매회 발사(주기 없음)로 개편돼 핍이 없다 — 모델이 null을 준다
     const colors = pips.id === 'elemental-focus'
       ? Array<number>(pips.total).fill(ELEMENT_PALETTES[pips.element ?? 'light'].core)
-      : pips.id === 'spirit-resonance'
-        ? Array<number>(pips.total).fill(0x9fe8ff)
-        : [0xff4d8d, 0x72f1b8, 0x7aa7ff];
+      : [0xff4d8d, 0x72f1b8, 0x7aa7ff];
 
     gfx.clear();
     const radius = 4.5;
@@ -2689,7 +2707,8 @@ export class ProtoScene extends Phaser.Scene {
 
   private resetRunResearchTracking(): void {
     this.elementalResearchEchoCharge = 0;
-    this.spiritResonanceBoltCharge = 0;
+    this.recentManualPowers = [];
+    this.spiritResonanceShotIndex = 0;
     this.variationWaveCharge = 0;
     this.variationWaveLastKey = null;
     this.metaProfile = loadMetaProfile();
@@ -2701,7 +2720,8 @@ export class ProtoScene extends Phaser.Scene {
 
   private continueRunResearchTracking(): void {
     this.elementalResearchEchoCharge = 0;
-    this.spiritResonanceBoltCharge = 0;
+    this.recentManualPowers = [];
+    this.spiritResonanceShotIndex = 0;
     this.variationWaveCharge = 0;
     this.variationWaveLastKey = null;
     this.metaProfile = loadMetaProfile();
@@ -6413,6 +6433,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       if (castMode === 'normal' && !fusedSpec) {
         this.scheduleElementalResearchEcho([effectiveSpec]);
         this.scheduleVariationWave(effectiveSpec);
+        this.recordManualPowerForResonance([effectiveSpec]);
       }
       this.scheduleSpellEcho(effectiveSpec);
       this.scheduleSpellRipple(effectiveSpec);
@@ -6974,6 +6995,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       // 시퀀스는 한 번의 영창이다 — 변주 판별은 첫 스펙 하나로만 (여러 스펙을 다 세면
       // 시퀀스 하나로 3충전을 다 채워 "바꿔 쓰기" 유인이 사라진다)
       if (executedSpecs[0]) this.scheduleVariationWave(executedSpecs[0]);
+      this.recordManualPowerForResonance(executedSpecs);
     }
   }
 
@@ -7396,46 +7418,45 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           if (elementIndex === 0) cast();
           else this.time.delayedCall(elementIndex * 420, cast);
         });
-        // 정령 공명 완료 보상 — 정령 공격 3회마다 공명탄 1발 (총괄 결정).
-        // 종전 완료 보상(융합 상태이상 합집합)은 융합 정령이 없으면 0 효과였다.
-        // 원소 심화의 메아리와 같은 문법 — "연구한 방식대로 싸울수록 발동이 잦아진다".
+        // 정령 공명 완료 보상 — **매 공격마다** 유저 주문 위력에 공명하는 추가탄
+        // (총괄 결정: "텀을 짧게, 위력도 약하게 해서 자주"). 충전식(3회마다 1발)은
+        // 위력 기준이 정령탄(7.5)인 데다 슬로모션이 정령 시계를 세워 실효 주기가
+        // ~33초까지 늘어졌다 — 자주 나오는 약한 발이 체감도 밴드도 둘 다 맞는다.
         if (spiritResonanceUnlocked(this.runResearchTracker.snapshot().research)) {
-          const bolt = advanceSpiritResonanceBoltCharge(this.spiritResonanceBoltCharge);
-          this.spiritResonanceBoltCharge = bolt.charge;
-          if (bolt.triggered) {
-            this.researchChargeFlashUntil = this.time.now + 340;
-            const resonanceSpell = request.spell;
-            this.recordSpellLog(
-              'auto',
-              this.spellLogLabel(resonanceSpell, '정령 공명'),
-              resonanceSpell.element_primary,
+          const resonanceSpell = request.spell;
+          // 융합 정령은 발마다 원소 교대 — 링·탄·판정이 함께 바뀐다. 동시 이중 링은
+          // 매 공격 반복 연출이라 #220을 치고, 융합의 "두 속성"은 본탄+파편이 이미
+          // 보여주고 있다. 교대는 보스 단일 내성도 절반은 뚫는다(융합의 존재 이유).
+          const resonanceElement = spiritResonanceBoltElement(
+            elements,
+            this.spiritResonanceShotIndex,
+          );
+          this.spiritResonanceShotIndex += 1;
+          this.time.delayedCall(180, () => {
+            // 지연 발이라 시점을 다시 본다 — 그 사이 마지막 적이 죽으면 허공에 터진다
+            if (!this.scene?.isActive?.() || !this.playerState.alive
+              || !this.isCombatActive() || !this.hasLivingEnemy()) return;
+            this.playResearchSpiritResonanceVfx(origin, [resonanceElement], false);
+            this.applySpellEffect(
+              {
+                ...resonanceSpell,
+                name: `${resonanceSpell.name} · 공명`,
+                element_primary: resonanceElement,
+                element_secondary: null,
+                // 매회 나오는 작은 탄 — 크기 격상 없음, 연출도 최저 단계
+                size: 'small',
+                status: spiritElementStatuses(resonanceElement),
+                // 위력 기준이 정령탄이 아니라 **유저의 최근 수동 영창 평균**이다.
+                // 세게 영창할수록 공명도 세진다 — 정령 빌드가 수동을 놓지 않을 이유.
+                // 최악 산식(#67)은 researchContract.ts 문서 참조 (전체 오토 96%<100%)
+                power: spiritResonanceBoltPower(this.recentManualPowers),
+              },
+              origin,
+              true,
+              1,
+              { decorVfxScale: 0.55 },
             );
-            this.time.delayedCall(380, () => {
-              // 지연 발이라 시점을 다시 본다 — 그 사이 마지막 적이 죽으면 허공에 터진다
-              if (!this.scene?.isActive?.() || !this.playerState.alive
-                || !this.isCombatActive() || !this.hasLivingEnemy()) return;
-              this.playResearchSpiritResonanceVfx(origin, elements, true);
-              this.applySpellEffect(
-                {
-                  ...resonanceSpell,
-                  name: `${resonanceSpell.name} · 공명`,
-                  // 체감 보강(총괄 제보) — 위력은 #67 때문에 못 올리니 크기만 한 단계.
-                  // 지연도 240→380ms: 본탄과 붙어 나가면 한 발로 뭉쳐 보인다
-                  size: spiritResonanceBoltSize(resonanceSpell.size),
-                  status: [...resonanceSpell.status],
-                  // ⚠️ 0.5는 오토 DPS 게이트(#67) 때문 — 정령탄은 이미 자동 피해라
-                  // 1.0배 추가탄은 정령 DPS를 +33% 올려 40% 상한을 위협한다
-                  power: Math.max(1, Math.round(
-                    resonanceSpell.power * SPIRIT_RESONANCE_BOLT_POWER_SCALE,
-                  )),
-                },
-                origin,
-                true,
-                1,
-                { decorVfxScale: 0.7 },
-              );
-            });
-          }
+          });
         }
         // 융합 정령은 보조 속성을 정보로만 들고 있지 않는다. 짧은 박자 뒤 다른 원소탄을
         // 실제로 한 번 더 날려, 불+얼음처럼 두 속성이 눈과 판정 모두에서 읽히게 한다.
