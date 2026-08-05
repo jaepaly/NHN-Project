@@ -6272,7 +6272,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 단일 보스전에서도 합주 보상이 사라지지 않도록, 다른 표적이 없으면 같은 적을
     // 단계 수만큼 교차 타격한다. 총합은 5/15/25%라 단일 전문보다 낮게 유지된다.
     const targets = otherTargets.length > 0 ? otherTargets : [target];
-    const count = Math.min(chorusProjectileCount(stage), targets.length);
+    const count = chorusProjectileCount(stage);
     if (count > 0) {
       this.recordSpellLog(
         'chorus',
@@ -6287,8 +6287,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const impactTarget = enemy.alive ? enemy : this.nearestEnemy();
         if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive() || !impactTarget) return;
         const origin = new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
-        this.playChorusShardArc(origin.x, origin.y, impactTarget.x, impactTarget.y, i, element, () => {
-          if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive() || !impactTarget.alive) return;
+        const resolveTarget = () => impactTarget.alive ? impactTarget : this.nearestEnemy();
+        this.playChorusShardArc(origin.x, origin.y, impactTarget.x, impactTarget.y, i, element, resolveTarget, (currentTarget) => {
+          if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
           // 별 자체가 비행체다. 피해는 도착 순간의 작은 폭발로만 보여 이중 투사체가 되지 않는다.
           this.applySpellEffect(
             {
@@ -6296,9 +6297,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
               element_primary: element,
               form: 'nova',
               size: 'small',
-              power: Math.max(1, Math.round(spec.power * ELEMENTAL_CHORUS.projectilePowerScale * (enemy.kind === 'boss' ? 0.4 : 0.8))),
+              power: Math.max(1, Math.round(spec.power * ELEMENTAL_CHORUS.projectilePowerScale * (currentTarget.kind === 'boss' ? 0.4 : 0.8))),
             },
-            new Phaser.Math.Vector2(impactTarget.x, impactTarget.y), true, 1,
+            new Phaser.Math.Vector2(currentTarget.x, currentTarget.y), true, 1,
             { decorVfxScale: 0.7, bonusDamageNumber: 'chorus' },
           );
         });
@@ -6315,19 +6316,19 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     toY: number,
     index: number,
     element: SpellElement,
-    onImpact: () => void,
+    resolveTarget: () => { x: number; y: number; alive: boolean; kind?: string } | null,
+    onImpact: (target: { x: number; y: number; alive: boolean; kind?: string }) => void,
   ): void {
     const color = ELEMENT_PALETTES[element].accent;
     const side = index % 2 === 0 ? 1 : -1;
     const bend = 105 + (index % 3) * 34;
-    const controlX = (fromX + toX) * 0.5 + side * bend;
-    const controlY = (fromY + toY) * 0.5 - 86 - (index % 2) * 42;
     const trail = this.add.graphics().setDepth(22).setBlendMode(Phaser.BlendModes.ADD);
     const aura = this.add.circle(fromX, fromY, 18, color, 0.16).setDepth(22)
       .setBlendMode(Phaser.BlendModes.ADD);
     const shard = this.add.star(fromX, fromY, 6, 5, 12, 0xf8fbff, 1).setDepth(23)
       .setStrokeStyle(2, color, 0.9).setBlendMode(Phaser.BlendModes.ADD);
     const progress = { value: 0 };
+    let lastTarget = { x: toX, y: toY };
     this.tweens.add({
       targets: progress,
       value: 1,
@@ -6335,22 +6336,27 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       ease: 'Cubic.easeIn',
       onUpdate: () => {
         const t = progress.value;
-        const x = (1 - t) ** 2 * fromX + 2 * (1 - t) * t * controlX + t ** 2 * toX;
-        const y = (1 - t) ** 2 * fromY + 2 * (1 - t) * t * controlY + t ** 2 * toY;
+        const target = resolveTarget();
+        if (target) lastTarget = { x: target.x, y: target.y };
+        const controlX = (fromX + lastTarget.x) * 0.5 + side * bend;
+        const controlY = (fromY + lastTarget.y) * 0.5 - 86 - (index % 2) * 42;
+        const x = (1 - t) ** 2 * fromX + 2 * (1 - t) * t * controlX + t ** 2 * lastTarget.x;
+        const y = (1 - t) ** 2 * fromY + 2 * (1 - t) * t * controlY + t ** 2 * lastTarget.y;
         shard.setPosition(x, y).setRotation(t * Math.PI * 3 * side).setScale(1.05 - t * 0.3);
         aura.setPosition(x, y).setScale(1.05 - t * 0.35).setAlpha(0.18 - t * 0.12);
         trail.clear().lineStyle(5, color, 0.5).beginPath().moveTo(fromX, fromY);
         for (let sample = 1; sample <= 12; sample += 1) {
           const u = t * sample / 12;
           trail.lineTo(
-            (1 - u) ** 2 * fromX + 2 * (1 - u) * u * controlX + u ** 2 * toX,
-            (1 - u) ** 2 * fromY + 2 * (1 - u) * u * controlY + u ** 2 * toY,
+            (1 - u) ** 2 * fromX + 2 * (1 - u) * u * controlX + u ** 2 * lastTarget.x,
+            (1 - u) ** 2 * fromY + 2 * (1 - u) * u * controlY + u ** 2 * lastTarget.y,
           );
         }
         trail.strokePath();
       },
       onComplete: () => {
-        onImpact();
+        const target = resolveTarget();
+        if (target) onImpact(target);
         trail.destroy();
         aura.destroy();
         shard.destroy();
