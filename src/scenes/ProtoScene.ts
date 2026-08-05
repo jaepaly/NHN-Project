@@ -7432,10 +7432,18 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
             this.spiritResonanceShotIndex,
           );
           this.spiritResonanceShotIndex += 1;
-          this.time.delayedCall(180, () => {
+          // 280ms: 본탄(0ms)·융합 파편(150ms)과 겹치지 않는 세 번째 박자.
+          // 처음 180ms로 했더니 총괄 제보 — *"공명탄이 너무 작아서 그런 건지, 정령의
+          // 공격과 겹쳐서 그런건지 안보이는데?"* 같은 위치·같은 대상·거의 같은 시점이라
+          // 본탄 잔상 안에 묻혔다.
+          this.time.delayedCall(280, () => {
             // 지연 발이라 시점을 다시 본다 — 그 사이 마지막 적이 죽으면 허공에 터진다
             if (!this.scene?.isActive?.() || !this.playerState.alive
               || !this.isCombatActive() || !this.hasLivingEnemy()) return;
+            // ⚠️ **본탄과 다른 적을 노린다** (2순위 근접 적, 하나뿐이면 같은 적).
+            // 같은 대상을 주면 궤적이 겹쳐 안 보인다 — 갈라져 나가야 "공명이 퍼진다"가
+            // 읽히고, 부수적으로 잡몹 정리도 된다 (진화 각인의 분산과 같은 이유)
+            const spreadTarget = this.nthNearestEnemy(1);
             this.playResearchSpiritResonanceVfx(origin, [resonanceElement], false);
             this.applySpellEffect(
               {
@@ -7443,7 +7451,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
                 name: `${resonanceSpell.name} · 공명`,
                 element_primary: resonanceElement,
                 element_secondary: null,
-                // 매회 나오는 작은 탄 — 크기 격상 없음, 연출도 최저 단계
+                // 매회 나오는 작은 탄 — 크기 격상 없음
                 size: 'small',
                 status: spiritElementStatuses(resonanceElement),
                 // 위력 기준이 정령탄이 아니라 **유저의 최근 수동 영창 평균**이다.
@@ -7454,7 +7462,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
               origin,
               true,
               1,
-              { decorVfxScale: 0.55 },
+              {
+                // 0.55는 본탄에 묻혔다 — 다른 궤적 + 0.85면 작아도 따로 읽힌다
+                decorVfxScale: 0.85,
+                ...(spreadTarget
+                  ? { sequenceTarget: { lockedEnemy: spreadTarget, lastTargetPoint: null } }
+                  : {}),
+              },
             );
           });
         }

@@ -208,6 +208,21 @@ import {
     boltBlock.includes('!this.hasLivingEnemy()) return;'),
     '공명탄 지연 발도 발사 시점에 적을 다시 봐야 한다',
   );
+  // ⚠️ 총괄 제보로 실측된 실패: 본탄과 같은 대상·같은 위치·비슷한 시점이면 궤적이
+  // 겹쳐 **안 보인다**. 2순위 적을 노려 갈라져 나가야 "공명이 퍼진다"가 읽힌다.
+  assert.ok(
+    boltBlock.includes('this.nthNearestEnemy(1)'),
+    '공명탄은 본탄과 다른 적(2순위 근접)을 노려야 한다 — 같은 대상이면 잔상에 묻힌다',
+  );
+  assert.ok(
+    boltBlock.includes('sequenceTarget: { lockedEnemy: spreadTarget'),
+    '분산 대상이 실제 조준으로 전달돼야 한다',
+  );
+  // 본탄(0ms)·융합 파편(150ms)과 다른 박자여야 한다 — 180ms는 파편과 겹쳤다
+  assert.ok(
+    boltBlock.includes('this.time.delayedCall(280,'),
+    '공명탄은 세 번째 박자(280ms)로 나가야 한다 — 본탄·파편과 겹치면 안 보인다',
+  );
   // 수동 위력 기록 — 단일·시퀀스 두 경로 모두. 한쪽이 빠지면 그 빌드에서 위력이 굳는다
   const recordCalls = scene.match(/this\.recordManualPowerForResonance\(/g) ?? [];
   assert.ok(
