@@ -5,6 +5,7 @@ import {
   inheritCandidates,
   inheritedAffinity,
   mutateInheritedAffinity,
+  mutateInheritedChorusAffinity,
 } from '../src/combat-core/run/runInheritance';
 import {
   ALTAR_OFFER_CONFIG,
@@ -122,6 +123,10 @@ import { AWAKENING_CONFIG } from '../src/combat-core/run/awakening';
     mutateInheritedAffinity({ fire: 0.9, ice: 0.3 }, 12345), mutation,
     '동률·변이 대상은 시드가 같으면 재현된다',
   );
+  const continuedChorus = mutateInheritedChorusAffinity(0.3, 12345);
+  assert.ok(continuedChorus, '합주 친화도도 다음 런 계승 대상으로 변환된다');
+  assert.equal(continuedChorus?.value, inheritedAffinity(0.3));
+  assert.equal(continuedChorus?.echoes.length, 3, '합주 3단계는 다중 잔향 3개를 남긴다');
 }
 
 // ── ④ 이어가기가 실제로 빌드를 비우는가 ────────────────────────────────────

@@ -95,7 +95,11 @@ import { buildChipModel } from '../run/buildChipModel';
 import { bandAffordances, reachableBand } from '../run/incantBands';
 import { drawTreasureReward } from '../combat-core/run/treasureRewardConfig';
 import { ALTAR_OFFER_CONFIG, drawAltarOffer, drawHighAltarOptions } from '../combat-core/run/altarOffer';
-import { inheritCandidates, mutateInheritedAffinity } from '../combat-core/run/runInheritance';
+import {
+  inheritCandidates,
+  mutateInheritedAffinity,
+  mutateInheritedChorusAffinity,
+} from '../combat-core/run/runInheritance';
 import {
   affinityForElement,
   chorusEntryAffinity,
@@ -1692,10 +1696,10 @@ export class ProtoScene extends Phaser.Scene {
           if (choice === 'continue') {
             // 이어가면 빌드가 비워진다 — 무엇을 들고 갈지 여기서 고른다.
             // 이미 "더 갈까"를 결정한 자리라 한 호흡으로 이어진다.
-            const inherit = mutateInheritedAffinity(
-              this.combatRunController.state.elementalAffinity,
-              Date.now(),
-            );
+            const currentRun = this.combatRunController.state;
+            const inherit = currentRun.chorusAffinity !== null
+              ? mutateInheritedChorusAffinity(currentRun.chorusAffinity, Date.now())
+              : mutateInheritedAffinity(currentRun.elementalAffinity, Date.now());
             this.continueToNextLoop(inherit);
           } else {
             void showRunSummaryOverlay(this.buildRunSummary('victory'))
@@ -2232,6 +2236,7 @@ export class ProtoScene extends Phaser.Scene {
         holdMs: 2800,
       });
     }
+    void this.offerResearchContract();
   }
 
   /**
