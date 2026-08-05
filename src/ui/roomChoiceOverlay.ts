@@ -8,6 +8,12 @@ import { UI_COLOR, UI_FONT, UI_LAYER } from './uiTokens';
 import {
   cornerFlourish, divider, ornamentCss,
 } from './grimoireOrnament';
+import { roomIconDataUri } from './roomKindIcon';
+import {
+  currentMinimapStage,
+  minimapStages,
+  projectMinimapStage,
+} from './minimapStageProjection';
 
 /**
  * 다음 방 선택 UI의 입력 계약.
@@ -29,6 +35,28 @@ export interface RoomChoicePresentation {
   label: string;
   color: string;
   description: string;
+}
+
+export type RoomRouteMetricValue = 0 | 1 | 2 | 3 | '?' | 'none' | null;
+
+export interface RoomRouteMetrics {
+  risk: RoomRouteMetricValue;
+  reward: RoomRouteMetricValue;
+}
+
+const ROOM_ROUTE_METRICS: Record<MapNodeKind, RoomRouteMetrics> = {
+  start: { risk: null, reward: null },
+  combat: { risk: 1, reward: 1 },
+  elite: { risk: 2, reward: 2 },
+  trap: { risk: 2, reward: 2 },
+  treasure: { risk: 0, reward: 1 },
+  altar: { risk: '?', reward: '?' },
+  'stage-boss': { risk: 3, reward: 1 },
+  'memory-boss': { risk: 3, reward: 'none' },
+};
+
+export function roomRouteMetrics(kind: MapNodeKind): RoomRouteMetrics {
+  return ROOM_ROUTE_METRICS[kind];
 }
 
 const ROOM_PRESENTATION: Record<MapNodeKind, RoomChoicePresentation> = {
@@ -161,7 +189,22 @@ ${ornamentCss(WRAP_ID)}
   text-shadow: 0 2px 16px rgba(0, 0, 0, 0.72);
 }
 #${WRAP_ID} .route-subtitle {
-  margin-bottom: 17px; font: 12px/1.5 ${UI_FONT.serif}; color: #91869a;
+  margin-bottom: 10px; font: 12px/1.5 ${UI_FONT.serif}; color: #91869a;
+}
+#${WRAP_ID} .route-stage-tabs {
+  display: flex; justify-content: center; gap: 8px; margin: 0 0 10px;
+}
+#${WRAP_ID} .route-stage-tab {
+  min-width: 104px; padding: 7px 14px; border: 1px solid rgba(151, 129, 157, 0.42);
+  border-radius: 999px; background: rgba(20, 15, 24, 0.78); color: #8f8498;
+  font: 700 11px/1 ${UI_FONT.serif}; letter-spacing: 0.1em; cursor: pointer;
+}
+#${WRAP_ID} .route-stage-tab.viewing {
+  border-color: rgba(216, 187, 114, 0.78); color: #ead9ad;
+  box-shadow: 0 0 10px rgba(216, 187, 114, 0.12);
+}
+#${WRAP_ID} .route-stage-tab.current::after {
+  content: ' 현재'; color: #d8bb72; font-size: 8px; letter-spacing: 0;
 }
 #${WRAP_ID} .route-map {
   position: relative; width: 100%; height: clamp(310px, 49vh, 500px);
@@ -193,12 +236,12 @@ ${ornamentCss(WRAP_ID)}
   position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: visible;
 }
 #${WRAP_ID} .route-edge {
-  fill: none; stroke: #6e6077; stroke-width: 1.15; vector-effect: non-scaling-stroke;
-  stroke-linecap: round; opacity: 0.26;
+  fill: none; stroke: #81728b; stroke-width: 1.35; vector-effect: non-scaling-stroke;
+  stroke-linecap: round; opacity: 0.64;
 }
 #${WRAP_ID} .route-edge.walked {
-  stroke: #85704d; stroke-width: 1.6; opacity: 0.66;
-  filter: drop-shadow(0 0 3px rgba(176, 143, 82, 0.22));
+  stroke: #a78d5f; stroke-width: 1.8; opacity: 0.82;
+  filter: drop-shadow(0 0 3px rgba(176, 143, 82, 0.3));
 }
 #${WRAP_ID} .route-edge.available {
   stroke: #d8bb72; stroke-width: 2.2; opacity: 0.92;
@@ -213,54 +256,57 @@ ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .route-node {
   --room-color: #aaa1c8;
   position: absolute; transform: translate(-50%, -50%);
-  width: 52px; height: 52px; padding: 0;
+  width: 58px; height: 58px; padding: 0;
   border: 1px solid color-mix(in srgb, var(--room-color) 68%, #594f61);
   border-radius: 50%;
-  background:
-    radial-gradient(circle, rgba(44, 32, 50, 0.96) 0 48%, rgba(11, 8, 14, 0.98) 50% 58%, rgba(75, 56, 80, 0.58) 60% 62%, rgba(10, 8, 13, 0.98) 64%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--room-color) 9%, #211824) 0 58%, #0d0a10 76%);
   color: var(--room-color); font: 700 10px/1.08 ${UI_FONT.serif};
-  display: grid; place-items: center; cursor: default;
-  opacity: 0.32;
-  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.66);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; cursor: default;
+  opacity: 0.66;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.42), inset 0 0 10px rgba(0, 0, 0, 0.52);
   transition: transform 180ms ease, opacity 180ms ease, box-shadow 180ms ease,
     border-color 180ms ease, filter 180ms ease;
 }
 #${WRAP_ID} .route-node::before,
 #${WRAP_ID} .route-node::after {
   content: ''; position: absolute; inset: -6px; border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--room-color) 34%, transparent);
-  transform: rotate(18deg); pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--room-color) 42%, transparent);
+  opacity: 0; pointer-events: none;
 }
-#${WRAP_ID} .route-node::after {
-  inset: -10px; border-style: dotted; opacity: 0.42; transform: rotate(-13deg);
+#${WRAP_ID} .route-node::after { display: none; }
+#${WRAP_ID} .route-node.current::before,
+#${WRAP_ID} .route-node.selectable::before { opacity: 0.72; }
+#${WRAP_ID} .route-node.selectable::before {
+  inset: -7px; border: 1.5px solid rgba(216, 187, 114, 0.82); opacity: 0.9;
+  box-shadow: 0 0 8px rgba(216, 187, 114, 0.2);
 }
 #${WRAP_ID} .route-node.special,
 #${WRAP_ID} .route-node.boss { border-radius: 50%; clip-path: none; }
 #${WRAP_ID} .route-node.cleared {
-  opacity: 0.54; border-color: #6f674f; color: #8f8565; filter: saturate(0.58);
+  opacity: 0.48; border-color: #6f674f; color: #8f8565; filter: saturate(0.48);
 }
 #${WRAP_ID} .route-node.current {
-  width: 58px; height: 58px; opacity: 1; color: #d8bb72; border-color: #d8bb72;
+  width: 62px; height: 62px; opacity: 1; color: #d8bb72; border-color: #d8bb72;
   box-shadow:
-    0 0 0 5px rgba(216, 187, 114, 0.07),
-    0 3px 9px rgba(0, 0, 0, 0.5),
-    inset 0 0 18px rgba(216, 187, 114, 0.09);
+    0 0 12px rgba(216, 187, 114, 0.18),
+    0 3px 9px rgba(0, 0, 0, 0.5), inset 0 0 14px rgba(216, 187, 114, 0.08);
 }
 #${WRAP_ID} .route-node.selectable {
-  width: 64px; height: 64px; opacity: 1; cursor: pointer;
-  background:
-    radial-gradient(circle, color-mix(in srgb, var(--room-color) 15%, #241a29) 0 46%, #0d0910 49% 58%, color-mix(in srgb, var(--room-color) 42%, #16101a) 60% 62%, #0b080e 64%);
+  width: 68px; height: 68px; opacity: 1; cursor: pointer;
+  border-width: 2px;
+  border-color: color-mix(in srgb, var(--room-color) 66%, #d8bb72);
+  background: radial-gradient(circle, color-mix(in srgb, var(--room-color) 18%, #251a29) 0 58%, #0c090f 78%);
   box-shadow:
-    0 0 0 6px color-mix(in srgb, var(--room-color) 7%, transparent),
-    0 4px 12px rgba(0, 0, 0, 0.55),
-    inset 0 0 18px color-mix(in srgb, var(--room-color) 10%, transparent);
+    0 0 17px color-mix(in srgb, var(--room-color) 28%, rgba(216, 187, 114, 0.15)),
+    0 4px 12px rgba(0, 0, 0, 0.55), inset 0 0 15px color-mix(in srgb, var(--room-color) 12%, transparent);
   animation: r3-route-ready 2.2s ease-in-out infinite;
 }
 #${WRAP_ID} .route-node.selectable:hover,
 #${WRAP_ID} .route-node.selectable.focused {
   transform: translate(-50%, -50%) scale(1.09);
   box-shadow:
-    0 0 0 8px color-mix(in srgb, var(--room-color) 9%, transparent),
+    0 0 17px color-mix(in srgb, var(--room-color) 32%, transparent),
     0 6px 16px rgba(0, 0, 0, 0.6),
     inset 0 0 22px color-mix(in srgb, var(--room-color) 15%, transparent);
 }
@@ -270,10 +316,71 @@ ${ornamentCss(WRAP_ID)}
   border-color: color-mix(in srgb, var(--room-color) 82%, #8f7f91);
   filter: brightness(1.2) saturate(0.9);
   box-shadow:
-    0 0 0 5px color-mix(in srgb, var(--room-color) 7%, transparent),
+    0 0 10px color-mix(in srgb, var(--room-color) 16%, transparent),
     0 4px 11px rgba(0, 0, 0, 0.52),
     inset 0 0 18px color-mix(in srgb, var(--room-color) 10%, transparent);
 }
+#${WRAP_ID} .route-room-icon {
+  width: 55%; height: 55%; flex: 0 0 auto; display: block; object-fit: contain;
+  pointer-events: none; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--room-color) 52%, transparent)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.82));
+}
+#${WRAP_ID} .route-node.boss .route-room-icon { width: 60%; height: 60%; }
+#${WRAP_ID} .route-node.boss { width: 66px; height: 66px; border-width: 2px; }
+#${WRAP_ID} .route-node.boss:not(.cleared) { opacity: 0.68; }
+#${WRAP_ID} .route-node.boss.selectable { width: 72px; height: 72px; opacity: 1; }
+#${WRAP_ID} .route-room-name {
+  position: static; width: 92%; max-width: 92%; pointer-events: none;
+  color: color-mix(in srgb, var(--room-color) 82%, #e8dfcf);
+  font: 700 10px/1 ${UI_FONT.serif}; letter-spacing: -0.02em;
+  overflow: hidden; white-space: nowrap; text-overflow: clip; text-align: center;
+  text-shadow: 0 1px 3px #050308, 0 0 5px #050308;
+}
+#${WRAP_ID} .route-node.selectable .route-room-name { font-size: 11px; }
+#${WRAP_ID} .route-node:not(:has(.route-room-icon)) .route-room-name { font-size: 10px; }
+#${WRAP_ID} .route-node.cleared .route-room-name { color: #8f8565; }
+#${WRAP_ID} .route-node-metrics {
+  position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  width: 46px; min-height: 25px; padding: 3px 4px; box-sizing: border-box;
+  border: 1px solid rgba(132, 115, 139, 0.2); border-radius: 6px;
+  background: rgba(10, 7, 12, 0.72); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.42);
+  pointer-events: none; white-space: nowrap; filter: none;
+}
+#${WRAP_ID} .route-node.dense-choice .route-node-metrics {
+  top: 50%; left: calc(100% + 10px); transform: translateY(-50%);
+}
+#${WRAP_ID} .route-node-metric {
+  width: 38px; height: 8px; display: inline-flex; align-items: center; gap: 4px;
+  font: 700 9px/1 ${UI_FONT.serif}; text-shadow: 0 1px 3px #050308, 0 0 4px #050308;
+}
+#${WRAP_ID} .route-node-metric.risk { color: #c97c75; }
+#${WRAP_ID} .route-node-metric.reward { color: #d8bb72; }
+#${WRAP_ID} .route-metric-icon {
+  width: 10px; height: 10px; display: block; overflow: visible;
+  filter: drop-shadow(0 0 2px currentColor) drop-shadow(0 1px 1px #050308);
+}
+#${WRAP_ID} .route-metric-slots { display: inline-flex; align-items: center; gap: 2px; }
+#${WRAP_ID} .route-metric-slot {
+  width: 5px; height: 5px; box-sizing: border-box; border: 1px solid currentColor;
+  border-radius: 1px; opacity: 0.26;
+}
+#${WRAP_ID} .route-metric-slot.filled {
+  background: currentColor; opacity: 0.95; box-shadow: 0 0 3px currentColor;
+}
+#${WRAP_ID} .route-metric-zero,
+#${WRAP_ID} .route-metric-unknown,
+#${WRAP_ID} .route-metric-none { width: 19px; text-align: center; }
+#${WRAP_ID} .route-metric-unknown { font-size: 9px; letter-spacing: 2px; }
+#${WRAP_ID} .route-metric-none { font-size: 10px; opacity: 0.65; }
+#${WRAP_ID} .route-metric-legend {
+  position: absolute; z-index: 3; right: 18px; top: 14px;
+  display: flex; gap: 12px; color: #827889;
+  font: 700 9px/1 ${UI_FONT.serif}; letter-spacing: 0.04em; pointer-events: none;
+}
+#${WRAP_ID} .route-metric-legend .risk { color: #c97c75; }
+#${WRAP_ID} .route-metric-legend .reward { color: #d8bb72; }
+#${WRAP_ID} .route-metric-legend > span { display: inline-flex; align-items: center; gap: 4px; }
+#${WRAP_ID} .route-metric-legend .route-metric-icon { width: 11px; height: 11px; }
 #${WRAP_ID} .route-node:focus-visible {
   outline: 1px solid #ead9ad; outline-offset: 12px;
 }
@@ -287,14 +394,6 @@ ${ornamentCss(WRAP_ID)}
   color: #24180c; background: #d8bb72;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
   font: 800 11px/20px ${UI_FONT.serif};
-}
-#${WRAP_ID} .route-ready-label {
-  position: absolute; left: 50%; top: -28px; transform: translateX(-50%);
-  width: max-content; padding: 0;
-  color: color-mix(in srgb, var(--room-color) 78%, #eadfc8);
-  background: transparent; border: 0;
-  font: 700 10px/1 ${UI_FONT.serif}; letter-spacing: 0.12em;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
 }
 #${WRAP_ID} .route-detail {
   position: relative; min-height: 76px; margin: 16px auto 0; padding: 14px 32px 10px;
@@ -402,6 +501,17 @@ function nodeShapeClass(kind: MapNodeKind): string {
   return '';
 }
 
+/** 다음 방 선택 화면은 현재 방보다 실제 선택지가 속한 스테이지를 우선 표시한다. */
+export function roomChoiceTargetStage(
+  model: MinimapModel,
+  options: readonly RoomChoiceOption[],
+): number {
+  const firstOptionNode = model.nodes.find((node) => node.id === options[0]?.nodeId);
+  return typeof firstOptionNode?.stage === 'number' && Number.isFinite(firstOptionNode.stage)
+    ? firstOptionNode.stage
+    : currentMinimapStage(model);
+}
+
 /**
  * 전체 경로를 표시하고, 현재 위치에서 이동 가능한 노드 하나를 반환한다.
  *
@@ -417,12 +527,16 @@ export function showRoomChoices(
 
   const model = cloneModel(request.map);
   const nodesById = new Map(model.nodes.map((node) => [node.id, node] as const));
-  const points = new Map(minimapLayout(model).map((point) => [point.id, point] as const));
+  const currentStage = currentMinimapStage(model);
+  const choiceStage = roomChoiceTargetStage(model, request.options);
+  const stages = minimapStages(model);
+  const initialStageModel = projectMinimapStage(model, choiceStage);
+  const sortPoints = new Map(minimapLayout(initialStageModel).map((point) => [point.id, point] as const));
   const shown = request.options
     .map((option) => ({ ...option }))
     .sort((a, b) => {
-      const aPoint = points.get(a.nodeId)!;
-      const bPoint = points.get(b.nodeId)!;
+      const aPoint = sortPoints.get(a.nodeId)!;
+      const bPoint = sortPoints.get(b.nodeId)!;
       return aPoint.y - bPoint.y || aPoint.x - bPoint.x;
     });
   const optionById = new Map(shown.map((option, index) => [option.nodeId, { option, index }] as const));
@@ -437,7 +551,12 @@ export function showRoomChoices(
       <div class="route-title">다음 길을 선택하라</div>
       ${divider()}
       <div class="route-subtitle">드러난 운명의 흐름 속에서 빛이 깃든 방으로 나아갈 수 있습니다</div>
+      <div class="route-stage-tabs" role="tablist" aria-label="스테이지 지도"></div>
       <div class="route-map">
+        <div class="route-metric-legend" aria-hidden="true">
+          <span class="risk">${routeMetricIconMarkup('risk')}위험</span>
+          <span class="reward">${routeMetricIconMarkup('reward')}보상</span>
+        </div>
         <svg class="route-edges" aria-hidden="true"></svg>
         <div class="route-nodes"></div>
       </div>
@@ -451,6 +570,7 @@ export function showRoomChoices(
 
   const svg = wrap.querySelector<SVGSVGElement>('.route-edges')!;
   const nodesEl = wrap.querySelector<HTMLElement>('.route-nodes')!;
+  const tabsEl = wrap.querySelector<HTMLElement>('.route-stage-tabs')!;
   const stateEl = wrap.querySelector<HTMLElement>('.route-detail-state')!;
   const titleEl = wrap.querySelector<HTMLElement>('.route-detail-title')!;
   const descriptionEl = wrap.querySelector<HTMLElement>('.route-detail-description')!;
@@ -461,28 +581,9 @@ export function showRoomChoices(
   );
   svg.setAttribute('preserveAspectRatio', 'none');
 
-  for (const edge of model.edges) {
-    const from = points.get(edge.from);
-    const to = points.get(edge.to);
-    if (!from || !to) continue;
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    const deltaX = to.x - from.x;
-    path.setAttribute(
-      'd',
-      `M ${from.x} ${from.y} C ${from.x + deltaX * 0.38} ${from.y}, ${from.x + deltaX * 0.62} ${to.y}, ${to.x} ${to.y}`,
-    );
-    const walked = nodesById.get(edge.from)?.status === 'cleared'
-      && ['cleared', 'current'].includes(nodesById.get(edge.to)?.status ?? '');
-    const available = edge.from === currentNodeId && optionById.has(edge.to);
-    path.setAttribute(
-      'class',
-      `route-edge${walked ? ' walked' : ''}${available ? ' available' : ''}`,
-    );
-    svg.appendChild(path);
-  }
-
   return new Promise<RoomChoiceOption>((resolve) => {
     let focusIndex = 0;
+    let viewedStage = choiceStage;
     const selectableButtons = new Map<number, HTMLButtonElement>();
 
     const cleanup = (): void => {
@@ -530,6 +631,11 @@ export function showRoomChoices(
       if (focusDirection !== 0) {
         event.preventDefault();
         event.stopImmediatePropagation();
+        if (viewedStage !== choiceStage) {
+          renderStage(choiceStage);
+          setFocus(focusIndex);
+          return;
+        }
         setFocus(nextRoomChoiceFocusIndex(
           focusIndex,
           focusDirection,
@@ -540,55 +646,135 @@ export function showRoomChoices(
       if (event.key === 'Enter') {
         event.preventDefault();
         event.stopImmediatePropagation();
+        if (viewedStage !== choiceStage) {
+          renderStage(choiceStage);
+          setFocus(focusIndex);
+          return;
+        }
         finish(focusIndex);
       }
     };
 
-    for (const node of model.nodes) {
-      const point = points.get(node.id);
-      if (!point) continue;
-      const selectable = optionById.get(node.id);
-      const presentation = roomChoicePresentation(node.kind);
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = [
-        'route-node',
-        node.status,
-        nodeShapeClass(node.kind),
-        selectable ? 'selectable' : '',
-      ].filter(Boolean).join(' ');
-      button.style.left = `${(point.x / MINIMAP_CONFIG.width) * 100}%`;
-      button.style.top = `${((point.y + ROUTE_MAP_VERTICAL_GUTTER) / ROUTE_MAP_VIEW_HEIGHT) * 100}%`;
-      button.style.setProperty('--room-color', presentation.color);
-      button.setAttribute('aria-label', `${nodeStateLabel(node, selectable !== undefined)}: ${presentation.label}`);
-      button.setAttribute('aria-disabled', selectable ? 'false' : 'true');
-      button.tabIndex = selectable ? 0 : -1;
-
-      const label = document.createElement('span');
-      label.textContent = presentation.label;
-      button.appendChild(label);
-
-      if (selectable) {
-        const hotkey = document.createElement('span');
-        hotkey.className = 'route-hotkey';
-        hotkey.textContent = String(selectable.index + 1);
-        button.appendChild(hotkey);
-
-        const ready = document.createElement('span');
-        ready.className = 'route-ready-label';
-        ready.textContent = '이동 가능';
-        button.appendChild(ready);
-
-        button.addEventListener('click', () => finish(selectable.index));
-        button.addEventListener('focus', () => showDetail(node));
-        selectableButtons.set(selectable.index, button);
+    const renderStage = (stage: number): void => {
+      viewedStage = stage;
+      const stageModel = projectMinimapStage(model, stage);
+      const stageNodesById = new Map(stageModel.nodes.map((node) => [node.id, node] as const));
+      const points = new Map(minimapLayout(stageModel).map((point) => [point.id, point] as const));
+      const selectableLayerCounts = new Map<number, number>();
+      if (stage === choiceStage) {
+        for (const node of stageModel.nodes) {
+          if (!optionById.has(node.id)) continue;
+          selectableLayerCounts.set(node.layer, (selectableLayerCounts.get(node.layer) ?? 0) + 1);
+        }
       }
-      button.addEventListener('mouseenter', () => {
-        if (selectable) setFocus(selectable.index);
-        else showDetail(node);
-      });
-      nodesEl.appendChild(button);
-    }
+      svg.replaceChildren();
+      nodesEl.replaceChildren();
+      tabsEl.replaceChildren();
+      selectableButtons.clear();
+
+      for (const tabStage of stages) {
+        const tab = document.createElement('button');
+        tab.type = 'button';
+        tab.className = [
+          'route-stage-tab',
+          tabStage === viewedStage ? 'viewing' : '',
+          tabStage === currentStage ? 'current' : '',
+        ].filter(Boolean).join(' ');
+        tab.textContent = `STAGE ${tabStage}`;
+        tab.setAttribute('role', 'tab');
+        tab.setAttribute('aria-selected', String(tabStage === viewedStage));
+        tab.addEventListener('click', () => {
+          renderStage(tabStage);
+          if (tabStage === choiceStage) setFocus(focusIndex);
+          else {
+            const firstNode = projectMinimapStage(model, tabStage).nodes.at(0);
+            if (firstNode) showDetail(firstNode);
+          }
+        });
+        tabsEl.appendChild(tab);
+      }
+
+      for (const edge of stageModel.edges) {
+        const from = points.get(edge.from);
+        const to = points.get(edge.to);
+        if (!from || !to) continue;
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const deltaX = to.x - from.x;
+        path.setAttribute(
+          'd',
+          `M ${from.x} ${from.y} C ${from.x + deltaX * 0.38} ${from.y}, ${from.x + deltaX * 0.62} ${to.y}, ${to.x} ${to.y}`,
+        );
+        const walked = stageNodesById.get(edge.from)?.status === 'cleared'
+          && ['cleared', 'current'].includes(stageNodesById.get(edge.to)?.status ?? '');
+        const available = stage === choiceStage
+          && edge.from === currentNodeId && optionById.has(edge.to);
+        path.setAttribute(
+          'class',
+          `route-edge${walked ? ' walked' : ''}${available ? ' available' : ''}`,
+        );
+        svg.appendChild(path);
+      }
+
+      for (const node of stageModel.nodes) {
+        const point = points.get(node.id);
+        if (!point) continue;
+        const selectable = stage === choiceStage ? optionById.get(node.id) : undefined;
+        const presentation = roomChoicePresentation(node.kind);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = [
+          'route-node', node.status, nodeShapeClass(node.kind), selectable ? 'selectable' : '',
+          selectable && (selectableLayerCounts.get(node.layer) ?? 0) >= 3 ? 'dense-choice' : '',
+        ].filter(Boolean).join(' ');
+        button.style.left = `${(point.x / MINIMAP_CONFIG.width) * 100}%`;
+        button.style.top = `${((point.y + ROUTE_MAP_VERTICAL_GUTTER) / ROUTE_MAP_VIEW_HEIGHT) * 100}%`;
+        button.style.setProperty('--room-color', presentation.color);
+        button.setAttribute('aria-label', `${nodeStateLabel(node, selectable !== undefined)}: ${presentation.label}`);
+        button.setAttribute('aria-disabled', selectable ? 'false' : 'true');
+        button.tabIndex = selectable ? 0 : -1;
+
+        const iconUri = roomIconDataUri(node.kind);
+        if (iconUri) {
+          const icon = document.createElement('img');
+          icon.className = 'route-room-icon';
+          icon.src = iconUri;
+          icon.alt = '';
+          icon.setAttribute('aria-hidden', 'true');
+          button.appendChild(icon);
+        }
+
+        const roomName = document.createElement('span');
+        roomName.className = 'route-room-name';
+        roomName.textContent = presentation.label;
+        roomName.setAttribute('aria-hidden', 'true');
+        button.appendChild(roomName);
+
+        const metrics = roomRouteMetrics(node.kind);
+        const metricsEl = document.createElement('span');
+        metricsEl.className = 'route-node-metrics';
+        metricsEl.setAttribute('aria-hidden', 'true');
+        appendRouteMetric(metricsEl, 'risk', metrics.risk);
+        appendRouteMetric(metricsEl, 'reward', metrics.reward);
+        if (metricsEl.childElementCount > 0) button.appendChild(metricsEl);
+
+        if (selectable) {
+          const hotkey = document.createElement('span');
+          hotkey.className = 'route-hotkey';
+          hotkey.textContent = String(selectable.index + 1);
+          button.appendChild(hotkey);
+          button.addEventListener('click', () => finish(selectable.index));
+          button.addEventListener('focus', () => showDetail(node));
+          selectableButtons.set(selectable.index, button);
+        }
+        button.addEventListener('mouseenter', () => {
+          if (selectable) setFocus(selectable.index);
+          else showDetail(node);
+        });
+        nodesEl.appendChild(button);
+      }
+    };
+
+    renderStage(choiceStage);
 
     window.addEventListener('keydown', onKeyDown, true);
     activeCleanup = cleanup;
@@ -603,4 +789,50 @@ export function showRoomChoices(
     requestAnimationFrame(activate);
     window.setTimeout(activate, 60);
   });
+}
+
+function appendRouteMetric(
+  parent: HTMLElement,
+  kind: 'risk' | 'reward',
+  value: RoomRouteMetricValue,
+): void {
+  if (value === null) return;
+  const metric = document.createElement('span');
+  metric.className = `route-node-metric ${kind}`;
+  metric.insertAdjacentHTML('beforeend', routeMetricIconMarkup(kind));
+
+  if (typeof value === 'number') {
+    const slots = document.createElement('span');
+    slots.className = 'route-metric-slots';
+    for (let index = 0; index < 3; index += 1) {
+      const slot = document.createElement('span');
+      slot.className = `route-metric-slot${index < value ? ' filled' : ''}`;
+      slots.appendChild(slot);
+    }
+    metric.appendChild(slots);
+  } else {
+    const valueEl = document.createElement('span');
+    valueEl.className = value === '?' ? 'route-metric-unknown' : 'route-metric-none';
+    valueEl.textContent = value === '?' ? '???' : '—';
+    metric.appendChild(valueEl);
+  }
+  parent.appendChild(metric);
+}
+
+function routeMetricIconMarkup(kind: 'risk' | 'reward'): string {
+  if (kind === 'risk') {
+    return `<svg class="route-metric-icon" viewBox="0 0 12 12" aria-hidden="true">
+      <path fill="currentColor" d="M6 1C3.24 1 1 3.04 1 5.55c0 1.7.87 2.92 2.2 3.63V11h1.45V9.72h.72V11h1.26V9.72h.72V11H8.8V9.18C10.13 8.47 11 7.25 11 5.55 11 3.04 8.76 1 6 1Z"/>
+      <circle cx="4.15" cy="5.55" r="1.05" fill="#171019"/>
+      <circle cx="7.85" cy="5.55" r="1.05" fill="#171019"/>
+      <path d="M6 6.65 5.25 7.8h1.5Z" fill="#171019"/>
+    </svg>`;
+  }
+  return `<svg class="route-metric-icon" viewBox="0 0 12 12" aria-hidden="true">
+    <path fill="currentColor" d="M1.2 4.6h9.6v5.7H1.2z"/>
+    <path fill="currentColor" fill-opacity="0.72" d="M2 2h8l.8 2H1.2z"/>
+    <path fill="#171019" d="M1.2 5.45h9.6v1H1.2z"/>
+    <rect x="5" y="5.15" width="2" height="2.7" rx=".35" fill="#f0d58b"/>
+    <path d="M2.1 9.7h7.8" stroke="#f0d58b" stroke-opacity=".55" stroke-width=".6"/>
+  </svg>`;
 }

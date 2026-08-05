@@ -75,6 +75,18 @@ import type { MinimapModel } from '../src/run/mapGraphContract';
       && /g\.lineStyle\(\(walked \? 2 : 1\) \* scale/.test(hud),
     '확대 시 패널·노드·경로선이 함께 확대되어야 한다',
   );
+  assert.ok(
+    /roomIconTextureKey\(node\.kind\)/.test(hud)
+      && /iconSize = \(isBoss \? 26 : 20\) \* scale/.test(hud)
+      && /iconBackingRadius/.test(hud)
+      && !/drawDiamond\(/.test(hud),
+    'ESC 미니맵은 공통 방 아이콘과 보스 확대 위계를 사용해야 한다',
+  );
+  assert.ok(
+    /projectMinimapStage\(fullModel, this\.selectedStage\)/.test(hud)
+      && /private readonly stageTabs/.test(hud),
+    'ESC 미니맵은 공통 스테이지 투영과 전환 탭을 사용해야 한다',
+  );
 }
 
 {

@@ -257,6 +257,7 @@ import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { showRewardCards } from '../ui/rewardCardOverlay';
 import { showAltarRiskConfirm } from '../ui/altarRiskConfirm';
 import { MinimapHud } from '../ui/minimapHud';
+import { allRoomIconTextures } from '../ui/roomKindIcon';
 import { MINIMAP_CONFIG } from '../ui/minimapLayout';
 import { RoomRadarHud } from '../ui/roomRadarHud';
 import { ROOM_RADAR_CONFIG } from '../ui/roomRadarModel';
@@ -1238,6 +1239,10 @@ export class ProtoScene extends Phaser.Scene {
     // 도감·보상 카드와 같은 어휘라 한 곳(formGlyphs.ts)에서 온다.
     for (const { key, dataUri } of allGlyphTextures()) {
       this.load.svg(key, dataUri, { width: 48, height: 48 });
+    }
+    // 다음 경로 선택 DOM과 ESC 미니맵이 공유하는 방 특성 아이콘.
+    for (const { key, dataUri } of allRoomIconTextures()) {
+      this.load.svg(key, dataUri, { width: 64, height: 64 });
     }
     // Phase 5 프로토타입 — AI 생성 스테이지 배경 (도형 데모 탈피).
     // 월드 크기(1920×1280)로 업스케일 + 절차적 질감을 구워넣은 완전 스크롤 맵용 이미지.

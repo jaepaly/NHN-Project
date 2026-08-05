@@ -4,6 +4,8 @@ import {
   nextRoomChoiceFocusIndex,
   roomChoiceFocusDirection,
   roomChoicePresentation,
+  roomChoiceTargetStage,
+  roomRouteMetrics,
   showRoomChoices,
 } from '../src/ui/roomChoiceOverlay';
 import type { MapNodeKind } from '../src/run/mapGraphContract';
@@ -37,8 +39,40 @@ await assert.rejects(showRoomChoices({
   options: [{ nodeId: 'missing', kind: 'combat' }],
 }), /must match a map node/);
 
+const stageTransitionMap = {
+  nodes: [
+    { id: 'gate', stage: 1, kind: 'stage-boss', status: 'current', layer: 4, lane: 0 },
+    { id: 's2-first', stage: 2, kind: 'combat', status: 'unvisited', layer: 5, lane: 0 },
+  ],
+  edges: [{ from: 'gate', to: 's2-first' }],
+} satisfies import('../src/run/mapGraphContract').MinimapModel;
+assert.equal(
+  roomChoiceTargetStage(stageTransitionMap, [{ nodeId: 's2-first', kind: 'combat' }]),
+  2,
+  '수문장 클리어 후 Stage 2 선택지가 속한 지도를 연다',
+);
+
 // 3) 플레이 이동과 같은 W/S로만 포커스를 옮기며, 양 끝에서 순환하지 않는다.
 const source = readFileSync('src/ui/roomChoiceOverlay.ts', 'utf8');
+assert.deepEqual(roomRouteMetrics('combat'), { risk: 1, reward: 1 });
+assert.deepEqual(roomRouteMetrics('elite'), { risk: 2, reward: 2 });
+assert.deepEqual(roomRouteMetrics('trap'), { risk: 2, reward: 2 });
+assert.deepEqual(roomRouteMetrics('treasure'), { risk: 0, reward: 1 });
+assert.deepEqual(roomRouteMetrics('altar'), { risk: '?', reward: '?' });
+assert.deepEqual(roomRouteMetrics('stage-boss'), { risk: 3, reward: 1 });
+assert.deepEqual(roomRouteMetrics('memory-boss'), { risk: 3, reward: 'none' });
+assert.ok(source.includes('route-node-metrics'), '노드 아래 위험·보상 지표');
+assert.ok(source.includes('route-metric-legend'), '위험·보상 아이콘 범례');
+assert.ok(source.includes('selectableLayerCounts'), '동일 layer 선택지 밀도 계산');
+assert.ok(source.includes("? 'dense-choice' : ''"), '선택지 3개 이상 밀집 열 표시');
+assert.ok(source.includes('.route-node.dense-choice .route-node-metrics'), '밀집 열 계기판 우측 배치');
+assert.ok(source.includes("appendRouteMetric(metricsEl, 'risk'"), '위험 단계 렌더링');
+assert.ok(source.includes("appendRouteMetric(metricsEl, 'reward'"), '보상 단계 렌더링');
+assert.ok(source.includes("routeMetricIconMarkup('risk')"), '해골 위험 아이콘');
+assert.ok(source.includes("routeMetricIconMarkup('reward')"), '보물상자 보상 아이콘');
+assert.ok(source.includes('M1.2 4.6h9.6v5.7H1.2z'), '보상 아이콘의 각진 상자 실루엣');
+assert.ok(source.includes("index < value ? ' filled' : ''"), '고정 3칸 단계 채움');
+assert.ok(!source.includes('route-metric-pip'), '점 단계 표시 제거');
 for (const key of ['KeyW', 'KeyS', 'Enter']) {
   assert.ok(source.includes(`'${key}'`), `${key} 입력`);
 }
@@ -70,7 +104,9 @@ assert.ok(source.includes('map: MinimapModel'), '전체 경로 지도 계약');
 assert.ok(source.includes('options: readonly RoomChoiceOption[]'), '현재 선택 가능 노드 계약');
 
 // 5) 기존 미니맵 좌표와 연결선을 큰 중앙 지도에 재사용한다.
-assert.ok(source.includes('minimapLayout(model)'), '기존 미니맵 레이아웃 재사용');
+assert.ok(source.includes('minimapLayout(stageModel)'), '스테이지 투영 후 기존 미니맵 레이아웃 재사용');
+assert.ok(source.includes('route-stage-tabs'), '스테이지 지도 탭');
+assert.ok(source.includes('projectMinimapStage(model, stage)'), '공통 스테이지 투영 사용');
 assert.ok(source.includes("createElementNS('http://www.w3.org/2000/svg', 'path')"), '곡선 지도 연결선');
 assert.ok(source.includes("path.setAttribute("), 'SVG 마력선 속성');
 assert.ok(source.includes(' C ${from.x + deltaX * 0.38}'), '직선 대신 유기적인 베지어 곡선');
@@ -79,8 +115,12 @@ assert.ok(source.includes('route-map'), '중앙 전체 지도');
 // 6) 전체 노드는 설명 가능하되 실제 다음 방만 선택할 수 있다.
 assert.ok(source.includes('optionById'), '선택 가능 노드 집합');
 assert.ok(source.includes("button.setAttribute('aria-disabled'"), '비선택 노드 비활성 계약');
-assert.ok(source.includes('route-ready-label'), '이동 가능 표시');
+assert.ok(!source.includes('route-ready-label'), '중복 이동 가능 라벨 제거');
 assert.ok(source.includes('route-detail-description'), '호버·포커스 방 설명');
+assert.ok(source.includes('roomIconDataUri(node.kind)'), '방 이름 대신 공통 특성 아이콘');
+assert.ok(source.includes('route-room-icon'), '노드 아이콘 스타일');
+assert.ok(source.includes('route-room-name'), '아이콘 아래 방 이름 표기');
+assert.ok(source.includes('roomName.textContent = presentation.label'), '방 이름은 기존 presentation 계약 사용');
 assert.ok(source.includes('ROUTE_MAP_VERTICAL_GUTTER = 24'), '상하 장식 잘림 방지 여백');
 assert.ok(
   source.includes('point.y + ROUTE_MAP_VERTICAL_GUTTER'),
