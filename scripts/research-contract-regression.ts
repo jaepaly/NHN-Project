@@ -214,6 +214,10 @@ assert.ok(sceneSource.includes('grantStartingAffinity('), '원소 심화 시작 
 assert.ok(sceneSource.includes("recordSpiritResearch('acquired')"), '정령 계약 연구 진행 배선');
 assert.ok(sceneSource.includes("recordSpiritResearch('fused')"), '정령 융합 연구 진행 배선');
 assert.ok(sceneSource.includes('reportResearchAdvance(previousResearch)'), '일반 단일·시퀀스 진행 피드백 배선');
+assert.ok(sceneSource.includes('emitCompletionBanner = true'), '완료 공지를 호출 경로별로 보류할 수 있다');
+assert.ok(sceneSource.includes('this.reportResearchAdvance(previousResearch, false)'), '정령 융합 중 연구 완료 공지는 보류한다');
+assert.ok(sceneSource.includes("title: '정령 융합 · 연구 완료'"), '융합·연구 완료는 단일 통합 공지로 표시한다');
+assert.ok(sceneSource.includes('holdMs: 2300'), '통합 공지는 다음 방을 오래 가리지 않도록 짧게 유지한다');
 assert.ok(sceneSource.includes('researchMilestoneReward(previous, current)'), '단계별 즉시 보상 배선');
 assert.ok(sceneSource.includes('researchProgressSlots(research)'), '상시 연구 진행 슬롯 HUD 배선');
 assert.ok(sceneSource.includes('scheduleElementalResearchEcho(executedSpecs)'), '시퀀스 공명 재시전 배선');
