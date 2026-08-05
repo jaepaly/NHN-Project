@@ -1,5 +1,7 @@
 import type { RewardOption } from '../run/runContract';
-import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL, UI_SEMANTIC } from './uiTokens';
+import {
+  UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL, UI_RAINBOW, UI_SEMANTIC, rainbowStops,
+} from './uiTokens';
 import {
   cornerFlourish, deckleMask, divider, ornamentCss, titleSigil, waxSeal,
 } from './grimoireOrnament';
@@ -138,13 +140,13 @@ ${ornamentCss(WRAP_ID)}
   background:
     ${UI_MATERIAL.grain} padding-box,
     linear-gradient(163deg, rgba(30, 22, 34, 0.97), rgba(16, 12, 20, 0.95)) padding-box,
-    linear-gradient(120deg, #ff6f8f, #ffd166, #8cf0b5, #72cfff, #9c7dff, #ed8cff, #ff6f8f) border-box;
+    linear-gradient(120deg, ${rainbowStops()}) border-box;
   border: 2px solid transparent;
   background-size: 100% 100%, 300% 100%;
   animation: r3-rainbow-shimmer 3.2s linear infinite;
 }
 #${WRAP_ID} .reward-card--rainbow .card-glyph {
-  background: conic-gradient(#ff6f8f, #ffd166, #8cf0b5, #72cfff, #9c7dff, #ed8cff, #ff6f8f);
+  background: conic-gradient(${rainbowStops()});
   filter: drop-shadow(0 0 14px #8fcfff);
 }
 #${WRAP_ID} .reward-card--spirit-fusion {
@@ -268,7 +270,7 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
 
 function altarGlyph(kind: RewardOption['kind']): string | null {
   if (kind === 'chorus-awaken') {
-    return `<span aria-label="무지개 합주 룬" style="font-size:31px;background:linear-gradient(135deg,#ff6f8f 0%,#ffd166 22%,#8cf0b5 43%,#72cfff 63%,#9c7dff 82%,#ed8cff 100%);-webkit-background-clip:text;background-clip:text;color:transparent">✦</span>`;
+    return `<span aria-label="무지개 합주 룬" style="font-size:31px;background:linear-gradient(135deg,${UI_RAINBOW.map((color, index) => `${color} ${[0, 22, 43, 63, 82, 100][index]}%`).join(',')});-webkit-background-clip:text;background-clip:text;color:transparent">✦</span>`;
   }
   const icons: Partial<Record<RewardOption['kind'], string>> = {
     'all-affinity': '✦', awaken: '☽', 'altar-high': '✥', echo: '♙',

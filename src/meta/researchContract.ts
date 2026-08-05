@@ -97,6 +97,75 @@ export function spiritResonanceUnlocked(contract: ActiveResearchContract | null)
   return contract?.id === 'spirit-resonance' && contract.completed;
 }
 
+/**
+ * 정령 공명 완료 보상 — **정령 공격 3회마다 공명탄 1발** (총괄 결정 2026-08-01).
+ *
+ * 종전 완료 보상(`enableFusionResonance`)은 융합 정령의 상태이상 합집합뿐이라
+ * **융합 정령이 없으면 문자 그대로 0 효과**였다. 원소 심화의 메아리(3회마다 재시전)와
+ * 같은 문법으로 맞춘다 — 세 연구가 전부 「N회마다 발동」이 되면서 각자 다른 축을
+ * 강화한다: 심화 = 같은 원소 반복(깊이) · 변주 = 매번 다른 영창(넓이) ·
+ * 공명 = 정령 자동 공격(자동화). 자기가 연구한 방식대로 싸울수록 발동이 잦아진다.
+ *
+ * ⚠️ 위력 0.5는 오토 DPS 게이트(#67, 자동 40% 상한) 때문이다. 정령탄은 이미 자동
+ * 피해라 1.0배 추가탄은 정령 DPS를 +33% 올려 상한을 위협한다. 치유·수호는 이제
+ * 정령이 아니라 패시브라(총괄 확인) 세는 건 공격 펄스뿐이다.
+ */
+export const SPIRIT_RESONANCE_BOLT_EVERY_ATTACKS = 3;
+export const SPIRIT_RESONANCE_BOLT_POWER_SCALE = 0.5;
+
+export function advanceSpiritResonanceBoltCharge(charge: number): {
+  charge: number;
+  triggered: boolean;
+} {
+  const safeCharge = Number.isFinite(charge) ? Math.max(0, Math.floor(charge)) : 0;
+  const next = safeCharge + 1;
+  return next >= SPIRIT_RESONANCE_BOLT_EVERY_ATTACKS
+    ? { charge: 0, triggered: true }
+    : { charge: next, triggered: false };
+}
+
+/**
+ * 만물 변주 완료 보상 — **영창을 바꿔 쓸 때마다 충전, 3충전에 무지개 파동** (총괄 결정).
+ *
+ * 종전 완료 보상은 파동 **VFX뿐**이었다 — 피해 코드가 없었다. 진행 보상(다양성 상한
+ * 0.4→0.7)은 실전투 효과지만 수동 배율이라 체감이 안 된다는 총괄 지적.
+ *
+ * ## 왜 "누적 종류 수"가 아니라 "직전과 다른가"인가
+ *
+ * 누적으로 세면 한 번 채운 뒤 **같은 주문 난사로도 유지**된다. 직전 영창과
+ * (원소, 형태) 쌍이 달라야만 충전되게 하면 계속 바꿔 써야 돌아간다 — 변주라는
+ * 이름 그대로다. 같은 쌍을 반복하면 충전이 멈출 뿐 깎이지는 않는다(벌칙이 아니라
+ * 유인이다).
+ */
+export const VARIATION_WAVE_EVERY_SHIFTS = 3;
+export const VARIATION_WAVE_POWER_SCALE = 0.35;
+export const VARIATION_WAVE_RADIUS = 420;
+
+export function variationWaveUnlocked(contract: ActiveResearchContract | null): boolean {
+  return contract?.id === 'variation-study' && contract.completed;
+}
+
+/** 영창의 변주 판별 키 — 원소·형태 쌍. 위력·크기가 달라도 같은 쌍이면 변주가 아니다. */
+export function variationCastKey(
+  spec: Pick<SpellSpec, 'element_primary' | 'form'>,
+): string {
+  return `${spec.element_primary}:${spec.form}`;
+}
+
+export function advanceVariationWaveCharge(
+  charge: number,
+  previousKey: string | null,
+  key: string,
+): { charge: number; key: string; triggered: boolean } {
+  const safeCharge = Number.isFinite(charge) ? Math.max(0, Math.floor(charge)) : 0;
+  // 직전과 같은 쌍이면 충전 없음 — 난사로는 못 채운다. 깎지도 않는다(유인이지 벌칙이 아니다)
+  if (previousKey === key) return { charge: safeCharge, key, triggered: false };
+  const next = safeCharge + 1;
+  return next >= VARIATION_WAVE_EVERY_SHIFTS
+    ? { charge: 0, key, triggered: true }
+    : { charge: next, key, triggered: false };
+}
+
 /** 만물의 변주 진행 단계가 실제 다양성 피해 상한을 조금씩 끌어올린다. */
 export function variationDiversityMaxBonus(contract: ActiveResearchContract | null): number {
   if (contract?.id !== 'variation-study') return VARIATION_DIVERSITY_BASE_BONUS;

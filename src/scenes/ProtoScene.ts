@@ -369,6 +369,13 @@ import {
   spiritResonanceUnlocked,
   SPIRIT_RESONANCE_MILESTONE_HASTE_SCALE,
   SPIRIT_RESONANCE_START_HASTE_SCALE,
+  advanceSpiritResonanceBoltCharge,
+  advanceVariationWaveCharge,
+  SPIRIT_RESONANCE_BOLT_POWER_SCALE,
+  VARIATION_WAVE_POWER_SCALE,
+  VARIATION_WAVE_RADIUS,
+  variationCastKey,
+  variationWaveUnlocked,
   type ActiveResearchContract,
   type ResearchContractSelection,
 } from '../meta/researchContract';
@@ -1078,6 +1085,11 @@ export class ProtoScene extends Phaser.Scene {
   private researchSelecting = false;
   /** 원소 심화 완료 뒤 공명 재시전을 결정하는 수동 영창 카운터. */
   private elementalResearchEchoCharge = 0;
+  /** 정령 공명 완료 뒤 공명탄을 결정하는 정령 공격 카운터 (3회마다 1발). */
+  private spiritResonanceBoltCharge = 0;
+  /** 만물 변주 완료 뒤 무지개 파동을 결정하는 변주 카운터 (직전과 다른 영창 3회). */
+  private variationWaveCharge = 0;
+  private variationWaveLastKey: string | null = null;
   /** 시연 런("각성한 영창가로 시작")인가 — 유산 선택을 건너뛰는 데 쓴다 */
   private demoRun = false;
   /** DEV 전용 피해 연습실 — 일반 웨이브·방 진행을 멈추고 허수아비만 유지한다. */
@@ -2212,6 +2224,77 @@ export class ProtoScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * 만물 변주 완료 보상 — **직전과 다른 영창 3회마다 무지개 파동** (총괄 결정).
+   *
+   * 종전 완료 보상은 파동 VFX뿐이었다(피해 코드 없음). 이제 반경 안 모든 적에게
+   * 발동 영창 위력의 0.35배 실피해를 준다. 충전 판별은 순수 함수
+   * (`advanceVariationWaveCharge`) — 직전과 (원소, 형태)가 같으면 충전이 멈추므로
+   * 같은 주문 난사로는 못 채운다.
+   */
+  private scheduleVariationWave(spec: SpellSpec): void {
+    const research = this.runResearchTracker.snapshot().research;
+    if (!variationWaveUnlocked(research)) return;
+    const advanced = advanceVariationWaveCharge(
+      this.variationWaveCharge,
+      this.variationWaveLastKey,
+      variationCastKey(spec),
+    );
+    this.variationWaveCharge = advanced.charge;
+    this.variationWaveLastKey = advanced.key;
+    if (!advanced.triggered) return;
+    if (!this.hasLivingEnemy()) return; // 빈 방 침묵 — 각인·정령과 같은 규칙
+
+    this.announceSystemMessage('만물 변주 · 무지개 파동', '#c58cff', 2200);
+    this.recordSpellLog('auto', this.spellLogLabel(spec, '변주 파동'), spec.element_primary);
+    this.time.delayedCall(260, () => {
+      if (!this.scene?.isActive?.() || !this.playerState.alive
+        || !this.isCombatActive() || !this.hasLivingEnemy()) return;
+      this.playVariationWaveVfx();
+      const damage = spellImpactDamageFromPower(spec.power, VARIATION_WAVE_POWER_SCALE);
+      for (const enemy of this.enemies) {
+        if (!enemy.alive) continue;
+        const distance = Phaser.Math.Distance.Between(
+          this.player.x, this.player.y, enemy.x, enemy.y,
+        );
+        if (distance > VARIATION_WAVE_RADIUS) continue;
+        this.damageEnemy(
+          enemy,
+          this.spellDamageAgainst(enemy, spec, damage),
+          undefined,
+          this.player.x,
+          this.player.y,
+          false,
+          'standard',
+          0,
+        );
+      }
+    });
+  }
+
+  /**
+   * 반복 발동용 무지개 파동 — 완료 순간의 5겹(`playResearchProgressVfx`)보다 얇은
+   * 3겹이다. 반복해서 뜨는 연출이라 광량 예산(#220)을 완료 연출 그대로 쓰면 안 된다.
+   */
+  private playVariationWaveVfx(): void {
+    const colors = [0xff4d8d, 0x72f1b8, 0x7aa7ff];
+    colors.forEach((color, index) => {
+      const wave = this.add.circle(this.player.x, this.player.y, 18, 0xffffff, 0)
+        .setStrokeStyle(3, color, 0.8)
+        .setDepth(20)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: wave,
+        scale: VARIATION_WAVE_RADIUS / 18,
+        alpha: 0,
+        delay: index * 70,
+        duration: 640,
+        ease: 'Cubic.easeOut',
+        onComplete: () => wave.destroy(),
+      });
+    });
+  }
+
   /** 런 간 기억 저장 (GDD §4.2) — 요약은 리셋 전 히스토리 기준, 다음 런 보스가 소비 */
   /**
    * 주문서 유산 선택 (Phase 5) — 보스가 기억하듯 플레이어도 기억한다.
@@ -2528,6 +2611,9 @@ export class ProtoScene extends Phaser.Scene {
 
   private resetRunResearchTracking(): void {
     this.elementalResearchEchoCharge = 0;
+    this.spiritResonanceBoltCharge = 0;
+    this.variationWaveCharge = 0;
+    this.variationWaveLastKey = null;
     this.metaProfile = loadMetaProfile();
     this.runResearchTracker.reset(
       this.metaProfile.discoveredSignatures,
@@ -2537,6 +2623,9 @@ export class ProtoScene extends Phaser.Scene {
 
   private continueRunResearchTracking(): void {
     this.elementalResearchEchoCharge = 0;
+    this.spiritResonanceBoltCharge = 0;
+    this.variationWaveCharge = 0;
+    this.variationWaveLastKey = null;
     this.metaProfile = loadMetaProfile();
     this.runResearchTracker.beginContinuedLoop(
       this.metaProfile.discoveredSignatures,
@@ -6245,6 +6334,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       );
       if (castMode === 'normal' && !fusedSpec) {
         this.scheduleElementalResearchEcho([effectiveSpec]);
+        this.scheduleVariationWave(effectiveSpec);
       }
       this.scheduleSpellEcho(effectiveSpec);
       this.scheduleSpellRipple(effectiveSpec);
@@ -6801,7 +6891,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
 
     this.clearSequenceProgress();
-    if (plan.castMode === 'normal') this.scheduleElementalResearchEcho(executedSpecs);
+    if (plan.castMode === 'normal') {
+      this.scheduleElementalResearchEcho(executedSpecs);
+      // 시퀀스는 한 번의 영창이다 — 변주 판별은 첫 스펙 하나로만 (여러 스펙을 다 세면
+      // 시퀀스 하나로 3충전을 다 채워 "바꿔 쓰기" 유인이 사라진다)
+      if (executedSpecs[0]) this.scheduleVariationWave(executedSpecs[0]);
+    }
   }
 
   private beginSequenceProgress(plan: ResolvedSpellPlan, timeline: SequenceFlowTimeline): void {
@@ -7223,6 +7318,43 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           if (elementIndex === 0) cast();
           else this.time.delayedCall(elementIndex * 420, cast);
         });
+        // 정령 공명 완료 보상 — 정령 공격 3회마다 공명탄 1발 (총괄 결정).
+        // 종전 완료 보상(융합 상태이상 합집합)은 융합 정령이 없으면 0 효과였다.
+        // 원소 심화의 메아리와 같은 문법 — "연구한 방식대로 싸울수록 발동이 잦아진다".
+        if (spiritResonanceUnlocked(this.runResearchTracker.snapshot().research)) {
+          const bolt = advanceSpiritResonanceBoltCharge(this.spiritResonanceBoltCharge);
+          this.spiritResonanceBoltCharge = bolt.charge;
+          if (bolt.triggered) {
+            const resonanceSpell = request.spell;
+            this.recordSpellLog(
+              'auto',
+              this.spellLogLabel(resonanceSpell, '정령 공명'),
+              resonanceSpell.element_primary,
+            );
+            this.time.delayedCall(240, () => {
+              // 지연 발이라 시점을 다시 본다 — 그 사이 마지막 적이 죽으면 허공에 터진다
+              if (!this.scene?.isActive?.() || !this.playerState.alive
+                || !this.isCombatActive() || !this.hasLivingEnemy()) return;
+              this.playResearchSpiritResonanceVfx(origin, elements, true);
+              this.applySpellEffect(
+                {
+                  ...resonanceSpell,
+                  name: `${resonanceSpell.name} · 공명`,
+                  status: [...resonanceSpell.status],
+                  // ⚠️ 0.5는 오토 DPS 게이트(#67) 때문 — 정령탄은 이미 자동 피해라
+                  // 1.0배 추가탄은 정령 DPS를 +33% 올려 40% 상한을 위협한다
+                  power: Math.max(1, Math.round(
+                    resonanceSpell.power * SPIRIT_RESONANCE_BOLT_POWER_SCALE,
+                  )),
+                },
+                origin,
+                true,
+                1,
+                { decorVfxScale: 0.7 },
+              );
+            });
+          }
+        }
         // 융합 정령은 보조 속성을 정보로만 들고 있지 않는다. 짧은 박자 뒤 다른 원소탄을
         // 실제로 한 번 더 날려, 불+얼음처럼 두 속성이 눈과 판정 모두에서 읽히게 한다.
         if (request.spell.element_secondary) {

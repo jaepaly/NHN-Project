@@ -120,7 +120,8 @@
     "test:slowmoscope": "esbuild scripts/slowmo-scope-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-slowmo-scope-regression.mjs && node node_modules/.cache/incant-slowmo-scope-regression.mjs",
     "test:wallintegrity": "esbuild scripts/wall-integrity-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-wall-integrity-regression.mjs && node node_modules/.cache/incant-wall-integrity-regression.mjs",
     "test:emptyroomfusionvfx": "esbuild scripts/empty-room-and-fusion-vfx-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-empty-room-fusion-vfx-regression.mjs && node node_modules/.cache/incant-empty-room-fusion-vfx-regression.mjs",
-    "test:floorhazardwiring": "esbuild scripts/floor-hazard-wiring-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-floor-hazard-wiring-regression.mjs && node node_modules/.cache/incant-floor-hazard-wiring-regression.mjs"
+    "test:floorhazardwiring": "esbuild scripts/floor-hazard-wiring-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-floor-hazard-wiring-regression.mjs && node node_modules/.cache/incant-floor-hazard-wiring-regression.mjs",
+    "test:researchrecurring": "esbuild scripts/research-recurring-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-research-recurring-regression.mjs && node node_modules/.cache/incant-research-recurring-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"
