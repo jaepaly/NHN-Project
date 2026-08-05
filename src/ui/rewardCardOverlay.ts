@@ -233,6 +233,7 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   'mana-surge': 'FLOW',
   'ward-start': 'WARD',
   'spirit-haste': 'TEMPO',
+  'spirit-recovery': 'RECOVERY',
   engrave: 'ENGRAVE',
   spirit: 'SPIRIT',
   evolve: 'EVOLVE',

@@ -104,6 +104,8 @@ export class SpiritManager {
   /** 신속 정령 보상 — 주기·발당 위력에 함께 곱한다(예산 중립). 1=기본, 0.5=2배 속사 하한 */
   private hasteMultiplier = 1;
   private fusionResonance = false;
+  private recoveryEnabled = false;
+  private recoveryRemainingSeconds: number = SPIRIT_CONFIG.utilityIntervals[0];
 
   injectReward(
     options: readonly RewardOption[],
@@ -140,6 +142,13 @@ export class SpiritManager {
     };
     this.slots.push(created);
     return snapshot(created);
+  }
+
+  enableRecovery(): boolean {
+    if (this.recoveryEnabled) return false;
+    this.recoveryEnabled = true;
+    this.recoveryRemainingSeconds = SPIRIT_CONFIG.utilityIntervals[0] * this.hasteMultiplier;
+    return true;
   }
 
   /** 융합 후보 — 공격 정령 2체 보유 시 (PROGRESSION_DESIGN §3). */
@@ -209,6 +218,18 @@ export class SpiritManager {
     if (delta === 0) return [];
 
     const requests: SpiritPulseRequest[] = [];
+    if (this.recoveryEnabled) {
+      this.recoveryRemainingSeconds -= delta;
+      const interval = SPIRIT_CONFIG.utilityIntervals[0] * this.hasteMultiplier;
+      while (this.recoveryRemainingSeconds <= 0) {
+        requests.push({
+          kind: 'heal',
+          spiritId: 'passive-recovery',
+          amount: SPIRIT_CONFIG.healAmounts[0],
+        });
+        this.recoveryRemainingSeconds += interval;
+      }
+    }
     for (const spirit of this.slots) {
       spirit.remainingSeconds -= delta;
       const interval = intervalFor(spirit) * this.hasteMultiplier;
@@ -228,6 +249,8 @@ export class SpiritManager {
     this.slots = [];
     this.hasteMultiplier = 1;
     this.fusionResonance = false;
+    this.recoveryEnabled = false;
+    this.recoveryRemainingSeconds = SPIRIT_CONFIG.utilityIntervals[0];
   }
 
   enableFusionResonance(): void {
@@ -235,29 +258,40 @@ export class SpiritManager {
   }
 
   private createRewardOption(roomIndex: number, rand: () => number): RewardOption | null {
-    const candidates: Array<{ definition: SpiritDefinition; level: SpiritLevel }> = [];
+    const candidates: Array<{
+      definition: SpiritDefinition;
+      level: SpiritLevel;
+      kind: 'spirit' | 'spirit-recovery';
+    }> = [];
     if (this.slotCount() < SPIRIT_CONFIG.maxSlots) {
       for (const definition of DEFINITIONS) {
-        if (!this.slots.some((slot) => slot.spiritId === definition.spiritId)) {
-          candidates.push({ definition, level: 1 });
+        if (definition.role !== 'heal'
+          && !this.slots.some((slot) => slot.spiritId === definition.spiritId)) {
+          candidates.push({ definition, level: 1, kind: 'spirit' });
         }
       }
     }
+    if (!this.recoveryEnabled) {
+      const definition = DEFINITIONS.find((entry) => entry.role === 'heal');
+      if (definition) candidates.push({ definition, level: 1, kind: 'spirit-recovery' });
+    }
     if (candidates.length === 0) return null;
 
-    const { definition, level } = candidates[randomIndex(candidates.length, rand)];
+    const { definition, level, kind } = candidates[randomIndex(candidates.length, rand)];
     const element = definition.element;
     return {
       id: `room-${roomIndex}-spirit-${definition.spiritId}-lv${level}`,
-      kind: 'spirit',
-      title: spiritTitle(definition),
-      description: spiritDescription(definition, level),
+      kind,
+      title: kind === 'spirit-recovery' ? '회복 공명' : spiritTitle(definition),
+      description: kind === 'spirit-recovery'
+        ? `정령 슬롯을 차지하지 않음 · ${SPIRIT_CONFIG.utilityIntervals[0]}초마다 HP +${SPIRIT_CONFIG.healAmounts[0]}`
+        : spiritDescription(definition, level),
       element,
-      spirit: {
+      spirit: kind === 'spirit' ? {
         spiritId: definition.spiritId,
         role: definition.role,
         level,
-      },
+      } : undefined,
     };
   }
 }

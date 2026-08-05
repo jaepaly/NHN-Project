@@ -212,7 +212,7 @@ import type {
 import { drawRewardOptions, RUN_REWARD_CONFIG } from '../combat-core/run/rewardConfig';
 import { AFFINITY_ROWS, affinityHudRows, rankAffinities } from '../combat-core/run/useAffinity';
 import { ENGRAVE_CONFIG, EngraveManager } from '../combat-core/engrave/engraveManager';
-import { SpiritManager, spiritElementStatuses } from '../combat-core/spirit/spiritManager';
+import { SPIRIT_CONFIG, SpiritManager, spiritElementStatuses } from '../combat-core/spirit/spiritManager';
 import { resolveSelfBuff, formatSelfBuffStatus, selfBuffColor } from '../combat-core/player/selfBuffConfig';
 import { EnemyAilmentState } from '../combat-core/status/enemyAilmentState';
 import {
@@ -1606,6 +1606,16 @@ export class ProtoScene extends Phaser.Scene {
           `신속 정령 · 시전 ${(1 / rate).toFixed(2)}배 속도`,
           '#ffd166',
         );
+        devInfo('[Run] reward-applied', chosen, state);
+        return;
+      }
+      if (chosen.kind === 'spirit-recovery') {
+        if (this.spiritManager.enableRecovery()) {
+          this.announceSystemMessage(
+            `회복 공명 · ${SPIRIT_CONFIG.utilityIntervals[0]}초마다 HP +${SPIRIT_CONFIG.healAmounts[0]}`,
+            '#72f1a8',
+          );
+        }
         devInfo('[Run] reward-applied', chosen, state);
         return;
       }
@@ -6773,6 +6783,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ? new Phaser.Math.Vector2(preferredTarget.x, preferredTarget.y)
         : this.spellTargetPoint(from, spec, target));
     let lockedTarget = lockedPointTargetForForm(spec.form, target);
+    const resolveBoltTarget = target
+      ? () => {
+        const current = target.alive ? target : this.nearestEnemy();
+        return current ? { x: current.x, y: current.y } : null;
+      }
+      : undefined;
     const hitEnemies = new Set<CombatEnemy>();
     const castFeedback: CastFeedbackState = {
       resistanceNoticeShown: false,
@@ -6815,6 +6831,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         lockedTarget = collision?.target ?? null;
         return collision ? { x: collision.x, y: collision.y } : null;
       },
+      resolveBoltTarget,
       shouldResolveImpact: () => {
         const state = this.combatRunController.state;
         return state.phase === 'combat' && state.roomIndex === castRoomIndex;
@@ -9110,6 +9127,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       ? new Phaser.Math.Vector2(preferredTarget.x, preferredTarget.y)
       : this.spellTargetPoint(from, spec, target);
     let lockedTarget = lockedPointTargetForForm(spec.form, target);
+    const resolveBoltTarget = target
+      ? () => {
+        const current = target.alive ? target : this.nearestEnemy();
+        return current ? { x: current.x, y: current.y } : null;
+      }
+      : undefined;
     const affectedEnemies = new Set<CombatEnemy>();
     const castRoomIndex = this.combatRunController.state.roomIndex;
     castSpell({
@@ -9147,6 +9170,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         lockedTarget = collision?.target ?? null;
         return collision ? { x: collision.x, y: collision.y } : null;
       },
+      resolveBoltTarget,
       shouldResolveImpact: () => {
         const state = this.combatRunController.state;
         return state.phase === 'combat' && state.roomIndex === castRoomIndex;

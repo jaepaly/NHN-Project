@@ -13,7 +13,7 @@ import { ELEMENT_LABELS } from '../render/palette';
 
 /** 한 줄 요약에 넣을 패시브 보상 종류 — 다른 곳에 표시되지 않는 것만 */
 const PASSIVE_KINDS: readonly RewardKind[] = [
-  'affinity', 'swift-incant', 'mana-surge', 'ward-start', 'spirit-haste', 'max-hp', 'max-mana',
+  'affinity', 'swift-incant', 'mana-surge', 'ward-start', 'spirit-haste', 'spirit-recovery', 'max-hp', 'max-mana',
 ];
 
 const PASSIVE_LABELS: Partial<Record<RewardKind, string>> = {
@@ -21,6 +21,7 @@ const PASSIVE_LABELS: Partial<Record<RewardKind, string>> = {
   'mana-surge': '마나격류',
   'ward-start': '수호기점',
   'spirit-haste': '신속정령',
+  'spirit-recovery': '회복 공명',
   'max-hp': '생명',
   'max-mana': '마나',
 };

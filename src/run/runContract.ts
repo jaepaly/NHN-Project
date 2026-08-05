@@ -20,6 +20,7 @@ export type RewardKind =
   | 'mana-surge'
   | 'ward-start'
   | 'spirit-haste'
+  | 'spirit-recovery'
   | 'engrave'
   | 'spirit'
   | 'evolve'
