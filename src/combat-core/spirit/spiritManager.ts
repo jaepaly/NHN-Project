@@ -106,6 +106,8 @@ export class SpiritManager {
   private fusionResonance = false;
   private recoveryEnabled = false;
   private recoveryRemainingSeconds: number = SPIRIT_CONFIG.utilityIntervals[0];
+  private guardEnabled = false;
+  private guardRemainingSeconds: number = SPIRIT_CONFIG.utilityIntervals[0];
 
   injectReward(
     options: readonly RewardOption[],
@@ -129,7 +131,12 @@ export class SpiritManager {
   applyReward(option: RewardOption): SpiritSnapshot | null {
     if (option.kind !== 'spirit' || !option.spirit) return null;
     const definition = DEFINITIONS.find((entry) => entry.spiritId === option.spirit?.spiritId);
-    if (!definition || definition.role !== option.spirit.role) return null;
+    if (
+      !definition
+      || definition.role !== option.spirit.role
+      || definition.role === 'heal'
+      || definition.role === 'guard'
+    ) return null;
 
     if (this.slots.some((slot) => slot.spiritId === definition.spiritId)) return null;
     if (option.spirit.level !== 1 || this.slotCount() >= SPIRIT_CONFIG.maxSlots) return null;
@@ -148,6 +155,13 @@ export class SpiritManager {
     if (this.recoveryEnabled) return false;
     this.recoveryEnabled = true;
     this.recoveryRemainingSeconds = SPIRIT_CONFIG.utilityIntervals[0] * this.hasteMultiplier;
+    return true;
+  }
+
+  enableGuard(): boolean {
+    if (this.guardEnabled) return false;
+    this.guardEnabled = true;
+    this.guardRemainingSeconds = SPIRIT_CONFIG.utilityIntervals[0] * this.hasteMultiplier;
     return true;
   }
 
@@ -230,6 +244,18 @@ export class SpiritManager {
         this.recoveryRemainingSeconds += interval;
       }
     }
+    if (this.guardEnabled) {
+      this.guardRemainingSeconds -= delta;
+      const interval = SPIRIT_CONFIG.utilityIntervals[0] * this.hasteMultiplier;
+      while (this.guardRemainingSeconds <= 0) {
+        requests.push({
+          kind: 'guard',
+          spiritId: 'passive-guard',
+          amount: SPIRIT_CONFIG.guardAmounts[0],
+        });
+        this.guardRemainingSeconds += interval;
+      }
+    }
     for (const spirit of this.slots) {
       spirit.remainingSeconds -= delta;
       const interval = intervalFor(spirit) * this.hasteMultiplier;
@@ -251,6 +277,8 @@ export class SpiritManager {
     this.fusionResonance = false;
     this.recoveryEnabled = false;
     this.recoveryRemainingSeconds = SPIRIT_CONFIG.utilityIntervals[0];
+    this.guardEnabled = false;
+    this.guardRemainingSeconds = SPIRIT_CONFIG.utilityIntervals[0];
   }
 
   enableFusionResonance(): void {
@@ -261,11 +289,11 @@ export class SpiritManager {
     const candidates: Array<{
       definition: SpiritDefinition;
       level: SpiritLevel;
-      kind: 'spirit' | 'spirit-recovery';
+      kind: 'spirit' | 'spirit-recovery' | 'spirit-guard';
     }> = [];
     if (this.slotCount() < SPIRIT_CONFIG.maxSlots) {
       for (const definition of DEFINITIONS) {
-        if (definition.role !== 'heal'
+        if (definition.role !== 'heal' && definition.role !== 'guard'
           && !this.slots.some((slot) => slot.spiritId === definition.spiritId)) {
           candidates.push({ definition, level: 1, kind: 'spirit' });
         }
@@ -275,6 +303,10 @@ export class SpiritManager {
       const definition = DEFINITIONS.find((entry) => entry.role === 'heal');
       if (definition) candidates.push({ definition, level: 1, kind: 'spirit-recovery' });
     }
+    if (!this.guardEnabled) {
+      const definition = DEFINITIONS.find((entry) => entry.role === 'guard');
+      if (definition) candidates.push({ definition, level: 1, kind: 'spirit-guard' });
+    }
     if (candidates.length === 0) return null;
 
     const { definition, level, kind } = candidates[randomIndex(candidates.length, rand)];
@@ -282,9 +314,13 @@ export class SpiritManager {
     return {
       id: `room-${roomIndex}-spirit-${definition.spiritId}-lv${level}`,
       kind,
-      title: kind === 'spirit-recovery' ? '회복 공명' : spiritTitle(definition),
+      title: kind === 'spirit-recovery'
+        ? '회복 공명'
+        : kind === 'spirit-guard' ? '수호 공명' : spiritTitle(definition),
       description: kind === 'spirit-recovery'
         ? `정령 슬롯을 차지하지 않음 · ${SPIRIT_CONFIG.utilityIntervals[0]}초마다 HP +${SPIRIT_CONFIG.healAmounts[0]}`
+        : kind === 'spirit-guard'
+          ? `정령 슬롯을 차지하지 않음 · ${SPIRIT_CONFIG.utilityIntervals[0]}초마다 보호막 +${SPIRIT_CONFIG.guardAmounts[0]}`
         : spiritDescription(definition, level),
       element,
       spirit: kind === 'spirit' ? {

@@ -62,6 +62,10 @@ assert.equal(manager.applyReward(reward('heal', 'heal', 1)), null);
 assert.equal(manager.enableRecovery(), true);
 assert.equal(manager.entries.length, SPIRIT_CONFIG.maxSlots);
 assert.equal(manager.enableRecovery(), false);
+assert.equal(manager.applyReward(reward('guard', 'guard', 1)), null);
+assert.equal(manager.enableGuard(), true);
+assert.equal(manager.entries.length, SPIRIT_CONFIG.maxSlots);
+assert.equal(manager.enableGuard(), false);
 assert.equal(manager.applyReward(reward('attack-fire', 'attack', 3, 'fire')), null);
 assert.equal(manager.applyReward(reward('attack-fire', 'attack', 2, 'fire')), null);
 assert.equal(manager.applyReward(reward('attack-fire', 'attack', 1, 'fire')), null);
@@ -83,12 +87,12 @@ for (const element of elements) {
 // 4) 치유·수호 펄스와 긴 프레임의 catch-up, reset을 검증한다.
 const utility = new SpiritManager();
 utility.enableRecovery();
-utility.applyReward(reward('guard', 'guard', 1));
+utility.enableGuard();
 const utilityPulses = utility.update(spiritInterval('heal', 1));
 assert.deepEqual(utilityPulses.map((pulse) => pulse.kind).sort(), ['guard', 'heal']);
 assert.equal(utilityPulses.find((pulse) => pulse.kind === 'heal')?.amount, SPIRIT_CONFIG.healAmounts[0]);
 const catchUp = new SpiritManager();
-catchUp.applyReward(reward('guard', 'guard', 1));
+catchUp.enableGuard();
 assert.equal(catchUp.update(spiritInterval('guard', 1) * 2).length, 2);
 catchUp.reset();
 assert.equal(catchUp.entries.length, 0);

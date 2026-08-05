@@ -147,6 +147,20 @@ ${ornamentCss(WRAP_ID)}
   background: conic-gradient(#ff6f8f, #ffd166, #8cf0b5, #72cfff, #9c7dff, #ed8cff, #ff6f8f);
   filter: drop-shadow(0 0 14px #8fcfff);
 }
+#${WRAP_ID} .reward-card--spirit-fusion {
+  border-color: transparent;
+  background:
+    ${UI_MATERIAL.grain} padding-box,
+    linear-gradient(163deg, rgba(30, 22, 34, 0.97), rgba(16, 12, 20, 0.95)) padding-box,
+    linear-gradient(120deg, var(--spirit-spectrum)) border-box;
+  border: 2px solid transparent;
+  background-size: 100% 100%, 300% 100%;
+  animation: r3-rainbow-shimmer 3.2s linear infinite;
+}
+#${WRAP_ID} .reward-card--spirit-fusion .card-glyph {
+  background: conic-gradient(var(--spirit-spectrum));
+  filter: drop-shadow(0 0 14px var(--card-glow));
+}
 @keyframes r3-rainbow-shimmer {
   from { background-position: 0 0, 0 0; }
   to { background-position: 0 0, 300% 0; }
@@ -234,6 +248,7 @@ const KIND_LABELS: Record<RewardOption['kind'], string> = {
   'ward-start': 'WARD',
   'spirit-haste': 'TEMPO',
   'spirit-recovery': 'RECOVERY',
+  'spirit-guard': 'GUARD',
   engrave: 'ENGRAVE',
   spirit: 'SPIRIT',
   evolve: 'EVOLVE',
@@ -435,6 +450,16 @@ export function showRewardCards(
       const rare = isRareReward(option);
       btn.className = rare ? 'reward-card reward-card--rare' : 'reward-card';
       if (option.id.endsWith('-chorus')) btn.classList.add('reward-card--rainbow');
+      const fusionElements = option.evolve?.target === 'spirit-fuse'
+        ? option.evolve.elements
+        : [];
+      if (fusionElements.length > 1) {
+        btn.classList.add('reward-card--spirit-fusion');
+        btn.style.setProperty(
+          '--spirit-spectrum',
+          fusionElements.map((element) => paletteColorToCss(ELEMENT_PALETTES[element].core)).join(', '),
+        );
+      }
       const disabled = isDisabled(i);
       btn.disabled = disabled;
       btn.style.setProperty('--card-core', core);

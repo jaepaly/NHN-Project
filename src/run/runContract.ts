@@ -21,6 +21,7 @@ export type RewardKind =
   | 'ward-start'
   | 'spirit-haste'
   | 'spirit-recovery'
+  | 'spirit-guard'
   | 'engrave'
   | 'spirit'
   | 'evolve'

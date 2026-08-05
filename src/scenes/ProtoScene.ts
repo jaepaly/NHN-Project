@@ -431,6 +431,59 @@ function roomNoticeHeight(textHeight: number): number {
   return h > 0 ? Math.round(ROOM_NOTICE.padTop + h + ROOM_NOTICE.padBottom) : 0;
 }
 
+function drawElementSpectrumBorder(
+  graphics: Phaser.GameObjects.Graphics,
+  elements: readonly SpellElement[],
+  x: number,
+  y: number,
+  radius: number,
+  circle: boolean,
+): void {
+  if (circle) {
+    const segment = (Math.PI * 2) / elements.length;
+    elements.forEach((element, index) => {
+      graphics.lineStyle(2, ELEMENT_PALETTES[element].core, 0.9);
+      graphics.beginPath();
+      graphics.arc(x, y, radius, -Math.PI / 2 + segment * index, -Math.PI / 2 + segment * (index + 1));
+      graphics.strokePath();
+    });
+    return;
+  }
+  const left = x - radius;
+  const right = x + radius;
+  const top = y - radius;
+  const bottom = y + radius;
+  const corners = [{ x: left, y: top }, { x: right, y: top }, { x: right, y: bottom }, { x: left, y: bottom }];
+  corners.forEach((from, index) => {
+    const to = corners[(index + 1) % corners.length];
+    const element = elements[index % elements.length];
+    graphics.lineStyle(2, ELEMENT_PALETTES[element].core, 0.9);
+    graphics.lineBetween(from.x, from.y, to.x, to.y);
+  });
+}
+
+function drawElementSpectrumRect(
+  graphics: Phaser.GameObjects.Graphics,
+  elements: readonly SpellElement[],
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): void {
+  const corners = [
+    { x, y },
+    { x: x + width, y },
+    { x: x + width, y: y + height },
+    { x, y: y + height },
+  ];
+  corners.forEach((from, index) => {
+    const to = corners[(index + 1) % corners.length];
+    const element = elements[index % elements.length];
+    graphics.lineStyle(2, ELEMENT_PALETTES[element].core, 0.9);
+    graphics.lineBetween(from.x, from.y, to.x, to.y);
+  });
+}
+
 function spiritMotionPhase(spiritId: string): number {
   let hash = 2166136261;
   for (let index = 0; index < spiritId.length; index += 1) {
@@ -1628,6 +1681,16 @@ export class ProtoScene extends Phaser.Scene {
           this.announceSystemMessage(
             `회복 공명 · ${SPIRIT_CONFIG.utilityIntervals[0]}초마다 HP +${SPIRIT_CONFIG.healAmounts[0]}`,
             '#72f1a8',
+          );
+        }
+        devInfo('[Run] reward-applied', chosen, state);
+        return;
+      }
+      if (chosen.kind === 'spirit-guard') {
+        if (this.spiritManager.enableGuard()) {
+          this.announceSystemMessage(
+            `수호 공명 · ${SPIRIT_CONFIG.utilityIntervals[0]}초마다 보호막 +${SPIRIT_CONFIG.guardAmounts[0]}`,
+            UI_SEMANTIC.shield,
           );
         }
         devInfo('[Run] reward-applied', chosen, state);
@@ -8088,9 +8151,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
       // 테두리 — 진화·융합은 금테를 두껍게 (★ 글자를 대체)
       const borderColor = chip.evolved ? 0xffd166 : core;
-      g.lineStyle(chip.evolved ? 2 : 1.2, borderColor, chip.evolved ? 0.95 : 0.62);
-      if (round) g.strokeCircle(x, y, half - 1);
-      else g.strokeRoundedRect(x - half + 1, y - half + 1, BUILD_CHIP.size - 2, BUILD_CHIP.size - 2, 5);
+      const chipElements = chip.elements.length > 0 ? chip.elements : [chip.element].filter(Boolean) as SpellElement[];
+      if (chipElements.length > 1) {
+        drawElementSpectrumBorder(g, chipElements, x, y, half - 1, round);
+      } else {
+        g.lineStyle(chip.evolved ? 2 : 1.2, borderColor, chip.evolved ? 0.95 : 0.62);
+        if (round) g.strokeCircle(x, y, half - 1);
+        else g.strokeRoundedRect(x - half + 1, y - half + 1, BUILD_CHIP.size - 2, BUILD_CHIP.size - 2, 5);
+      }
 
       // 쿨다운 호 — 남은 만큼 위에서 시계방향으로 남는다 (0=지금 나간다)
       if (chip.cooldownRatio > 0) {
@@ -8187,8 +8255,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 다만 원소 칩을 가리키면 그 원소색으로 테두리를 덧그린다(어느 칩인지가 정보다)
     drawGrimoirePanel(g, x, y - boxH, boxW, boxH, 0.92);
     if (chip?.element) {
-      g.lineStyle(1.4, ELEMENT_PALETTES[chip.element].core, 0.75);
-      g.strokeRect(x + 2, y - boxH + 2, boxW - 4, boxH - 4);
+      const chipElements = chip.elements.length > 0 ? chip.elements : [chip.element];
+      if (chipElements.length > 1) {
+        drawElementSpectrumRect(g, chipElements, x + 2, y - boxH + 2, boxW - 4, boxH - 4);
+      } else {
+        g.lineStyle(1.4, ELEMENT_PALETTES[chip.element].core, 0.75);
+        g.strokeRect(x + 2, y - boxH + 2, boxW - 4, boxH - 4);
+      }
     }
     this.buildInspectPlate.setVisible(true);
     this.buildInspectText.setPosition(x + 10, y - 9).setVisible(true);
