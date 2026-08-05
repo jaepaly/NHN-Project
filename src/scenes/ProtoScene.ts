@@ -2018,6 +2018,7 @@ export class ProtoScene extends Phaser.Scene {
     const radius = contract.completed ? 34 : 22;
     const ring = this.add.circle(this.player.x, this.player.y, radius, 0xffffff, 0)
       .setStrokeStyle(contract.completed ? 4 : 2, colors[0], 0.9)
+      .setDepth(20)
       .setBlendMode(Phaser.BlendModes.ADD);
     this.tweens.add({
       targets: ring,
@@ -2042,13 +2043,14 @@ export class ProtoScene extends Phaser.Scene {
           tint: colors,
           blendMode: Phaser.BlendModes.ADD,
         },
-      );
+      ).setDepth(20);
       this.time.delayedCall(620, () => sparks.destroy());
     }
     if (contract.id === 'variation-study' && contract.completed) {
       colors.forEach((color, index) => {
         const wave = this.add.circle(this.player.x, this.player.y, 18, 0xffffff, 0)
           .setStrokeStyle(4, color, 0.9)
+          .setDepth(20)
           .setBlendMode(Phaser.BlendModes.ADD);
         this.tweens.add({
           targets: wave,
