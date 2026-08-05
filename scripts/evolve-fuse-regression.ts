@@ -127,6 +127,14 @@ assert.equal(dual.slotCount(), 1, '융합체는 한 슬롯을 비워 새 정령�
   );
   const tripleCandidate = dual.fuseCandidate();
   assert.ok(tripleCandidate, '융합 정령과 새 정령도 다시 융합 후보가 된다');
+  // ⚠️ 후보의 elements는 두 정령의 **합집합**이어야 한다. 종전엔 정령마다 주속성
+  // 하나만 실어서(`[a.element, b.element]`) 융합체의 부속성이 사라졌고, 카드 제목·
+  // 작명·연출이 전부 이 값을 쓰므로 3속성 융합에서 한 원소가 통째로 증발했다
+  // (총괄 제보: "3가지 속성을 합치면 해당 속성 정보가 반영 안 되는 거 같은데").
+  assert.deepEqual(
+    tripleCandidate!.elements, ['fire', 'lightning', 'ice'],
+    '융합 후보는 두 정령의 원소 전체를 보고해야 한다 — 주속성만 보면 부속성이 증발한다',
+  );
   const triple = dual.fuse(tripleCandidate!.spiritIds, '삼원 성운');
   assert.deepEqual(triple?.elements, ['fire', 'lightning', 'ice'], '세 원소 융합체가 모든 흡수 원소를 보존한다');
 

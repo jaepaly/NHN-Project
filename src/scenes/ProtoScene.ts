@@ -1090,8 +1090,15 @@ export class ProtoScene extends Phaser.Scene {
   private elementalResearchEchoCharge = 0;
   /** 공명탄 위력 기준 — 최근 수동 영창 위력 (좁은 창이라 "지금 빌드"를 따라간다) */
   private recentManualPowers: number[] = [];
-  /** 융합 정령 공명탄의 원소 교대 인덱스 (발마다 순환) */
-  private spiritResonanceShotIndex = 0;
+  /**
+   * 공명탄 원소 교대 인덱스 — **정령별**로 센다.
+   *
+   * ⚠️ 종전엔 씬 전역 카운터 하나였다. 정령이 둘이면 매 라운드 2씩 올라가서 융합체가
+   * **항상 짝수 인덱스**만 받아 `elements[0]` 하나로 굳었다(총괄 제보: *"불+물 정령
+   * 1체만 있을 때는 잘 나가는데, 전기 정령을 추가하면 융합 정령은 공명탄을
+   * 내보내지 않아"* — 실제로는 나가되 늘 같은 원소라 본탄에 묻혔다).
+   */
+  private readonly spiritResonanceShotIndex = new Map<string, number>();
   /** 만물 변주 완료 뒤 무지개 파동을 결정하는 변주 카운터 (직전과 다른 영창 3회). */
   private variationWaveCharge = 0;
   private variationWaveLastKey: string | null = null;
@@ -2708,7 +2715,7 @@ export class ProtoScene extends Phaser.Scene {
   private resetRunResearchTracking(): void {
     this.elementalResearchEchoCharge = 0;
     this.recentManualPowers = [];
-    this.spiritResonanceShotIndex = 0;
+    this.spiritResonanceShotIndex.clear();
     this.variationWaveCharge = 0;
     this.variationWaveLastKey = null;
     this.metaProfile = loadMetaProfile();
@@ -2721,7 +2728,7 @@ export class ProtoScene extends Phaser.Scene {
   private continueRunResearchTracking(): void {
     this.elementalResearchEchoCharge = 0;
     this.recentManualPowers = [];
-    this.spiritResonanceShotIndex = 0;
+    this.spiritResonanceShotIndex.clear();
     this.variationWaveCharge = 0;
     this.variationWaveLastKey = null;
     this.metaProfile = loadMetaProfile();
@@ -7427,11 +7434,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           // 융합 정령은 발마다 원소 교대 — 링·탄·판정이 함께 바뀐다. 동시 이중 링은
           // 매 공격 반복 연출이라 #220을 치고, 융합의 "두 속성"은 본탄+파편이 이미
           // 보여주고 있다. 교대는 보스 단일 내성도 절반은 뚫는다(융합의 존재 이유).
-          const resonanceElement = spiritResonanceBoltElement(
-            elements,
-            this.spiritResonanceShotIndex,
-          );
-          this.spiritResonanceShotIndex += 1;
+          const shotIndex = this.spiritResonanceShotIndex.get(request.spiritId) ?? 0;
+          const resonanceElement = spiritResonanceBoltElement(elements, shotIndex);
+          this.spiritResonanceShotIndex.set(request.spiritId, shotIndex + 1);
           // 280ms: 본탄(0ms)·융합 파편(150ms)과 겹치지 않는 세 번째 박자.
           // 처음 180ms로 했더니 총괄 제보 — *"공명탄이 너무 작아서 그런 건지, 정령의
           // 공격과 겹쳐서 그런건지 안보이는데?"* 같은 위치·같은 대상·거의 같은 시점이라
@@ -7472,27 +7477,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
             );
           });
         }
-        // 융합 정령은 보조 속성을 정보로만 들고 있지 않는다. 짧은 박자 뒤 다른 원소탄을
-        // 실제로 한 번 더 날려, 불+얼음처럼 두 속성이 눈과 판정 모두에서 읽히게 한다.
-        if (request.spell.element_secondary) {
-          const secondary = request.spell.element_secondary;
-          this.time.delayedCall(150, () => {
-            if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
-            this.applySpellEffect(
-              {
-                ...request.spell,
-                name: `${request.spell.name} · ${ELEMENT_LABELS[secondary]} 파편`,
-                element_primary: secondary,
-                element_secondary: null,
-                power: Math.max(1, Math.round(request.spell.power * 0.45)),
-              },
-              origin,
-              true,
-              1,
-              { decorVfxScale: 0.82 },
-            );
-          });
-        }
+        // ⚠️ 여기 있던 "융합 보조 속성 파편" 분기를 지웠다 — **죽은 코드**였다.
+        // `attackSpell`이 `element_secondary: null`을 박아 넣으므로 조건이 참이 될 수
+        // 없었다. 융합체의 모든 원소는 위 `elements.forEach`가 이미 각각 발사한다
+        // (실측: 불+물 융합체 → 화염 huge + 해류 huge, 파편은 0건).
         continue;
       }
       // 치유·수호는 적이 없어도 실제로 일한다 — 여기서 빛나는 건 허공 연출이 아니다

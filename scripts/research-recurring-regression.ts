@@ -200,9 +200,20 @@ import {
     boltBlock.includes('spiritResonanceBoltElement('),
     '융합 정령은 발마다 원소를 교대해야 한다',
   );
+  // ⚠️ 교대 인덱스는 **정령별**이어야 한다. 전역 카운터 하나면 정령이 둘일 때
+  // 매 라운드 2씩 올라가 융합체가 항상 짝수 인덱스 → `elements[0]` 하나로 굳는다
+  // (총괄 제보로 실측된 실패: 융합체 공명탄 3발이 전부 fire, 물은 0발).
   assert.ok(
-    boltBlock.includes('this.spiritResonanceShotIndex += 1;'),
-    '교대 인덱스가 발마다 전진해야 한다 — 안 하면 항상 주 원소만 나온다',
+    boltBlock.includes('this.spiritResonanceShotIndex.get(request.spiritId)'),
+    '교대 인덱스를 정령별로 읽어야 한다 — 전역 카운터면 정령이 늘 때 한 원소로 굳는다',
+  );
+  assert.ok(
+    boltBlock.includes('this.spiritResonanceShotIndex.set(request.spiritId, shotIndex + 1);'),
+    '교대 인덱스가 그 정령 기준으로 전진해야 한다',
+  );
+  assert.ok(
+    scene.includes('private readonly spiritResonanceShotIndex = new Map<string, number>();'),
+    '교대 인덱스는 정령별 Map이어야 한다',
   );
   assert.ok(
     boltBlock.includes('!this.hasLivingEnemy()) return;'),
@@ -282,6 +293,11 @@ import {
 
   // 카운터 리셋 — 런 리셋 2곳 모두에서. 남으면 새 런에서 이전 런의 충전이 이월된다
   const powerResets = scene.match(/this\.recentManualPowers = \[\];/g) ?? [];
+  const shotResets = scene.match(/this\.spiritResonanceShotIndex\.clear\(\);/g) ?? [];
+  assert.ok(
+    shotResets.length >= 2,
+    `교대 인덱스 리셋이 ${shotResets.length}곳 — 런 리셋에서 비워야 지난 런 상태가 안 남는다`,
+  );
   const waveResets = scene.match(/this\.variationWaveCharge = 0;/g) ?? [];
   const keyResets = scene.match(/this\.variationWaveLastKey = null;/g) ?? [];
   assert.ok(
