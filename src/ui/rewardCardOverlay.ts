@@ -133,6 +133,24 @@ ${ornamentCss(WRAP_ID)}
   box-shadow: ${UI_MATERIAL.paperShadowLift},
               inset 0 0 0 1px rgba(216, 187, 114, 0.3);
 }
+#${WRAP_ID} .reward-card--rainbow {
+  border-color: transparent;
+  background:
+    ${UI_MATERIAL.grain} padding-box,
+    linear-gradient(163deg, rgba(30, 22, 34, 0.97), rgba(16, 12, 20, 0.95)) padding-box,
+    linear-gradient(120deg, #ff6f8f, #ffd166, #8cf0b5, #72cfff, #9c7dff, #ed8cff, #ff6f8f) border-box;
+  border: 2px solid transparent;
+  background-size: 100% 100%, 300% 100%;
+  animation: r3-rainbow-shimmer 3.2s linear infinite;
+}
+#${WRAP_ID} .reward-card--rainbow .card-glyph {
+  background: conic-gradient(#ff6f8f, #ffd166, #8cf0b5, #72cfff, #9c7dff, #ed8cff, #ff6f8f);
+  filter: drop-shadow(0 0 14px #8fcfff);
+}
+@keyframes r3-rainbow-shimmer {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 0 0, 300% 0; }
+}
 /* 봉랍 — 알약 배지(border-radius: 999px)를 대체한다. 알약은 웹 UI의 문법이고,
    마도서에서 "이것이 특별하다"를 말하는 물건은 밀랍 도장이다.
    카드 위에 **눌러 찍힌** 것이라 살짝 삐져나간다 — 안에 얌전히 들어가면 그냥 배지다 */
@@ -274,6 +292,7 @@ export function isRareReward(option: RewardOption): boolean {
 }
 
 function cardColors(option: RewardOption): { core: string; glow: string } {
+  if (option.id.endsWith('-chorus')) return { core: '#ed8cff', glow: '#72cfff' };
   if (option.element) {
     const pal = ELEMENT_PALETTES[option.element];
     return { core: paletteColorToCss(pal.core), glow: paletteColorToCss(pal.glow) };
@@ -414,6 +433,7 @@ export function showRewardCards(
       btn.type = 'button';
       const rare = isRareReward(option);
       btn.className = rare ? 'reward-card reward-card--rare' : 'reward-card';
+      if (option.id.endsWith('-chorus')) btn.classList.add('reward-card--rainbow');
       const disabled = isDisabled(i);
       btn.disabled = disabled;
       btn.style.setProperty('--card-core', core);

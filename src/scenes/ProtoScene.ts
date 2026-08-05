@@ -5783,15 +5783,22 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       );
     }
     const powerScale = plan.power > 0 ? sequenceHistoryEntry.power / plan.power : 1;
+    const chorusSpec = formSpecs.find((spec) => spec.effect === 'damage');
+    if (chorusSpec) {
+      // 시퀀스가 끝나며 마지막 적이 죽어도 파편이 사라지지 않도록
+      // 시전 직전에 대상을 예약하고, 본 영창이 끝난 뒤 발사한다.
+      this.scheduleElementalChorus(
+        { ...chorusSpec, power: chorusSpec.power * powerScale },
+        plan.sequences.reduce((sum, sequence) => sum + sequence.durationMs, 0),
+      );
+    }
     await this.executeSpellSequencePlan(
       plan,
       powerScale,
       allowEcho,
     );
     // 합주 파편은 행동을 복제하지 않는 순수 원거리 보조타라, 시퀀스에도 안전하게 붙는다.
-    const chorusSpec = formSpecs.find((spec) => spec.effect === 'damage');
     if (chorusSpec) {
-      this.scheduleElementalChorus({ ...chorusSpec, power: chorusSpec.power * powerScale });
       if (allowEcho) this.scheduleHighAltarFlourishes({ ...chorusSpec, power: chorusSpec.power * powerScale });
     }
   }
@@ -6254,7 +6261,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     });
   }
 
-  private scheduleElementalChorus(spec: SpellSpec): void {
+  private scheduleElementalChorus(spec: SpellSpec, leadDelayMs = 0): void {
     const state = this.combatRunController.state;
     if (state.chorusAffinity === null) return;
     const stage = chorusStage(state.elementalAffinity, state.chorusAffinity);
@@ -6264,11 +6271,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const otherTargets = this.enemies.filter((enemy) => enemy.alive && enemy !== target);
     // 단일 보스전에서도 합주 보상이 사라지지 않도록, 다른 표적이 없으면 같은 적을
     // 단계 수만큼 교차 타격한다. 총합은 5/15/25%라 단일 전문보다 낮게 유지된다.
-    const targets = otherTargets.length > 0
-      ? otherTargets
-      : target.kind === 'boss'
-        ? [target]
-        : [];
+    const targets = otherTargets.length > 0 ? otherTargets : [target];
     const count = Math.min(chorusProjectileCount(stage), targets.length);
     if (count > 0) {
       this.recordSpellLog(
@@ -6280,11 +6283,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     for (let i = 0; i < count; i += 1) {
       const element = ELEMENTS[(ELEMENTS.indexOf(spec.element_primary) + i + 1) % ELEMENTS.length];
       const enemy = targets[i % targets.length];
-      this.time.delayedCall(120 + i * 85, () => {
-        if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive() || !enemy.alive) return;
+      this.time.delayedCall(leadDelayMs + 120 + i * 85, () => {
+        const impactTarget = enemy.alive ? enemy : this.nearestEnemy();
+        if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive() || !impactTarget) return;
         const origin = new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
-        this.playChorusShardArc(origin.x, origin.y, enemy.x, enemy.y, i, element, () => {
-          if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive() || !enemy.alive) return;
+        this.playChorusShardArc(origin.x, origin.y, impactTarget.x, impactTarget.y, i, element, () => {
+          if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive() || !impactTarget.alive) return;
           // 별 자체가 비행체다. 피해는 도착 순간의 작은 폭발로만 보여 이중 투사체가 되지 않는다.
           this.applySpellEffect(
             {
@@ -6294,7 +6298,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
               size: 'small',
               power: Math.max(1, Math.round(spec.power * ELEMENTAL_CHORUS.projectilePowerScale * (enemy.kind === 'boss' ? 0.4 : 0.8))),
             },
-            new Phaser.Math.Vector2(enemy.x, enemy.y), true, 1,
+            new Phaser.Math.Vector2(impactTarget.x, impactTarget.y), true, 1,
             { decorVfxScale: 0.7, bonusDamageNumber: 'chorus' },
           );
         });
