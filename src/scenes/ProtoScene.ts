@@ -129,7 +129,7 @@ import { formatRunElapsed } from '../combat-core/run/runTimer';
 import { flooredResistMultiplier } from '../combat-core/combat/debuffFloor';
 import { showBossChoice, showDemoCompletionChoice } from '../ui/bossChoiceOverlay';
 import { showSystemBanner } from '../render/systemBanner';
-import { bossResistanceLines, bossResistanceReadout } from '../render/bossResistanceReadout';
+import { bossResistanceReadout } from '../render/bossResistanceReadout';
 import { playAwakeningBrandMark, playAwakeningSigil } from '../render/awakeningSigil';
 import {
   PARTICLE_TEXTURES, ensureParticleTextures, particleKey,
@@ -254,6 +254,23 @@ import { showRewardCards } from '../ui/rewardCardOverlay';
 import { showAltarRiskConfirm } from '../ui/altarRiskConfirm';
 import { MinimapHud } from '../ui/minimapHud';
 import { MINIMAP_CONFIG } from '../ui/minimapLayout';
+import { RoomRadarHud } from '../ui/roomRadarHud';
+import { ROOM_RADAR_CONFIG } from '../ui/roomRadarModel';
+import { BossCombatInfoHud } from '../ui/bossCombatInfoHud';
+import { bossCombatInfoLines } from '../ui/bossCombatInfoModel';
+import { BossHealthBarHud } from '../ui/bossHealthBarHud';
+import { SpellCastLogHud } from '../ui/spellCastLogHud';
+import {
+  COMPACT_AFFINITY_HUD as AFFINITY_HUD,
+  COMPACT_VITAL_HUD as VITAL_HUD,
+  compactVitalGeometry as vitalHudGeometry,
+  compactVitalRowY as vitalRowY,
+} from '../ui/combatHudPlacement';
+import {
+  LOW_HEALTH_DANGER,
+  lowHealthDangerAlpha,
+  nextLowHealthDangerActive,
+} from '../ui/lowHealthDanger';
 import { pushOutOfBlocks, segmentBlocked } from '../combat-core/combat/terrainBlock';
 import type { TerrainBlock } from '../combat-core/combat/terrainBlock';
 import {
@@ -391,63 +408,26 @@ const NO_BOSS_RESISTANCE: BossResistanceProfile = {
  * 친화 바가 이 박스 **아래**에 붙으므로(HUD.y + HUD.height 기준) 박스가 줄면
  * 친화 바도 함께 올라와 좌상단 전체가 조여진다.
  */
-const HUD = {
-  x: 18,
-  y: 18,
-  width: 300,
-  height: 130,
-  /** 스탯 행 시작 y (박스 상단 기준 오프셋) */
-  rowTop: 44,
-  /** 행 간격 — 종전 34에서 축소 */
-  rowPitch: 22,
-  /**
-   * ⚠️ 한 줄 배치의 함정 (총괄 제보: "숫자랑 바랑 겹침"):
-   * 라벨+수치를 한 텍스트로 두면 `SHIELD 100 / 100`이 x=138까지 뻗어 바(x=104)를 덮었다.
-   * 폰트 폭에 의존하는 배치는 내용이 길어지는 순간 깨진다.
-   *
-   * 그래서 **라벨(왼쪽 고정) · 바(가운데) · 수치(오른쪽 정렬)**로 셋을 분리한다.
-   * 수치는 origin(1,0)으로 박스 우측에 붙어 자라므로 어떤 값이 와도 바를 침범하지 않고,
-   * 바는 두 고정 좌표 사이라 폭이 항상 확정된다.
-   */
-  labelX: 14,
-  barX: 78,
-  /**
-   * 바 폭 — 수치 자리수가 늘어도(보상·제단으로 최대 체력이 4자리까지) 침범하지 않게
-   * 우측에 80px을 비워둔 값이다. 실측으로 잡았다: `100/100`(7자)이 47px, 4자리
-   * `1000/1000`(9자)이 60px.
-   */
-  barWidth: 140,
-  barHeight: 6,
-  /** 수치 오른쪽 끝 (박스 우측에서 안쪽으로) */
-  valueRight: 10,
-} as const;
-
 /**
  * 우상단 상태 패널 — ROOM·WAVE·BOSS를 한 판에 담는다.
  * 종전엔 ROOM 칩(DOM)·WAVE 패널·미니맵이 **3단**으로 쌓여 있었다 (총괄 지적).
  */
-const RIGHT_PANEL = {
-  y: 18,
+const ROOM_NOTICE = {
+  /** 현재 방 레이더 아래의 희귀 위험지대 정화 안내 간격 */
+  gap: 8,
   /** 텍스트 위 여백 */
-  padTop: 10,
+  padTop: 7,
   /** 텍스트 아래 여백 */
-  padBottom: 12,
-  /** 패널과 미니맵 사이 간격 */
-  gap: 10,
-  /** 평시(2줄) 텍스트 높이 — 미니맵 초기 위치 계산용 */
-  baseTextHeight: 35,
+  padBottom: 8,
 } as const;
+const ROOM_RADAR_TOP = 18;
 
-/** 상태 텍스트 높이 → 패널 높이. 보스전(저항·관통 줄)에서 늘어난다. */
-function rightPanelHeight(textHeight: number): number {
+function roomNoticeHeight(textHeight: number): number {
   const h = Number.isFinite(textHeight) ? Math.max(0, textHeight) : 0;
-  return Math.round(RIGHT_PANEL.padTop + h + RIGHT_PANEL.padBottom);
+  return h > 0 ? Math.round(ROOM_NOTICE.padTop + h + ROOM_NOTICE.padBottom) : 0;
 }
 
 /** 스탯 행 i(0=HP, 1=마나, 2=보호막)의 y 중심 */
-function hudRowY(index: number): number {
-  return HUD.y + HUD.rowTop + index * HUD.rowPitch;
-}
 
 interface PauseRow {
   id: 'resume' | 'settings' | 'quit';
@@ -460,7 +440,11 @@ interface PauseRow {
  * 밝게 남기는 논리는 이 메인 화면에만 필요하지, 설정 하위 화면엔 필요 없다.
  */
 /** 일시정지 메뉴 세로 배치 — 여기서만 쓰인다 */
-const PAUSE_LAYOUT = { titleY: 186, firstY: 252, rowGap: 42 } as const;
+// 지도 아래와 필살영창 게이지 위의 여백을 비슷하게 맞춘다.
+const PAUSE_LAYOUT = { titleY: 320, firstY: 386, rowGap: 42 } as const;
+
+/** ESC 화면에서만 쓰는 전체 경로 지도. 메뉴 위에 크게 두어 경로를 먼저 읽게 한다. */
+const PAUSE_MAP = { top: 56, scale: 1.2, depth: 104 } as const;
 
 const PAUSE_MAIN: readonly PauseRow[] = [
   { id: 'resume', label: '게임 재개' },
@@ -824,6 +808,12 @@ export class ProtoScene extends Phaser.Scene {
   private affinityLabelTexts: Phaser.GameObjects.Text[] = [];
   /** 필살기(융합) 게이지 라벨 — 하단 중앙 미터 위 (충전%·준비 알림) */
   private fusionLabelText!: Phaser.GameObjects.Text;
+  /** #345 상단 중앙 런 타이머 — 우측 정보 패널과 중복 표시하지 않는다. */
+  private runTimerText!: Phaser.GameObjects.Text;
+  /** #345 보스전에서만 보스를 따라다니는 전용 전투 정보판. */
+  private bossCombatInfoHud!: BossCombatInfoHud;
+  /** #345 보스전에서만 화면 상단 중앙에 고정되는 HP·페이즈 바. */
+  private bossHealthBarHud!: BossHealthBarHud;
   private waveText!: Phaser.GameObjects.Text;
   /** 빌드 칩 — 각인 2 + 정령 2를 우하단 2×2 아이콘 그리드로 (buildChipModel) */
   private buildChipRoot!: Phaser.GameObjects.Container;
@@ -851,8 +841,6 @@ export class ProtoScene extends Phaser.Scene {
   /** 현재 런의 재현용 맵 시드. 생성 맵이 아닌 시연·폴백은 null이다. */
   private currentMapSeed: number | null = null;
 
-  private pauseMapSeedText!: Phaser.GameObjects.Text;
-
   private pauseMenuItems: Phaser.GameObjects.Text[] = [];
 
   private pauseMenuIndex = 0;
@@ -868,10 +856,19 @@ export class ProtoScene extends Phaser.Scene {
 
   /** 밝기 오버레이 — 1 미만은 검은 막, 초과는 흰 막 (깊이 98: 월드 위·HUD 아래) */
   private brightnessVeil!: Phaser.GameObjects.Graphics;
+  /** HP 30% 이하에서만 켜지는 단일 적색 맥동. HUD(99+) 아래, 월드 위에 둔다. */
+  private lowHealthDangerVeil!: Phaser.GameObjects.Graphics;
+  private lowHealthDangerActive = false;
+  private lowHealthDangerFade: Phaser.Tweens.Tween | null = null;
 
   private buildInspectPlate!: Phaser.GameObjects.Graphics;
 
   private buildInspectText!: Phaser.GameObjects.Text;
+
+  /** 연구는 전투 HUD가 아니라 ESC 검사 화면에서만 상세를 보인다. */
+  private researchInspectPlate!: Phaser.GameObjects.Graphics;
+
+  private researchInspectText!: Phaser.GameObjects.Text;
 
   private hoveredChipIndex = -1;
   /** 활성 자기 강화 표시 (종류·세기·남은 시간) */
@@ -1023,6 +1020,10 @@ export class ProtoScene extends Phaser.Scene {
   private devMinimap: MinimapHud | null = null;
   private devPortalField: PortalField | null = null;
   private runMinimap: MinimapHud | null = null;
+  /** #345 현재 전투방 위치 레이더 — 전체 경로 지도와 별개로 항상 갱신한다. */
+  private roomRadar!: RoomRadarHud;
+  /** 좌하단의 짧은 영창·자동 발동 기록. 피해 틱은 여기 넣지 않는다. */
+  private spellCastLog!: SpellCastLogHud;
   /** 방 중앙 설치물 (보물상자·제단) — 다가가야 보상이 열린다 (#214) */
   private roomFixture: RoomFixture | null = null;
   /**
@@ -1473,6 +1474,12 @@ export class ProtoScene extends Phaser.Scene {
     this.roomFixture?.update(this.player.x, this.player.y);
     // 숨겨져 있으면 다시 그리지 않는다 — 펄스는 보일 때만 의미가 있다
     if (this.shouldShowMinimap()) this.runMinimap?.pulse();
+    this.roomRadar.update(
+      this.worldBounds,
+      { x: this.player.x, y: this.player.y },
+      this.enemies,
+    );
+    this.updateBossCombatInfo();
     this.updateStatusText();
     this.updateSequenceProgress();
   }
@@ -1972,6 +1979,7 @@ export class ProtoScene extends Phaser.Scene {
       '#8fa4ff',
       2200,
     );
+    this.recordSpellLog('auto', this.spellLogLabel(spec, '원소 공명'), spec.element_primary);
     this.time.delayedCall(320, () => {
       if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
       const echoSpec: SpellSpec = {
@@ -2249,6 +2257,7 @@ export class ProtoScene extends Phaser.Scene {
     this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
+    this.spellCastLog.clear();
     this.engraveManager.reset();
     this.spiritManager.reset();
     this.clearSpiritViews();
@@ -2285,6 +2294,7 @@ export class ProtoScene extends Phaser.Scene {
     this.ownedAltarKinds = [];
     this.lastResistNoticeAt = 0;
     this.spellHistory.reset();
+    this.spellCastLog.clear();
     this.engraveManager.reset();
     this.spiritManager.reset();
     this.clearSpiritViews();
@@ -2835,8 +2845,16 @@ export class ProtoScene extends Phaser.Scene {
     this.hudGraphics = this.add.graphics()
       .setScrollFactor(0)
       .setDepth(99);
+    this.lowHealthDangerVeil = this.add.graphics()
+      .fillStyle(0x8f071d, 1)
+      .fillRect(0, 0, width, height)
+      .setScrollFactor(0)
+      .setDepth(96)
+      .setAlpha(0)
+      .setVisible(false);
 
-    this.statusText = this.add.text(HUD.x + 14, HUD.y + 12, 'READY', {
+    const vital = vitalHudGeometry(width, height, BUILD_CHIP.size * 2 + BUILD_CHIP.gap);
+    this.statusText = this.add.text(AFFINITY_HUD.x, AFFINITY_HUD.y, 'READY', {
       fontFamily: 'Consolas, monospace',
       fontSize: '14px',
       fontStyle: 'bold',
@@ -2844,44 +2862,48 @@ export class ProtoScene extends Phaser.Scene {
     }).setScrollFactor(0).setDepth(100);
     // 정적 라벨 — 값이 안 바뀌므로 한 번만 만든다
     (['HP', 'MANA', 'SHIELD'] as const).forEach((label, index) => {
-      this.add.text(HUD.x + HUD.labelX, hudRowY(index), label, {
+      this.add.text(vital.x + VITAL_HUD.labelX, vitalRowY(vital.y, index), label, {
         fontFamily: 'Consolas, monospace',
         fontSize: '11px',
         color: UI_COLOR.textMuted,
       }).setScrollFactor(0).setDepth(100);
     });
-    this.hpText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(0), '', {
+    this.hpText = this.add.text(vital.x + VITAL_HUD.width - VITAL_HUD.valueRight, vitalRowY(vital.y, 0), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: UI_SEMANTIC.hp,
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
-    this.manaText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(1), '', {
+    this.manaText = this.add.text(vital.x + VITAL_HUD.width - VITAL_HUD.valueRight, vitalRowY(vital.y, 1), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: UI_SEMANTIC.mana,
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
-    this.shieldText = this.add.text(HUD.x + HUD.width - HUD.valueRight, hudRowY(2), '', {
+    this.shieldText = this.add.text(vital.x + VITAL_HUD.width - VITAL_HUD.valueRight, vitalRowY(vital.y, 2), '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: UI_SEMANTIC.shield,
     }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
-    this.attunementText = this.add.text(HUD.x + HUD.labelX, hudRowY(3) - 4, 'ARCANE // UNBOUND', {
+    this.attunementText = this.add.text(AFFINITY_HUD.x, AFFINITY_HUD.y + 18, 'ARCANE // UNBOUND', {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
       color: UI_COLOR.accent,
     }).setScrollFactor(0).setDepth(100);
     // 활성 자기 강화 — 종류·세기·남은 시간 (버프 없으면 빈 줄)
-    this.buffStatusText = this.add.text(HUD.x + 152, hudRowY(3) - 4, '', {
+    this.buffStatusText = this.add.text(AFFINITY_HUD.x + 128, AFFINITY_HUD.y + 18, '', {
       fontFamily: 'Consolas, monospace',
       fontSize: '11px',
       fontStyle: 'bold',
       color: UI_SEMANTIC.buff,
     }).setScrollFactor(0).setDepth(100);
     // 친화 경험치 바 라벨 — 8원소를 왼쪽 4개·오른쪽 4개 고정 위치에 세운다.
-    const affinityPanel = affinityPanelGeometry(HUD.y, HUD.height, AFFINITY_ROWS);
+    const affinityPanel = affinityPanelGeometry(
+      AFFINITY_HUD.y,
+      AFFINITY_HUD.headerHeight,
+      AFFINITY_ROWS,
+    );
     this.affinityLabelTexts = Array.from({ length: AFFINITY_ROWS }, (_, i) =>
       this.add.text(
-        affinityColumnX(HUD.x, HUD.width, i),
+        affinityColumnX(AFFINITY_HUD.x, AFFINITY_HUD.width, i),
         affinityLabelY(affinityPanel.top, i),
         '',
         {
@@ -2902,27 +2924,52 @@ export class ProtoScene extends Phaser.Scene {
       align: 'center',
     }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(100);
 
-    this.waveText = this.add.text(width - 34, RIGHT_PANEL.y + 10, '', {
+    this.runTimerText = this.add.text(width / 2, 14, '00:00.0', {
       fontFamily: 'Consolas, monospace',
       fontSize: '14px',
       fontStyle: 'bold',
-      color: '#72f1b8',
-      // 블록은 우측 고정(origin 1,0)이되 **안쪽은 왼쪽 정렬** — 우측 정렬은 오른쪽 끝만
-      // 맞고 줄 시작점이 어긋나 눈이 매 줄 시작을 다시 찾는다 (중앙 정렬 지적의 거울상).
+      color: '#d8def4',
+      stroke: '#05060f',
+      strokeThickness: 3,
+      letterSpacing: 1.4,
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
+
+    this.bossCombatInfoHud = new BossCombatInfoHud(this);
+    this.bossHealthBarHud = new BossHealthBarHud(this);
+
+    // 위험지대 정화처럼 즉시 대응할 문구만 레이더 아래에 잠시 남긴다.
+    // ROOM/WAVE/ENEMIES·연구는 각각 레이더·ESC 검사로 책임을 분리했다.
+    this.waveText = this.add.text(
+      width - 18,
+      ROOM_RADAR_TOP + ROOM_RADAR_CONFIG.height + ROOM_NOTICE.gap + ROOM_NOTICE.padTop,
+      '',
+      {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: '#ffd166',
       align: 'left',
       lineSpacing: 3,
-      wordWrap: { width: 256, useAdvancedWrap: true },
-    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+      wordWrap: { width: ROOM_RADAR_CONFIG.width - ROOM_RADAR_CONFIG.padding * 2, useAdvancedWrap: true },
+      },
+    ).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+
+    this.roomRadar = new RoomRadarHud(
+      this,
+      width - ROOM_RADAR_CONFIG.width - 18,
+      ROOM_RADAR_TOP,
+    );
+    this.spellCastLog = new SpellCastLogHud(this);
 
     // 빌드 패널 — "지금 내가 뭘 들고 있나"를 상시 노출.
     // 우하단은 비어 있어 전투 시야를 가리지 않는다. 우상단은 ROOM/WAVE 전용으로 남긴다.
     this.createBuildChips(width, height);
 
-    this.add.text(20, height - 28, 'WASD 이동  ·  ENTER 영창  ·  ESC 일시정지', {
+    this.add.text(width / 2, height - 20, 'WASD 이동  ·  ENTER 영창  ·  ESC 일시정지', {
       fontFamily: 'Consolas, monospace',
       fontSize: '12px',
       color: '#59679d',
-    }).setScrollFactor(0).setDepth(100);
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
 
     this.sequenceProgressGraphics = this.add.graphics()
       .setScrollFactor(0)
@@ -3639,12 +3686,12 @@ export class ProtoScene extends Phaser.Scene {
 
   private refreshMinimap(): void {
     if (!this.runMinimap) {
-      // 상단 우측 — ROOM 칩(DOM) 아래. 전투 중에도 떠 있어야 "어디까지 왔나"가 읽힌다.
+      const mapWidth = MINIMAP_CONFIG.width * PAUSE_MAP.scale;
       this.runMinimap = new MinimapHud(
         this,
-        this.scale.width - 306,
-        // 초기 y는 평시 2줄 기준. 이후 drawHudBars가 패널 높이에 맞춰 옮긴다.
-        RIGHT_PANEL.y + rightPanelHeight(RIGHT_PANEL.baseTextHeight) + RIGHT_PANEL.gap,
+        (this.scale.width - mapWidth) / 2,
+        PAUSE_MAP.top,
+        { scale: PAUSE_MAP.scale, depth: PAUSE_MAP.depth },
       );
     }
     this.runMinimap.update(toMinimapModel(this.mapGraph.snapshot()));
@@ -3670,7 +3717,20 @@ export class ProtoScene extends Phaser.Scene {
 
   /** 가시성 동기화 — update와 상태 전환 지점에서 호출 (setVisible은 동일 값이면 무해) */
   private syncMinimapVisibility(): void {
-    this.runMinimap?.setVisible(this.shouldShowMinimap());
+    const visible = this.shouldShowMinimap();
+    if (visible) this.placePauseMinimap();
+    this.runMinimap?.setVisible(visible);
+  }
+
+  /** 전체 경로는 전투 HUD가 아니라 ESC 검사 화면의 주 정보다. */
+  private placePauseMinimap(): void {
+    const mapWidth = MINIMAP_CONFIG.width * PAUSE_MAP.scale;
+    this.runMinimap?.setLayout({
+      x: (this.scale.width - mapWidth) / 2,
+      y: PAUSE_MAP.top,
+      scale: PAUSE_MAP.scale,
+      depth: PAUSE_MAP.depth,
+    });
   }
 
   private destroyRunMapUi(): void {
@@ -5701,6 +5761,17 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
     this.markOnboarded();
     this.clearIncantGuide();
+    const sequenceElement = sequenceElements[0] ?? 'light';
+    const sequenceForm = formSpecs[0]?.form ?? 'bolt';
+    this.recordSpellLog(
+      'manual',
+      `${ultimate ? '필살 · ' : ''}${this.spellLogLabel({
+        name: plan.name,
+        element_primary: sequenceElement,
+        form: sequenceForm,
+      })} · 연계 ${plan.sequences.length}`,
+      sequenceElement,
+    );
     this.beginSequenceExecutionUx(plan, resonanceNames);
     if (sequenceHistoryEntry.power < sequenceHistoryEntry.basePower) {
       const penaltyPct = Math.round(
@@ -5924,6 +5995,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.audio.playCast(effectiveSpec.element_primary);
       this.applySpellPalette(effectiveSpec);
       this.announceSpell(effectiveSpec);
+      this.recordSpellLog(
+        'manual',
+        this.spellLogLabel(effectiveSpec, fusedSpec ? '필살' : undefined),
+        effectiveSpec.element_primary,
+      );
       const fusionOptions = fusedSpec ? { fusionRelease: true } : undefined;
       const researchSpatialScale = fusedSpec
         ? 1
@@ -6194,6 +6270,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ? [target]
         : [];
     const count = Math.min(chorusProjectileCount(stage), targets.length);
+    if (count > 0) {
+      this.recordSpellLog(
+        'chorus',
+        `공명 파편 ${count}발 · ${ELEMENT_LABELS[spec.element_primary]}`,
+        spec.element_primary,
+      );
+    }
     for (let i = 0; i < count; i += 1) {
       const element = ELEMENTS[(ELEMENTS.indexOf(spec.element_primary) + i + 1) % ELEMENTS.length];
       const enemy = targets[i % targets.length];
@@ -6278,6 +6361,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       cloneLeadMs, cloneAlpha, cloneLifetimeMs,
     } = ALTAR_OFFER_CONFIG.echo;
     const count = 1 + (Math.random() < extraChance ? 1 : 0);
+    this.recordSpellLog(
+      'auto',
+      this.spellLogLabel(spec, count > 1 ? `메아리 ${count}중` : '메아리'),
+      spec.element_primary,
+    );
     for (let i = 1; i <= count; i += 1) {
       // 겹이 깊어질수록 옅어진다 — 원본 1.0 > 첫 분신 > 둘째 분신.
       // 같은 밝기로 세 발이 나가면 "왜 세 번인지" 읽히지 않는다.
@@ -6810,6 +6898,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         // 있었어도 마지막 적이 그 사이에 죽으면 남은 발이 허공에 터진다 —
         // 그래서 **클로저 안에서** 다시 본다.
         if (!this.hasLivingEnemy()) return;
+        if (request.delaySeconds === 0) {
+          this.recordSpellLog('auto', this.spellLogLabel(request.spell, '각인'), request.spell.element_primary);
+        }
         // 진화 각인의 3발은 **서로 다른 적**을 문다. Lv3는 한 놈에게 2발을 박아
         // 잡몹이 먼저 죽으면 나머지가 오버킬로 낭비됐다. 총피해는 그대로고
         // 분배만 달라진다 — 적이 하나면 자동으로 기존 동작으로 수렴한다.
@@ -6853,6 +6944,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         // 정령이 번쩍인다 — 각인이 허공에 터지던 것과 같은 종류의 문제다(총괄 제보).
         // 치유·수호 정령은 적과 무관하게 일하므로 아래에서 그대로 빛난다.
         if (!this.nearestEnemy()) continue;
+        this.recordSpellLog('auto', this.spellLogLabel(request.spell, '정령'), request.spell.element_primary);
         view?.pulse(this);
         const origin = view
           ? new Phaser.Math.Vector2(view.x, view.y)
@@ -7376,6 +7468,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const hp = Math.ceil(this.playerState.hp);
     const mana = Math.floor(this.playerState.mana);
     const shield = Math.ceil(this.playerState.shield);
+    const hpRatio = Phaser.Math.Clamp(this.playerState.hp / this.playerState.maxHp, 0, 1);
+    this.updateLowHealthDanger(hpRatio);
     const runState = this.combatRunController.state;
     let actionState = 'READY';
     if (!this.playerState.alive) actionState = 'DEAD';
@@ -7410,8 +7504,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 라벨(HP/MANA/SHIELD)이 왼쪽에 따로 있으므로 수치만 적는다. 우측 정렬이라
     // 자리수가 늘어도 왼쪽으로 자라 바를 침범하지 않는다 — padStart 정렬이 필요 없다.
     this.hpText
-      .setText(`${hp}/${this.playerState.maxHp}`)
-      .setColor(heatwaveDamaging ? '#e0a860' : UI_SEMANTIC.hp);
+      .setText(`${hp <= this.playerState.maxHp * 0.3 ? '! ' : ''}${hp}/${this.playerState.maxHp}`)
+      .setColor(hp <= this.playerState.maxHp * 0.3
+        ? '#ff5c7a'
+        : heatwaveDamaging ? '#e0a860' : UI_SEMANTIC.hp);
     this.manaText.setText(`${mana}/${this.playerState.maxMana}`);
     this.shieldText.setText(`${shield}/${this.playerState.maxHp}`);
     this.drawBuildChips();
@@ -7425,83 +7521,40 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         .setColor(paletteColorToCss(selfBuffColor(buffs[0].kind)));
     }
     this.drawHudBars();
-    // ROOM은 종전에 별도 DOM 칩(runHud)이었다. 우상단이 3단(칩·패널·미니맵)이 되어
-    // 이 패널 첫 줄로 합쳤다 (총괄 지적) — 같은 정보군을 두 판에 나눌 이유가 없다.
+    this.spellCastLog.update(this.time.now);
+    // ROOM/WAVE/ENEMIES는 현재 방 레이더의 헤더가 유일한 위치다. 같은 정보를 레이더
+    // 아래 판에도 반복하면 전투 시야만 좁아지고, 사용자는 어느 쪽을 봐야 할지 잃는다.
     const roomLine = runState.roomCountMode === 'dynamic'
       ? `ROOM ${runState.roomIndex}`
       : `ROOM ${runState.roomIndex}/${runState.maxRooms}`;
-    // 위험지대 정화 — **지형이 깔린 방에서만** 한 줄 붙는다 (없으면 null).
-    // HUD 박스가 아니라 여기인 이유: HUD는 높이가 고정이고 친화 바·쿨다운 바가
-    // `HUD.y + HUD.height` 기준이라 행을 늘리면 전부 밀린다(총괄이 제보한 겹침과 같은
-    // 부류). 우측 패널은 이미 방 단위 정보를 담고 내용에 맞춰 늘어난다.
+    // 위험지대 정화는 즉시 회피/정화 판단에 쓰므로 전투 화면에 남긴다. 장기 목표인
+    // 연구는 ESC 검사에서만 보여 주어 현재 방 정보와 한 판에 섞지 않는다.
     const cleanseLine = cleanseReadoutLine(
       this.floorHazardPlayer,
       this.presentFloorHazardKinds(),
     );
-    const research = this.runResearchTracker.snapshot().research;
-    const researchLines = research
-      ? [
-        `RESEARCH · ${this.researchTitle(research)}`,
-        research.completed
-          ? `${researchProgressSlots(research)} ${this.researchPerkSummary(research)} · 통찰 +${research.rewardInsight}`
-          : `${this.researchProgressSummary(research)} · ${this.researchGoal(research)}`,
-        ...(!research.completed && research.progress > 0
-          ? [`효과 · ${this.researchPerkSummary(research)}`]
-          : []),
-      ]
-      : [];
-    const withCleanse = (lines: readonly string[]): string => [
-      `RUN ${formatRunElapsed(this.runElapsedMs)}`,
-      ...lines,
-      ...researchLines,
-      ...(cleanseLine ? [cleanseLine] : []),
-    ].join('\n');
+    this.runTimerText.setText(formatRunElapsed(this.runElapsedMs));
+    let encounterLine: string;
     if (runState.phase === 'run-over') {
-      this.waveText.setText(withCleanse([roomLine, 'RUN COMPLETE']));
+      encounterLine = 'RUN COMPLETE';
     } else if (runState.phase === 'reward-select') {
-      this.waveText.setText(withCleanse([roomLine, 'ROOM CLEAR']));
+      encounterLine = 'ROOM CLEAR';
     } else if (runState.phase === 'room-transition') {
-      this.waveText.setText(withCleanse([roomLine, `NEXT ROOM ${runState.roomIndex + 1}`]));
+      encounterLine = `NEXT ROOM ${runState.roomIndex + 1}`;
     } else if (this.practiceRun) {
-      this.waveText.setText(withCleanse(['PRACTICE', '고정 표적 · 마나 자동 회복']));
+      encounterLine = 'PRACTICE · 고정 표적';
     } else if (this.isBossEncounter()) {
-      const boss = this.enemies.find((enemy) => enemy.kind === 'boss');
-      // 저항을 상시 노출한다 — 보스 링 색만으로는 "무엇이 안 통하는지" 알 수 없다.
-      // 단, **마스터리로 관통한 원소는 저항으로 적지 않는다**(#171) — 실제론 온전히
-      // 들어가는데 화면이 "안 통한다"고 말하면 가장 키운 원소를 버리게 된다.
-      const readout = bossResistanceReadout(
-        this.sortedBossResistanceEntries().map(([element, multiplier]) => ({
-          element,
-          multiplier,
-          affinity: this.affinityFor(element),
-        })),
-        RESISTANCE.masteryImmunityAffinity,
-      );
-      // 한 줄에 한 사실 — 적 수를 저항 목록 꼬리에 붙이면 저항 정보처럼 읽힌다
-      // 수문장인지 기억의 주인인지가 한눈에 보여야 "이게 마지막인가"를 안다
-      const bossLabel = this.mapGraph.current().kind === 'memory-boss' ? '기억의 주인' : '수문장';
-      const status = boss
-        ? `${bossLabel} ${Math.ceil(boss.hp)}/${boss.maxHp}  ·  ENEMIES ${this.enemies.length}`
-        : bossLabel;
-      this.waveText.setText(withCleanse([roomLine, ...bossResistanceLines(status, readout)]));
+      encounterLine = `BOSS · ENEMIES ${this.enemies.length}`;
     } else if (this.rewardlessNodeKind()) {
-      // 무전투 방 — 웨이브가 없으니 "NEXT WAVE 0.0s"가 뜨면 안 된다
-      this.waveText.setText(withCleanse([
-        roomLine,
-        this.rewardlessNodeKind() === 'altar' ? '제단' : '보물방',
-      ]));
+      encounterLine = this.rewardlessNodeKind() === 'altar' ? 'ALTAR' : 'TREASURE';
     } else if (this.waveManager.phase === 'waiting') {
-      this.waveText.setText(withCleanse([
-        roomLine,
-        `NEXT WAVE ${this.waveManager.delayRemaining.toFixed(1)}s`,
-      ]));
+      encounterLine = `NEXT WAVE ${this.waveManager.delayRemaining.toFixed(1)}s`;
     } else {
-      this.waveText.setText(withCleanse([
-        roomLine,
-        `WAVE ${this.waveManager.currentWaveNumber}/${this.waveManager.totalWaves}`
-        + `  ·  ENEMIES ${this.enemies.length}`,
-      ]));
+      encounterLine = `WAVE ${this.waveManager.currentWaveNumber}/${this.waveManager.totalWaves}`
+        + ` · ENEMIES ${this.enemies.length}`;
     }
+    this.roomRadar.setStatus(roomLine, encounterLine);
+    this.waveText.setText(cleanseLine ?? '');
   }
 
   /**
@@ -7580,6 +7633,20 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       lineSpacing: 4,
       wordWrap: { width: BUILD_CHIP.tooltipWidth - 20, useAdvancedWrap: true },
     }).setOrigin(0, 1).setScrollFactor(0).setDepth(104).setVisible(false);
+
+    this.researchInspectPlate = this.add.graphics()
+      .setScrollFactor(0)
+      .setDepth(103)
+      .setVisible(false);
+    this.researchInspectText = this.add.text(0, 0, '', {
+      fontFamily: '"Noto Serif KR", Consolas, monospace',
+      fontSize: '12px',
+      fontStyle: 'bold',
+      color: '#72f1b8',
+      align: 'left',
+      lineSpacing: 4,
+      wordWrap: { width: 240, useAdvancedWrap: true },
+    }).setOrigin(0, 1).setScrollFactor(0).setDepth(104).setVisible(false);
   }
 
   /**
@@ -7604,14 +7671,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       color: UI_COLOR.textBright,
       letterSpacing: 6,
     }).setOrigin(0.5).setScrollFactor(0).setDepth(106).setVisible(false);
-
-    this.pauseMapSeedText = this.add.text(width - 162, 0, '', {
-      fontFamily: 'Consolas, monospace',
-      fontSize: '12px',
-      color: UI_COLOR.textMuted,
-      letterSpacing: 1,
-    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100).setVisible(false);
-
 
     this.pauseMenuItems = PAUSE_MAIN.map((_, i) => this.add.text(
       width / 2,
@@ -7689,18 +7748,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   /** 일시정지 메뉴 갱신 — 한 장짜리(재개·설정·나가기). */
   private renderPauseMenu(): void {
     const visible = this.buildInspectOpen;
+    this.spellCastLog.setVisible(!visible);
     this.pauseDim.setVisible(visible);
     this.pauseMenuPlate.setVisible(visible);
     this.pauseMenuTitle.setVisible(visible);
-    this.pauseMapSeedText.setVisible(visible);
     this.pauseMenuItems.forEach((t) => t.setVisible(false));
     if (!visible) return;
 
     const { width } = this.scale;
     this.pauseMenuTitle.setText('일시정지');
-    this.pauseMapSeedText.setText(this.currentMapSeed === null
-      ? '맵 시드  고정 프리셋'
-      : `맵 시드  ${this.currentMapSeed}`);
     PAUSE_MAIN.forEach((row, i) => {
       const selected = i === this.pauseMenuIndex;
       const label = row.id === 'quit' && this.quitArmed ? '정말 나갈까? 한 번 더' : row.label;
@@ -7914,6 +7970,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (!this.buildInspectOpen) {
       this.buildInspectPlate.setVisible(false);
       this.buildInspectText.setVisible(false);
+      this.researchInspectPlate.setVisible(false);
+      this.researchInspectText.setVisible(false);
       return;
     }
     const { width, height } = this.scale;
@@ -7939,6 +7997,36 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
     this.buildInspectPlate.setVisible(true);
     this.buildInspectText.setPosition(x + 10, y - 9).setVisible(true);
+    this.renderResearchInspect();
+  }
+
+  /** 연구는 장기 목표라 전투 HUD가 아니라 ESC 검사 화면의 좌하단에서만 읽는다. */
+  private renderResearchInspect(): void {
+    const g = this.researchInspectPlate.clear();
+    const research = this.runResearchTracker.snapshot().research;
+    if (!this.buildInspectOpen || !research) {
+      this.researchInspectPlate.setVisible(false);
+      this.researchInspectText.setVisible(false);
+      return;
+    }
+    const lines = [
+      `RESEARCH · ${this.researchTitle(research)}`,
+      research.completed
+        ? `${researchProgressSlots(research)} ${this.researchPerkSummary(research)} · 통찰 +${research.rewardInsight}`
+        : `${this.researchProgressSummary(research)} · ${this.researchGoal(research)}`,
+      ...(!research.completed && research.progress > 0
+        ? [`효과 · ${this.researchPerkSummary(research)}`]
+        : []),
+    ];
+    this.researchInspectText.setText(lines.join('\n'));
+    const { height } = this.scale;
+    const boxW = 260;
+    const boxH = this.researchInspectText.height + 18;
+    const x = 20;
+    const y = height - 24;
+    drawGrimoirePanel(g, x, y - boxH, boxW, boxH, 0.9);
+    this.researchInspectPlate.setVisible(true);
+    this.researchInspectText.setPosition(x + 10, y - 9).setVisible(true);
   }
 
   /**
@@ -7967,46 +8055,48 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       });
     const heatPulse = 0.36 + Math.sin(this.time.now / 420) * 0.12;
     const g = this.hudGraphics.clear();
+    const { width, height } = this.scale;
+    const vital = vitalHudGeometry(width, height, BUILD_CHIP.size * 2 + BUILD_CHIP.gap);
 
     // 마도서 판 — 불규칙한 변 + 이중 괘선 + 모서리 갈고리.
     // 종전엔 `fillRoundedRect` + 1px 테두리였다(총괄 지적: "상자에 색만 칠한 느낌").
-    drawGrimoirePanel(g, HUD.x, HUD.y, HUD.width, HUD.height, 0.9);
+    drawGrimoirePanel(g, vital.x, vital.y, VITAL_HUD.width, VITAL_HUD.height, 0.9);
 
     // 라벨과 같은 줄에 — 텍스트 세로 중앙에 맞춰 바를 놓는다 (원점이 좌상단이므로 −3)
-    const barOffset = Math.round(HUD.barHeight / 2) + 1;
-    const rowBarY = (index: number): number => hudRowY(index) + barOffset;
+    const barOffset = Math.round(VITAL_HUD.barHeight / 2) + 1;
+    const rowBarY = (index: number): number => vitalRowY(vital.y, index) + barOffset;
     g.fillStyle(UI_HEX.track, 1);
     for (let index = 0; index < 3; index += 1) {
-      g.fillRoundedRect(HUD.barX, rowBarY(index), HUD.barWidth, HUD.barHeight, 3);
+      g.fillRoundedRect(vital.x + VITAL_HUD.barX, rowBarY(index), VITAL_HUD.barWidth, VITAL_HUD.barHeight, 3);
     }
     g.fillStyle(heatwaveDamaging ? 0xff734c : hex(UI_SEMANTIC.hp), 1);
-    g.fillRoundedRect(HUD.barX, rowBarY(0), HUD.barWidth * hpRatio, HUD.barHeight, 3);
+    g.fillRoundedRect(vital.x + VITAL_HUD.barX, rowBarY(0), VITAL_HUD.barWidth * hpRatio, VITAL_HUD.barHeight, 3);
     if (heatwaveDamaging && hpRatio > 0) {
-      const filledWidth = HUD.barWidth * hpRatio;
+      const filledWidth = VITAL_HUD.barWidth * hpRatio;
       const hpBarY = rowBarY(0);
       g.lineStyle(2, 0xffb15a, 0.52 + heatPulse * 0.38);
-      g.strokeRoundedRect(HUD.barX - 2, hpBarY - 2, HUD.barWidth + 4, HUD.barHeight + 4, 4);
+      g.strokeRoundedRect(vital.x + VITAL_HUD.barX - 2, hpBarY - 2, VITAL_HUD.barWidth + 4, VITAL_HUD.barHeight + 4, 4);
       // 막대 끝의 짧은 상승 입자: 전체 HUD가 아니라 열에 반응하는 HP라는 점만 알려 준다.
       for (let index = 0; index < 3; index += 1) {
         const progress = (this.time.now / 750 + index * 0.37) % 1;
-        const x = HUD.barX + Math.max(8, filledWidth - 7 - index * 7);
+        const x = vital.x + VITAL_HUD.barX + Math.max(8, filledWidth - 7 - index * 7);
         const y = hpBarY - 2 - progress * 10;
         g.fillStyle(0xffc06d, (1 - progress) * 0.7);
         g.fillCircle(x, y, 1.8 - progress * 0.55);
       }
     }
     g.fillStyle(hex(UI_SEMANTIC.mana), 1);
-    g.fillRoundedRect(HUD.barX, rowBarY(1), HUD.barWidth * manaRatio, HUD.barHeight, 3);
+    g.fillRoundedRect(vital.x + VITAL_HUD.barX, rowBarY(1), VITAL_HUD.barWidth * manaRatio, VITAL_HUD.barHeight, 3);
     g.fillStyle(hex(UI_SEMANTIC.shield), 1);
-    g.fillRoundedRect(HUD.barX, rowBarY(2), HUD.barWidth * shieldRatio, HUD.barHeight, 3);
+    g.fillRoundedRect(vital.x + VITAL_HUD.barX, rowBarY(2), VITAL_HUD.barWidth * shieldRatio, VITAL_HUD.barHeight, 3);
 
     g.fillStyle(UI_HEX.track, 1);
-    g.fillRoundedRect(HUD.x + 8, HUD.y + HUD.height - 5, HUD.width - 16, 3, 2);
+    g.fillRoundedRect(vital.x + 8, vital.y + VITAL_HUD.height - 5, VITAL_HUD.width - 16, 3, 2);
     g.fillStyle(cooldownRatio > 0 ? 0xffb86b : 0x72f1b8, 1);
     g.fillRoundedRect(
-      HUD.x + 8,
-      HUD.y + HUD.height - 5,
-      (HUD.width - 16) * (cooldownRatio > 0 ? 1 - cooldownRatio : 1),
+      vital.x + 8,
+      vital.y + VITAL_HUD.height - 5,
+      (VITAL_HUD.width - 16) * (cooldownRatio > 0 ? 1 - cooldownRatio : 1),
       3,
       2,
     );
@@ -8014,22 +8104,19 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.drawAffinityBar(g);
     this.drawFusionGauge(g);
 
-    // 우상단 상태 패널 — 종전엔 ROOM 칩(DOM) 아래에 따로 떠서 우상단이 3단이었다.
-    // ROOM을 이 패널 안으로 넣어(updateStatusText) 2단으로 줄였다 (총괄 지적).
-    const { width } = this.scale;
-    // 패널은 **내용에 맞춰 늘어난다** — 보스전에서 저항·관통 줄이 붙으면 3~4줄이 되어
-    // 고정 높이로는 텍스트가 패널을 넘고 미니맵과 겹쳤다. 평시(2줄)엔 그대로 조밀하다.
-    const panelHeight = rightPanelHeight(this.waveText.height);
-    drawGrimoirePanel(g, width - 306, RIGHT_PANEL.y, 288, panelHeight, 0.86);
-    // 첫 줄(ROOM n/m)과 나머지를 가르는 구획 괘선 — 여백만으로 나누면 "칸"이 아니라
-    // "간격"이다. 줄이 늘어난 방(보스전 등)에서만 그린다
-    if (this.waveText.height > RIGHT_PANEL.baseTextHeight * 0.8) {
-      drawSectionRule(g, width - 306, RIGHT_PANEL.y + RIGHT_PANEL.padTop + 18, 288);
+    // ROOM/WAVE/ENEMIES는 현재 방 레이더 안으로 들어갔다. 위험지대 정화만 필요할 때
+    // 레이더 아래 작은 판으로 보여 주고, ESC 전체 지도는 그 아래에 둔다.
+    // Phaser Text는 빈 문자열이어도 폰트 행 높이를 유지한다. 높이만 보면 일반방에도
+    // 빈 정화 패널이 생기므로, 실제 문구가 있을 때만 패널 공간을 차지하게 한다.
+    const noticeHeight = this.waveText.text.trim().length > 0
+      ? roomNoticeHeight(this.waveText.height)
+      : 0;
+    const noticeTop = ROOM_RADAR_TOP + ROOM_RADAR_CONFIG.height + ROOM_NOTICE.gap;
+    if (noticeHeight > 0) {
+      drawGrimoirePanel(g, width - ROOM_RADAR_CONFIG.width - 18, noticeTop,
+        ROOM_RADAR_CONFIG.width, noticeHeight, 0.82);
     }
-    // 미니맵을 패널 아래로 — 높이가 바뀔 때만 옮긴다 (setTop이 동일 y면 no-op)
-    const minimapTop = RIGHT_PANEL.y + panelHeight + RIGHT_PANEL.gap;
-    this.runMinimap?.setTop(minimapTop);
-    this.pauseMapSeedText?.setPosition(width - 162, minimapTop + MINIMAP_CONFIG.height + 7);
+    this.waveText.setPosition(width - 18, noticeTop + ROOM_NOTICE.padTop);
   }
 
   /**
@@ -8046,16 +8133,16 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const state = this.combatRunController.state;
     const affinity = state.elementalAffinity;
     if (state.chorusAffinity !== null) {
-      const panel = affinityPanelGeometry(HUD.y, HUD.height, 1);
-      const barX = HUD.x + AFFINITY_PANEL_LAYOUT.padX;
-      const barW = HUD.width - AFFINITY_PANEL_LAYOUT.padX * 2;
+      const panel = affinityPanelGeometry(AFFINITY_HUD.y, AFFINITY_HUD.headerHeight, 1);
+      const barX = AFFINITY_HUD.x + AFFINITY_PANEL_LAYOUT.padX;
+      const barW = AFFINITY_HUD.width - AFFINITY_PANEL_LAYOUT.padX * 2;
       const barY = affinityBarY(panel.top, 0);
       const ratio = Phaser.Math.Clamp(
         state.chorusAffinity / ELEMENTAL_CHORUS.affinityCap,
         0,
         1,
       );
-      drawGrimoirePanel(g, HUD.x, panel.top, HUD.width, panel.height, 0.9);
+      drawGrimoirePanel(g, AFFINITY_HUD.x, panel.top, AFFINITY_HUD.width, panel.height, 0.9);
       g.fillStyle(UI_HEX.track, 0.9);
       g.fillRoundedRect(barX, barY, barW, AFFINITY_PANEL_LAYOUT.primaryBarHeight, 4);
       const rainbow = [0xff6b6b, 0xffd166, 0x72f1b8, 0x66d9ff, 0xb18cff];
@@ -8079,10 +8166,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
     const rows = affinityHudRows(affinity);
     const primaryElement = rankAffinities<SpellElement>(affinity, 1)[0]?.element ?? null;
-    const panel = affinityPanelGeometry(HUD.y, HUD.height, rows.length);
-    const barW = affinityColumnWidth(HUD.width);
+    const panel = affinityPanelGeometry(
+      AFFINITY_HUD.y,
+      AFFINITY_HUD.headerHeight,
+      rows.length,
+    );
+    const barW = affinityColumnWidth(AFFINITY_HUD.width);
 
-    drawGrimoirePanel(g, HUD.x, panel.top, HUD.width, panel.height, 0.82);
+    drawGrimoirePanel(g, AFFINITY_HUD.x, panel.top, AFFINITY_HUD.width, panel.height, 0.82);
 
     for (let i = 0; i < this.affinityLabelTexts.length; i += 1) {
       const label = this.affinityLabelTexts[i];
@@ -8099,7 +8190,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ? AFFINITY_PANEL_LAYOUT.primaryBarHeight
         : AFFINITY_PANEL_LAYOUT.secondaryBarHeight;
       const alpha = main ? 1 : row.value > 0 ? 0.72 : 0.5;
-      const barX = affinityColumnX(HUD.x, HUD.width, i);
+      const barX = affinityColumnX(AFFINITY_HUD.x, AFFINITY_HUD.width, i);
       const barY = affinityBarY(panel.top, i);
 
       g.fillStyle(UI_HEX.track, alpha);
@@ -8242,6 +8333,70 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       roomGeneration: copy.scope === 'room' ? this.bannerRoomGeneration : null,
     });
     this.drainBannerQueue();
+  }
+
+  /** 단일 저체력 효과: 30% 진입, 35% 해제, 그 사이는 직전 상태를 유지한다. */
+  private updateLowHealthDanger(hpRatio: number): void {
+    const nextActive = nextLowHealthDangerActive(this.lowHealthDangerActive, hpRatio);
+    if (nextActive && !this.lowHealthDangerActive) {
+      this.lowHealthDangerFade?.stop();
+      this.lowHealthDangerFade = null;
+      this.lowHealthDangerVeil.setVisible(true);
+    } else if (!nextActive && this.lowHealthDangerActive) {
+      this.lowHealthDangerFade?.stop();
+      this.lowHealthDangerFade = this.tweens.add({
+        targets: this.lowHealthDangerVeil,
+        alpha: 0,
+        duration: LOW_HEALTH_DANGER.fadeOutMs,
+        ease: 'Sine.easeOut',
+        onComplete: () => {
+          this.lowHealthDangerVeil.setVisible(false);
+          this.lowHealthDangerFade = null;
+        },
+      });
+    }
+    this.lowHealthDangerActive = nextActive;
+    if (this.lowHealthDangerActive) {
+      this.lowHealthDangerVeil
+        .setVisible(true)
+        .setAlpha(lowHealthDangerAlpha(this.time.now));
+    }
+  }
+
+  /** 보스 체력바(위쪽)를 가리지 않도록 반대편 아래에 전용 정보를 붙인다. */
+  private updateBossCombatInfo(): void {
+    if (!this.isBossEncounter()) {
+      this.bossCombatInfoHud.hide();
+      this.bossHealthBarHud.hide();
+      return;
+    }
+    const boss = this.enemies.find(
+      (enemy): enemy is BossEnemy => enemy instanceof BossEnemy && enemy.alive,
+    );
+    if (!boss) {
+      this.bossCombatInfoHud.hide();
+      this.bossHealthBarHud.hide();
+      return;
+    }
+    const resistance = bossResistanceReadout(
+      this.sortedBossResistanceEntries().map(([element, multiplier]) => ({
+        element,
+        multiplier,
+        affinity: this.affinityFor(element),
+      })),
+      RESISTANCE.masteryImmunityAffinity,
+    );
+    const label = this.mapGraph.current().kind === 'memory-boss' ? '기억의 주인' : '수문장';
+    this.bossHealthBarHud.update({
+      label,
+      hp: boss.hp,
+      maxHp: boss.maxHp,
+      phase: boss.phase,
+    });
+    this.bossCombatInfoHud.update(boss.x, boss.y + 72, bossCombatInfoLines({
+      counterStrategy: this.bossResistance.counterStrategy,
+      resistance,
+    }));
   }
 
   private affinityFor(element: SpellElement): number {
@@ -10050,6 +10205,28 @@ if (applied) this.playPlayerHit('strong');
   }
 
   /** 주문명 각인 연출 — "내 문장이 게임이 됐다"는 순간 (GDD §3.1) */
+  private spellLogLabel(
+    spec: Pick<SpellSpec, 'name' | 'element_primary' | 'form'>,
+    source?: string,
+  ): string {
+    const name = spec.name.length > 16 ? `${spec.name.slice(0, 15)}…` : spec.name;
+    const prefix = source ? `${source} · ` : '';
+    return `${prefix}『${name}』 · ${ELEMENT_LABELS[spec.element_primary]} ${FORM_LABELS[spec.form]}`;
+  }
+
+  private recordSpellLog(
+    kind: 'manual' | 'auto' | 'chorus',
+    label: string,
+    element: SpellElement,
+  ): void {
+    this.spellCastLog.push({
+      kind,
+      label,
+      color: paletteColorToCss(ELEMENT_PALETTES[element].accent),
+      now: this.time.now,
+    });
+  }
+
   private announceSpell(spec: SpellSpec): void {
     const { width, height } = this.scale;
     const pal = ELEMENT_PALETTES[spec.element_primary];

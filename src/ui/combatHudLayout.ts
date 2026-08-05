@@ -8,18 +8,18 @@
 
 export const AFFINITY_PANEL_LAYOUT = {
   /** 전투 HUD 외곽과 친화도 패널 외곽 사이의 빈 공간 */
-  gap: 14,
-  padX: 8,
-  padTop: 9,
+  gap: 6,
+  padX: 7,
+  padTop: 7,
   /** 8원소를 왼쪽 4개·오른쪽 4개로 고정 배치한다. */
   columns: 2,
   rowsPerColumn: 4,
-  columnGap: 10,
-  labelToBar: 16,
-  rowPitch: 27,
-  primaryBarHeight: 6,
-  secondaryBarHeight: 4,
-  padBottom: 10,
+  columnGap: 8,
+  labelToBar: 13,
+  rowPitch: 21,
+  primaryBarHeight: 4,
+  secondaryBarHeight: 3,
+  padBottom: 7,
 } as const;
 
 export interface AffinityPanelGeometry {

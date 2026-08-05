@@ -132,18 +132,29 @@ const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   const renderAt = scene.indexOf('private renderPauseMenu');
   const renderBlock = scene.slice(renderAt, renderAt + 1_500);
   assert.ok(
-    /맵 시드/.test(renderBlock) && /this\.currentMapSeed/.test(renderBlock),
-    'ESC 일시정지 메뉴가 현재 맵 시드를 표시해야 한다',
+    !/pauseMapSeedText|맵 시드|this\.currentMapSeed/.test(renderBlock),
+    '맵 시드는 개발 재현용이므로 ESC 사용자 화면에 표시하지 않는다',
   );
+  const pauseAt = scene.indexOf('private createPauseMenu');
+  const pauseBlock = scene.slice(pauseAt, pauseAt + 2_000);
   assert.ok(
-    /맵 시드  고정 프리셋/.test(renderBlock),
-    '시연·생성 실패 프리셋을 임의 숫자 시드처럼 표시하면 안 된다',
+    !/pauseMapSeedText/.test(pauseBlock),
+    '맵 시드 전용 HUD 객체를 만들지 않는다',
   );
-  const hudAt = scene.indexOf('private drawHudBars()');
-  const hudBlock = scene.slice(hudAt, hudAt + 4_500);
+  const syncAt = scene.indexOf('private syncMinimapVisibility');
+  const syncBlock = scene.slice(syncAt, syncAt + 900);
   assert.ok(
-    /minimapTop \+ MINIMAP_CONFIG\.height \+ 7/.test(hudBlock),
-    '맵 시드는 중앙 메뉴가 아니라 미니맵 바로 아래에 배치해야 한다',
+    /this\.placePauseMinimap\(\)/.test(syncBlock)
+      && /this\.runMinimap\?\.setVisible\(visible\)/.test(syncBlock),
+    'ESC가 열릴 때 전체 경로를 pause 전용 위치에 배치하고 표시해야 한다',
+  );
+  const placeAt = scene.indexOf('private placePauseMinimap');
+  const placeBlock = scene.slice(placeAt, placeAt + 700);
+  assert.ok(
+    /MINIMAP_CONFIG\.width \* PAUSE_MAP\.scale/.test(placeBlock)
+      && /PAUSE_MAP\.top/.test(placeBlock)
+      && /depth: PAUSE_MAP\.depth/.test(placeBlock),
+    '전체 경로는 메뉴 위 중앙에서 확대된 ESC 전용 레이아웃을 사용해야 한다',
   );
 }
 
