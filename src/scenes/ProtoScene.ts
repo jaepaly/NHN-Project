@@ -2045,6 +2045,22 @@ export class ProtoScene extends Phaser.Scene {
       );
       this.time.delayedCall(620, () => sparks.destroy());
     }
+    if (contract.id === 'variation-study' && contract.completed) {
+      colors.forEach((color, index) => {
+        const wave = this.add.circle(this.player.x, this.player.y, 18, 0xffffff, 0)
+          .setStrokeStyle(4, color, 0.9)
+          .setBlendMode(Phaser.BlendModes.ADD);
+        this.tweens.add({
+          targets: wave,
+          scale: 4.8,
+          alpha: 0,
+          delay: index * 55,
+          duration: 720,
+          ease: 'Cubic.easeOut',
+          onComplete: () => wave.destroy(),
+        });
+      });
+    }
     if (contract.id === 'elemental-focus' && progressed) {
       this.audio.playCast(contract.element ?? 'light');
     }
