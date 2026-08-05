@@ -1902,6 +1902,12 @@ export class ProtoScene extends Phaser.Scene {
     if (current.progress === previous?.progress && newElements.length === 0 && newForms.length === 0) {
       return;
     }
+    this.playResearchProgressVfx(
+      current,
+      newElements,
+      newForms,
+      current.progress !== previous?.progress,
+    );
     let rewardLine = '';
     if (current.id === 'elemental-focus' && current.element && reward.affinity > 0) {
       const result = this.combatRunController.grantStartingAffinity(current.element, reward.affinity);
@@ -1973,6 +1979,83 @@ export class ProtoScene extends Phaser.Scene {
       return `${researchProgressSlots(contract)} 계약 ${contract.spiritAcquisitions ?? 0}/2 · 융합 ${contract.spiritFusions ?? 0}/1`;
     }
     return `${researchProgressSlots(contract)} ${contract.progress}/${contract.goal}`;
+  }
+
+  private playResearchProgressVfx(
+    contract: ActiveResearchContract,
+    newElements: readonly SpellElement[],
+    newForms: readonly SpellForm[],
+    progressed: boolean,
+  ): void {
+    if (!this.scene?.isActive?.() || !this.playerState.alive) return;
+    const colors = contract.id === 'elemental-focus'
+      ? [ELEMENT_PALETTES[contract.element ?? 'light'].core]
+      : contract.id === 'variation-study'
+        ? [0xff4d8d, 0xffd166, 0x72f1b8, 0x7aa7ff, 0xc58cff]
+        : [0x9fe8ff, 0xd0a8ff];
+    const radius = contract.completed ? 34 : 22;
+    const ring = this.add.circle(this.player.x, this.player.y, radius, 0xffffff, 0)
+      .setStrokeStyle(contract.completed ? 4 : 2, colors[0], 0.9)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: ring,
+      scale: contract.completed ? 2.8 : 1.9,
+      alpha: 0,
+      duration: contract.completed ? 720 : 420,
+      ease: 'Cubic.easeOut',
+      onComplete: () => ring.destroy(),
+    });
+
+    if (contract.id === 'variation-study' && (newElements.length > 0 || newForms.length > 0)) {
+      const sparks = this.add.particles(
+        this.player.x,
+        this.player.y,
+        'particle',
+        {
+          speed: { min: 50, max: 150 },
+          angle: { min: 0, max: 360 },
+          scale: { start: 0.42, end: 0 },
+          lifespan: 520,
+          quantity: contract.completed ? 18 : 8,
+          tint: colors,
+          blendMode: Phaser.BlendModes.ADD,
+        },
+      );
+      this.time.delayedCall(620, () => sparks.destroy());
+    }
+    if (contract.id === 'elemental-focus' && progressed) {
+      this.audio.playCast(contract.element ?? 'light');
+    }
+  }
+
+  private playResearchSpiritResonanceVfx(
+    origin: Phaser.Math.Vector2,
+    elements: readonly SpellElement[],
+    completed: boolean,
+  ): void {
+    const colors = elements.map((element) => ELEMENT_PALETTES[element].core);
+    const ring = this.add.circle(origin.x, origin.y, completed ? 20 : 13, 0xffffff, 0)
+      .setStrokeStyle(completed ? 4 : 2, colors[0] ?? 0x9fe8ff, 0.9)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: ring,
+      scale: completed ? 2.5 : 1.7,
+      alpha: 0,
+      duration: completed ? 520 : 300,
+      ease: 'Cubic.easeOut',
+      onComplete: () => ring.destroy(),
+    });
+    if (!completed || elements.length < 2) return;
+    const burst = this.add.particles(origin.x, origin.y, 'particle', {
+      speed: { min: 70, max: 190 },
+      angle: { min: 0, max: 360 },
+      scale: { start: 0.5, end: 0 },
+      lifespan: 420,
+      quantity: 14,
+      tint: colors,
+      blendMode: Phaser.BlendModes.ADD,
+    });
+    this.time.delayedCall(500, () => burst.destroy());
   }
 
   /** 완료 뒤 대상 원소 수동 영창 세 번마다 가장 강한 폼 하나를 낮은 위력으로 되울린다. */
@@ -6800,6 +6883,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     };
     const chainOrigins = chainTargets.map((enemy) => ({ x: enemy.x, y: enemy.y }));
     const castRoomIndex = this.combatRunController.state.roomIndex;
+    const research = this.runResearchTracker.snapshot().research;
+    const researchVfxIntensity = research?.id === 'elemental-focus'
+      && spellMatchesElementalResearch(research, spec)
+      ? research.completed ? 0.72 : 0.42
+      : 0;
     castSpell({
       scene: this,
       from,
@@ -6818,9 +6906,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       rangeScale: options?.rangeScale,
       radiusScale: options?.radiusScale,
       // 친화 격상 연출(영창가 빌드 동기) — 위력·판정 불변, 순수 오버레이
-      vfxIntensity: reducedAffinityVfxIntensity(
-        this.affinityFor(spec.element_primary),
-        vfxTierReduction,
+      vfxIntensity: Math.max(
+        reducedAffinityVfxIntensity(
+          this.affinityFor(spec.element_primary),
+          vfxTierReduction,
+        ),
+        researchVfxIntensity,
       ),
       // 필살기는 두 원소를 순차로 터뜨린다 (총괄 지시). beam·wave는 실피해를 확인한 뒤
       // 씬이 직접 연출하므로, 이 플래그는 **나머지 폼**을 위해 렌더러로 내려간다.
@@ -6983,6 +7074,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           : new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
         const elements = this.spiritManager.entries.find((entry) => entry.spiritId === request.spiritId)?.elements
           ?? [request.spell.element_primary];
+        const research = this.runResearchTracker.snapshot().research;
+        if (research?.id === 'spirit-resonance') {
+          this.playResearchSpiritResonanceVfx(
+            origin,
+            elements,
+            research.completed,
+          );
+        }
         elements.forEach((element, elementIndex) => {
           const cast = (): void => {
             if (!this.scene?.isActive?.() || !this.playerState.alive || !this.isCombatActive()) return;
