@@ -2013,7 +2013,9 @@ export class ProtoScene extends Phaser.Scene {
     const colors = contract.id === 'elemental-focus'
       ? [ELEMENT_PALETTES[contract.element ?? 'light'].core]
       : contract.id === 'variation-study'
-        ? [0xff4d8d, 0xffd166, 0x72f1b8, 0x7aa7ff, 0xc58cff]
+        ? contract.completed
+          ? [0xff4d8d, 0xffd166, 0x72f1b8, 0x7aa7ff, 0xc58cff]
+          : [0x7aa7ff]
         : [0x9fe8ff, 0xd0a8ff];
     const radius = contract.completed ? 34 : 22;
     const ring = this.add.circle(this.player.x, this.player.y, radius, 0xffffff, 0)
@@ -2047,19 +2049,22 @@ export class ProtoScene extends Phaser.Scene {
       this.time.delayedCall(620, () => sparks.destroy());
     }
     if (contract.id === 'variation-study' && contract.completed) {
-      colors.forEach((color, index) => {
-        const wave = this.add.circle(this.player.x, this.player.y, 18, 0xffffff, 0)
-          .setStrokeStyle(4, color, 0.9)
-          .setDepth(20)
-          .setBlendMode(Phaser.BlendModes.ADD);
-        this.tweens.add({
-          targets: wave,
-          scale: 4.8,
-          alpha: 0,
-          delay: index * 55,
-          duration: 720,
-          ease: 'Cubic.easeOut',
-          onComplete: () => wave.destroy(),
+      this.time.delayedCall(260, () => {
+        if (!this.scene?.isActive?.() || !this.playerState.alive) return;
+        colors.forEach((color, index) => {
+          const wave = this.add.circle(this.player.x, this.player.y, 18, 0xffffff, 0)
+            .setStrokeStyle(4, color, 0.9)
+            .setDepth(20)
+            .setBlendMode(Phaser.BlendModes.ADD);
+          this.tweens.add({
+            targets: wave,
+            scale: 4.8,
+            alpha: 0,
+            delay: index * 55,
+            duration: 720,
+            ease: 'Cubic.easeOut',
+            onComplete: () => wave.destroy(),
+          });
         });
       });
     }
