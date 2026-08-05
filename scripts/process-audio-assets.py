@@ -14,6 +14,7 @@ TARGET_PEAK_DBFS = {
     "sfx-player-hit.wav": -8.0,
     "sfx-fizzle.wav": -10.0,
     "sfx-incant-enter.wav": -7.0,
+    "sfx-ultimate-incant-enter.wav": -7.0,
     "sfx-reward-select.wav": -7.0,
     "sfx-ui-confirm.wav": -9.0,
     "sfx-mana-crystal-pickup.wav": -9.0,
@@ -28,6 +29,7 @@ TARGET_PEAK_DBFS = {
     "sfx-boss-charge-end.wav": -8.0,
     "sfx-boss-hazard-spawn.wav": -7.0,
     "sfx-boss-summon.wav": -7.0,
+    "sfx-boss-gravity-pull.wav": -7.0,
 }
 DEFAULT_TARGET_PEAK_DBFS = -6.0
 THRESHOLD_DBFS = -50.0

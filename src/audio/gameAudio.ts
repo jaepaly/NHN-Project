@@ -8,6 +8,7 @@ export const SFX_NAMES = [
   'enemy-defeat',
   'fizzle',
   'incant-enter',
+  'ultimate-incant-enter',
   'reward-select',
   'room-clear',
   'boss-appear',
@@ -25,6 +26,7 @@ export const SFX_NAMES = [
   'boss-charge-end',
   'boss-hazard-spawn',
   'boss-summon',
+  'boss-gravity-pull',
 ] as const;
 
 export type SfxName = (typeof SFX_NAMES)[number];
@@ -51,6 +53,7 @@ const SFX_KEYS: Record<SfxName, string> = {
   'enemy-defeat': 'audio-sfx-enemy-defeat',
   fizzle: 'audio-sfx-fizzle',
   'incant-enter': 'audio-sfx-incant-enter',
+  'ultimate-incant-enter': 'audio-sfx-ultimate-incant-enter',
   'reward-select': 'audio-sfx-reward-select',
   'room-clear': 'audio-sfx-room-clear',
   'boss-appear': 'audio-sfx-boss-appear',
@@ -68,6 +71,7 @@ const SFX_KEYS: Record<SfxName, string> = {
   'boss-charge-end': 'audio-sfx-boss-charge-end',
   'boss-hazard-spawn': 'audio-sfx-boss-hazard-spawn',
   'boss-summon': 'audio-sfx-boss-summon',
+  'boss-gravity-pull': 'audio-sfx-boss-gravity-pull',
 };
 
 interface SfxPolicy {
@@ -93,6 +97,7 @@ const SFX_POLICY: Partial<Record<SfxName, SfxPolicy>> = {
   'boss-charge-end': { volumeScale: 1.2, cooldownMs: 250 },
   'boss-hazard-spawn': { volumeScale: 0.85, cooldownMs: 500 },
   'boss-summon': { volumeScale: 0.85, cooldownMs: 350 },
+  'boss-gravity-pull': { volumeScale: 0.9, cooldownMs: 1000 },
 };
 
 /** 같은 -6dBFS 마스터라도 곡의 밀도·대역에 따라 체감 음량이 달라 공간별로 보정한다. */

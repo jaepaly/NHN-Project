@@ -3405,10 +3405,12 @@ export class ProtoScene extends Phaser.Scene {
     }
 
     if (this.bossPullRemaining > 0) {
+      const telegraphLeftBefore = this.bossPullRemaining - BOSS_ARCANA_CONFIG.pullDurationSeconds;
       this.bossPullRemaining -= deltaSeconds;
       const telegraphLeft = this.bossPullRemaining - BOSS_ARCANA_CONFIG.pullDurationSeconds;
       // 예고 구간(첫 0.6초)에는 끌지 않는다 — 반응할 시간을 준다.
       if (telegraphLeft <= 0) {
+        if (telegraphLeftBefore > 0) this.audio.playSfx('boss-gravity-pull');
         const boss = this.enemies.find(
           (enemy): enemy is BossEnemy => enemy instanceof BossEnemy && enemy.alive,
         );
@@ -5404,7 +5406,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private openIncant(castMode: 'normal' | 'ultimate' = 'normal'): void {
-    this.audio.playSfx('incant-enter');
+    this.audio.playSfx(castMode === 'ultimate' ? 'ultimate-incant-enter' : 'incant-enter');
     this.resetMovementKeys();
     this.incanting = true;
     this.incantCastMode = castMode;

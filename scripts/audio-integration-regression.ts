@@ -22,6 +22,8 @@ const names = [
   'boss-charge-end',
   'boss-hazard-spawn',
   'boss-summon',
+  'boss-gravity-pull',
+  'ultimate-incant-enter',
 ] as const;
 
 for (const name of names) {
@@ -68,6 +70,8 @@ assert.match(proto, /cancelCharge\(\)[\s\S]*?playSfx\('boss-charge-end'\)/);
 assert.doesNotMatch(proto, /boss-pattern-warning/);
 assert.match(proto, /warningDurationMs[\s\S]*?delayedCall[\s\S]*?playSfx\('boss-hazard-spawn'\)/);
 assert.match(proto, /spawnBossMinions[\s\S]*?playSfx\('boss-summon'\)/);
+assert.match(proto, /telegraphLeftBefore > 0[\s\S]*?playSfx\('boss-gravity-pull'\)/);
+assert.match(proto, /openIncant[\s\S]*?castMode === 'ultimate' \? 'ultimate-incant-enter' : 'incant-enter'/);
 assert.match(proto, /queueMirrorCast[\s\S]*?playBossIncantEnter\(\)/);
 assert.match(proto, /fireMirrorCast[\s\S]*?playBossElementCast\(spec\.element_primary\)/);
 assert.match(proto, /queueBossArcana[\s\S]*?playBossIncantEnter\(\)/);
