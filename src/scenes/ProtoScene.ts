@@ -1796,6 +1796,7 @@ export class ProtoScene extends Phaser.Scene {
       });
       const selected = contracts.find((contract) => chosen.id === `research-${contract.id}`);
       if (!selected) return;
+      this.audio.playSfx('ui-confirm');
       const active = this.runResearchTracker.selectResearch(selected);
       this.applyResearchStartBonus(selected);
       this.announceBanner({
@@ -3207,7 +3208,7 @@ export class ProtoScene extends Phaser.Scene {
     // 재료가 없으면(수동 damage 주문 미달) 조용히 생략 — 밋밋한 미러는 역효과다.
     if (!spec) return;
     this.mirrorCastUsed = true;
-    this.audio.playSfx('boss-pattern-warning');
+    this.audio.playBossIncantEnter();
 
     const targetX = this.player.x;
     const targetY = this.player.y;
@@ -3280,7 +3281,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private fireMirrorCast(spec: SpellSpec, targetX: number, targetY: number): void {
-    this.audio.playMirrorCast(spec.element_primary);
+    this.audio.playBossElementCast(spec.element_primary);
     this.bossCastSpellAt(spec, targetX, targetY, MIRROR_CAST_CONFIG.damageScale);
     devInfo('[MirrorCast] fired', { spec: spec.name, targetX, targetY });
   }
@@ -3348,6 +3349,7 @@ export class ProtoScene extends Phaser.Scene {
     marker.fillStyle(pal.glow, 0.16).fillCircle(targetX, targetY, radius);
     marker.lineStyle(3, pal.core, 0.95).strokeCircle(targetX, targetY, radius);
     marker.lineStyle(1, pal.accent, 0.72).strokeCircle(targetX, targetY, Math.max(18, radius - 10));
+    this.audio.playBossIncantEnter();
     this.pendingBossArcana = {
       spec,
       targetX,
@@ -3386,6 +3388,7 @@ export class ProtoScene extends Phaser.Scene {
       if (pending.remainingSeconds <= 0) {
         pending.marker.destroy();
         this.pendingBossArcana = null;
+        this.audio.playBossElementCast(pending.spec.element_primary);
         this.bossCastSpellAt(
           pending.spec, pending.targetX, pending.targetY, BOSS_ARCANA_CONFIG.damageScale,
         );
@@ -4634,7 +4637,6 @@ if (applied) this.playPlayerHit(
   private executeBossPattern(action: BossPatternAction, boss: BossEnemy): void {
     switch (action) {
       case 'volley-telegraph':
-        this.audio.playSfx('boss-pattern-warning');
         this.showBossVolleyTelegraph(
           boss,
           this.isMemoryBossEncounter()
@@ -4659,7 +4661,6 @@ if (applied) this.playPlayerHit(
         this.spawnBossEliteMinion(boss);
         break;
       case 'charge-telegraph':
-        this.audio.playSfx('boss-pattern-warning');
         this.showBossChargeTelegraph(boss);
         break;
       case 'charge-start':
@@ -4683,7 +4684,6 @@ if (applied) this.playPlayerHit(
         this.spawnBossSurroundMinions();
         break;
       case 'hazard':
-        this.audio.playSfx('boss-pattern-warning');
         requestCameraShake(this, 'medium');
         this.spawnBossHazard(boss);
         break;
@@ -4896,12 +4896,17 @@ if (applied) this.playPlayerHit(
       && this.bossResistance.counterStrategy === 'ranged';
     const radius = enhanced ? 165 : 130;
     const centers = this.bossHazardCenters(radius, 5, enhanced);
-    for (const center of centers) {
-      this.spawnBossHazardAt(center.x, center.y, radius);
+    for (const [index, center] of centers.entries()) {
+      this.spawnBossHazardAt(center.x, center.y, radius, index === 0);
     }
   }
 
-  private spawnBossHazardAt(x: number, y: number, radius: number): void {
+  private spawnBossHazardAt(
+    x: number,
+    y: number,
+    radius: number,
+    playActivationSound: boolean,
+  ): void {
     const warningDurationMs = 1200;
     const outerRing = this.add.circle(0, 0, radius, 0xff5370, 0.06)
       .setStrokeStyle(4, 0xff5370, 0.92)
@@ -4925,6 +4930,7 @@ if (applied) this.playPlayerHit(
         warning.destroy();
         return;
       }
+      if (playActivationSound) this.audio.playSfx('boss-hazard-spawn');
       this.tweens.killTweensOf(outerRing);
       outerRing.setAlpha(1).setFillStyle(0x8f183e, 0.32)
         .setStrokeStyle(5, 0xff6b86, 1);

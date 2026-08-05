@@ -23,7 +23,7 @@ export const SFX_NAMES = [
   'boss-volley-fire',
   'boss-charge-start',
   'boss-charge-end',
-  'boss-pattern-warning',
+  'boss-hazard-spawn',
   'boss-summon',
 ] as const;
 
@@ -66,7 +66,7 @@ const SFX_KEYS: Record<SfxName, string> = {
   'boss-volley-fire': 'audio-sfx-boss-volley-fire',
   'boss-charge-start': 'audio-sfx-boss-charge-start',
   'boss-charge-end': 'audio-sfx-boss-charge-end',
-  'boss-pattern-warning': 'audio-sfx-boss-pattern-warning',
+  'boss-hazard-spawn': 'audio-sfx-boss-hazard-spawn',
   'boss-summon': 'audio-sfx-boss-summon',
 };
 
@@ -91,7 +91,7 @@ const SFX_POLICY: Partial<Record<SfxName, SfxPolicy>> = {
   'boss-volley-fire': { volumeScale: 0.9, cooldownMs: 250 },
   'boss-charge-start': { volumeScale: 0.9, cooldownMs: 250 },
   'boss-charge-end': { volumeScale: 1.2, cooldownMs: 250 },
-  'boss-pattern-warning': { volumeScale: 0.85, cooldownMs: 500 },
+  'boss-hazard-spawn': { volumeScale: 0.85, cooldownMs: 500 },
   'boss-summon': { volumeScale: 0.85, cooldownMs: 350 },
 };
 
@@ -190,14 +190,21 @@ export class GameAudio {
     });
   }
 
-  /** 미러 캐스트는 영창 진입 뒤 원소 어택을 따로 내 보스 BGM 아래에서도 식별되게 한다. */
-  playMirrorCast(element: SpellElement): void {
-    this.playSfx('incant-enter');
-    this.scene.time.delayedCall(90, () => {
-      this.scene.sound.play(CAST_KEYS[element], {
-        volume: MASTER_VOLUME * this.settings.sfxVolume * 1.4,
-        detune: -180,
-      });
+  /** 보스 영창 진입 표식 — 공격 범위 예고가 나타나는 순간 재생한다. */
+  playBossIncantEnter(): void {
+    const volume = MASTER_VOLUME * this.settings.sfxVolume;
+    this.scene.sound.play(SFX_KEYS['incant-enter'], {
+      volume: volume * 0.55,
+      detune: -180,
+    });
+  }
+
+  /** 보스 원소 공격음 — 예고가 끝나 실제 주문이 발사되는 순간 재생한다. */
+  playBossElementCast(element: SpellElement): void {
+    const volume = MASTER_VOLUME * this.settings.sfxVolume;
+    this.scene.sound.play(CAST_KEYS[element], {
+      volume: volume * 1.1,
+      detune: -180,
     });
   }
 

@@ -20,7 +20,7 @@ const names = [
   'boss-volley-fire',
   'boss-charge-start',
   'boss-charge-end',
-  'boss-pattern-warning',
+  'boss-hazard-spawn',
   'boss-summon',
 ] as const;
 
@@ -37,10 +37,8 @@ assert.match(audio, /'trap-room-enter': \{ volumeScale: 1\.25, cooldownMs: 500 \
 assert.match(audio, /'elite-room-enter': \{ volumeScale: 1\.25, cooldownMs: 500 \}/);
 assert.match(audio, /'boss-charge-end': \{ volumeScale: 1\.2, cooldownMs: 250 \}/);
 assert.match(audio, /altar: 1\.2/);
-assert.match(audio, /playMirrorCast\(element: SpellElement\)/);
-assert.match(audio, /playSfx\('incant-enter'\)[\s\S]*?delayedCall\(90/);
-assert.match(audio, /settings\.sfxVolume \* 1\.4,[\s\S]*?detune: -180/);
-assert.doesNotMatch(audio, /playMirrorCast[\s\S]*?rate:/);
+assert.match(audio, /playBossIncantEnter\(\)[\s\S]*?SFX_KEYS\['incant-enter'\][\s\S]*?volume: volume \* 0\.55,[\s\S]*?detune: -180/);
+assert.match(audio, /playBossElementCast\(element: SpellElement\)[\s\S]*?CAST_KEYS\[element\][\s\S]*?volume: volume \* 1\.1,[\s\S]*?detune: -180/);
 assert.match(audio, /document\.addEventListener\('pointerover', this\.onDomPointerOver, true\)/);
 assert.match(audio, /document\.addEventListener\('focusin', this\.onDomFocusIn, true\)/);
 assert.match(title, /GameAudio\.preloadSfx\(this, 'title-start'\)/);
@@ -60,23 +58,25 @@ assert.doesNotMatch(main, /confirmSelection/, 'reward binding must not inject ui
 assert.match(proto, /this\.audio\.playSfx\('route-transition'\)/);
 assert.match(proto, /this\.audio\.playSfx\('run-complete'\)/);
 assert.match(proto, /offerLegacyEngrave[\s\S]*?playSfx\('reward-select'\)/);
+assert.match(proto, /offerResearchContract[\s\S]*?playSfx\('ui-confirm'\)/);
 assert.match(proto, /roomKind === 'trap'[\s\S]*?playSfx\('trap-room-enter'\)/);
 assert.match(proto, /roomKind === 'elite'[\s\S]*?playSfx\('elite-room-enter'\)/);
 assert.match(proto, /spawnBossVolley[\s\S]*?playSfx\('boss-volley-fire'\)/);
 assert.match(proto, /case 'charge-start':[\s\S]*?playSfx\('boss-charge-start'\)/);
 assert.match(proto, /wasCharging && !enemy\.charging[\s\S]*?playSfx\('boss-charge-end'\)/);
 assert.match(proto, /cancelCharge\(\)[\s\S]*?playSfx\('boss-charge-end'\)/);
-assert.match(proto, /case 'volley-telegraph':[\s\S]*?playSfx\('boss-pattern-warning'\)/);
-assert.match(proto, /case 'charge-telegraph':[\s\S]*?playSfx\('boss-pattern-warning'\)/);
-assert.match(proto, /case 'hazard':[\s\S]*?playSfx\('boss-pattern-warning'\)/);
-assert.doesNotMatch(proto, /boss-hazard-spawn/);
+assert.doesNotMatch(proto, /boss-pattern-warning/);
+assert.match(proto, /warningDurationMs[\s\S]*?delayedCall[\s\S]*?playSfx\('boss-hazard-spawn'\)/);
 assert.match(proto, /spawnBossMinions[\s\S]*?playSfx\('boss-summon'\)/);
-assert.match(proto, /fireMirrorCast[\s\S]*?playMirrorCast\(spec\.element_primary\)/);
+assert.match(proto, /queueMirrorCast[\s\S]*?playBossIncantEnter\(\)/);
+assert.match(proto, /fireMirrorCast[\s\S]*?playBossElementCast\(spec\.element_primary\)/);
+assert.match(proto, /queueBossArcana[\s\S]*?playBossIncantEnter\(\)/);
+assert.match(proto, /updateBossArcana[\s\S]*?playBossElementCast\(pending\.spec\.element_primary\)[\s\S]*?bossCastSpellAt/);
 const queueMirrorCast = proto.slice(
   proto.indexOf('private queueMirrorCast'),
   proto.indexOf('private updateMirrorCast'),
 );
-assert.match(queueMirrorCast, /playSfx\('boss-pattern-warning'\)/);
+assert.doesNotMatch(queueMirrorCast, /playSfx\('boss-hazard-spawn'\)/);
 assert.doesNotMatch(queueMirrorCast, /playMirrorCast/, 'mirror sound belongs to actual fire, not telegraph');
 const openRewardlessRoomChoice = proto.slice(
   proto.indexOf('private openRewardlessRoomChoice'),

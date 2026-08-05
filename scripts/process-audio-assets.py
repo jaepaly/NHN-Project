@@ -26,7 +26,7 @@ TARGET_PEAK_DBFS = {
     "sfx-boss-volley-fire.wav": -7.0,
     "sfx-boss-charge-start.wav": -7.0,
     "sfx-boss-charge-end.wav": -8.0,
-    "sfx-boss-pattern-warning.wav": -7.0,
+    "sfx-boss-hazard-spawn.wav": -7.0,
     "sfx-boss-summon.wav": -7.0,
 }
 DEFAULT_TARGET_PEAK_DBFS = -6.0
