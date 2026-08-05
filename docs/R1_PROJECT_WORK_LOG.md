@@ -2109,3 +2109,9 @@
 - 브랜치 목적을 `codex/minimap-route-ui`로 확정하고 방 종류 아이콘, Stage 1/2 지도 분리, 수문장 이후 Stage 2 첫 노드 선택, ESC 미니맵 가독성, 방 선택 지도의 위험·보상 2행 계기판과 밀집 선택 열 충돌 회피를 하나의 미니맵·경로 선택 UI 변경으로 마감한다.
 - 사용자가 변경 전체가 적용된 상태로 1런을 완주했으며 미니맵 관련 동작이 정상이라고 확인했다. 최종 자동 검증으로 `test:roomicons`, `test:minimap`, `test:minimap-stage`, `test:roomchoice`, `tsc --noEmit`, production build와 `git diff --check`를 통과했다.
 - `docs/PLAYTEST_QA_2026-08-05.md`는 버프·상태이상·보스 UI 등 이번 변경 밖의 후속 QA까지 포함하므로 PR 커밋에서 제외하고 로컬 참고 자료로 보존한다.
+
+# [R1] PR #358 UI 팔레트 CI 교정 (2026-08-05)
+
+- PR 상태 재확인에서 기능 회귀가 아니라 `test:uipalette`의 하드코딩 색상 예산 초과를 확인했다. 새 방 아이콘과 경로 선택 지표의 팔레트를 `UI_ROOM` 공용 토큰으로 이동해 UI 색상 단일 출처를 유지했다.
+- 팔레트 예산 교정 후 노출된 마도서 재질 규칙에 맞춰 선택 노드·단계 탭의 균일한 네온 글로우를 아래 방향 그림자로 교정했다. 미니맵의 방 종류, 위험·보상 수치 및 선택 동작 계약은 변경하지 않았다.
+- `test:uipalette` 10군과 전체 회귀 106종이 모두 통과했다. 별도 `tsc --noEmit`, production build와 `git diff --check`도 통과했다.

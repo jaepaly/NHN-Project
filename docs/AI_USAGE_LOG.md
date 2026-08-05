@@ -6,6 +6,7 @@
 
 | 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
 |---|---|---|---|---|---|---|
+| 2026-08-05 | 이도원 | Codex + GitHub Actions + TypeScript/Vite 회귀 | PR #358 UI 팔레트 CI 교정 | PR 상태 재확인에서 하드코딩 색상 예산과 종이형 UI 네온 글로우 규칙 위반을 확인하고, 방 아이콘·경로 지표 색을 공용 UI 토큰으로 이동하며 균일 글로우를 방향성 그림자로 교정 | `uiTokens.ts`, `roomKindIcon.ts`, `roomChoiceOverlay.ts`, R1 기록 | `test:uipalette` 10군, 전체 회귀 106종, TypeScript, production build, diff check 통과 |
 | 2026-08-05 | 이도원 | Codex + 사용자 1런 플레이테스트 + TypeScript/Vite 회귀 | 미니맵·경로 선택 UI 브랜치 최종화 | `codex/minimap-route-ui`로 범위를 확정하고 방 아이콘, Stage 1/2 분리, Stage 2 전환, ESC 미니맵, 위험·보상 계기판과 밀집 열 충돌 회피를 한 PR 범위로 마감 | 미니맵 UI 코드·회귀·R1 기록 | 사용자 1런 정상. `test:roomicons`, `test:minimap`, `test:minimap-stage`, `test:roomchoice`, TypeScript, production build, diff check 통과. 광범위 QA 백로그 문서는 PR 제외 |
 | 2026-08-05 | 이도원 | 사용자 플레이테스트 + Codex 기록 | 미니맵·방 선택 UI 통합 1런 완주 검증 | 스테이지 분할, 방 아이콘, Stage 2 전환, 위험·보상 계기판과 세로 밀집 선택지 충돌 회피가 적용된 상태로 1런 완주 | 플레이테스트 결과, R1 작업 기록 | 사용자 확인상 미니맵 변경 정상. 추가 런·다른 시드 검증은 아직 미실시 |
 | 2026-08-05 | 이도원 | 플레이테스트 화면 + Codex + TypeScript/Vite 회귀 | 세로 밀집 선택 노드 계기판 충돌 회피 | 같은 layer에 이동 가능 노드 3개가 쌓이면 선택 확대 노드와 하단 위험·보상 패널이 인접 노드를 침범하는 문제를 확인. 해당 밀집 열에 한해 패널을 노드 오른쪽 중앙으로 이동 | `roomChoiceOverlay.ts`, 방 선택 회귀 | 일반 열은 하단 배치 유지. `test:roomchoice`, TypeScript, production build, diff check 통과. 실제 3분기 선택 화면 확인 필요 |

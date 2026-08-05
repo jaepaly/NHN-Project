@@ -4,7 +4,7 @@ import type {
   MinimapNode,
 } from '../run/mapGraphContract';
 import { MINIMAP_CONFIG, minimapLayout } from './minimapLayout';
-import { UI_COLOR, UI_FONT, UI_LAYER } from './uiTokens';
+import { UI_COLOR, UI_FONT, UI_LAYER, UI_ROOM } from './uiTokens';
 import {
   cornerFlourish, divider, ornamentCss,
 } from './grimoireOrnament';
@@ -62,42 +62,42 @@ export function roomRouteMetrics(kind: MapNodeKind): RoomRouteMetrics {
 const ROOM_PRESENTATION: Record<MapNodeKind, RoomChoicePresentation> = {
   start: {
     label: '시작',
-    color: '#d8bb72',
+    color: UI_COLOR.accent,
     description: '이번 여정이 시작된 방이다.',
   },
   combat: {
     label: '일반방',
-    color: '#aaa1c8',
+    color: UI_ROOM.combat,
     description: '기본 적과 싸우며 주문 친화도와 표준 보상을 쌓는다.',
   },
   elite: {
     label: '정예방',
-    color: '#d58c65',
+    color: UI_ROOM.elite,
     description: '강화된 적이 기다린다. 더 위험하지만 보상도 크다.',
   },
   'stage-boss': {
     label: '수문장',
-    color: '#b95f72',
+    color: UI_ROOM.boss,
     description: '다음 구역으로 향하는 길을 막는 강적이다.',
   },
   'memory-boss': {
     label: '기억의 주인',
-    color: '#b95f72',
+    color: UI_ROOM.boss,
     description: '이번 여정의 마지막에서 플레이어의 주문을 기억해 맞선다.',
   },
   treasure: {
     label: '보물방',
-    color: '#d2aa58',
+    color: UI_ROOM.treasure,
     description: '전투 없이 안전하게 보상을 고르지만 성장 기회는 적다.',
   },
   altar: {
     label: '제단방',
-    color: '#a982c2',
+    color: UI_ROOM.altar,
     description: '최대 체력을 대가로 상급 힘을 얻거나 거래를 거절한다.',
   },
   trap: {
     label: '함정방',
-    color: '#72aa98',
+    color: UI_ROOM.trap,
     description: '특수 기믹이 전장을 제한한다. 위험한 만큼 보상이 커진다.',
   },
 };
@@ -153,7 +153,7 @@ const CSS = `
 #${WRAP_ID}.active { opacity: 1; visibility: visible; }
 ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .route-panel {
-  --orn: #d8bb72;
+  --orn: ${UI_COLOR.accent};
   position: relative; width: min(1080px, calc(100vw - 32px));
   padding: 28px 30px 20px; box-sizing: border-box; overflow: hidden;
   border: 1px solid rgba(179, 151, 99, 0.46);
@@ -175,7 +175,7 @@ ${ornamentCss(WRAP_ID)}
   width: 44px; height: 44px; display: grid; place-items: center;
   border: 1px solid rgba(216, 187, 114, 0.22); border-radius: 50%;
   color: rgba(216, 187, 114, 0.52); font: 15px/1 ${UI_FONT.serif};
-  box-shadow: inset 0 0 18px rgba(216, 187, 114, 0.06);
+  box-shadow: inset 0 2px 18px rgba(216, 187, 114, 0.06);
 }
 #${WRAP_ID} .route-panel::before { left: 22px; }
 #${WRAP_ID} .route-panel::after { right: 22px; }
@@ -201,10 +201,10 @@ ${ornamentCss(WRAP_ID)}
 }
 #${WRAP_ID} .route-stage-tab.viewing {
   border-color: rgba(216, 187, 114, 0.78); color: #ead9ad;
-  box-shadow: 0 0 10px rgba(216, 187, 114, 0.12);
+  box-shadow: 0 2px 10px rgba(216, 187, 114, 0.12);
 }
 #${WRAP_ID} .route-stage-tab.current::after {
-  content: ' 현재'; color: #d8bb72; font-size: 8px; letter-spacing: 0;
+  content: ' 현재'; color: ${UI_COLOR.accent}; font-size: 8px; letter-spacing: 0;
 }
 #${WRAP_ID} .route-map {
   position: relative; width: 100%; height: clamp(310px, 49vh, 500px);
@@ -214,7 +214,7 @@ ${ornamentCss(WRAP_ID)}
     radial-gradient(circle at 18% 32%, rgba(155, 112, 65, 0.08), transparent 24%),
     radial-gradient(circle at 77% 62%, rgba(115, 80, 126, 0.08), transparent 28%),
     linear-gradient(145deg, rgba(14, 10, 18, 0.94), rgba(6, 5, 10, 0.98));
-  box-shadow: inset 0 0 55px rgba(0, 0, 0, 0.58), inset 0 0 0 3px rgba(7, 5, 10, 0.38);
+  box-shadow: inset 0 2px 55px rgba(0, 0, 0, 0.58), inset 0 0 0 3px rgba(7, 5, 10, 0.38);
   overflow: hidden;
 }
 #${WRAP_ID} .route-map::before {
@@ -244,7 +244,7 @@ ${ornamentCss(WRAP_ID)}
   filter: drop-shadow(0 0 3px rgba(176, 143, 82, 0.3));
 }
 #${WRAP_ID} .route-edge.available {
-  stroke: #d8bb72; stroke-width: 2.2; opacity: 0.92;
+  stroke: ${UI_COLOR.accent}; stroke-width: 2.2; opacity: 0.92;
   filter: drop-shadow(0 0 6px rgba(216, 187, 114, 0.66));
   animation: r3-route-flow 2.4s ease-in-out infinite;
 }
@@ -254,7 +254,7 @@ ${ornamentCss(WRAP_ID)}
 }
 #${WRAP_ID} .route-nodes { position: absolute; inset: 0; z-index: 2; }
 #${WRAP_ID} .route-node {
-  --room-color: #aaa1c8;
+  --room-color: ${UI_ROOM.combat};
   position: absolute; transform: translate(-50%, -50%);
   width: 58px; height: 58px; padding: 0;
   border: 1px solid color-mix(in srgb, var(--room-color) 68%, #594f61);
@@ -264,7 +264,7 @@ ${ornamentCss(WRAP_ID)}
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 1px; cursor: default;
   opacity: 0.66;
-  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.42), inset 0 0 10px rgba(0, 0, 0, 0.52);
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.42), inset 0 2px 10px rgba(0, 0, 0, 0.52);
   transition: transform 180ms ease, opacity 180ms ease, box-shadow 180ms ease,
     border-color 180ms ease, filter 180ms ease;
 }
@@ -279,7 +279,7 @@ ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .route-node.selectable::before { opacity: 0.72; }
 #${WRAP_ID} .route-node.selectable::before {
   inset: -7px; border: 1.5px solid rgba(216, 187, 114, 0.82); opacity: 0.9;
-  box-shadow: 0 0 8px rgba(216, 187, 114, 0.2);
+  box-shadow: 0 2px 8px rgba(216, 187, 114, 0.2);
 }
 #${WRAP_ID} .route-node.special,
 #${WRAP_ID} .route-node.boss { border-radius: 50%; clip-path: none; }
@@ -287,10 +287,10 @@ ${ornamentCss(WRAP_ID)}
   opacity: 0.48; border-color: #6f674f; color: #8f8565; filter: saturate(0.48);
 }
 #${WRAP_ID} .route-node.current {
-  width: 62px; height: 62px; opacity: 1; color: #d8bb72; border-color: #d8bb72;
+  width: 62px; height: 62px; opacity: 1; color: ${UI_COLOR.accent}; border-color: ${UI_COLOR.accent};
   box-shadow:
-    0 0 12px rgba(216, 187, 114, 0.18),
-    0 3px 9px rgba(0, 0, 0, 0.5), inset 0 0 14px rgba(216, 187, 114, 0.08);
+    0 2px 12px rgba(216, 187, 114, 0.18),
+    0 3px 9px rgba(0, 0, 0, 0.5), inset 0 2px 14px rgba(216, 187, 114, 0.08);
 }
 #${WRAP_ID} .route-node.selectable {
   width: 68px; height: 68px; opacity: 1; cursor: pointer;
@@ -298,17 +298,17 @@ ${ornamentCss(WRAP_ID)}
   border-color: color-mix(in srgb, var(--room-color) 66%, #d8bb72);
   background: radial-gradient(circle, color-mix(in srgb, var(--room-color) 18%, #251a29) 0 58%, #0c090f 78%);
   box-shadow:
-    0 0 17px color-mix(in srgb, var(--room-color) 28%, rgba(216, 187, 114, 0.15)),
-    0 4px 12px rgba(0, 0, 0, 0.55), inset 0 0 15px color-mix(in srgb, var(--room-color) 12%, transparent);
+    0 2px 17px color-mix(in srgb, var(--room-color) 28%, rgba(216, 187, 114, 0.15)),
+    0 4px 12px rgba(0, 0, 0, 0.55), inset 0 2px 15px color-mix(in srgb, var(--room-color) 12%, transparent);
   animation: r3-route-ready 2.2s ease-in-out infinite;
 }
 #${WRAP_ID} .route-node.selectable:hover,
 #${WRAP_ID} .route-node.selectable.focused {
   transform: translate(-50%, -50%) scale(1.09);
   box-shadow:
-    0 0 17px color-mix(in srgb, var(--room-color) 32%, transparent),
+    0 2px 17px color-mix(in srgb, var(--room-color) 32%, transparent),
     0 6px 16px rgba(0, 0, 0, 0.6),
-    inset 0 0 22px color-mix(in srgb, var(--room-color) 15%, transparent);
+    inset 0 2px 22px color-mix(in srgb, var(--room-color) 15%, transparent);
 }
 #${WRAP_ID} .route-node:not(.selectable):not(.current):hover {
   transform: translate(-50%, -50%) scale(1.06);
@@ -316,9 +316,9 @@ ${ornamentCss(WRAP_ID)}
   border-color: color-mix(in srgb, var(--room-color) 82%, #8f7f91);
   filter: brightness(1.2) saturate(0.9);
   box-shadow:
-    0 0 10px color-mix(in srgb, var(--room-color) 16%, transparent),
+    0 2px 10px color-mix(in srgb, var(--room-color) 16%, transparent),
     0 4px 11px rgba(0, 0, 0, 0.52),
-    inset 0 0 18px color-mix(in srgb, var(--room-color) 10%, transparent);
+    inset 0 2px 18px color-mix(in srgb, var(--room-color) 10%, transparent);
 }
 #${WRAP_ID} .route-room-icon {
   width: 55%; height: 55%; flex: 0 0 auto; display: block; object-fit: contain;
@@ -333,7 +333,7 @@ ${ornamentCss(WRAP_ID)}
   color: color-mix(in srgb, var(--room-color) 82%, #e8dfcf);
   font: 700 10px/1 ${UI_FONT.serif}; letter-spacing: -0.02em;
   overflow: hidden; white-space: nowrap; text-overflow: clip; text-align: center;
-  text-shadow: 0 1px 3px #050308, 0 0 5px #050308;
+  text-shadow: 0 1px 3px ${UI_ROOM.routeShadow}, 0 2px 5px ${UI_ROOM.routeShadow};
 }
 #${WRAP_ID} .route-node.selectable .route-room-name { font-size: 11px; }
 #${WRAP_ID} .route-node:not(:has(.route-room-icon)) .route-room-name { font-size: 10px; }
@@ -351,10 +351,10 @@ ${ornamentCss(WRAP_ID)}
 }
 #${WRAP_ID} .route-node-metric {
   width: 38px; height: 8px; display: inline-flex; align-items: center; gap: 4px;
-  font: 700 9px/1 ${UI_FONT.serif}; text-shadow: 0 1px 3px #050308, 0 0 4px #050308;
+  font: 700 9px/1 ${UI_FONT.serif}; text-shadow: 0 1px 3px ${UI_ROOM.routeShadow}, 0 2px 4px ${UI_ROOM.routeShadow};
 }
-#${WRAP_ID} .route-node-metric.risk { color: #c97c75; }
-#${WRAP_ID} .route-node-metric.reward { color: #d8bb72; }
+#${WRAP_ID} .route-node-metric.risk { color: ${UI_ROOM.routeRisk}; }
+#${WRAP_ID} .route-node-metric.reward { color: ${UI_COLOR.accent}; }
 #${WRAP_ID} .route-metric-icon {
   width: 10px; height: 10px; display: block; overflow: visible;
   filter: drop-shadow(0 0 2px currentColor) drop-shadow(0 1px 1px #050308);
@@ -365,7 +365,7 @@ ${ornamentCss(WRAP_ID)}
   border-radius: 1px; opacity: 0.26;
 }
 #${WRAP_ID} .route-metric-slot.filled {
-  background: currentColor; opacity: 0.95; box-shadow: 0 0 3px currentColor;
+  background: currentColor; opacity: 0.95; box-shadow: 0 1px 3px currentColor;
 }
 #${WRAP_ID} .route-metric-zero,
 #${WRAP_ID} .route-metric-unknown,
@@ -377,8 +377,8 @@ ${ornamentCss(WRAP_ID)}
   display: flex; gap: 12px; color: #827889;
   font: 700 9px/1 ${UI_FONT.serif}; letter-spacing: 0.04em; pointer-events: none;
 }
-#${WRAP_ID} .route-metric-legend .risk { color: #c97c75; }
-#${WRAP_ID} .route-metric-legend .reward { color: #d8bb72; }
+#${WRAP_ID} .route-metric-legend .risk { color: ${UI_ROOM.routeRisk}; }
+#${WRAP_ID} .route-metric-legend .reward { color: ${UI_COLOR.accent}; }
 #${WRAP_ID} .route-metric-legend > span { display: inline-flex; align-items: center; gap: 4px; }
 #${WRAP_ID} .route-metric-legend .route-metric-icon { width: 11px; height: 11px; }
 #${WRAP_ID} .route-node:focus-visible {
@@ -390,8 +390,8 @@ ${ornamentCss(WRAP_ID)}
 }
 #${WRAP_ID} .route-hotkey {
   position: absolute; top: -9px; left: -9px; width: 22px; height: 22px;
-  box-sizing: border-box; border: 1px solid #d8bb72; border-radius: 50%;
-  color: #24180c; background: #d8bb72;
+  box-sizing: border-box; border: 1px solid ${UI_COLOR.accent}; border-radius: 50%;
+  color: ${UI_COLOR.ink}; background: ${UI_COLOR.accent};
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
   font: 800 11px/20px ${UI_FONT.serif};
 }
@@ -823,16 +823,16 @@ function routeMetricIconMarkup(kind: 'risk' | 'reward'): string {
   if (kind === 'risk') {
     return `<svg class="route-metric-icon" viewBox="0 0 12 12" aria-hidden="true">
       <path fill="currentColor" d="M6 1C3.24 1 1 3.04 1 5.55c0 1.7.87 2.92 2.2 3.63V11h1.45V9.72h.72V11h1.26V9.72h.72V11H8.8V9.18C10.13 8.47 11 7.25 11 5.55 11 3.04 8.76 1 6 1Z"/>
-      <circle cx="4.15" cy="5.55" r="1.05" fill="#171019"/>
-      <circle cx="7.85" cy="5.55" r="1.05" fill="#171019"/>
-      <path d="M6 6.65 5.25 7.8h1.5Z" fill="#171019"/>
+      <circle cx="4.15" cy="5.55" r="1.05" fill="${UI_ROOM.routeInk}"/>
+      <circle cx="7.85" cy="5.55" r="1.05" fill="${UI_ROOM.routeInk}"/>
+      <path d="M6 6.65 5.25 7.8h1.5Z" fill="${UI_ROOM.routeInk}"/>
     </svg>`;
   }
   return `<svg class="route-metric-icon" viewBox="0 0 12 12" aria-hidden="true">
     <path fill="currentColor" d="M1.2 4.6h9.6v5.7H1.2z"/>
     <path fill="currentColor" fill-opacity="0.72" d="M2 2h8l.8 2H1.2z"/>
-    <path fill="#171019" d="M1.2 5.45h9.6v1H1.2z"/>
-    <rect x="5" y="5.15" width="2" height="2.7" rx=".35" fill="#f0d58b"/>
-    <path d="M2.1 9.7h7.8" stroke="#f0d58b" stroke-opacity=".55" stroke-width=".6"/>
+    <path fill="${UI_ROOM.routeInk}" d="M1.2 5.45h9.6v1H1.2z"/>
+    <rect x="5" y="5.15" width="2" height="2.7" rx=".35" fill="${UI_ROOM.routeHighlight}"/>
+    <path d="M2.1 9.7h7.8" stroke="${UI_ROOM.routeHighlight}" stroke-opacity=".55" stroke-width=".6"/>
   </svg>`;
 }
