@@ -1,5 +1,5 @@
 import type { MetaProfileV1 } from './metaProfile';
-import type { SpellElement, SpellForm, SpellSpec } from '../spell/types';
+import type { SpellElement, SpellForm, SpellSize, SpellSpec } from '../spell/types';
 
 export const BASIC_RESEARCH_UNLOCK_INSIGHT = 4;
 export const EXPANDED_RESEARCH_UNLOCK_INSIGHT = 14;
@@ -150,6 +150,53 @@ export function variationCastKey(
   spec: Pick<SpellSpec, 'element_primary' | 'form'>,
 ): string {
   return `${spec.element_primary}:${spec.form}`;
+}
+
+/**
+ * 충전 핍 모델 — **캐릭터 아래 원 3개** (총괄 제보 2026-08-02).
+ *
+ * 제보: *"공격 3회마다 해당 기믹들이 발동하니까 유저 입장에서는 그 타이밍을 알기가
+ * 어려움."* 발동 주기가 숨어 있으면 지속 효과가 랜덤 발동처럼 읽힌다 — 원이 차오르는
+ * 게 보여야 "다음 발동까지 얼마"를 계획할 수 있고, 그래야 변주(영창을 바꿔 쓰기)나
+ * 심화(같은 원소 반복) 같은 **의도적 플레이**가 성립한다.
+ *
+ * 활성 연구는 하나뿐이므로 핍도 한 벌이다. 완료 전에는 null — 진행도는 HUD의
+ * `researchProgressSlots`(●○○)가 이미 보여주고 있어서 겹치면 소음이다.
+ */
+export interface ResearchChargePips {
+  id: ResearchContractId;
+  element: SpellElement | null;
+  total: number;
+  filled: number;
+}
+
+export function researchChargePips(
+  contract: ActiveResearchContract | null,
+  charges: { echo: number; bolt: number; wave: number },
+): ResearchChargePips | null {
+  if (!contract?.completed) return null;
+  const raw = contract.id === 'elemental-focus' ? charges.echo
+    : contract.id === 'spirit-resonance' ? charges.bolt
+      : charges.wave;
+  const total = contract.id === 'elemental-focus' ? ELEMENTAL_FOCUS_ECHO_EVERY_CASTS
+    : contract.id === 'spirit-resonance' ? SPIRIT_RESONANCE_BOLT_EVERY_ATTACKS
+      : VARIATION_WAVE_EVERY_SHIFTS;
+  const filled = Math.max(0, Math.min(total, Number.isFinite(raw) ? Math.floor(raw) : 0));
+  return { id: contract.id, element: contract.element, total, filled };
+}
+
+/**
+ * 공명탄 크기 격상 — 한 단계 위로 (총괄 제보: *"공명탄이 잘 체감 안되는듯?"*).
+ *
+ * 위력 0.5배는 #67(오토 DPS 40% 상한) 때문에 못 올린다. 대신 **투사체 크기**를
+ * 한 단계 키운다 — 판정·위력은 그대로고 눈에만 커진다. large·huge는 그대로 둔다:
+ * 화면 점유가 이미 크고, 더 키우면 일반탄보다 커 보여 "추가탄"이 아니라 "본탄"으로
+ * 읽힌다.
+ */
+export function spiritResonanceBoltSize(size: SpellSize): SpellSize {
+  if (size === 'small') return 'medium';
+  if (size === 'medium') return 'large';
+  return size;
 }
 
 export function advanceVariationWaveCharge(

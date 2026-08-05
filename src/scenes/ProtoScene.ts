@@ -371,6 +371,8 @@ import {
   SPIRIT_RESONANCE_START_HASTE_SCALE,
   advanceSpiritResonanceBoltCharge,
   advanceVariationWaveCharge,
+  researchChargePips,
+  spiritResonanceBoltSize,
   SPIRIT_RESONANCE_BOLT_POWER_SCALE,
   VARIATION_WAVE_POWER_SCALE,
   VARIATION_WAVE_RADIUS,
@@ -1090,6 +1092,12 @@ export class ProtoScene extends Phaser.Scene {
   /** 만물 변주 완료 뒤 무지개 파동을 결정하는 변주 카운터 (직전과 다른 영창 3회). */
   private variationWaveCharge = 0;
   private variationWaveLastKey: string | null = null;
+  /** 캐릭터 아래 충전 핍 (총괄 제보: "발동 타이밍을 알기 어려움") — 늦은 생성 */
+  private researchChargePipsGfx: Phaser.GameObjects.Graphics | null = null;
+  /** 마지막으로 그린 핍 상태 — 바뀔 때만 다시 그린다 */
+  private researchChargePipsKey = '';
+  /** 발동 순간 셋 다 찬 모습을 잠깐 보여주는 마감 시각 (time.now 기준) */
+  private researchChargeFlashUntil = 0;
   /** 시연 런("각성한 영창가로 시작")인가 — 유산 선택을 건너뛰는 데 쓴다 */
   private demoRun = false;
   /** DEV 전용 피해 연습실 — 일반 웨이브·방 진행을 멈추고 허수아비만 유지한다. */
@@ -1499,6 +1507,9 @@ export class ProtoScene extends Phaser.Scene {
   override update(_time: number, delta: number): void {
     this.checkPlayerDeath();
     this.updateRunElapsed(delta);
+    // 전투 여부와 무관하게 매 프레임 — 숨김 판정을 함수 안에서 한다 (전투가 끝나는
+    // 프레임에 핍이 화면에 박제되지 않도록)
+    this.updateResearchChargePips();
     if (this.isCombatActive()) {
       // 슬로모션: timeScale을 개체 이동에 직접 곱한다 (프로토 방식)
       const d = (delta / 1000) * this.timeScale;
@@ -2200,6 +2211,7 @@ export class ProtoScene extends Phaser.Scene {
     const echoCharge = advanceElementalFocusEchoCharge(this.elementalResearchEchoCharge);
     this.elementalResearchEchoCharge = echoCharge.charge;
     if (!echoCharge.triggered) return;
+    this.researchChargeFlashUntil = this.time.now + 340;
     const spatialScale = elementalFocusSpatialScale(research, spec);
     this.announceSystemMessage(
       `원소 공명 · ${ELEMENT_LABELS[research.element]} 주문 재시전`,
@@ -2243,6 +2255,7 @@ export class ProtoScene extends Phaser.Scene {
     this.variationWaveCharge = advanced.charge;
     this.variationWaveLastKey = advanced.key;
     if (!advanced.triggered) return;
+    this.researchChargeFlashUntil = this.time.now + 340;
     if (!this.hasLivingEnemy()) return; // 빈 방 침묵 — 각인·정령과 같은 규칙
 
     this.announceSystemMessage('만물 변주 · 무지개 파동', '#c58cff', 2200);
@@ -2270,6 +2283,68 @@ export class ProtoScene extends Phaser.Scene {
         );
       }
     });
+  }
+
+  /**
+   * 캐릭터 아래 충전 핍 — 연구 지속 효과의 발동 주기를 보여주는 원 3개 (총괄 제보:
+   * *"공격 3회마다 발동하니까 타이밍을 알기가 어려움"*).
+   *
+   * 원이 차오르는 게 보여야 "다음 발동까지 얼마"를 계획할 수 있다 — 변주(영창 바꿔
+   * 쓰기)·심화(같은 원소 반복) 같은 의도적 플레이는 주기가 보일 때만 성립한다.
+   *
+   * 발동 순간엔 셋 다 찬 모습을 340ms 보여준다(`researchChargeFlashUntil`). 충전이
+   * 발동과 동시에 0으로 리셋되므로, 이게 없으면 세 번째 원이 차는 모습을 영영 못 본다
+   * — "전부 차면 발동"이라는 규칙 자체가 화면에서 사라진다.
+   *
+   * ⚠️ #220: 항상 떠 있는 요소라 애니메이션·ADD 블렌드 금지. 상태가 바뀔 때만 다시
+   * 그리고(`researchChargePipsKey`), 위치 추적만 매 프레임 한다.
+   */
+  private updateResearchChargePips(): void {
+    const flashing = this.time.now < this.researchChargeFlashUntil;
+    const pips = researchChargePips(this.runResearchTracker.snapshot().research, {
+      echo: this.elementalResearchEchoCharge,
+      bolt: this.spiritResonanceBoltCharge,
+      wave: this.variationWaveCharge,
+    });
+    const visible = pips !== null && this.playerState.alive
+      && (this.isCombatActive() || flashing);
+    if (!visible) {
+      this.researchChargePipsGfx?.setVisible(false);
+      this.researchChargePipsKey = '';
+      return;
+    }
+
+    const gfx = this.researchChargePipsGfx
+      ?? (this.researchChargePipsGfx = this.add.graphics().setDepth(6));
+    gfx.setVisible(true).setPosition(this.player.x, this.player.y + 34);
+
+    const key = `${pips.id}:${pips.element ?? ''}:${pips.filled}:${flashing ? 'f' : ''}`;
+    if (key === this.researchChargePipsKey) return;
+    this.researchChargePipsKey = key;
+
+    // 색 — 연구마다 다르다. 변주는 핍마다 다른 색(파동 3겹과 같은 색)이라
+    // "서로 다른 영창"이라는 규칙이 색으로도 읽힌다
+    const colors = pips.id === 'elemental-focus'
+      ? Array<number>(pips.total).fill(ELEMENT_PALETTES[pips.element ?? 'light'].core)
+      : pips.id === 'spirit-resonance'
+        ? Array<number>(pips.total).fill(0x9fe8ff)
+        : [0xff4d8d, 0x72f1b8, 0x7aa7ff];
+
+    gfx.clear();
+    const radius = 4.5;
+    const gap = 14;
+    for (let index = 0; index < pips.total; index += 1) {
+      const x = (index - (pips.total - 1) / 2) * gap;
+      const filled = flashing || index < pips.filled;
+      // 바닥판 — 배경이 밝아도 빈 원이 읽히게
+      gfx.fillStyle(0x0a0810, 0.55).fillCircle(x, 0, radius + 1.5);
+      if (filled) {
+        gfx.fillStyle(colors[index], flashing ? 1 : 0.92).fillCircle(x, 0, radius);
+        if (flashing) gfx.lineStyle(1.5, 0xffffff, 0.85).strokeCircle(x, 0, radius + 1);
+      } else {
+        gfx.lineStyle(1.2, colors[index], 0.5).strokeCircle(x, 0, radius);
+      }
+    }
   }
 
   /**
@@ -2400,6 +2475,9 @@ export class ProtoScene extends Phaser.Scene {
     this.hazardDecorations = [];
     this.activeWalls = [];
     this.activeOrbits = [];
+    // 충전 핍 — 늦은 생성이라 파괴된 참조가 남으면 재입장 첫 프레임에 죽은 객체를 만진다
+    this.researchChargePipsGfx = null;
+    this.researchChargePipsKey = '';
   }
   /** 오토 비중 스냅샷 — 콘솔 리포트·재측정(window.__autoShare)용 */
   private autoShareSnapshot(): Record<DamageSource, number> & { autoSharePercent: number } {
@@ -7325,13 +7403,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           const bolt = advanceSpiritResonanceBoltCharge(this.spiritResonanceBoltCharge);
           this.spiritResonanceBoltCharge = bolt.charge;
           if (bolt.triggered) {
+            this.researchChargeFlashUntil = this.time.now + 340;
             const resonanceSpell = request.spell;
             this.recordSpellLog(
               'auto',
               this.spellLogLabel(resonanceSpell, '정령 공명'),
               resonanceSpell.element_primary,
             );
-            this.time.delayedCall(240, () => {
+            this.time.delayedCall(380, () => {
               // 지연 발이라 시점을 다시 본다 — 그 사이 마지막 적이 죽으면 허공에 터진다
               if (!this.scene?.isActive?.() || !this.playerState.alive
                 || !this.isCombatActive() || !this.hasLivingEnemy()) return;
@@ -7340,6 +7419,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
                 {
                   ...resonanceSpell,
                   name: `${resonanceSpell.name} · 공명`,
+                  // 체감 보강(총괄 제보) — 위력은 #67 때문에 못 올리니 크기만 한 단계.
+                  // 지연도 240→380ms: 본탄과 붙어 나가면 한 발로 뭉쳐 보인다
+                  size: spiritResonanceBoltSize(resonanceSpell.size),
                   status: [...resonanceSpell.status],
                   // ⚠️ 0.5는 오토 DPS 게이트(#67) 때문 — 정령탄은 이미 자동 피해라
                   // 1.0배 추가탄은 정령 DPS를 +33% 올려 40% 상한을 위협한다
