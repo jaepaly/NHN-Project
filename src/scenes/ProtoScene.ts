@@ -2181,6 +2181,27 @@ export class ProtoScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * 공명 적중 고리 — 빔이 닿은 지점에 원소색 얇은 고리 하나.
+   *
+   * 선(빔)이 "어디서 어디로"를 말하고 고리가 "여기 맞았다"를 말한다. 매 공격마다
+   * 나오는 연출이라 채움 없이 **선만** 쓴다 (#220 — 반복 연출에 면적을 더하지 않는다).
+   */
+  private playResonanceHitRing(x: number, y: number, element: SpellElement): void {
+    const ring = this.add.circle(x, y, 9, 0x000000, 0)
+      .setStrokeStyle(2, ELEMENT_PALETTES[element].core, 0.85)
+      .setDepth(8)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: ring,
+      scale: 2.4,
+      alpha: 0,
+      duration: 320,
+      ease: 'Cubic.easeOut',
+      onComplete: () => ring.destroy(),
+    });
+  }
+
   private playResearchSpiritResonanceVfx(
     origin: Phaser.Math.Vector2,
     elements: readonly SpellElement[],
@@ -7456,8 +7477,19 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
                 name: `${resonanceSpell.name} · 공명`,
                 element_primary: resonanceElement,
                 element_secondary: null,
-                // 매회 나오는 작은 탄 — 크기 격상 없음
+                // ⚠️ **폼을 bolt → beam으로 바꾼다** (총괄 결정: "이펙트 느낌 자체를
+                // 바꿔야할듯"). 종전엔 정령 본탄과 같은 bolt·같은 발사점·같은 방향에
+                // 크기만 작아서, 뇌가 "정령이 한 발 더 쐈다"로 처리하고 넘겼다.
+                // 게다가 정령은 반경 190에서 공전 중이라 플레이어 시선 밖이다.
+                //
+                // 선은 **화면을 가로질러서 작아도 눈에 걸린다** — 점(투사체)과 시각
+                // 주목도가 다르다. 그리고 정령과 적을 잇는 선을 그리는 건 이 게임에
+                // 이것뿐이라 새 어휘로 즉시 읽힌다. "공명"이라는 이름 그대로 두 점이
+                // 같이 울리는 그림이기도 하다.
+                form: 'beam',
                 size: 'small',
+                // 빔은 즉발이라 speed가 지속시간을 정한다 — 짧게 스쳐야 잔상이 안 남는다
+                speed: 'fast',
                 status: spiritElementStatuses(resonanceElement),
                 // 위력 기준이 정령탄이 아니라 **유저의 최근 수동 영창 평균**이다.
                 // 세게 영창할수록 공명도 세진다 — 정령 빌드가 수동을 놓지 않을 이유.
@@ -7468,13 +7500,17 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
               true,
               1,
               {
-                // 0.55는 본탄에 묻혔다 — 다른 궤적 + 0.85면 작아도 따로 읽힌다
-                decorVfxScale: 0.85,
+                // 빔은 선 길이만큼 면적을 차지해 볼트보다 광량이 크다 — 낮춰 상쇄한다
+                decorVfxScale: 0.6,
                 ...(spreadTarget
                   ? { sequenceTarget: { lockedEnemy: spreadTarget, lastTargetPoint: null } }
                   : {}),
               },
             );
+            // 적중 고리 — 선은 "어디서 어디로", 고리는 "여기 맞았다"를 말한다.
+            // 둘 다 얇은 선이라 광량 부담이 거의 없다 (#220)
+            const hitTarget = spreadTarget ?? this.nearestEnemy();
+            if (hitTarget) this.playResonanceHitRing(hitTarget.x, hitTarget.y, resonanceElement);
           });
         }
         // ⚠️ 여기 있던 "융합 보조 속성 파편" 분기를 지웠다 — **죽은 코드**였다.

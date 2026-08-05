@@ -187,7 +187,9 @@ import {
     '공명탄 위력이 최근 수동 영창 평균에서 와야 한다 — 정령탄 기준이면 다시 1/10로 약해진다',
   );
   const boltAt = scene.indexOf(boltAnchor);
-  const boltBlock = scene.slice(boltAt - 2200, boltAt + 400);
+  // ⚠️ 창이 넉넉해야 한다. 주석이 늘면 앵커에서 게이트까지 거리가 벌어져 조용히
+  // 헛짚는다 — 실제로 beam 전환 때 2200으로는 게이트를 놓쳤다.
+  const boltBlock = scene.slice(boltAt - 3200, boltAt + 900);
   assert.ok(
     boltBlock.includes('spiritResonanceUnlocked('),
     '공명탄은 완료 게이트를 거쳐야 한다',
@@ -233,6 +235,30 @@ import {
   assert.ok(
     boltBlock.includes('this.time.delayedCall(280,'),
     '공명탄은 세 번째 박자(280ms)로 나가야 한다 — 본탄·파편과 겹치면 안 보인다',
+  );
+  // ⚠️ 총괄 제보 2차 — 박자·궤적을 갈라도 여전히 안 보였다. bolt는 정령 본탄과
+  // **같은 문법**이라 "한 발 더 쐈다"로 처리되고 넘어간다. 선(beam)은 화면을
+  // 가로질러 작아도 눈에 걸리고, 정령↔적을 잇는 선은 이 게임에 이것뿐이라
+  // 새 어휘로 읽힌다. 다시 bolt로 돌리면 같은 제보가 반복된다.
+  assert.ok(
+    boltBlock.includes("form: 'beam',"),
+    '공명탄은 beam이어야 한다 — bolt면 정령 본탄과 같은 문법이라 묻힌다',
+  );
+  assert.ok(
+    boltBlock.includes('decorVfxScale: 0.6,'),
+    '빔은 선 길이만큼 면적을 차지한다 — 볼트보다 밝기를 낮춰 광량을 상쇄해야 한다',
+  );
+  assert.ok(
+    boltBlock.includes('this.playResonanceHitRing('),
+    '적중 고리가 있어야 한다 — 선은 "어디서 어디로", 고리는 "여기 맞았다"',
+  );
+  // 적중 고리는 반복 연출이라 채움 없이 선만 (#220)
+  const ringAt = scene.indexOf('private playResonanceHitRing(');
+  assert.ok(ringAt > 0, '적중 고리 메서드가 있어야 한다');
+  const ringBody = scene.slice(ringAt, ringAt + 900);
+  assert.ok(
+    !ringBody.includes('fillStyle') && !ringBody.includes('fillCircle'),
+    '적중 고리는 채움 없이 선만 써야 한다 — 매 공격마다 나오는 연출이다 (#220)',
   );
   // 수동 위력 기록 — 단일·시퀀스 두 경로 모두. 한쪽이 빠지면 그 빌드에서 위력이 굳는다
   const recordCalls = scene.match(/this\.recordManualPowerForResonance\(/g) ?? [];
