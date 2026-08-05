@@ -1,5 +1,5 @@
 import type { MetaProfileV1 } from './metaProfile';
-import type { SpellElement, SpellForm, SpellSize, SpellSpec } from '../spell/types';
+import type { SpellElement, SpellForm, SpellSpec } from '../spell/types';
 
 export const BASIC_RESEARCH_UNLOCK_INSIGHT = 4;
 export const EXPANDED_RESEARCH_UNLOCK_INSIGHT = 14;
@@ -98,30 +98,62 @@ export function spiritResonanceUnlocked(contract: ActiveResearchContract | null)
 }
 
 /**
- * 정령 공명 완료 보상 — **정령 공격 3회마다 공명탄 1발** (총괄 결정 2026-08-01).
+ * 정령 공명 완료 보상 — **정령 공격 매회, 유저 주문 위력에 공명하는 추가탄**
+ * (총괄 결정 2026-08-02, 3회 충전식에서 개편).
  *
- * 종전 완료 보상(`enableFusionResonance`)은 융합 정령의 상태이상 합집합뿐이라
- * **융합 정령이 없으면 문자 그대로 0 효과**였다. 원소 심화의 메아리(3회마다 재시전)와
- * 같은 문법으로 맞춘다 — 세 연구가 전부 「N회마다 발동」이 되면서 각자 다른 축을
- * 강화한다: 심화 = 같은 원소 반복(깊이) · 변주 = 매번 다른 영창(넓이) ·
- * 공명 = 정령 자동 공격(자동화). 자기가 연구한 방식대로 싸울수록 발동이 잦아진다.
+ * ## 왜 충전식(3회마다 1발)을 버렸나
  *
- * ⚠️ 위력 0.5는 오토 DPS 게이트(#67, 자동 40% 상한) 때문이다. 정령탄은 이미 자동
- * 피해라 1.0배 추가탄은 정령 DPS를 +33% 올려 상한을 위협한다. 치유·수호는 이제
- * 정령이 아니라 패시브라(총괄 확인) 세는 건 공격 펄스뿐이다.
+ * 두 겹으로 약했다:
+ *
+ *  1. **위력 기준이 정령탄(7.5)이라** 0.5배 = 3.75 — 수동 출력 대비 +1.25%였다.
+ *     심화(+10%)·변주(+12~29%)의 1/10
+ *  2. **벽시계 고정 텀** (총괄 지적) — 심화·변주 충전은 시전 속도로 당길 수 있는데
+ *     정령은 6초 간격 고정이고, 슬로모션(영창 입력 중 0.1배)이 정령 시계를 세워
+ *     실효 주기가 18초 → ~33초까지 늘어졌다
+ *
+ * 총괄 결정: *"텀을 짧게, 위력도 약하게 해서 자주 보여주는게 멋있기도 하고 체감도
+ * 잘 되는 거 아냐?"* — 매회 발사로 바꾸고, 위력 기준을 **유저의 최근 수동 영창
+ * 평균**으로 갈아끼운다. 정령 빌드가 수동 영창을 놓지 않을 이유도 된다(세게
+ * 영창할수록 공명도 세진다).
+ *
+ * ## 오토 게이트 (#67) 최악 산식 — 회귀가 고정한다
+ *
+ *     최악 발사율 = 정령 2기 / (간격 6초 × 신속 하한 0.5) = 0.667발/초
+ *     공명 지분   = 0.667 × 0.12 × 평균위력 55 ÷ 수동 기준 16.7/s ≈ 26%
+ *     전체 오토   = 각인 40 + 정령 30 + 공명 26 ≈ 96% < 100%  (불변식 유지)
  */
-export const SPIRIT_RESONANCE_BOLT_EVERY_ATTACKS = 3;
-export const SPIRIT_RESONANCE_BOLT_POWER_SCALE = 0.5;
+export const SPIRIT_RESONANCE_BOLT_MANUAL_SCALE = 0.12;
+/** 평균에 넣는 최근 수동 영창 수 — 짧아야 "지금 빌드"를 따라간다 */
+export const SPIRIT_RESONANCE_POWER_WINDOW = 5;
+/** 수동 영창 기록이 없을 때의 기준 위력 (런 초반 — 정령 기본 위력 산정 기준과 동일) */
+export const SPIRIT_RESONANCE_FALLBACK_POWER = 50;
 
-export function advanceSpiritResonanceBoltCharge(charge: number): {
-  charge: number;
-  triggered: boolean;
-} {
-  const safeCharge = Number.isFinite(charge) ? Math.max(0, Math.floor(charge)) : 0;
-  const next = safeCharge + 1;
-  return next >= SPIRIT_RESONANCE_BOLT_EVERY_ATTACKS
-    ? { charge: 0, triggered: true }
-    : { charge: next, triggered: false };
+/** 공명탄 위력 — 최근 수동 영창 평균 × 0.12. 기록이 없으면 기준 위력으로. */
+export function spiritResonanceBoltPower(recentManualPowers: readonly number[]): number {
+  const window = recentManualPowers
+    .filter((power) => Number.isFinite(power) && power > 0)
+    .slice(-SPIRIT_RESONANCE_POWER_WINDOW);
+  const base = window.length > 0
+    ? window.reduce((sum, power) => sum + power, 0) / window.length
+    : SPIRIT_RESONANCE_FALLBACK_POWER;
+  return Math.max(1, Math.round(base * SPIRIT_RESONANCE_BOLT_MANUAL_SCALE));
+}
+
+/**
+ * 공명탄 원소 — 융합 정령은 **발마다 교대** (총괄 결정).
+ *
+ * 동시 이중 링은 반대했다: 매 공격 반복 연출이라 색을 겹치면 #220을 정면으로 치고,
+ * 융합 정령은 이미 본탄+보조 파편으로 "두 속성"을 보여주고 있다. 교대는 발당 광량이
+ * 단일 원소와 같으면서, 판정 원소도 번갈아 바뀌어 보스가 한 원소에 내성을 세워도
+ * 절반은 통한다 — 융합 정령의 존재 이유(내성 커버)와 맞물린다.
+ */
+export function spiritResonanceBoltElement(
+  elements: readonly SpellElement[],
+  shotIndex: number,
+): SpellElement {
+  if (elements.length === 0) return 'light';
+  const safeIndex = Number.isFinite(shotIndex) ? Math.max(0, Math.floor(shotIndex)) : 0;
+  return elements[safeIndex % elements.length];
 }
 
 /**
@@ -140,6 +172,12 @@ export function advanceSpiritResonanceBoltCharge(charge: number): {
 export const VARIATION_WAVE_EVERY_SHIFTS = 3;
 export const VARIATION_WAVE_POWER_SCALE = 0.35;
 export const VARIATION_WAVE_RADIUS = 420;
+/**
+ * 파동이 때리는 최대 적 수 — 정예 무리(4~6체)에서 +47~70%까지 튀는 위쪽 꼬리를
+ * 자른다. 상한 4면 전형 무리(2~3체)는 전혀 안 건드리고 극단만 깎는다. R1이 나중에
+ * 밸런스 볼 때 변수 하나를 줄여두는 가드다.
+ */
+export const VARIATION_WAVE_MAX_TARGETS = 4;
 
 export function variationWaveUnlocked(contract: ActiveResearchContract | null): boolean {
   return contract?.id === 'variation-study' && contract.completed;
@@ -172,31 +210,18 @@ export interface ResearchChargePips {
 
 export function researchChargePips(
   contract: ActiveResearchContract | null,
-  charges: { echo: number; bolt: number; wave: number },
+  charges: { echo: number; wave: number },
 ): ResearchChargePips | null {
   if (!contract?.completed) return null;
-  const raw = contract.id === 'elemental-focus' ? charges.echo
-    : contract.id === 'spirit-resonance' ? charges.bolt
-      : charges.wave;
-  const total = contract.id === 'elemental-focus' ? ELEMENTAL_FOCUS_ECHO_EVERY_CASTS
-    : contract.id === 'spirit-resonance' ? SPIRIT_RESONANCE_BOLT_EVERY_ATTACKS
-      : VARIATION_WAVE_EVERY_SHIFTS;
+  // 공명은 매회 발사(주기 없음)로 개편돼 핍 대상이 아니다 — 충전이 없는데 원을
+  // 그리면 "언젠가 찬다"는 거짓 신호가 된다
+  if (contract.id === 'spirit-resonance') return null;
+  const raw = contract.id === 'elemental-focus' ? charges.echo : charges.wave;
+  const total = contract.id === 'elemental-focus'
+    ? ELEMENTAL_FOCUS_ECHO_EVERY_CASTS
+    : VARIATION_WAVE_EVERY_SHIFTS;
   const filled = Math.max(0, Math.min(total, Number.isFinite(raw) ? Math.floor(raw) : 0));
   return { id: contract.id, element: contract.element, total, filled };
-}
-
-/**
- * 공명탄 크기 격상 — 한 단계 위로 (총괄 제보: *"공명탄이 잘 체감 안되는듯?"*).
- *
- * 위력 0.5배는 #67(오토 DPS 40% 상한) 때문에 못 올린다. 대신 **투사체 크기**를
- * 한 단계 키운다 — 판정·위력은 그대로고 눈에만 커진다. large·huge는 그대로 둔다:
- * 화면 점유가 이미 크고, 더 키우면 일반탄보다 커 보여 "추가탄"이 아니라 "본탄"으로
- * 읽힌다.
- */
-export function spiritResonanceBoltSize(size: SpellSize): SpellSize {
-  if (size === 'small') return 'medium';
-  if (size === 'medium') return 'large';
-  return size;
 }
 
 export function advanceVariationWaveCharge(

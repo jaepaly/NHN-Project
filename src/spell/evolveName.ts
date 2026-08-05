@@ -52,6 +52,13 @@ export function sanitizeName(raw: unknown): string | null {
 export function templateEvolvedName(req: EvolveNameRequest): string {
   const [first, second] = req.elements;
   if (req.kind === 'fuse' && first && second) {
+    // 3속성 이상은 이름이 길어져 12자 상한에 걸린다 — 그때는 개수로 부른다
+    // (「불·물·번개 융합」은 잘리지만 「삼원 융합체」는 온전히 읽힌다)
+    if (req.elements.length > 2) {
+      const countName = ['', '', '이', '삼', '사', '오', '육', '칠', '팔'][req.elements.length]
+        ?? String(req.elements.length);
+      return sanitizeName(`${countName}원 융합체`) ?? '융합체';
+    }
     return sanitizeName(`${ELEMENT_NAME_KO[first]}·${ELEMENT_NAME_KO[second]} 융합`) ?? '융합체';
   }
   const element = first ? ELEMENT_NAME_KO[first] : '마력';
