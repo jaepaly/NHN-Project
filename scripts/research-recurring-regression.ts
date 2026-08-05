@@ -9,6 +9,8 @@ import {
   VARIATION_WAVE_RADIUS,
   advanceSpiritResonanceBoltCharge,
   advanceVariationWaveCharge,
+  researchChargePips,
+  spiritResonanceBoltSize,
   spiritResonanceUnlocked,
   startResearchContract,
   variationCastKey,
@@ -217,6 +219,94 @@ import {
   );
 }
 
+// ── 6) 충전 핍 모델 (총괄 제보: "발동 타이밍을 알기 어려움") ────────────────
+{
+  const spirit = { ...startResearchContract({ id: 'spirit-resonance' }, []), completed: true };
+  const variation = { ...startResearchContract({ id: 'variation-study' }, []), completed: true };
+  const focus = {
+    ...startResearchContract({ id: 'elemental-focus', element: 'ice' }, []),
+    completed: true,
+  };
+
+  // 완료 전엔 null — 진행도는 HUD의 ●○○가 이미 보여주므로 겹치면 소음이다
+  assert.equal(
+    researchChargePips(startResearchContract({ id: 'spirit-resonance' }, []),
+      { echo: 0, bolt: 2, wave: 0 }),
+    null,
+    '미완료 연구는 핍을 만들지 않는다',
+  );
+  assert.equal(researchChargePips(null, { echo: 0, bolt: 0, wave: 0 }), null, '연구 없음');
+
+  // 자기 연구의 카운터만 읽는다 — 다른 카운터가 차 있어도 무시
+  const boltPips = researchChargePips(spirit, { echo: 2, bolt: 1, wave: 2 });
+  assert.equal(boltPips?.filled, 1, '공명 핍은 bolt 카운터만 읽는다');
+  assert.equal(boltPips?.total, SPIRIT_RESONANCE_BOLT_EVERY_ATTACKS, '공명 핍 총수');
+  const wavePips = researchChargePips(variation, { echo: 2, bolt: 2, wave: 2 });
+  assert.equal(wavePips?.filled, 2, '변주 핍은 wave 카운터만 읽는다');
+  const echoPips = researchChargePips(focus, { echo: 1, bolt: 2, wave: 2 });
+  assert.equal(echoPips?.filled, 1, '심화 핍은 echo 카운터만 읽는다');
+  assert.equal(echoPips?.element, 'ice', '심화 핍은 원소를 실어야 한다 (핍 색이 원소색)');
+
+  // 방어적 입력 — 카운터는 씬 필드다
+  const dirty = researchChargePips(spirit, { echo: 0, bolt: Number.NaN, wave: 0 });
+  assert.equal(dirty?.filled, 0, 'NaN 카운터는 0으로');
+  const over = researchChargePips(spirit, { echo: 0, bolt: 99, wave: 0 });
+  assert.equal(over?.filled, SPIRIT_RESONANCE_BOLT_EVERY_ATTACKS, '상한 클램프');
+}
+
+// ── 7) 공명탄 크기 격상 — 위력 대신 크기로 체감 (총괄 제보) ─────────────────
+{
+  assert.equal(spiritResonanceBoltSize('small'), 'medium', '소형 → 중형');
+  assert.equal(spiritResonanceBoltSize('medium'), 'large', '중형 → 대형');
+  // large·huge는 그대로 — 더 키우면 본탄보다 커 보여 "추가탄"으로 안 읽힌다
+  assert.equal(spiritResonanceBoltSize('large'), 'large', '대형은 유지');
+  assert.equal(spiritResonanceBoltSize('huge'), 'huge', '거대는 유지');
+}
+
+// ── 8) 핍 씬 배선 ───────────────────────────────────────────────────────────
+{
+  const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+  assert.ok(
+    scene.includes('private updateResearchChargePips():'),
+    '핍 그리기 경로가 있어야 한다',
+  );
+  assert.ok(
+    scene.includes('this.updateResearchChargePips();'),
+    'update 루프가 핍을 갱신해야 한다',
+  );
+  // 발동 순간 플래시 — 세 발동 지점 전부. 충전이 발동과 동시에 0이 되므로 플래시가
+  // 없으면 세 번째 원이 차는 모습을 영영 못 본다
+  const flashes = scene.match(/this\.researchChargeFlashUntil = this\.time\.now \+ 340;/g) ?? [];
+  assert.equal(
+    flashes.length, 3,
+    `발동 플래시가 ${flashes.length}곳 — 메아리·공명탄·파동 세 지점 전부여야 한다`,
+  );
+  // ⚠️ #220: 항상 떠 있는 요소라 애니메이션·ADD 금지, 상태 변화 시에만 재작화
+  const pipsAt = scene.indexOf('private updateResearchChargePips():');
+  const pipsBody = scene.slice(pipsAt, scene.indexOf('private ', pipsAt + 10));
+  for (const banned of ['tweens.add', 'setBlendMode', 'delayedCall']) {
+    assert.ok(
+      !pipsBody.includes(banned),
+      `핍 그리기에 ${banned} 금지 — 항상 떠 있는 요소다 (#220)`,
+    );
+  }
+  assert.ok(
+    pipsBody.includes('if (key === this.researchChargePipsKey) return;'),
+    '상태가 같으면 다시 그리지 않아야 한다 — 매 프레임 재작화는 낭비다',
+  );
+  // 크기 격상이 실제 시전에 적용된다
+  assert.ok(
+    scene.includes('size: spiritResonanceBoltSize(resonanceSpell.size),'),
+    '공명탄이 크기 격상을 실제로 써야 한다',
+  );
+  // 씬 재시작 시 참조 정리 — 늦은 생성 객체라 낡은 참조가 남으면 죽은 객체를 만진다
+  assert.ok(
+    scene.includes('this.researchChargePipsGfx = null;'),
+    '씬 재시작 시 핍 참조를 끊어야 한다',
+  );
+}
+
 console.log(
-  'research recurring regression: 공명탄주기·변주판별·잠금게이트·오토상한·씬배선 5군 통과',
+  'research recurring regression: 공명탄주기·변주판별·잠금게이트·오토상한·씬배선'
+  + '·충전핍·크기격상·핍배선 8군 통과',
 );
