@@ -431,6 +431,15 @@ function roomNoticeHeight(textHeight: number): number {
   return h > 0 ? Math.round(ROOM_NOTICE.padTop + h + ROOM_NOTICE.padBottom) : 0;
 }
 
+function spiritMotionPhase(spiritId: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < spiritId.length; index += 1) {
+    hash ^= spiritId.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return ((hash >>> 0) / 0xffffffff) * Math.PI * 2;
+}
+
 /** 스탯 행 i(0=HP, 1=마나, 2=보호막)의 y 중심 */
 
 interface PauseRow {
@@ -1080,6 +1089,7 @@ export class ProtoScene extends Phaser.Scene {
   private bossShroudRemaining = 0;
   private bossPullRemaining = 0;
   private readonly spiritViews = new Map<string, SpiritOrbView>();
+  private spiritMotionTime = 0;
   private readonly enemyControlState = new EnemyControlState();
   /** 적별 지속 상태이상 — burn(지속피해)·weaken(취약). freeze/slow는 enemyControlState. */
   private readonly enemyAilments = new EnemyAilmentState();
@@ -7095,13 +7105,20 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   /** 마나·쿨다운·수동 주문 기억에 개입하지 않는 정령 자동 발동. */
   private updateSpirits(deltaSeconds: number): void {
     this.syncSpiritViews();
+    this.spiritMotionTime += Math.max(0, deltaSeconds);
     const entries = this.spiritManager.entries;
     const target = this.nearestEnemy();
     entries.forEach((entry, index) => {
-      const angle = (Math.PI * 2 * index) / Math.max(1, entries.length);
-      const anchorX = target ? target.x + Math.cos(angle) * 110 : this.player.x + Math.cos(angle) * 72;
-      const anchorY = target ? target.y + Math.sin(angle) * 110 : this.player.y + Math.sin(angle) * 72;
-      const spiritSpeed = 220 * this.playerState.moveSpeedMultiplier * 1.12;
+      const phase = spiritMotionPhase(entry.spiritId) + (Math.PI * 2 * index) / Math.max(1, entries.length);
+      const direction = index % 2 === 0 ? 1 : -1;
+      const angularSpeed = (0.58 + (index % 3) * 0.09) * direction;
+      const angle = phase + this.spiritMotionTime * angularSpeed;
+      const radius = target
+        ? 190 + Math.sin(this.spiritMotionTime * 0.75 + phase) * 24
+        : 92 + Math.sin(this.spiritMotionTime * 0.65 + phase) * 12;
+      const anchorX = (target?.x ?? this.player.x) + Math.cos(angle) * radius;
+      const anchorY = (target?.y ?? this.player.y) + Math.sin(angle) * radius;
+      const spiritSpeed = 230 * this.playerState.moveSpeedMultiplier * 1.08;
       this.spiritViews.get(entry.spiritId)?.moveToward(anchorX, anchorY, deltaSeconds, spiritSpeed);
     });
 
@@ -7117,6 +7134,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const origin = view
           ? new Phaser.Math.Vector2(view.x, view.y)
           : new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
+        const attackTarget = this.nearestEnemy();
+        if (attackTarget) view?.lungeToward(this, attackTarget.x, attackTarget.y);
         const elements = this.spiritManager.entries.find((entry) => entry.spiritId === request.spiritId)?.elements
           ?? [request.spell.element_primary];
         const research = this.runResearchTracker.snapshot().research;
