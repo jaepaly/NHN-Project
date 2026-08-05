@@ -114,6 +114,7 @@ import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { showRoomChoices } from '../ui/roomChoiceOverlay';
 import { UI_COLOR, UI_HEX, UI_SEMANTIC, hex, UI_RAINBOW,
 } from '../ui/uiTokens';
+import { buildResonanceLedger } from '../run/resonanceLedger';
 import {
   AFFINITY_PANEL_LAYOUT,
   affinityBarY,
@@ -478,28 +479,6 @@ function drawElementSpectrumBorder(
   });
 }
 
-function drawElementSpectrumRect(
-  graphics: Phaser.GameObjects.Graphics,
-  elements: readonly SpellElement[],
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-): void {
-  const corners = [
-    { x, y },
-    { x: x + width, y },
-    { x: x + width, y: y + height },
-    { x, y: y + height },
-  ];
-  corners.forEach((from, index) => {
-    const to = corners[(index + 1) % corners.length];
-    const element = elements[index % elements.length];
-    graphics.lineStyle(2, ELEMENT_PALETTES[element].core, 0.9);
-    graphics.lineBetween(from.x, from.y, to.x, to.y);
-  });
-}
-
 function spiritMotionPhase(spiritId: string): number {
   let hash = 2166136261;
   for (let index = 0; index < spiritId.length; index += 1) {
@@ -511,8 +490,10 @@ function spiritMotionPhase(spiritId: string): number {
 
 /** 스탯 행 i(0=HP, 1=마나, 2=보호막)의 y 중심 */
 
+type PauseTabId = 'build' | 'research' | 'map' | 'settings' | 'quit';
+
 interface PauseRow {
-  id: 'resume' | 'settings' | 'quit';
+  id: PauseTabId;
   label: string;
 }
 
@@ -521,19 +502,29 @@ interface PauseRow {
  * 같은 기능이 화면마다 다르게 생기면 안 된다(총괄 지적). 깊이 배치로 빌드 칩을
  * 밝게 남기는 논리는 이 메인 화면에만 필요하지, 설정 하위 화면엔 필요 없다.
  */
-/** 일시정지 메뉴 세로 배치 — 여기서만 쓰인다 */
-// 지도 아래와 필살영창 게이지 위의 여백을 비슷하게 맞춘다.
-const PAUSE_LAYOUT = { titleY: 320, firstY: 386, rowGap: 42 } as const;
+/** ESC 탭 화면은 좌측 탐색과 우측 상세로 나눈다. */
+const PAUSE_LAYOUT = {
+  x: 44,
+  top: 70,
+  width: 872,
+  height: 410,
+  navWidth: 184,
+  titleY: 112,
+  firstY: 164,
+  rowGap: 44,
+  contentPad: 28,
+} as const;
 
-/** ESC 화면에서만 쓰는 전체 경로 지도. 메뉴 위에 크게 두어 경로를 먼저 읽게 한다. */
-const PAUSE_MAP = { top: 56, scale: 1.2, depth: 104 } as const;
+/** 전체 경로는 지도 탭에서만 보인다. 전투 HUD에 상시 두지 않는다. */
+const PAUSE_MAP = { top: 132, scale: 1.7, depth: 108 } as const;
 
 const PAUSE_MAIN: readonly PauseRow[] = [
-  { id: 'resume', label: '게임 재개' },
+  { id: 'build', label: '상태 / 빌드' },
+  { id: 'research', label: '연구' },
+  { id: 'map', label: '지도' },
   { id: 'settings', label: '설정' },
   { id: 'quit', label: '타이틀로 나가기' },
 ];
-
 
 /**
  * 빌드 칩 기하 — 2×2로 65×65px. 기존 텍스트 2줄(229×27=6183px²)보다 작은
@@ -906,8 +897,6 @@ export class ProtoScene extends Phaser.Scene {
 
   private buildChipIcons: Phaser.GameObjects.Image[] = [];
 
-  private buildChipZones: Phaser.GameObjects.Zone[] = [];
-
   private buildChips: BuildChip[] = [];
 
   /** DOM 설정 오버레이가 떠 있나 — ESC가 두 겹을 한 번에 닫는 걸 막는다 */
@@ -922,12 +911,24 @@ export class ProtoScene extends Phaser.Scene {
 
   private pauseMenuTitle!: Phaser.GameObjects.Text;
 
+  /** 선택한 ESC 탭의 제목·설명. 빌드 정보는 이 안에서만 보여 전투 HUD를 비운다. */
+  private pauseContentPlate!: Phaser.GameObjects.Graphics;
+
+  private pauseContentTitle!: Phaser.GameObjects.Text;
+
+  private pauseContentText!: Phaser.GameObjects.Text;
+
+  private pauseFooterText!: Phaser.GameObjects.Text;
+
   /** 현재 런의 재현용 맵 시드. 생성 맵이 아닌 시연·폴백은 null이다. */
   private currentMapSeed: number | null = null;
 
   private pauseMenuItems: Phaser.GameObjects.Text[] = [];
 
   private pauseMenuIndex = 0;
+
+  /** 이번 런 시작에서 실제로 꺼낸 유산. 방 보상과 달리 컨트롤러 보상 배열에 없다. */
+  private startingLegacyReward: RewardOption | null = null;
 
   /** 나가기 오확인 방지 — 한 번 더 눌러야 확정된다 (런이 사라지는 되돌릴 수 없는 선택) */
   private quitArmed = false;
@@ -945,16 +946,6 @@ export class ProtoScene extends Phaser.Scene {
   private lowHealthDangerActive = false;
   private lowHealthDangerFade: Phaser.Tweens.Tween | null = null;
 
-  private buildInspectPlate!: Phaser.GameObjects.Graphics;
-
-  private buildInspectText!: Phaser.GameObjects.Text;
-
-  /** 연구는 전투 HUD가 아니라 ESC 검사 화면에서만 상세를 보인다. */
-  private researchInspectPlate!: Phaser.GameObjects.Graphics;
-
-  private researchInspectText!: Phaser.GameObjects.Text;
-
-  private hoveredChipIndex = -1;
   /** 활성 자기 강화 표시 (종류·세기·남은 시간) */
   private buffStatusText!: Phaser.GameObjects.Text;
   private sequenceProgressGraphics!: Phaser.GameObjects.Graphics;
@@ -1320,7 +1311,6 @@ export class ProtoScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.dropStaleRunObjects());
     // 씬은 재사용된다 — 검사 모드가 열린 채 나갔다면 정지가 남는다. 진입 시 무조건 해제.
     this.buildInspectOpen = false;
-    this.hoveredChipIndex = -1;
     this.pauseMenuIndex = 0;
     this.quitArmed = false;
     this.time.paused = false;
@@ -1444,10 +1434,11 @@ export class ProtoScene extends Phaser.Scene {
         this.tryOpenIncant(event.shiftKey ? 'ultimate' : 'normal');
       }
     });
-    this.input.keyboard!.on('keydown-UP', () => {
+    // 전투 이동과 같은 W/S로 ESC 탭을 훑는다. 화살표만 쓰면 조작 문법이 갑자기 갈린다.
+    this.input.keyboard!.on('keydown-W', () => {
       if (this.buildInspectOpen) this.movePauseMenu(-1);
     });
-    this.input.keyboard!.on('keydown-DOWN', () => {
+    this.input.keyboard!.on('keydown-S', () => {
       if (this.buildInspectOpen) this.movePauseMenu(+1);
     });
     /**
@@ -2624,6 +2615,9 @@ export class ProtoScene extends Phaser.Scene {
         this.engraveManager.rememberManualCast(entry.normalized, specFromEntry(entry));
         const engraved = this.engraveManager.applyReward(chosen);
         if (engraved) {
+          // 유산은 방 보상 선택이 아니라 런 시작 선택이라 컨트롤러의 rewards에 없다.
+          // 상태/빌드 탭에서 누락되지 않도록 실제로 장착된 경우에만 따로 보관한다.
+          this.startingLegacyReward = chosen;
           this.announceSystemMessage(`유산 각인 — 『${engraved.spell.name}』`, '#ffd166', 2800);
         }
       }
@@ -2766,6 +2760,7 @@ export class ProtoScene extends Phaser.Scene {
     // 각성도 비운다 — 종전엔 "친화를 유지하니 각성도 유지"였는데, 이제 계승 친화가
     // 상한 0.6이라 각성 임계(1.2) 아래다. 무한 재각성 파밍 우려가 사라졌다.
     this.awakenings = {};
+    this.startingLegacyReward = null;
     this.engraveManager.reset();
     this.spiritManager.reset();
     this.clearSpiritViews();
@@ -2830,6 +2825,7 @@ export class ProtoScene extends Phaser.Scene {
     this.clearDamageNumbers();
     this.shockCooldowns.clear();
     this.awakenings = {};
+    this.startingLegacyReward = null;
     this.echoUnlocked = false;
     this.starburstUnlocked = false;
     this.meteorUnlocked = false;
@@ -2870,6 +2866,7 @@ export class ProtoScene extends Phaser.Scene {
     this.clearDamageNumbers();
     this.shockCooldowns.clear();
     this.awakenings = {};
+    this.startingLegacyReward = null;
     this.echoUnlocked = false;
     this.starburstUnlocked = false;
     this.meteorUnlocked = false;
@@ -4321,10 +4318,8 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   /**
-   * 미니맵을 지금 보여야 하나 (총괄 결정: "탭을 눌렀을 때만 띄우는 건 어떻게 생각함?").
-   * ⚠️ 그 뒤 일시정지 키가 TAB → ESC로 바뀌었다(총괄 지시). 미니맵은 검사 모드에
-   * 묶여 있으므로 **함께 ESC로 옮겨간다** — 판단 근거("상시 노출은 시야를 좁힌다")는
-   * 그대로고 여는 키만 달라졌다.
+   * 미니맵을 지금 보여야 하나. 경로는 전투 중 빠르게 반복 확인하는 정보가 아니라
+   * 정지한 뒤 다음 계획을 짤 때 보는 정보라 `지도` 탭에서만 연다.
    *
    * 상시 노출을 접은 이유: 미니맵은 초당 정보가 아니라 **가끔 확인하는 정보**다.
    * 전투 중엔 우상단 자리만 먹고, Tab이 이미 "내 상태를 들여다본다"는 제스처라
@@ -4334,7 +4329,7 @@ export class ProtoScene extends Phaser.Scene {
    * 미니맵까지 함께 띄우면 같은 정보가 두 번 보이므로 빌드 검사에서만 표시한다.
    */
   private shouldShowMinimap(): boolean {
-    return this.buildInspectOpen;
+    return this.buildInspectOpen && PAUSE_MAIN[this.pauseMenuIndex]?.id === 'map';
   }
 
   /** 가시성 동기화 — update와 상태 전환 지점에서 호출 (setVisible은 동일 값이면 무해) */
@@ -4344,11 +4339,12 @@ export class ProtoScene extends Phaser.Scene {
     this.runMinimap?.setVisible(visible);
   }
 
-  /** 전체 경로는 전투 HUD가 아니라 ESC 검사 화면의 주 정보다. */
+  /** 전체 경로는 지도 탭의 우측 상세 영역에만 배치한다. */
   private placePauseMinimap(): void {
     const mapWidth = MINIMAP_CONFIG.width * PAUSE_MAP.scale;
     this.runMinimap?.setLayout({
-      x: (this.scale.width - mapWidth) / 2,
+      x: this.scale.width - PAUSE_LAYOUT.x - PAUSE_LAYOUT.width + PAUSE_LAYOUT.navWidth
+        + ((PAUSE_LAYOUT.width - PAUSE_LAYOUT.navWidth - mapWidth) / 2),
       y: PAUSE_MAP.top,
       scale: PAUSE_MAP.scale,
       depth: PAUSE_MAP.depth,
@@ -4558,6 +4554,7 @@ export class ProtoScene extends Phaser.Scene {
           detailPanelFor: rewardGlossaryFor,
         });
         this.applyHighAltar(picked.kind);
+        this.combatRunController.replaceLatestReward(chosen.id, picked);
       } finally {
         this.altarHighSelecting = false;
       }
@@ -4577,6 +4574,7 @@ export class ProtoScene extends Phaser.Scene {
       const awakening = picked.awaken?.awakening;
       if (!awakening) return;
       this.awakenings = applyAwakening(this.awakenings, element, awakening);
+      this.combatRunController.replaceLatestReward(chosen.id, picked);
       this.audio.playSfx('ui-confirm');
       this.announceBanner({
         title: `${ELEMENT_LABELS[element]} 각성 — ${AWAKENING_LABELS[awakening]}`,
@@ -8353,7 +8351,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.buildChipRoot.add(this.buildChipGraphics);
 
     this.buildChipIcons = [];
-    this.buildChipZones = [];
     for (let i = 0; i < 4; i += 1) {
       const { x, y } = this.chipCenter(i);
       const icon = this.add.image(x, y, formGlyphTextureKey('bolt'))
@@ -8361,46 +8358,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         .setVisible(false);
       this.buildChipRoot.add(icon);
       this.buildChipIcons.push(icon);
-      // 호버 판정은 별도 Zone — Graphics는 히트영역이 없고, Zone이면 칩 모양과
-      // 무관하게 안정적으로 잡힌다. 검사 모드에서만 활성화한다.
-      const zone = this.add.zone(x, y, BUILD_CHIP.size, BUILD_CHIP.size)
-        .setScrollFactor(0)
-        .setDepth(100);
-      this.buildChipRoot.add(zone);
-      zone.on('pointerover', () => { this.hoveredChipIndex = i; this.renderBuildInspect(); });
-      zone.on('pointerout', () => {
-        if (this.hoveredChipIndex === i) this.hoveredChipIndex = -1;
-        this.renderBuildInspect();
-      });
-      this.buildChipZones.push(zone);
     }
 
     this.createPauseMenu(width, height);
-
-    // 검사 모드 오버레이 — 평소엔 완전히 숨는다(전투 시야 점유 0)
-    this.buildInspectPlate = this.add.graphics().setScrollFactor(0).setDepth(103).setVisible(false);
-    this.buildInspectText = this.add.text(0, 0, '', {
-      fontFamily: '"Noto Serif KR", Consolas, monospace',
-      fontSize: '12px',
-      color: UI_COLOR.text,
-      align: 'left',
-      lineSpacing: 4,
-      wordWrap: { width: BUILD_CHIP.tooltipWidth - 20, useAdvancedWrap: true },
-    }).setOrigin(0, 1).setScrollFactor(0).setDepth(104).setVisible(false);
-
-    this.researchInspectPlate = this.add.graphics()
-      .setScrollFactor(0)
-      .setDepth(103)
-      .setVisible(false);
-    this.researchInspectText = this.add.text(0, 0, '', {
-      fontFamily: '"Noto Serif KR", Consolas, monospace',
-      fontSize: '12px',
-      fontStyle: 'bold',
-      color: '#72f1b8',
-      align: 'left',
-      lineSpacing: 4,
-      wordWrap: { width: 240, useAdvancedWrap: true },
-    }).setOrigin(0, 1).setScrollFactor(0).setDepth(104).setVisible(false);
   }
 
   /**
@@ -8418,35 +8378,62 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.pauseDim.fillRect(0, 0, width, height);
 
     this.pauseMenuPlate = this.add.graphics().setScrollFactor(0).setDepth(105).setVisible(false);
-    this.pauseMenuTitle = this.add.text(width / 2, height * 0.3, '일시정지', {
+    this.pauseContentPlate = this.add.graphics().setScrollFactor(0).setDepth(106).setVisible(false);
+    this.pauseMenuTitle = this.add.text(PAUSE_LAYOUT.x + 28, PAUSE_LAYOUT.titleY, '일시정지', {
       fontFamily: '"Noto Serif KR", Georgia, serif',
-      fontSize: '30px',
+      fontSize: '24px',
       fontStyle: 'bold',
       color: UI_COLOR.textBright,
-      letterSpacing: 6,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(106).setVisible(false);
+      letterSpacing: 4,
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(107).setVisible(false);
+
+    this.pauseContentTitle = this.add.text(0, PAUSE_LAYOUT.titleY, '', {
+      fontFamily: '"Noto Serif KR", Georgia, serif',
+      fontSize: '21px',
+      fontStyle: 'bold',
+      color: UI_COLOR.textBright,
+      letterSpacing: 3,
+    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(109).setVisible(false);
+
+    this.pauseContentText = this.add.text(0, PAUSE_LAYOUT.titleY + 34, '', {
+      fontFamily: '"Noto Serif KR", Consolas, monospace',
+      fontSize: '12px',
+      color: UI_COLOR.text,
+      lineSpacing: 5,
+      wordWrap: { width: PAUSE_LAYOUT.width - PAUSE_LAYOUT.navWidth - 58, useAdvancedWrap: true },
+    }).setScrollFactor(0).setDepth(109).setVisible(false);
+
+    this.pauseFooterText = this.add.text(width / 2, PAUSE_LAYOUT.top + PAUSE_LAYOUT.height + 17,
+      'W/S 탭 이동  ·  ENTER 선택  ·  ESC 게임으로 돌아가기', {
+        fontFamily: 'Consolas, monospace',
+        fontSize: '10px',
+        color: UI_COLOR.textMuted,
+        letterSpacing: 1.2,
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(109)
+      .setVisible(false);
 
     this.pauseMenuItems = PAUSE_MAIN.map((_, i) => this.add.text(
-      width / 2,
+      PAUSE_LAYOUT.x + 28,
       PAUSE_LAYOUT.firstY + i * PAUSE_LAYOUT.rowGap,
       '',
       {
         fontFamily: '"Noto Serif KR", Consolas, monospace',
-        fontSize: '16px',
+        fontSize: '14px',
         fontStyle: 'bold',
         color: UI_COLOR.textSoft,
       },
-    ).setOrigin(0.5).setScrollFactor(0).setDepth(107).setVisible(false)
+    ).setOrigin(0, 0.5).setScrollFactor(0).setDepth(108).setVisible(false)
       .setInteractive({ useHandCursor: true })
       .on('pointerover', () => {
         if (!this.buildInspectOpen) return;
-        if (this.pauseMenuIndex !== i) this.quitArmed = false;
-        this.pauseMenuIndex = i;
-        this.renderPauseMenu();
+        this.selectPauseTab(i);
       })
       .on('pointerdown', () => {
         if (!this.buildInspectOpen) return;
-        this.pauseMenuIndex = i;
+        this.selectPauseTab(i);
         this.activatePauseMenuItem();
       }));
   }
@@ -8499,47 +8486,66 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.renderPauseMenu();
   }
 
-  /** 일시정지 메뉴 갱신 — 한 장짜리(재개·설정·나가기). */
+  /** 일시정지 탭 화면 갱신 — 기본은 상태/빌드, 지도는 필요할 때만 그린다. */
   private renderPauseMenu(): void {
     const visible = this.buildInspectOpen;
     this.spellCastLog.setVisible(!visible);
     this.pauseDim.setVisible(visible);
     this.pauseMenuPlate.setVisible(visible);
+    this.pauseContentPlate.setVisible(visible);
     this.pauseMenuTitle.setVisible(visible);
+    this.pauseContentTitle.setVisible(visible);
+    this.pauseContentText.setVisible(visible);
+    this.pauseFooterText.setVisible(visible);
     this.pauseMenuItems.forEach((t) => t.setVisible(false));
-    if (!visible) return;
+    if (!visible) {
+      this.syncMinimapVisibility();
+      return;
+    }
 
     const { width } = this.scale;
+    const contentX = PAUSE_LAYOUT.x + PAUSE_LAYOUT.navWidth + PAUSE_LAYOUT.contentPad;
+    const contentWidth = PAUSE_LAYOUT.width - PAUSE_LAYOUT.navWidth - PAUSE_LAYOUT.contentPad * 2;
+    const active = PAUSE_MAIN[this.pauseMenuIndex] ?? PAUSE_MAIN[0];
     this.pauseMenuTitle.setText('일시정지');
     PAUSE_MAIN.forEach((row, i) => {
       const selected = i === this.pauseMenuIndex;
       const label = row.id === 'quit' && this.quitArmed ? '정말 나갈까? 한 번 더' : row.label;
       this.pauseMenuItems[i]
-        .setText(`${selected ? '▸ ' : '   '}${label}`)
+        .setText(`${selected ? '◆ ' : '   '}${label}`)
         .setColor(row.id === 'quit' && this.quitArmed ? UI_COLOR.danger
           : selected ? UI_COLOR.textBright : UI_COLOR.textMuted)
         .setVisible(true);
     });
 
-    const plateW = 340;
-    const top = PAUSE_LAYOUT.titleY - 34;
-    const bottom = PAUSE_LAYOUT.firstY + (PAUSE_MAIN.length - 1) * PAUSE_LAYOUT.rowGap + 24;
     const g = this.pauseMenuPlate.clear();
-    const plateX = (width - plateW) / 2;
-    // 마도서 판 — HUD·우측 패널·미니맵과 같은 문법으로 한 화면이 되게
-    drawGrimoirePanel(g, plateX, top, plateW, bottom - top, 0.94);
-    // 표제 인장 한 쌍 + 제목 아래 구획 괘선. 판이 크면 제목만으로는 비어 보인다
-    drawTitleSigil(g, plateX + 44, PAUSE_LAYOUT.titleY, 22);
-    drawTitleSigil(g, plateX + plateW - 44, PAUSE_LAYOUT.titleY, 22);
-    drawSectionRule(g, plateX, PAUSE_LAYOUT.titleY + 24, plateW);
-    this.pauseMenuTitle.setPosition(width / 2, PAUSE_LAYOUT.titleY);
+    drawGrimoirePanel(g, PAUSE_LAYOUT.x, PAUSE_LAYOUT.top, PAUSE_LAYOUT.width, PAUSE_LAYOUT.height, 0.96);
+    drawTitleSigil(g, PAUSE_LAYOUT.x + 20, PAUSE_LAYOUT.titleY, 18);
+    drawSectionRule(g, PAUSE_LAYOUT.x + 14, PAUSE_LAYOUT.titleY + 25, PAUSE_LAYOUT.navWidth - 28);
+    g.lineStyle(1, hex(UI_COLOR.border), 0.75);
+    g.lineBetween(PAUSE_LAYOUT.x + PAUSE_LAYOUT.navWidth, PAUSE_LAYOUT.top + 22,
+      PAUSE_LAYOUT.x + PAUSE_LAYOUT.navWidth, PAUSE_LAYOUT.top + PAUSE_LAYOUT.height - 22);
+
+    const contentG = this.pauseContentPlate.clear();
+    drawGrimoirePanel(contentG, contentX - 16, PAUSE_LAYOUT.top + 22, contentWidth + 32,
+      PAUSE_LAYOUT.height - 44, 0.72);
+    this.pauseContentTitle.setPosition(contentX, PAUSE_LAYOUT.titleY);
+    this.pauseContentText.setPosition(contentX, PAUSE_LAYOUT.titleY + 32);
+    this.pauseFooterText.setPosition(width / 2, PAUSE_LAYOUT.top + PAUSE_LAYOUT.height + 17);
+    this.renderPauseContent(active);
+    this.syncMinimapVisibility();
+  }
+
+  private selectPauseTab(index: number): void {
+    if (index < 0 || index >= PAUSE_MAIN.length) return;
+    this.pauseMenuIndex = index;
+    this.quitArmed = false;
+    this.renderPauseMenu();
   }
 
   private movePauseMenu(delta: number): void {
     const len = PAUSE_MAIN.length;
-    this.pauseMenuIndex = (this.pauseMenuIndex + delta + len) % len;
-    this.quitArmed = false; // 다른 항목으로 옮기면 나가기 확인은 풀린다
-    this.renderPauseMenu();
+    this.selectPauseTab((this.pauseMenuIndex + delta + len) % len);
   }
 
   private activatePauseMenuItem(): void {
@@ -8547,8 +8553,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (!row) return;
     this.audio.playSfx('ui-confirm');
     switch (row.id) {
-      case 'resume':
-        this.closeBuildInspect();
+      case 'build':
+      case 'research':
+      case 'map':
+        this.renderPauseMenu();
         return;
       case 'settings':
         void this.openSettingsOverlay();
@@ -8564,6 +8572,98 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         return;
       default:
     }
+  }
+
+  /** 선택한 탭에 맞는 한 화면짜리 정보를 만든다. 세부 수치는 전투 HUD와 중복하지 않는다. */
+  private renderPauseContent(active: PauseRow): void {
+    this.pauseContentText.setVisible(active.id !== 'map');
+    switch (active.id) {
+      case 'build':
+        this.pauseContentTitle.setText('상태 / 빌드');
+        this.pauseContentText.setText(this.pauseBuildLines().join('\n'));
+        return;
+      case 'research':
+        this.pauseContentTitle.setText('연구');
+        this.pauseContentText.setText(this.pauseResearchLines().join('\n'));
+        return;
+      case 'map':
+        this.pauseContentTitle.setText('지도');
+        return;
+      case 'settings':
+        this.pauseContentTitle.setText('설정');
+        this.pauseContentText.setText('ENTER를 누르면 설정을 엽니다.\n\n밝기 · 효과 밝기 · 사운드는 게임을 멈춘 채 조정할 수 있습니다.');
+        return;
+      case 'quit':
+        this.pauseContentTitle.setText('타이틀로 나가기');
+        this.pauseContentText.setText('이번 런을 포기하고 결산 화면으로 이동합니다.\n\nENTER를 한 번 더 누르면 확정됩니다.');
+        return;
+      default:
+    }
+  }
+
+  /** 현재 런의 성장 축을 중복 없이 읽는다. 보상은 획득 순서를 유지한다. */
+  private pauseBuildLines(): string[] {
+    const ledger = buildResonanceLedger(this.combatRunController.state.rewards);
+    const legacy = this.startingLegacyReward;
+    const engraves = this.engraveManager.entries;
+    const spirits = this.spiritManager.entries;
+    const altarEffects = [
+      this.echoUnlocked ? '영창 메아리' : null,
+      this.starburstUnlocked ? '별빛 폭발' : null,
+      this.meteorUnlocked ? '원소 낙성' : null,
+      this.trailUnlocked ? '마력 궤적' : null,
+      this.rippleUnlocked ? '영창 파문' : null,
+      this.elementalChorusStage > 0 ? `원소 합주 ${this.elementalChorusStage}단계` : null,
+      ...ELEMENTS.flatMap((element) => {
+        const awakening = this.awakenings[element];
+        return awakening ? [`${ELEMENT_LABELS[element]} 각성 · ${AWAKENING_LABELS[awakening]}`] : [];
+      }),
+    ].filter((effect): effect is string => effect !== null);
+
+    const lines = [
+      `시작 유산  ·  ${legacy?.title ?? '없음'}`,
+      legacy ? `  ${legacy.description.replace(/\n/g, ' ')}` : '  이번 런의 새 영창으로 시작했습니다.',
+      '',
+      `주문 각인  ·  ${engraves.length}/2`,
+      ...(engraves.length > 0
+        ? engraves.map((entry) => `  ${entry.evolved ? '✦ ' : '· '}${entry.spell.name}  Lv${entry.level}${entry.evolved ? ' · 진화' : ''}`)
+        : ['  아직 각인한 주문이 없습니다.']),
+      `계약 정령  ·  ${spirits.length}/2`,
+      ...(spirits.length > 0
+        ? spirits.map((entry) => {
+          const elements = entry.elements ?? (entry.element ? [entry.element] : []);
+          const label = elements.map((element) => ELEMENT_LABELS[element]).join(' + ');
+          return `  · ${entry.fusedName ?? `${label} 정령`}${entry.fused ? ' · 융합' : ''}`;
+        })
+        : ['  아직 계약한 정령이 없습니다.']),
+      `제단 · 각성  ·  ${altarEffects.length}`,
+      ...(altarEffects.length > 0 ? altarEffects.map((effect) => `  · ${effect}`) : ['  아직 제단 효과가 없습니다.']),
+      '',
+      `획득한 공명  ·  ${ledger.length}`,
+      ...(ledger.length > 0
+        ? ledger.slice(0, 10).map((entry, index) => `  ${String(index + 1).padStart(2, '0')}. ${entry.title}`)
+        : ['  방 보상을 선택하면 획득 순서대로 기록됩니다.']),
+      ...(ledger.length > 10 ? [`  … 이후 공명 ${ledger.length - 10}개`] : []),
+    ];
+    return lines;
+  }
+
+  /** 연구는 현재 런의 계약 한 장만 보여 준다. 메타 이력은 이 화면의 범위가 아니다. */
+  private pauseResearchLines(): string[] {
+    const research = this.runResearchTracker.snapshot().research;
+    if (!research) return ['이번 런에서 선택한 연구가 없습니다.', '', '새 런을 시작하면 연구 계약을 선택할 수 있습니다.'];
+    return [
+      this.researchTitle(research),
+      '',
+      research.completed ? '연구 완료' : `진행도  ·  ${this.researchProgressSummary(research)}`,
+      `목표  ·  ${this.researchGoal(research)}`,
+      `현재 효과  ·  ${this.researchPerkSummary(research)}`,
+      `완료 보상  ·  통찰 +${research.rewardInsight}`,
+      '',
+      research.completed
+        ? '이번 런의 연구는 완성되었습니다.'
+        : '전투 중에는 목표만 짧게 기억하면 됩니다.',
+    ];
   }
 
   /**
@@ -8704,93 +8804,16 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     )) return;
     this.buildInspectOpen = !this.buildInspectOpen;
     this.time.paused = this.buildInspectOpen;
-    this.hoveredChipIndex = -1;
-    // 열 때마다 메인 화면부터 — 지난번 설정 화면이 남아 있으면 "재개"를 못 찾는다
+    // 열 때마다 상태/빌드 탭부터 — 지난번에 보던 지도·설정이 남지 않게 한다.
     if (this.buildInspectOpen) {
         this.pauseMenuIndex = 0;
     }
     this.quitArmed = false;
     this.renderPauseMenu();
-    this.syncMinimapVisibility();
-    this.buildChipZones.forEach((zone) => {
-      if (this.buildInspectOpen) zone.setInteractive({ useHandCursor: true });
-      else zone.disableInteractive();
-    });
-    this.renderBuildInspect();
   }
 
   private closeBuildInspect(): void {
     if (this.buildInspectOpen) this.toggleBuildInspect();
-  }
-
-  /** 검사 오버레이 렌더 — 판 + 호버한 칩의 상세. 아무것도 안 가리켰으면 안내만. */
-  private renderBuildInspect(): void {
-    const g = this.buildInspectPlate.clear();
-    if (!this.buildInspectOpen) {
-      this.buildInspectPlate.setVisible(false);
-      this.buildInspectText.setVisible(false);
-      this.researchInspectPlate.setVisible(false);
-      this.researchInspectText.setVisible(false);
-      return;
-    }
-    const { width, height } = this.scale;
-    const chip = this.buildChips[this.hoveredChipIndex];
-    const lines = chip
-      ? [chip.filled ? `『${chip.name}』` : chip.name, ...chip.detail]
-      : ['빌드 검사 — 시간이 멈췄다', '칩에 커서를 올리면 상세가 나온다', 'ESC 로 돌아간다'];
-    this.buildInspectText.setText(lines.join('\n'));
-
-    const boxW = BUILD_CHIP.tooltipWidth;
-    const boxH = this.buildInspectText.height + 18;
-    const span = BUILD_CHIP.size * 2 + BUILD_CHIP.gap;
-    // 칩 그리드 **바로 위**에 우측 정렬로 띄운다. 왼쪽으로 펼치면 x가 700 아래로
-    // 내려가 하단 중앙 밴드(시퀀스 바 x266~694 · 필살기 라벨 ~x670)와 겹친다.
-    const x = width - 20 - boxW;
-    const y = height - 26 - span - 10;
-    // 툴팁도 같은 판 문법 — 일시정지 화면 안에서 혼자 둥근 사각형이면 튄다.
-    // 다만 원소 칩을 가리키면 그 원소색으로 테두리를 덧그린다(어느 칩인지가 정보다)
-    drawGrimoirePanel(g, x, y - boxH, boxW, boxH, 0.92);
-    if (chip?.element) {
-      const chipElements = chip.elements.length > 0 ? chip.elements : [chip.element];
-      if (chipElements.length > 1) {
-        drawElementSpectrumRect(g, chipElements, x + 2, y - boxH + 2, boxW - 4, boxH - 4);
-      } else {
-        g.lineStyle(1.4, ELEMENT_PALETTES[chip.element].core, 0.75);
-        g.strokeRect(x + 2, y - boxH + 2, boxW - 4, boxH - 4);
-      }
-    }
-    this.buildInspectPlate.setVisible(true);
-    this.buildInspectText.setPosition(x + 10, y - 9).setVisible(true);
-    this.renderResearchInspect();
-  }
-
-  /** 연구는 장기 목표라 전투 HUD가 아니라 ESC 검사 화면의 좌하단에서만 읽는다. */
-  private renderResearchInspect(): void {
-    const g = this.researchInspectPlate.clear();
-    const research = this.runResearchTracker.snapshot().research;
-    if (!this.buildInspectOpen || !research) {
-      this.researchInspectPlate.setVisible(false);
-      this.researchInspectText.setVisible(false);
-      return;
-    }
-    const lines = [
-      `RESEARCH · ${this.researchTitle(research)}`,
-      research.completed
-        ? `${researchProgressSlots(research)} ${this.researchPerkSummary(research)} · 통찰 +${research.rewardInsight}`
-        : `${this.researchProgressSummary(research)} · ${this.researchGoal(research)}`,
-      ...(!research.completed && research.progress > 0
-        ? [`효과 · ${this.researchPerkSummary(research)}`]
-        : []),
-    ];
-    this.researchInspectText.setText(lines.join('\n'));
-    const { height } = this.scale;
-    const boxW = 260;
-    const boxH = this.researchInspectText.height + 18;
-    const x = 20;
-    const y = height - 24;
-    drawGrimoirePanel(g, x, y - boxH, boxW, boxH, 0.9);
-    this.researchInspectPlate.setVisible(true);
-    this.researchInspectText.setPosition(x + 10, y - 9).setVisible(true);
   }
 
   /**

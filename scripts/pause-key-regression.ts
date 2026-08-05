@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 /**
  * 일시정지 키 회귀 (총괄 지시: "화면 멈추는 거 tab 대신 esc키로 바꿔").
  *
- * 이 화면은 빌드 칩 검사이자 일시정지 메뉴(재개·설정·나가기)다. ESC가 관례에 맞다.
+ * 이 화면은 상태/빌드·연구·지도를 보는 일시정지 탭이다. ESC가 관례에 맞다.
  *
  * 키 배치는 순수 모듈이 아니라 씬 배선이라 소스를 읽어 고정한다 — 그래도 안 하는
  * 것보다 낫다: 안내 문구와 실제 키가 어긋나면 플레이어가 못 연다.
@@ -96,10 +96,7 @@ const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
     /ESC 일시정지/.test(scene),
     '하단 조작 안내가 ESC를 가리켜야 한다',
   );
-  assert.ok(
-    /ESC 로 돌아간다/.test(scene),
-    '검사 화면 안내가 ESC를 가리켜야 한다',
-  );
+  assert.ok(/ESC 게임으로 돌아가기/.test(scene), '탭 화면 안내가 ESC 복귀를 가리켜야 한다');
 }
 
 // ── 6) 영창 중에는 열리지 않는다 ───────────────────────────────────────────
@@ -117,7 +114,7 @@ const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   );
 }
 
-// ── 7) 실제 게임의 맵 시드를 표시한다 ───────────────────────────────────────
+// ── 7) 지도는 ESC의 지도 탭에서만 보이며, 맵 시드는 숨긴다 ─────────────────
 {
   assert.ok(
     /private currentMapSeed: number \| null = null;/.test(scene),
@@ -141,12 +138,11 @@ const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
     !/pauseMapSeedText/.test(pauseBlock),
     '맵 시드 전용 HUD 객체를 만들지 않는다',
   );
-  const syncAt = scene.indexOf('private syncMinimapVisibility');
-  const syncBlock = scene.slice(syncAt, syncAt + 900);
+  const shouldAt = scene.indexOf('private shouldShowMinimap');
+  const shouldBlock = scene.slice(shouldAt, shouldAt + 500);
   assert.ok(
-    /this\.placePauseMinimap\(\)/.test(syncBlock)
-      && /this\.runMinimap\?\.setVisible\(visible\)/.test(syncBlock),
-    'ESC가 열릴 때 전체 경로를 pause 전용 위치에 배치하고 표시해야 한다',
+    /this\.buildInspectOpen && PAUSE_MAIN\[this\.pauseMenuIndex\]\?\.id === 'map'/.test(shouldBlock),
+    '전체 경로는 ESC 전체가 아니라 지도 탭에서만 보여야 한다',
   );
   const placeAt = scene.indexOf('private placePauseMinimap');
   const placeBlock = scene.slice(placeAt, placeAt + 700);
@@ -154,8 +150,8 @@ const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
     /MINIMAP_CONFIG\.width \* PAUSE_MAP\.scale/.test(placeBlock)
       && /PAUSE_MAP\.top/.test(placeBlock)
       && /depth: PAUSE_MAP\.depth/.test(placeBlock),
-    '전체 경로는 메뉴 위 중앙에서 확대된 ESC 전용 레이아웃을 사용해야 한다',
+    '전체 경로는 지도 탭 전용 레이아웃을 사용해야 한다',
   );
 }
 
-console.log('pause key regression: ESC토글·TAB해제·캡처유지·이중닫힘방지·안내일치·영창가드·맵시드 7군 통과');
+console.log('pause key regression: ESC토글·TAB해제·캡처유지·이중닫힘방지·안내일치·영창가드·지도탭 7군 통과');
