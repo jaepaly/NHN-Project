@@ -138,7 +138,9 @@ export class SpiritManager {
       || definition.role === 'guard'
     ) return null;
 
-    if (this.slots.some((slot) => slot.spiritId === definition.spiritId)) return null;
+    // 카드 생성과 **같은 기준**으로 막는다. 생성부만 고치면 저장된 카드·다른 경로로
+    // 들어온 요청이 그대로 통과해 중복 원소가 계약된다
+    if (definition.element && this.ownedAttackElements().has(definition.element)) return null;
     if (option.spirit.level !== 1 || this.slotCount() >= SPIRIT_CONFIG.maxSlots) return null;
     const created: SpiritState = {
       ...definition,
@@ -166,6 +168,26 @@ export class SpiritManager {
   }
 
   /** 융합 후보 — 공격 정령 2체 보유 시 (PROGRESSION_DESIGN §3). */
+  /**
+   * 이미 보유한 공격 원소 — **융합체가 흡수한 원소까지 포함한다.**
+   *
+   * ⚠️ 중복 판정을 `spiritId`로 하면 안 된다. 융합체의 id는
+   * `fused-fire-water-lightning`이라 `attack-lightning`과 겹치지 않아, 이미 흡수한
+   * 원소가 다시 보상 카드로 나오고 **선택하면 계약까지 된다**(슬롯만 낭비하고
+   * 다시 융합해도 `new Set` 합집합이라 원소가 안 늘어난다).
+   * 총괄 제보: *"불+물+전기 상태인데 선택지 보상으로 전기 정령이 나옴."*
+   */
+  private ownedAttackElements(): Set<SpellElement> {
+    const owned = new Set<SpellElement>();
+    for (const slot of this.slots) {
+      if (slot.role !== 'attack') continue;
+      for (const element of slot.elements ?? (slot.element ? [slot.element] : [])) {
+        owned.add(element);
+      }
+    }
+    return owned;
+  }
+
   /**
    * 융합 후보 — 공격 정령 2체. **융합체도 후보다**(3속성 이상 융합의 정식 경로).
    *
@@ -309,9 +331,11 @@ export class SpiritManager {
       kind: 'spirit' | 'spirit-recovery' | 'spirit-guard';
     }> = [];
     if (this.slotCount() < SPIRIT_CONFIG.maxSlots) {
+      // 보유 원소로 거른다 — spiritId로 보면 융합체가 흡수한 원소를 못 걸러낸다
+      const owned = this.ownedAttackElements();
       for (const definition of DEFINITIONS) {
         if (definition.role !== 'heal' && definition.role !== 'guard'
-          && !this.slots.some((slot) => slot.spiritId === definition.spiritId)) {
+          && (!definition.element || !owned.has(definition.element))) {
           candidates.push({ definition, level: 1, kind: 'spirit' });
         }
       }

@@ -125,6 +125,25 @@ assert.equal(dual.slotCount(), 1, '융합체는 한 슬롯을 비워 새 정령�
     dual.applyReward(spiritReward('attack-ice', 'attack', 1)),
     '융합이 비운 슬롯에는 새 원소 정령이 다시 계약된다',
   );
+  // ⚠️ 흡수한 원소는 다시 보상으로 나오면 안 된다. 중복 판정을 `spiritId`로 하면
+  // 융합체 id(`fused-fire-lightning`)가 `attack-lightning`과 안 겹쳐 통과한다
+  // — 총괄 제보: *"불+물+전기 상태인데 선택지 보상으로 전기 정령이 나옴."*
+  {
+    const cards = dual.injectReward(
+      [{ id: 'base', kind: 'max-hp', title: '', description: '' }], 3, () => 0,
+    );
+    const offeredSpirit = cards.find((card) => card.kind === 'spirit')?.spirit?.spiritId;
+    assert.ok(
+      offeredSpirit !== 'attack-fire' && offeredSpirit !== 'attack-lightning',
+      `이미 융합으로 흡수한 원소가 다시 카드로 나왔다 (${offeredSpirit})`,
+    );
+    // 카드 생성만 막고 적용을 안 막으면 저장된 카드·다른 경로가 그대로 통과한다
+    assert.equal(
+      dual.applyReward(spiritReward('attack-fire', 'attack', 1)), null,
+      '흡수한 원소는 계약 자체가 거부돼야 한다 — 슬롯만 낭비하고 원소는 안 는다',
+    );
+  }
+
   const tripleCandidate = dual.fuseCandidate();
   assert.ok(tripleCandidate, '융합 정령과 새 정령도 다시 융합 후보가 된다');
   // ⚠️ 후보의 elements는 두 정령의 **합집합**이어야 한다. 종전엔 정령마다 주속성
