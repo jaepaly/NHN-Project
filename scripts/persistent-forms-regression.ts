@@ -55,6 +55,7 @@ assert.ok(Math.hypot(wideOrbit.x - 10, wideOrbit.y - 20)
   > Math.hypot(orbit.x - 10, orbit.y - 20));
 assert.equal(orbit.x, 10 + ORBIT_CONFIG.radius);
 assert.equal(orbit.y, 20);
+assert.equal(ORBIT_CONFIG.damageMultiplier, 0.45);
 
 // 4) 동일 적 재타격은 0.8초마다만 허용되어 4초 동안 이론상 최대 5회다.
 assert.equal(repeatHitReady(undefined, 0), true);

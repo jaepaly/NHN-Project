@@ -142,7 +142,9 @@ import { AWAKENING_CONFIG } from '../src/combat-core/run/awakening';
 
   const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   const j = scene.indexOf('private continueToNextLoop(');
-  const loop = scene.slice(j, j + 1600);
+  // ⚠️ 창을 넉넉히. 1600으로는 리셋 항목이 두 줄만 늘어도 마지막 단언이 밖으로
+  // 밀려 조용히 실패한다 — 실제로 #349의 방 계측 두 줄에 1593자→창 밖이 됐다.
+  const loop = scene.slice(j, j + 2600);
   for (const call of ['engraveManager.reset()', 'spiritManager.reset()', 'playerState.reset()']) {
     assert.ok(loop.includes(call), `이어가기가 ${call}을 해야 한다 — 각인·정령은 씬 소유다`);
   }

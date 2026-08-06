@@ -18,6 +18,8 @@ import {
 } from '../src/combat-core/evolve/evolveRewards';
 import {
   autoSpellImpactDamageFromPower,
+  DIRECT_FORM_DAMAGE_MULTIPLIER,
+  spellHealFromPower,
   spellImpactDamageFromPower,
 } from '../src/combat-core/combat/combatConfig';
 import { ZONE_CONFIG, RAIN_CONFIG } from '../src/combat-core/combat/areaSpellConfig';
@@ -40,6 +42,11 @@ function damageSpell(name: string, element: SpellSpec['element_primary']): Spell
     cost: 30,
   };
 }
+
+assert.deepEqual(DIRECT_FORM_DAMAGE_MULTIPLIER, {
+  bolt: 1, beam: 0.95, wave: 0.6, nova: 0.7, slash: 0.8,
+});
+assert.equal(spellHealFromPower(50), 25, 'heal은 power의 50%');
 
 function engraveTo(manager: EngraveManager, key: string, spell: SpellSpec, level: number): void {
   manager.rememberManualCast(key, spell);
@@ -247,7 +254,7 @@ assert.equal(dual.slotCount(), 1, '융합체는 한 슬롯을 비워 새 정령�
   assert.ok(inflated > earthLv2Power, '(대조) 수동 변환이면 바닥 승격으로 예산 초과였다');
 
   // chain: 단일 대상 기준 최초 타격 배율 1, 이후 감쇠 — 대상당 피해가 power를 넘지 않는다
-  assert.equal(CHAIN_CONFIG.damageMultipliers[0], 1, 'chain 최초 배율 1');
+  assert.equal(CHAIN_CONFIG.damageMultipliers[0], 0.6, 'chain 최초 배율 0.6');
   for (let i = 1; i < CHAIN_CONFIG.damageMultipliers.length; i++) {
     assert.ok(
       CHAIN_CONFIG.damageMultipliers[i] < CHAIN_CONFIG.damageMultipliers[i - 1],

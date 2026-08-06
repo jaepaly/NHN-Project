@@ -62,6 +62,7 @@ import {
   SPELL_DAMAGE_CONFIG,
   SHOOTER_CONFIG,
   SPLITTER_CONFIG,
+  DIRECT_FORM_DAMAGE_MULTIPLIER,
   spellHealFromPower,
   autoSpellImpactDamageFromPower,
   spellImpactDamageFromPower,
@@ -634,6 +635,7 @@ interface EnemyProjectile {
   velocity: Phaser.Math.Vector2;
   lifetimeRemaining: number;
   hitShakeTier: CameraShakeTier;
+  damage: number;
 }
 
 interface ActiveWall {
@@ -667,6 +669,7 @@ interface HazardZone {
   view: Phaser.GameObjects.GameObject;
   contains(x: number, y: number): boolean;
   damageCooldown: number;
+  damage?: number;
   onDamage?: () => void;
 }
 
@@ -1061,6 +1064,18 @@ export class ProtoScene extends Phaser.Scene {
   private timeScale = 1;
   /** 실제 조작·전투 시간만 누적한다. 일시정지와 보상/메뉴 선택 시간은 포함하지 않는다. */
   private runElapsedMs = 0;
+  /** 런 결산 총계 — 일시정지만 제외한 전체 경과 시간 (R1 밸런스 계측, #349). */
+  private runWallClockMs = 0;
+  /** DEV 측정용 현재 방 현실 시간 (R1 밸런스 계측, #349). */
+  private roomElapsedMs = 0;
+  /** 방별 소요 시간 — 런 결산 debug에 실려 밸런스 판단 근거가 된다 (R1, #349). */
+  private roomTimings: Array<{
+    roomIndex: number;
+    nodeId: string;
+    stage: number;
+    kind: MapNodeKind;
+    elapsedMs: number;
+  }> = [];
   private readonly enemyHitStop = new EnemyHitStopController<CombatEnemy>();
   private readonly enemyKnockbacks = new Map<CombatEnemy, EnemyKnockbackState>();
   private basicAttackCooldownRemaining = 0;
@@ -1522,6 +1537,8 @@ export class ProtoScene extends Phaser.Scene {
   override update(_time: number, delta: number): void {
     this.checkPlayerDeath();
     this.updateRunElapsed(delta);
+    this.updateRunWallClock(delta);
+    this.updateRoomElapsed(delta);
     // 전투 여부와 무관하게 매 프레임 — 숨김 판정을 함수 안에서 한다 (전투가 끝나는
     // 프레임에 핍이 화면에 박제되지 않도록)
     this.updateResearchChargePips();
@@ -1589,9 +1606,50 @@ export class ProtoScene extends Phaser.Scene {
     this.updateSequenceProgress();
   }
 
+  /**
+   * 상단 HUD 타이머용 — **조작·전투 시간만** 센다 (R2, `run-timer-hud-regression`).
+   *
+   * ⚠️ 여기서 게이트를 빼면 안 된다. R2가 타이머를 상단 중앙으로 옮기면서 이 계약을
+   * 회귀로 잠갔다. 보상·연구 카드를 고르는 시간까지 세면 "얼마나 플레이했나"가 아니라
+   * "창을 얼마나 켜놨나"가 된다.
+   *
+   * R1의 밸런스 계측이 필요로 하는 **전체 경과 시간**은 `runWallClockMs`가 따로 센다
+   * — 두 지표는 다른 질문에 답한다(#349 통합 시 총괄 결정).
+   */
   private updateRunElapsed(delta: number): void {
     if (this.deathHandled || this.time.paused || !this.isCombatActive()) return;
     this.runElapsedMs += Math.max(0, delta);
+  }
+
+  /**
+   * 런 결산·밸런스 계측용 — **일시정지만 제외한 전체 경과 시간** (R1, #349).
+   *
+   * 결산 표가 `PAUSE EXCLUDED`라고 적고 방별 시간 합계와 나란히 놓이므로, 보상·방
+   * 전환 시간이 빠지면 "방별 합계 ≠ 총계"가 되어 계측 표가 스스로 안 맞는다.
+   */
+  private updateRunWallClock(delta: number): void {
+    if (
+      this.deathHandled
+      || this.time.paused
+      || this.combatRunController.state.phase === 'run-over'
+    ) return;
+    this.runWallClockMs += Math.max(0, delta);
+  }
+
+  /**
+   * 방별 전투 시간 (R1 밸런스 계측, #349).
+   *
+   * ⚠️ `updateRunElapsed`와 조건이 다르다. 저쪽은 `isCombatActive()`라 연구·유산
+   * 선택 중에도 멈추지만, 이쪽은 `phase === 'combat'`만 본다 — 밸런스는 "이 방을
+   * 도는 데 걸린 전투 시간"을 봐야 하고 선택 UI 시간은 방 난이도와 무관하다.
+   */
+  private updateRoomElapsed(delta: number): void {
+    if (
+      this.deathHandled
+      || this.time.paused
+      || this.combatRunController.state.phase !== 'combat'
+    ) return;
+    this.roomElapsedMs += Math.max(0, delta);
   }
 
   private isCombatActive(): boolean {
@@ -1611,6 +1669,7 @@ export class ProtoScene extends Phaser.Scene {
     this.runFlowBound = true;
     this.combatRunController.on('room-cleared', (options, state) => {
       const clearedNode = this.mapGraph.current();
+      this.recordCurrentRoomTiming(state.roomIndex);
       if (!this.demoRun) this.runResearchTracker.recordRoomCleared(clearedNode.id, clearedNode.kind);
       this.audio.playSfx('room-clear');
       // 포탈/보상 선택 구간은 안전 상태여야 한다. 다음 방 시작까지 함정 판정과
@@ -1751,6 +1810,7 @@ export class ProtoScene extends Phaser.Scene {
       devInfo('[Run] reward-applied', chosen, state);
     });
     this.combatRunController.on('room-transition', (state, durationMs) => {
+      this.recordCurrentRoomTiming(state.roomIndex);
       devInfo('[Run] room-transition', { state, durationMs });
     });
     this.combatRunController.on('room-started', (state) => {
@@ -1764,6 +1824,7 @@ export class ProtoScene extends Phaser.Scene {
       this.reportAutoShare(`방 ${state.roomIndex} 진입 누적`);
     });
     this.combatRunController.on('run-completed', (state) => {
+      this.recordCurrentRoomTiming(state.roomIndex);
       this.deferTransientCombatCleanup();
       this.stopCastingForRunPause();
       devInfo('[Run] completed', state);
@@ -1861,12 +1922,28 @@ export class ProtoScene extends Phaser.Scene {
       maxRooms: runState.maxRooms,
       roomCountMode: runState.roomCountMode,
       totalCasts: memory.totalCasts,
-      elapsedMs: this.runElapsedMs,
+      elapsedMs: this.runWallClockMs,
       dominantElement: memory.dominantElement,
       dominantForm: memory.dominantForm,
       recentSpellNames: memory.recentSpellNames,
       meta: buildMetaRunSummary(this.metaProfile, this.runResearchTracker.snapshot()),
+      debug: import.meta.env.DEV
+        ? { mapSeed: this.currentMapSeed, rooms: this.roomTimings.map((room) => ({ ...room })) }
+        : undefined,
     };
+  }
+
+  /** 방을 떠날 때 그 방의 전투 시간을 한 번만 기록한다 (R1 밸런스 계측, #349). */
+  private recordCurrentRoomTiming(roomIndex: number): void {
+    if (this.roomTimings.some((room) => room.roomIndex === roomIndex)) return;
+    const node = this.mapGraph.current();
+    this.roomTimings.push({
+      roomIndex,
+      nodeId: node.id,
+      stage: node.stage,
+      kind: node.kind,
+      elapsedMs: this.roomElapsedMs,
+    });
   }
 
   /** 새 런 시작 선택은 겹치지 않게 연구 → 유산 순서로 한 장씩 연다. */
@@ -2607,6 +2684,9 @@ export class ProtoScene extends Phaser.Scene {
     this.demoRun = false;
     this.practiceRun = false;
     this.runElapsedMs = 0;
+    this.runWallClockMs = 0;
+    this.roomElapsedMs = 0;
+    this.roomTimings = [];
     this.continueRunResearchTracking();
     // 전투 전용 상태만 초기화 (다음 보스가 내성 재계산, 장판·쿨다운은 방 단위)
     this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
@@ -2674,6 +2754,9 @@ export class ProtoScene extends Phaser.Scene {
     this.demoRun = false;
     this.practiceRun = false;
     this.runElapsedMs = 0;
+    this.runWallClockMs = 0;
+    this.roomElapsedMs = 0;
+    this.roomTimings = [];
     this.pendingRunStartReason = null;
     this.resetRunResearchTracking();
     this.fusionGauge.reset();
@@ -2712,6 +2795,9 @@ export class ProtoScene extends Phaser.Scene {
     this.demoRun = false;
     this.practiceRun = false;
     this.runElapsedMs = 0;
+    this.runWallClockMs = 0;
+    this.roomElapsedMs = 0;
+    this.roomTimings = [];
     this.resetRunResearchTracking();
     this.fusionGauge.reset();
     this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
@@ -2806,6 +2892,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private startRoom(roomIndex: number): void {
+    this.roomElapsedMs = 0;
     this.beginBannerRoomScope();
     const encounter = this.combatRunController.state;
     this.enemyHitStop.clear();
@@ -4819,7 +4906,7 @@ export class ProtoScene extends Phaser.Scene {
       hazard.damageCooldown = Math.max(0, hazard.damageCooldown - deltaSeconds);
       if (hazard.damageCooldown > 0) continue;
       if (!hazard.contains(this.player.x, this.player.y)) continue;
-      const applied = this.damagePlayer(9);
+      const applied = this.damagePlayer(hazard.damage ?? 9);
 if (applied) this.playPlayerHit();
       this.announceIncomingDamage(applied.hpDamage, applied.shieldDamage);
       hazard.onDamage?.();
@@ -5259,6 +5346,7 @@ if (applied) this.playPlayerHit(
         y: boss.y,
         angle,
         speedMultiplier: 4.5,
+        damage: BOSS_CONFIG.volleyProjectileDamage,
       });
     }
   }
@@ -5469,6 +5557,7 @@ if (applied) this.playPlayerHit(
         view: warning,
         contains: (px, py) => Phaser.Math.Distance.Between(px, py, x, y) <= radius,
         damageCooldown: 0,
+        damage: BOSS_CONFIG.hazardDamage,
         onDamage: () => {
           if (!outerRing.active) return;
           this.tweens.killTweensOf(outerRing);
@@ -5567,6 +5656,7 @@ if (applied) this.playPlayerHit(
       velocity,
       lifetimeRemaining: SHOOTER_CONFIG.bulletLifetimeSeconds,
       hitShakeTier: (request.speedMultiplier ?? 1) >= 4 ? 'medium' : 'weak',
+      damage: request.damage ?? SHOOTER_CONFIG.bulletDamage,
     });
   }
 
@@ -5625,7 +5715,7 @@ if (applied) this.playPlayerHit(
         this.player.y,
       ) <= SHOOTER_CONFIG.bulletHitDistance;
       if (hitPlayer) {
-        const applied = this.damagePlayer(SHOOTER_CONFIG.bulletDamage);
+        const applied = this.damagePlayer(projectile.damage);
 if (applied) this.playPlayerHit(projectile.hitShakeTier);
         totalHpDamage += applied.hpDamage;
         totalShieldDamage += applied.shieldDamage;
@@ -6395,7 +6485,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         status: searing ? searingStatus(spec) : spec.status,
         power: Math.round(
           spellPowerWithAffinity(historyEntry.power, affinityBonus)
-          * escalationWeaken * diversity * this.playerState.damageOutMultiplier // empower 버프
+          * escalationWeaken * diversity
+          * (spec.effect === 'buff' ? 1 : this.playerState.damageOutMultiplier)
           * castPlan.ratio, // 감쇠 시전 — 모자란 마나만큼 잦아든다
         ),
       };
@@ -7152,7 +7243,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         spellPowerWithAffinity(baseSpec.power * repeatPowerScale, affinityBonus)
         * escalationWeaken
         * diversity
-        * this.playerState.damageOutMultiplier,
+        * (baseSpec.effect === 'buff' ? 1 : this.playerState.damageOutMultiplier),
       ),
     };
     const researchSpatialScale = researchEligible
@@ -9211,9 +9302,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // Zone ticks may damage the same enemy again. Rain strikes share one cast-level
     // hit set so overlapping landing circles cannot multiply damage on one target.
     if (impact.hitGroup !== undefined && spec.form !== 'rain') hitEnemies.clear();
-    const damageMultiplier = Number.isFinite(impact.damageMultiplier)
+    const impactMultiplier = Number.isFinite(impact.damageMultiplier)
       ? Math.max(0, impact.damageMultiplier ?? 1)
       : 1;
+    const formMultiplier = spec.form in DIRECT_FORM_DAMAGE_MULTIPLIER
+      ? DIRECT_FORM_DAMAGE_MULTIPLIER[
+        spec.form as keyof typeof DIRECT_FORM_DAMAGE_MULTIPLIER
+      ]
+      : 1;
+    const damageMultiplier = impactMultiplier * formMultiplier;
     // 오토 시전은 비반올림·바닥 미적용 — 산술 게이트(≤40%)와 실전 피해 일치 (PR #39 R1 리뷰)
     const damage = auto
       ? autoSpellImpactDamageFromPower(spec.power, damageMultiplier)

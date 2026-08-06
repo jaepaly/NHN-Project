@@ -23,14 +23,18 @@ const clone = summonGroupPlan('fire', '분신');
 assert.equal(clone.count, 1);
 assert.equal(clone.stationary, false);
 assert.ok(clone.attackIntervalScale < 1, '분신은 빠른 공격');
+assert.ok(Math.abs(clone.damageScale * 0.6 - 0.4) < Number.EPSILON);
 
 const swarm = summonGroupPlan('fire', '군체');
 assert.equal(swarm.count, 3, '군체 3기');
 assert.ok(swarm.damageScale < 1, '군체는 피해 분할');
+assert.ok(Math.abs(swarm.count * swarm.damageScale * 0.6 - 0.2) < Number.EPSILON);
 
 const turret = summonGroupPlan('fire', '포탑');
 assert.equal(turret.stationary, true, '포탑 고정');
 assert.ok(turret.damageScale > 1, '포탑은 강타');
+assert.ok(Math.abs(turret.damageScale * 0.6 - 0.85) < Number.EPSILON);
+assert.equal(summonGroupPlan('light', '빛의 정령').damageScale * 0.6, 0.6);
 
 // 5) SummonCombatState — 배율 반영
 const base = new SummonCombatState(100);

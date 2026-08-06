@@ -1,8 +1,10 @@
 /** R1 전투 코어: 보스 임시 수치. 플레이테스트·팀 합의 후 조정한다. (Phaser 비의존 — 회귀 스크립트에서 사용) */
 export const BOSS_CONFIG = {
   maxHp: 450,
+  stageMaxHp: 520,
+  memoryMaxHp: 1150,
   speed: 55,
-  contactDamage: 18,
+  contactDamage: 21,
   contactDistance: 50,
   contactDamageCooldownSeconds: 1.2,
   collisionRadius: 42,
@@ -10,6 +12,8 @@ export const BOSS_CONFIG = {
   // 방사 탄막 패턴
   volleyIntervalSeconds: 3.2,
   volleyProjectiles: 12,
+  volleyProjectileDamage: 9,
+  hazardDamage: 10,
   /** 첫 볼리까지의 유예 (등장 연출·대사 읽을 시간) */
   volleyInitialDelaySeconds: 2.4,
 

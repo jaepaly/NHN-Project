@@ -61,12 +61,12 @@ assert.deepEqual(
 );
 
 // 6) 각 연쇄는 감소하며 최초+3연쇄 최대 총 계수는 2.7이다.
-assert.deepEqual(CHAIN_CONFIG.damageMultipliers, [1, 0.75, 0.55, 0.4]);
+assert.deepEqual(CHAIN_CONFIG.damageMultipliers, [0.6, 0.5, 0.4, 0.3]);
 assert.ok(CHAIN_CONFIG.damageMultipliers.every((value, index, values) => (
   index === 0 || value < values[index - 1]
 )));
 assert.ok(Math.abs(
-  CHAIN_CONFIG.damageMultipliers.reduce((sum, value) => sum + value, 0) - 2.7,
+  CHAIN_CONFIG.damageMultipliers.reduce((sum, value) => sum + value, 0) - 1.8,
 ) < 1e-9);
 
 // 7) cage는 collision resolver를 거치지 않으므로 damage/control 모두 시전 대상을 고정한다.

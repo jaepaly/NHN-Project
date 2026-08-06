@@ -1,15 +1,15 @@
 /** R1 전투 코어의 전투·밸런스 설정. */
 export const CHASER_CONFIG = {
-  maxHp: 30,
+  maxHp: 50,
   speed: 100,
-  contactDamage: 10,
+  contactDamage: 12,
   contactDistance: 28,
   collisionRadius: 12,
   contactDamageCooldownSeconds: 1,
 } as const;
 
 export const SHOOTER_CONFIG = {
-  maxHp: 20,
+  maxHp: 35,
   speed: 75,
   contactDamage: 6,
   contactDistance: 24,
@@ -29,14 +29,14 @@ export const SHOOTER_CONFIG = {
 
 export const SPLITTER_CONFIG = {
   large: {
-    maxHp: 40,
+    maxHp: 60,
     speed: 80,
     contactDamage: 12,
     contactDistance: 30,
     radius: 18,
   },
   small: {
-    maxHp: 10,
+    maxHp: 25,
     speed: 130,
     contactDamage: 6,
     contactDistance: 20,
@@ -47,8 +47,20 @@ export const SPLITTER_CONFIG = {
   splitOffset: 35,
 } as const;
 
+export const SHIELD_SENTINEL_CONFIG = {
+  maxHp: 80,
+  speed: 58,
+  contactDamage: 16,
+  contactDistance: 30,
+  collisionRadius: 24,
+  contactDamageCooldownSeconds: 0.8,
+  openingHalfAngle: Math.PI * 7 / 24,
+  ringRotationSpeed: 0.8,
+  shieldHitCapacity: 4,
+} as const;
+
 export const BASIC_ATTACK_CONFIG = {
-  damage: 10,
+  damage: 8,
   intervalSeconds: 1,
   range: 400,
   projectileSpeed: 600,
@@ -62,6 +74,14 @@ export const SPELL_DAMAGE_CONFIG = {
   waveRange: 500,
   waveBaseWidth: 120,
   waveHitDepth: 36,
+} as const;
+
+export const DIRECT_FORM_DAMAGE_MULTIPLIER = {
+  bolt: 1,
+  beam: 0.95,
+  wave: 0.6,
+  nova: 0.7,
+  slash: 0.8,
 } as const;
 
 /** 1차 공식: 밸런스보다 power가 실제 피해로 연결되는 구조를 우선 검증한다. */
@@ -94,7 +114,7 @@ export function spellPowerWithAffinity(power: number, affinityBonus: number): nu
 }
 
 export function spellHealFromPower(power: number): number {
-  return Math.max(1, Math.round(5 + power * 0.45));
+  return Math.max(1, Math.round(power * 0.5));
 }
 
 export function spellShieldFromPower(power: number): number {

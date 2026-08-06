@@ -1,35 +1,24 @@
 import Phaser from 'phaser';
 import type { CombatEnemy, EnemyShotRequest } from './combatEnemy';
 import { createSpriteLayers, setLayersRotation } from '../../render/spriteLayers';
+import { SHIELD_SENTINEL_CONFIG } from '../combat/combatConfig';
 
 const SENTINEL_COLOR = 0x557799;
 /** AI 스프라이트(코어만). 무채색으로 저장돼 있어 타입 색을 틴트로 입힌다. */
 const SENTINEL_SPRITE_KEY = 'enemy-shield-sentinel-core';
-
-const CONFIG = {
-  maxHp: 60,
-  speed: 58,
-  contactDamage: 16,
-  contactDistance: 30,
-  collisionRadius: 24,
-  contactDamageCooldownSeconds: 0.8,
-  openingHalfAngle: Math.PI * 7 / 24,
-  ringRotationSpeed: 0.8,
-  shieldHitCapacity: 4,
-} as const;
 
 /** Room C 전용 실드셋: 회전 실드의 열린 각도에서만 본체 피해를 받는다. */
 export class ShieldSentinelEnemy implements CombatEnemy {
   readonly kind = 'shield-sentinel' as const;
   readonly view: Phaser.GameObjects.Container;
   readonly maxHp: number;
-  readonly contactDamage = CONFIG.contactDamage;
-  readonly contactDistance = CONFIG.contactDistance;
-  readonly collisionRadius = CONFIG.collisionRadius;
+  readonly contactDamage = SHIELD_SENTINEL_CONFIG.contactDamage;
+  readonly contactDistance = SHIELD_SENTINEL_CONFIG.contactDistance;
+  readonly collisionRadius = SHIELD_SENTINEL_CONFIG.collisionRadius;
 
   hp: number;
   alive = true;
-  private shieldHitsRemaining: number = CONFIG.shieldHitCapacity;
+  private shieldHitsRemaining: number = SHIELD_SENTINEL_CONFIG.shieldHitCapacity;
   private contactDamageCooldownRemaining = 0;
   /** 재질+발광 두 겹 — 회전을 함께 받아야 하므로 묶어둔다. */
   private readonly bodyLayers: Array<Phaser.GameObjects.Rectangle | Phaser.GameObjects.Image>;
@@ -37,7 +26,7 @@ export class ShieldSentinelEnemy implements CombatEnemy {
   private readonly healthFill: Phaser.GameObjects.Rectangle;
 
   constructor(scene: Phaser.Scene, x: number, y: number, hpScale = 1) {
-    this.maxHp = Math.max(1, Math.round(CONFIG.maxHp * hpScale));
+    this.maxHp = Math.max(1, Math.round(SHIELD_SENTINEL_CONFIG.maxHp * hpScale));
     this.hp = this.maxHp;
     this.shieldRing = scene.add.graphics();
     this.drawShieldRing();
@@ -75,19 +64,19 @@ export class ShieldSentinelEnemy implements CombatEnemy {
   ): EnemyShotRequest[] {
     if (!this.alive) return [];
     this.contactDamageCooldownRemaining = Math.max(0, this.contactDamageCooldownRemaining - deltaSeconds);
-    this.shieldRing.rotation += CONFIG.ringRotationSpeed * deltaSeconds;
+    this.shieldRing.rotation += SHIELD_SENTINEL_CONFIG.ringRotationSpeed * deltaSeconds;
     const direction = new Phaser.Math.Vector2(targetX - this.x, targetY - this.y);
     if (direction.lengthSq() === 0) return [];
     direction.normalize();
     const multiplier = Number.isFinite(movementMultiplier) ? Math.max(0, movementMultiplier) : 1;
-    this.view.x += direction.x * CONFIG.speed * deltaSeconds * multiplier;
-    this.view.y += direction.y * CONFIG.speed * deltaSeconds * multiplier;
+    this.view.x += direction.x * SHIELD_SENTINEL_CONFIG.speed * deltaSeconds * multiplier;
+    this.view.y += direction.y * SHIELD_SENTINEL_CONFIG.speed * deltaSeconds * multiplier;
     setLayersRotation(this.bodyLayers, direction.angle());
     return [];
   }
 
   startContactDamageCooldown(): void {
-    this.contactDamageCooldownRemaining = CONFIG.contactDamageCooldownSeconds;
+    this.contactDamageCooldownRemaining = SHIELD_SENTINEL_CONFIG.contactDamageCooldownSeconds;
   }
 
   takeMechanicDamage(
@@ -102,7 +91,7 @@ export class ShieldSentinelEnemy implements CombatEnemy {
     const incomingAngle = Phaser.Math.Angle.Between(this.x, this.y, sourceX, sourceY);
     const openingAngle = Phaser.Math.Angle.Wrap(this.shieldRing.rotation - Math.PI / 2);
     const entersOpening = Math.abs(Phaser.Math.Angle.Wrap(incomingAngle - openingAngle))
-      <= CONFIG.openingHalfAngle;
+      <= SHIELD_SENTINEL_CONFIG.openingHalfAngle;
     if (!entersOpening) {
       this.shieldHitsRemaining = Math.max(0, this.shieldHitsRemaining - 1);
       this.drawShieldRing();
@@ -131,14 +120,14 @@ export class ShieldSentinelEnemy implements CombatEnemy {
   private drawShieldRing(): void {
     this.shieldRing.clear();
     if (!this.shieldIsActive) return;
-    const integrity = this.shieldHitsRemaining / CONFIG.shieldHitCapacity;
+    const integrity = this.shieldHitsRemaining / SHIELD_SENTINEL_CONFIG.shieldHitCapacity;
     this.shieldRing.lineStyle(5, 0x66d9ff, 0.35 + integrity * 0.55);
     this.shieldRing.beginPath();
     this.shieldRing.arc(0, 0, 31, -Math.PI * 5 / 24, Math.PI * 29 / 24, false);
     this.shieldRing.strokePath();
     // 내구도가 줄수록 방패 면에 균열 간격을 만든다. 회전하는 실드라는 정보는 유지한다.
-    for (let i = this.shieldHitsRemaining; i < CONFIG.shieldHitCapacity; i++) {
-      const angle = -Math.PI * 5 / 24 + (i + 0.65) * (Math.PI * 34 / 24 / CONFIG.shieldHitCapacity);
+    for (let i = this.shieldHitsRemaining; i < SHIELD_SENTINEL_CONFIG.shieldHitCapacity; i++) {
+      const angle = -Math.PI * 5 / 24 + (i + 0.65) * (Math.PI * 34 / 24 / SHIELD_SENTINEL_CONFIG.shieldHitCapacity);
       const inner = 24;
       const outer = 36;
       this.shieldRing.lineStyle(2, 0xe1f7ff, 0.8);

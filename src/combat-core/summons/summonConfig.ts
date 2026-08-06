@@ -5,7 +5,7 @@ export const SUMMON_CONFIG = {
   maximumDurationSeconds: 10,
   baseDurationSeconds: 4,
   durationSecondsPerPower: 0.06,
-  damagePowerMultiplier: 0.3,
+  damagePowerMultiplier: 0.6,
   attackIntervalSeconds: 1.2,
   attackRange: 400,
   projectileSpeed: 500,
@@ -40,9 +40,9 @@ export interface SummonGroupPlan {
 }
 
 const SUMMON_PLANS: Record<SummonKind, Omit<SummonGroupPlan, 'kind'>> = {
-  clone: { count: 1, stationary: false, orbitRadius: 40, attackIntervalScale: 0.6, damageScale: 1, label: '분신' },
-  swarm: { count: 3, stationary: false, orbitRadius: 56, attackIntervalScale: 1, damageScale: 0.5, label: '군체' },
-  turret: { count: 1, stationary: true, orbitRadius: 0, attackIntervalScale: 1, damageScale: 1.3, label: '포탑' },
+  clone: { count: 1, stationary: false, orbitRadius: 40, attackIntervalScale: 0.6, damageScale: 2 / 3, label: '분신' },
+  swarm: { count: 3, stationary: false, orbitRadius: 56, attackIntervalScale: 1, damageScale: 1 / 9, label: '군체' },
+  turret: { count: 1, stationary: true, orbitRadius: 0, attackIntervalScale: 1, damageScale: 17 / 12, label: '포탑' },
   orb: { count: 1, stationary: false, orbitRadius: SUMMON_CONFIG.orbitRadius, attackIntervalScale: 1, damageScale: 1, label: '소환' },
 };
 

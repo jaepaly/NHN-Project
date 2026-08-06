@@ -4,15 +4,23 @@
  * ※ 내성 프로필·피해 배율 계산은 R2 계약(test:boss)이 검증 — 여기서는 적용 수치와 런 흐름만.
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { BOSS_CONFIG } from '../src/combat-core/boss/bossConfig';
 import { RESISTANCE } from '../src/spell/bossMemory';
 import { PlayerCombatState, PLAYER_COMBAT_CONFIG } from '../src/combat-core/player/playerCombatState';
 import { CombatRunController } from '../src/combat-core/run/runController';
 import { RUN_REWARD_CONFIG } from '../src/combat-core/run/rewardConfig';
 import { BossPatternController } from '../src/combat-core/boss/bossPatternController';
+import { BOSS_ARCANA_CONFIG } from '../src/combat-core/boss/bossArcana';
 
 // ① 장기(부분) 내성 수치 게이트 — 단기 내성(R2)보다 약하고, 무효(1)보다는 강해야 한다
 {
+  assert.equal(BOSS_CONFIG.stageMaxHp, 520);
+  assert.equal(BOSS_CONFIG.memoryMaxHp, 1150);
+  assert.equal(BOSS_CONFIG.contactDamage, 21);
+  assert.equal(BOSS_CONFIG.volleyProjectileDamage, 9);
+  assert.equal(BOSS_CONFIG.hazardDamage, 10);
+  assert.equal(BOSS_ARCANA_CONFIG.damageScale, 0.33);
   assert.ok(
     BOSS_CONFIG.longTermResistMultiplier > RESISTANCE.multiplier,
     '장기 부분 내성은 단기 내성보다 약해야 함 (배수가 더 커야 함)',
@@ -20,6 +28,15 @@ import { BossPatternController } from '../src/combat-core/boss/bossPatternContro
   assert.ok(BOSS_CONFIG.longTermResistMultiplier < 1, '장기 내성은 유효해야 함');
   assert.ok(BOSS_CONFIG.rushSpeedMultiplier > 1);
   assert.ok(BOSS_CONFIG.rangedVolleyIntervalMultiplier < 1);
+}
+
+// 보스 전용 피해는 일반 사수 탄환·일반 위험지대 수치를 오염시키지 않는다.
+{
+  const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+  assert.ok(scene.includes('damage: BOSS_CONFIG.volleyProjectileDamage'));
+  assert.ok(scene.includes('damage: BOSS_CONFIG.hazardDamage'));
+  assert.ok(scene.includes('request.damage ?? SHOOTER_CONFIG.bulletDamage'));
+  assert.ok(scene.includes('hazard.damage ?? 9'));
 }
 
 // ② 3방 런 흐름 — 방1·방2 클리어는 보상, 마지막(보스)방 클리어는 run-completed

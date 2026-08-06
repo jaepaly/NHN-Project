@@ -4,7 +4,7 @@ export const CHAIN_CONFIG = {
   initialRange: 420,
   jumpRadius: 380,
   maxAdditionalJumps: 3,
-  damageMultipliers: [1, 0.75, 0.55, 0.4] as readonly number[],
+  damageMultipliers: [0.6, 0.5, 0.4, 0.3] as readonly number[],
   segmentDelayMs: 90,
 } as const;
 

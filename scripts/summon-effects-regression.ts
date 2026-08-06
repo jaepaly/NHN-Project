@@ -13,11 +13,11 @@ assert.deepEqual(summonStatsFromPower(-10), {
 });
 assert.deepEqual(summonStatsFromPower(50), {
   durationSeconds: 7,
-  damage: 15,
+  damage: 30,
 });
 assert.deepEqual(summonStatsFromPower(100), {
   durationSeconds: 10,
-  damage: 30,
+  damage: 60,
 });
 
 // 2) 대상이 있으면 생성 직후 첫 자동 공격을 요청한다.

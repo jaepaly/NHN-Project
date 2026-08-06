@@ -51,13 +51,13 @@ export const ENCOUNTER_PRESETS: Readonly<Record<string, EncounterPreset>> = {
   't1-a': { id: 't1-a', tier: 1, waves: [wave(4, 0), wave(4, 1)], elitePlan: [plan(3, 1, 0), plan(3, 1, 1, shooterGuard)] },
   't1-b': { id: 't1-b', tier: 1, waves: [wave(3, 1), wave(3, 2)], elitePlan: [plan(3, 1, 0), plan(2, 2, 1, shooterGuard)] },
   't1-c': { id: 't1-c', tier: 1, waves: [wave(3, 0), wave(2, 1), wave(2, 1)], elitePlan: [plan(3, 0, 0), plan(2, 1, 0), plan(1, 1, 1, shooterGuard)] },
-  't2-a': { id: 't2-a', tier: 2, waves: [wave(3, 1), wave(4, 2)], elitePlan: [plan(2, 1, 1, chaserSwiftShooterGuard), plan(3, 2, 1, chaserSwiftShooterGuard)] },
-  // 분열체의 소형 자식까지 포함하면 실질 처치 대상은 10체다.
-  't2-b': { id: 't2-b', tier: 2, waves: [wave(2, 1, 1), wave(3, 1)], elitePlan: [plan(2, 2, 0), plan(2, 2, 0)] },
-  't2-c': { id: 't2-c', tier: 2, waves: [wave(3, 2), wave(4, 1)], elitePlan: [plan(2, 2, 1, shooterGuard), plan(2, 2, 1, shooterGuard)] },
-  't3-a': { id: 't3-a', tier: 3, waves: [wave(3, 2), wave(3, 2, 0, 1)], elitePlan: [plan(2, 2, 1, shooterGuard), plan(3, 3, 0)] },
-  't3-b': { id: 't3-b', tier: 3, waves: [wave(3, 1), wave(1, 0, 1), wave(1, 1, 0, 1)], elitePlan: [plan(2, 1, 1, shooterGuard), plan(1, 1, 0), plan(2, 1, 0)] },
-  't3-c': { id: 't3-c', tier: 3, waves: [wave(2, 2), wave(3, 2, 1)], elitePlan: [plan(2, 1, 1, shooterGuard), plan(3, 2, 1, shooterGuard)] },
+  't2-a': { id: 't2-a', tier: 2, waves: [wave(3, 1, 1), wave(3, 2)], elitePlan: [plan(3, 1, 1, chaserSwiftShooterGuard), plan(2, 2, 1, chaserSwiftShooterGuard)] },
+  // T2는 분열 후 소형 자식까지 포함해 프리셋별 실질 처치 대상을 12체로 맞춘다.
+  't2-b': { id: 't2-b', tier: 2, waves: [wave(3, 1, 1), wave(4, 1)], elitePlan: [plan(3, 2, 0), plan(3, 2, 0)] },
+  't2-c': { id: 't2-c', tier: 2, waves: [wave(3, 2), wave(3, 1, 1)], elitePlan: [plan(2, 2, 1, shooterGuard), plan(2, 2, 1, shooterGuard)] },
+  't3-a': { id: 't3-a', tier: 3, waves: [wave(3, 2), wave(5, 2, 0, 1)], elitePlan: [plan(2, 2, 1, shooterGuard), plan(6, 2, 0)] },
+  't3-b': { id: 't3-b', tier: 3, waves: [wave(3, 1), wave(3, 0, 1), wave(1, 1, 0, 1)], elitePlan: [plan(2, 1, 1, shooterGuard), plan(3, 1, 0), plan(2, 1, 0)] },
+  't3-c': { id: 't3-c', tier: 3, waves: [wave(2, 2), wave(3, 2, 2)], elitePlan: [plan(2, 1, 1, shooterGuard), plan(3, 3, 1, shooterGuard)] },
 } as const;
 
 export const PRESET_IDS_BY_TIER: Readonly<Record<EncounterTier, readonly string[]>> = {

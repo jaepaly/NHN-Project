@@ -15,7 +15,7 @@ import { SPELL_DAMAGE_CONFIG } from '../combat/combatConfig';
  */
 export const BOSS_ARCANA_CONFIG = {
   /** 원소 마법 피해 배수 — 미러(0.35)보다 약간 약하게. 일상 패턴이지 필살기가 아니다 */
-  damageScale: 0.3,
+  damageScale: 0.33,
   /** 원소 마법 예고(초) — 가벼운 패턴이라 미러(1.1s)보다 짧다 */
   castTelegraphSeconds: 1.1,
   /**

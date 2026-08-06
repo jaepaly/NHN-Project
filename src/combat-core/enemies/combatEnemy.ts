@@ -15,6 +15,7 @@ export interface EnemyShotRequest {
   y: number;
   angle: number;
   speedMultiplier?: number;
+  damage?: number;
 }
 
 export interface EnemyDestroyOptions {

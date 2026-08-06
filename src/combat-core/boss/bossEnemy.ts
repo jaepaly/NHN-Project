@@ -55,7 +55,11 @@ export class BossEnemy implements CombatEnemy {
     private readonly profile: BossProfile = 'legacy',
     hpScale = 1,
   ) {
-    const base = profile === 'stage' ? 520 : profile === 'memory' ? 680 : BOSS_CONFIG.maxHp;
+    const base = profile === 'stage'
+      ? BOSS_CONFIG.stageMaxHp
+      : profile === 'memory'
+        ? BOSS_CONFIG.memoryMaxHp
+        : BOSS_CONFIG.maxHp;
     // 보스는 이어가기마다 내성이 누적되므로(#77) 체력 배율은 절반만 받는다 —
     // 호출측이 loopHpScale(loop, true)로 이미 반영해 넘긴다.
     this.maxHp = Math.max(1, Math.round(base * hpScale));
