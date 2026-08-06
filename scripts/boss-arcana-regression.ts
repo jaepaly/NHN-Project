@@ -106,6 +106,8 @@ import { FORMS, ELEMENTS } from '../src/spell/types';
     ["case 'mirror':", '패턴 스위치에 미러 재발동 케이스 없음'],
     ['this.queueMirrorCast(boss, true)', '미러 재발동이 force 없이 불림 — 1회 제한에 막힘'],
     ['this.updateBossArcana(d)', '비전 마법 타이머가 스케일 델타로 돌지 않음'],
+    ['this.audio.playBossIncantEnter()', '비전 마법 공격범위 예고 시 영창 진입음이 없음'],
+    ['this.audio.playBossElementCast(pending.spec.element_primary)', '비전 마법 실제 발사 시 원소 시전음이 없음'],
     ['bossArcanaTelegraphRadius(spec)', '비전 마법이 실제 범위를 반영한 낙성 예고를 쓰지 않음'],
     ['this.clearBossArcana()', '방 전환 시 장막·흡인·예고가 남는다'],
     ['|| this.blackoutCurseField', '암전 저주 방에서 장막이 겹쳐 아무것도 안 보이게 됨'],
