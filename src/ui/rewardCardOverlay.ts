@@ -79,6 +79,9 @@ ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .reward-detail-panel {
   display: none; margin: 14px auto 16px; max-width: 590px; min-height: 104px;
   padding: 15px 19px; box-sizing: border-box; text-align: left;
+  /* 높이는 열릴 때 실측해 잠근다(lockDetailPanelHeight). 여긴 그 계산이 늦거나 어긋난
+     순간에 글이 잘리지 않게 하는 최후 방어선일 뿐이다. */
+  overflow-y: auto;
   border: 1px solid color-mix(in srgb, ${UI_COLOR.accent} 52%, ${UI_COLOR.border});
   border-radius: 9px; background: rgba(11, 9, 18, 0.86);
   box-shadow: inset 0 0 28px rgba(94, 111, 225, 0.08), 0 8px 22px rgba(0, 0, 0, 0.28);
@@ -422,7 +425,39 @@ export function showRewardCards(
 
   return new Promise<RewardOption>((resolve) => {
     let focusIdx = 0;
+    let detailPanelLocked = false;
     const buttons: HTMLButtonElement[] = [];
+
+    /**
+     * 상세 패널 높이를 **이 화면에 실제로 뜰 글 중 가장 큰 것**에 맞춰 잠근다.
+     *
+     * 총괄 지적: *"설명 양이 많고 작은지에 따라 박스 크기가 달라져서 선택지 칸이 움직임."*
+     * 패널은 카드 **위**에 있어서, 높이가 줄면 카드가 통째로 위로 올라온다. 카드를 눈으로
+     * 훑는 동안 카드가 계속 움직이면 읽기도 어렵고, 마우스로 고르는 중이면 **커서 아래 카드가
+     * 바뀐다** — 오선택으로 이어진다.
+     *
+     * 고정 픽셀을 박지 않은 이유: 같은 글도 창 폭에 따라 줄 수가 달라진다. 좁은 창에서는
+     * 넘치고 넓은 창에서는 빈 공간이 남는다. 그래서 숫자를 정하지 않고 **직접 재서** 가장
+     * 큰 값을 쓴다. 세 장뿐이라 비용도 없고, 폭이나 글이 바뀌어도 저절로 맞는다.
+     */
+    const lockDetailPanelHeight = (): void => {
+      if (!framing.detailPanelFor) return;
+      const details = shown.map((option) => framing.detailPanelFor!(option));
+      if (details.every((detail) => detail === null)) return;
+      // display:none이면 잴 수 없다. 재는 동안만 펴 두고, 실제 표시는 setFocus가 정한다.
+      detailPanel.style.height = 'auto';
+      detailPanel.classList.add('active');
+      let tallest = 0;
+      shown.forEach((option, i) => {
+        if (details[i] === null) return;
+        detailPanelTitle.textContent = option.title;
+        detailPanelCopy.textContent = details[i]!;
+        tallest = Math.max(tallest, detailPanel.getBoundingClientRect().height);
+      });
+      if (tallest <= 0) return;
+      detailPanel.style.height = `${Math.ceil(tallest)}px`;
+      detailPanelLocked = true;
+    };
 
     const isDisabled = (idx: number): boolean => Boolean(framing.disabledFor?.(shown[idx]));
     const finish = (idx: number): void => {
@@ -439,7 +474,9 @@ export function showRewardCards(
       focusIdx = candidate;
       buttons.forEach((b, i) => b.classList.toggle('focused', i === focusIdx));
       const detail = framing.detailPanelFor?.(shown[focusIdx]) ?? null;
-      detailPanel.classList.toggle('active', detail !== null);
+      // 한 장이라도 설명이 있으면 패널을 **계속** 띄운다. 설명 없는 카드에서만 접으면
+      // 그 카드로 옮길 때 패널이 사라져 카드가 통째로 밀려 올라간다 (총괄 지적).
+      detailPanel.classList.toggle('active', detailPanelLocked || detail !== null);
       detailPanelTitle.textContent = detail ? shown[focusIdx].title : '';
       detailPanelCopy.textContent = detail ?? '';
       buttons[focusIdx].focus({ preventScroll: true });
@@ -527,8 +564,17 @@ export function showRewardCards(
     };
     window.addEventListener('keydown', onKeyDown, true);
 
+    // 창 크기가 바뀌면 줄 수가 달라져 잠근 높이가 틀린다 — 다시 잰다. 안 하면 좁아졌을 때
+    // 글이 잘린다(CSS의 overflow-y: auto가 최후 방어선이지만, 스크롤은 답이 아니다).
+    const onResize = (): void => {
+      lockDetailPanelHeight();
+      setFocus(focusIdx);
+    };
+    window.addEventListener('resize', onResize);
+
     const cleanup = (): void => {
       window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('resize', onResize);
       wrap.classList.remove('active');
       activeCleanup = null;
       // 페이드아웃 후 내용 제거
@@ -542,6 +588,9 @@ export function showRewardCards(
       if (activated) return;
       activated = true;
       wrap.classList.add('active');
+      // 카드가 다 붙고 wrap이 펴진 뒤라야 실제 폭으로 잴 수 있다. setFocus보다 먼저 —
+      // 첫 카드를 그린 뒤에 높이를 잡으면 그 한 번이 눈에 보이는 흔들림이 된다.
+      lockDetailPanelHeight();
       setFocus(0);
     };
     requestAnimationFrame(activate);

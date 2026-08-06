@@ -55,6 +55,25 @@ check('씬 보상 화면에 사전 연결', (scene.match(/detailPanelFor: reward
 // 연구 주제 카드는 자기 설명을 쓴다 — 사전으로 덮으면 주제 설명이 사라진다.
 check('연구 카드는 자기 detailPanelFor 유지', scene.includes('detailPanelFor: (option) => {'));
 
+// ── 2-b. 패널 높이가 잠겨 있다 ───────────────────────────────────────────────
+// 설명 길이가 카드마다 달라 패널 높이가 변하면, 패널이 카드 **위**에 있으므로 카드가
+// 통째로 움직인다. 마우스로 고르는 중이면 커서 아래 카드가 바뀌어 오선택이 된다.
+check('높이 잠금 함수 존재', overlay.includes('const lockDetailPanelHeight'));
+check('첫 표시 전에 잠근다',
+  /lockDetailPanelHeight\(\);\s*\n\s*setFocus\(0\);/.test(overlay),
+  'setFocus(0) 직전에 호출돼야 한다 — 뒤면 첫 프레임이 흔들린다');
+check('한 장이라도 설명이 있으면 계속 띄운다',
+  overlay.includes("detailPanel.classList.toggle('active', detailPanelLocked || detail !== null)"));
+check('창 크기 변경 시 다시 잰다', overlay.includes("window.addEventListener('resize', onResize)"));
+check('resize 리스너를 정리한다', overlay.includes("window.removeEventListener('resize', onResize)"));
+// 고정 픽셀을 박으면 창 폭에 따라 넘치거나 남는다 — 실측만 허용한다.
+const lockBlock = overlay.slice(
+  overlay.indexOf('const lockDetailPanelHeight'),
+  overlay.indexOf('const isDisabled'),
+);
+check('높이를 실측으로 정한다', lockBlock.includes('getBoundingClientRect().height'));
+check('상한 방어선(overflow-y)', overlay.includes('overflow-y: auto;'));
+
 // ── 3. 카드 문구가 구현과 맞는다 ─────────────────────────────────────────────
 const altar = read('src/combat-core/run/altarOffer.ts');
 const trailBursts = /for \(let i = 1; i <= (\d+); i \+= 1\) \{\s*const t = i \/ 6;/.exec(scene);
