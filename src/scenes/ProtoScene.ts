@@ -993,6 +993,7 @@ export class ProtoScene extends Phaser.Scene {
   private eliteModifierAssignments: EliteModifier[] = [];
   private eliteSpawnIndex = 0;
   private incantWrap!: HTMLElement;
+  private incantKicker!: HTMLElement;
   private incantBar!: HTMLInputElement;
   private incantState!: HTMLElement;
   private incantCount!: HTMLElement;
@@ -1001,6 +1002,7 @@ export class ProtoScene extends Phaser.Scene {
   /** 대역 칩 컨테이너 (속삭임·영창·외침) — incantBands 모델로 채운다 */
   private incantBands!: HTMLElement;
   private incantGuideEl!: HTMLElement;
+  private incantUltimateResonance!: HTMLElement;
   /**
    * 영창 창 안에 띄울 첫 영창 안내 (총괄 지적: 영창하면 화면이 흐려져 배너가 안 읽힌다).
    * 배너는 캔버스에 그려지는데 영창 창은 그 위를 덮는 DOM이라 어둠·블러가 통째로 걸린다.
@@ -5960,6 +5962,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   // ── 영창 모드 (DOM 입력 바 + 슬로모션) ───────────────────────
   private setupIncantBar(): void {
     this.incantWrap = document.getElementById('incant-wrap')!;
+    this.incantKicker = document.getElementById('incant-kicker')!;
     this.incantBar = document.getElementById('incant-bar') as HTMLInputElement;
     this.incantState = document.getElementById('incant-state')!;
     this.incantCount = document.getElementById('incant-count')!;
@@ -5967,6 +5970,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.incantChargeLabel = document.getElementById('incant-charge-label')!;
     this.incantBands = document.getElementById('incant-bands')!;
     this.incantGuideEl = document.getElementById('incant-guide')!;
+    this.incantUltimateResonance = document.getElementById('incant-ultimate-resonance')!;
 
     // 재진입 대비 — 같은 참조를 제거 후 등록해 누적을 차단한다 (#216 P0 겹시전).
     // 첫 호출에선 remove가 no-op이라 안전하고, 몇 번 들어와도 리스너는 정확히 1쌍이다.
@@ -6093,6 +6097,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.input.keyboard!.disableGlobalCapture();
     this.incantWrap.classList.add('active');
     this.incantWrap.classList.remove('judging');
+    this.incantWrap.classList.toggle('ultimate', castMode === 'ultimate');
     this.incantWrap.classList.toggle(
       'word-limit',
       this.activeRoomCurse?.kind === 'word-limit',
@@ -6101,8 +6106,16 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.incantBar.disabled = false;
     this.incantBar.value = '';
     // 온보딩: 열 때마다 예시 문장을 순환해 "이렇게 쓰면 된다"를 보여준다
-    this.incantBar.placeholder = onboardingPlaceholderAt(this.incantOpenCount);
+    this.incantKicker.textContent = castMode === 'ultimate' ? 'ULTIMATE INCANTATION' : 'INCANTATION LINK';
+    this.incantBar.placeholder = castMode === 'ultimate'
+      ? '필살영창을 선언하세요'
+      : onboardingPlaceholderAt(this.incantOpenCount);
     this.incantOpenCount += 1;
+    const resonance = this.fusionGauge.resonance;
+    const resonanceNames = resonance.recentNames.slice(-2);
+    this.incantUltimateResonance.textContent = resonanceNames.length > 0
+      ? `축적 공명 · ${resonanceNames.join(' · ')}`
+      : '축적 공명 · 이전 영창의 흐름을 이어 하나의 주문으로 완성합니다';
     // 위계: 마나(예산) → 입력 → 대역(선택지) → 조작 안내. 종전에는 요금표와 조작 안내가
     // 12px 회색 한 줄에 뭉쳐 있어 둘 다 안 읽혔다 — 이제 요금표는 대역 칩이 맡는다.
     this.incantHint.textContent = this.activeRoomCurse?.kind === 'word-limit'
@@ -6112,7 +6125,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         : this.fusionGauge.ready
           ? 'Enter 발동 · Shift+Enter로 필살영창 진입 · Esc 취소'
           : 'Enter 발동 · Esc 취소';
-    this.incantChargeLabel.textContent = '시간 흐름 10%';
+    this.incantChargeLabel.textContent = castMode === 'ultimate'
+      ? '공명 해방 준비'
+      : '시간 흐름 10%';
     this.renderIncantGuide();
     this.updateIncantCharge();
     this.focusIncantBar();
@@ -6139,6 +6154,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       'word-limit-over',
       'word-limit-blocked',
       'mana-dry',
+      'ultimate',
     );
     this.incantWrap.setAttribute('aria-hidden', 'true');
     this.incantBar.disabled = false;
@@ -6148,10 +6164,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private updateIncantCharge(): void {
     // 마나는 두 경로 공통 — 금언 방에서도 예산은 마나다 (금언은 그 위에 얹힌 제약)
     this.incantState.textContent = this.incantCastMode === 'ultimate'
-      ? '필살영창 · 준비 완료'
+      ? '출력 100'
       : `마나 ${Math.floor(this.playerState.mana)}`;
     this.incantWrap.classList.toggle(
-      'mana-dry', reachableBand(Math.floor(this.playerState.mana)) === null,
+      'mana-dry', this.incantCastMode !== 'ultimate' && reachableBand(Math.floor(this.playerState.mana)) === null,
     );
     if (this.activeRoomCurse?.kind === 'word-limit') {
       const cost = wordLimitCost(this.incantBar.value);
@@ -6297,6 +6313,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       'word-limit-over',
       'word-limit-blocked',
       'mana-dry',
+      'ultimate',
     );
     this.incantWrap.setAttribute('aria-hidden', 'true');
     this.incantBar.disabled = false;
