@@ -3560,3 +3560,10 @@
 - PR 상태 재확인에서 기능 회귀가 아니라 `test:uipalette`의 하드코딩 색상 예산 초과를 확인했다. 새 방 아이콘과 경로 선택 지표의 팔레트를 `UI_ROOM` 공용 토큰으로 이동해 UI 색상 단일 출처를 유지했다.
 - 팔레트 예산 교정 후 노출된 마도서 재질 규칙에 맞춰 선택 노드·단계 탭의 균일한 네온 글로우를 아래 방향 그림자로 교정했다. 미니맵의 방 종류, 위험·보상 수치 및 선택 동작 계약은 변경하지 않았다.
 - `test:uipalette` 10군과 전체 회귀 106종이 모두 통과했다. 별도 `tsc --noEmit`, production build와 `git diff --check`도 통과했다.
+
+# [R1] 필살 게이지 오소비·판정 후 이동키 유실 수정 (2026-08-07)
+
+- 브랜치: `codex/fix-cast-input-glitches`. MockJudge 단일 `SpellSpec` 경로에서 만충 게이지와 보조 원소가 만나면 일반 Enter 영창도 구형 `FusionGauge.tryRelease()`가 필살 방출로 격상해 게이지를 소모하던 원인을 확인했다. Gemini가 주로 `SpellPlan`을 반환하는 현재 계약과 달리 Mock 단일 경로에서만 쉽게 재현되던 이유다.
+- 구형 자동 융합 방출과 전용 단일 주문 연출을 제거했다. 이제 게이지는 일반 영창으로 충전되며, Shift+Enter로 필살영창에 진입하고 검증된 `castMode='ultimate'` plan이 실행될 때 `consumeUltimate()`에서만 소비된다. 일반·Mock 단일 영창의 원소 수와 판정 형태는 소비 조건이 아니다. 메타 진행 설계 문서도 이 단일 계약으로 갱신했다.
+- 판정 시작의 `resetMovementKeys()`가 Phaser의 `isDown`을 강제로 지운 뒤, DOM 입력 전환에서 브라우저가 이미 누른 WASD의 새 keydown을 Phaser에 전달하지 않으면 키를 놓았다 다시 누를 때까지 이동이 끊겼다. window capture 단계에서 실제 WASD keydown/keyup을 별도 추적하고 이동 판정에서 Phaser 상태와 합성했으며, 판정 시작에서는 이동 상태를 지우지 않는다. 영창창 진입·일시정지·방 전환·scene 종료의 명시적 초기화는 유지한다.
+- 검증: 신규 `test:physical-movement`, 개편 `test:fusion`, 기존 `test:slowmoscope`, `test:sequence`, `test:judge-fallback`, `test:emptyroomfusionvfx`가 통과했다. 전체 회귀 110종과 TypeScript/Vite production build, `git diff --check`도 통과했다. 이후 사용자가 인게임에서 두 글리치가 수정된 상태를 확인했다. 외부 Gemini 직접 호출은 수행하지 않았다.
