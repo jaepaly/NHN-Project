@@ -122,14 +122,15 @@ import {
   affinityLabelY,
   affinityPanelGeometry,
 } from '../ui/combatHudLayout';
-import { drawGrimoirePanel, drawSectionRule, drawTitleSigil } from '../render/grimoireFrame';
+import { drawGrimoirePanel, drawSectionRule } from '../render/grimoireFrame';
 import type { GameSettings, SettingKey } from '../run/gameSettings';
 import {
   DEFAULT_SETTINGS,
   loadSettings,
   saveSettings,
-  SETTINGS_CONFIG,
   settingDisplay,
+  settingRange,
+  settingValueFromRatio,
 } from '../run/gameSettings';
 import { setVfxBrightness } from '../render/vfxBrightness';
 import { degradedCastPlan } from '../combat-core/mana/degradedCast';
@@ -497,7 +498,7 @@ function spiritMotionPhase(spiritId: string): number {
 
 type PauseTabId = 'build' | 'research' | 'map' | 'settings';
 
-type PauseBuildCategory = 'legacy' | 'engrave' | 'spirit' | 'altar' | 'resonance';
+type PauseBuildCategory = 'engrave' | 'spirit' | 'altar' | 'resonance';
 
 interface PauseBuildCategoryRow {
   id: PauseBuildCategory;
@@ -516,7 +517,6 @@ interface PauseRow {
   id: PauseTabId;
   label: string;
 }
-
 /**
  * 일시정지 메뉴는 한 장이다. 설정도 이 패널 안에서 바로 조절한다 —
  * 같은 기능이 화면마다 다르게 생기면 안 된다(총괄 지적). 깊이 배치로 빌드 칩을
@@ -530,7 +530,7 @@ const PAUSE_LAYOUT = {
   height: 410,
   navWidth: 184,
   titleY: 112,
-  firstY: 164,
+  firstY: 132,
   rowGap: 44,
   contentPad: 28,
 } as const;
@@ -539,13 +539,31 @@ const PAUSE_LAYOUT = {
 const PAUSE_MAP = { top: 132, scale: 1.7, depth: 108 } as const;
 
 const PAUSE_BUILD_CATEGORIES: readonly PauseBuildCategoryRow[] = [
-  { id: 'legacy', label: '시작 유산' },
   { id: 'engrave', label: '주문 각인' },
   { id: 'spirit', label: '계약 정령' },
   { id: 'altar', label: '제단 / 각성' },
   { id: 'resonance', label: '획득한 공명' },
 ];
 
+/** 상태/빌드 분류 탭의 테두리와 입력 영역은 반드시 같은 사각형을 공유한다. */
+const PAUSE_BUILD_TAB = {
+  y: PAUSE_LAYOUT.titleY + 27,
+  height: 23,
+  gap: 8,
+} as const;
+
+function pauseBuildTabFrame(index: number): { x: number; y: number; width: number; height: number } {
+  const contentX = PAUSE_LAYOUT.x + PAUSE_LAYOUT.navWidth + PAUSE_LAYOUT.contentPad;
+  const contentWidth = PAUSE_LAYOUT.width - PAUSE_LAYOUT.navWidth - PAUSE_LAYOUT.contentPad * 2;
+  const width = (contentWidth - PAUSE_BUILD_TAB.gap * (PAUSE_BUILD_CATEGORIES.length - 1))
+    / PAUSE_BUILD_CATEGORIES.length;
+  return {
+    x: contentX + width / 2 + index * (width + PAUSE_BUILD_TAB.gap),
+    y: PAUSE_BUILD_TAB.y + PAUSE_BUILD_TAB.height / 2,
+    width,
+    height: PAUSE_BUILD_TAB.height,
+  };
+}
 const PAUSE_MAIN: readonly PauseRow[] = [
   { id: 'build', label: '상태 / 빌드' },
   { id: 'research', label: '연구' },
@@ -934,8 +952,6 @@ export class ProtoScene extends Phaser.Scene {
 
   private pauseMenuPlate!: Phaser.GameObjects.Graphics;
 
-  private pauseMenuTitle!: Phaser.GameObjects.Text;
-
   /** 선택한 ESC 탭의 제목·설명. 빌드 정보는 이 안에서만 보여 전투 HUD를 비운다. */
   private pauseContentPlate!: Phaser.GameObjects.Graphics;
 
@@ -950,11 +966,17 @@ export class ProtoScene extends Phaser.Scene {
 
   private pauseBuildCategoryItems: Phaser.GameObjects.Text[] = [];
 
+  /** 상태/빌드 분류의 보이는 탭과 정확히 같은 클릭 영역. */
+  private pauseBuildCategoryZones: Phaser.GameObjects.Zone[] = [];
+
   private pauseBuildCardTexts: Phaser.GameObjects.Text[] = [];
+
+  /** 상태/빌드 카드의 속성색 아이콘. 주문 도감과 같은 읽기 순서를 만든다. */
+  private pauseBuildCardGlyphs: Phaser.GameObjects.Text[] = [];
 
   private pauseBuildCardZones: Phaser.GameObjects.Zone[] = [];
 
-  private pauseBuildCategory: PauseBuildCategory = 'legacy';
+  private pauseBuildCategory: PauseBuildCategory = 'engrave';
 
   private pauseBuildSelectedByCategory: Partial<Record<PauseBuildCategory, string>> = {};
 
@@ -966,6 +988,12 @@ export class ProtoScene extends Phaser.Scene {
   private pauseSettingsValueTexts: Phaser.GameObjects.Text[] = [];
 
   private pauseSettingsSliders: Phaser.GameObjects.Zone[] = [];
+
+  /** 설정 슬라이더를 누른 뒤 포인터가 움직이는 동안 유지하는 드래그 대상. */
+  private pauseSettingDragKey: SettingKey | null = null;
+
+  /** 슬라이더를 잡은 뒤 캔버스 밖까지 포인터를 받기 위한 pointer capture 식별자. */
+  private pauseSettingPointerId: number | null = null;
 
   private pauseSettingsMuteButton!: Phaser.GameObjects.Text;
 
@@ -980,9 +1008,6 @@ export class ProtoScene extends Phaser.Scene {
   private pauseQuitButton!: Phaser.GameObjects.Text;
 
   private pauseMenuIndex = 0;
-
-  /** 이번 런 시작에서 실제로 꺼낸 유산. 방 보상과 달리 컨트롤러 보상 배열에 없다. */
-  private startingLegacyReward: RewardOption | null = null;
 
   /** 나가기 오확인 방지 — 한 번 더 눌러야 확정된다 (런이 사라지는 되돌릴 수 없는 선택) */
   private quitArmed = false;
@@ -2671,9 +2696,8 @@ export class ProtoScene extends Phaser.Scene {
         this.engraveManager.rememberManualCast(entry.normalized, specFromEntry(entry));
         const engraved = this.engraveManager.applyReward(chosen);
         if (engraved) {
-          // 유산은 방 보상 선택이 아니라 런 시작 선택이라 컨트롤러의 rewards에 없다.
-          // 상태/빌드 탭에서 누락되지 않도록 실제로 장착된 경우에만 따로 보관한다.
-          this.startingLegacyReward = chosen;
+          // 유산의 시작 주문은 주문 각인 Lv1로 바로 기록된다.
+          // 별도 상태/빌드 분류를 만들지 않아도 각인 탭에서 확인할 수 있다.
           this.announceSystemMessage(`유산 각인 — 『${engraved.spell.name}』`, '#ffd166', 2800);
         }
       }
@@ -2816,7 +2840,6 @@ export class ProtoScene extends Phaser.Scene {
     // 각성도 비운다 — 종전엔 "친화를 유지하니 각성도 유지"였는데, 이제 계승 친화가
     // 상한 0.6이라 각성 임계(1.2) 아래다. 무한 재각성 파밍 우려가 사라졌다.
     this.awakenings = {};
-    this.startingLegacyReward = null;
     this.engraveManager.reset();
     this.spiritManager.reset();
     this.clearSpiritViews();
@@ -2881,7 +2904,6 @@ export class ProtoScene extends Phaser.Scene {
     this.clearDamageNumbers();
     this.shockCooldowns.clear();
     this.awakenings = {};
-    this.startingLegacyReward = null;
     this.echoUnlocked = false;
     this.starburstUnlocked = false;
     this.meteorUnlocked = false;
@@ -2922,7 +2944,6 @@ export class ProtoScene extends Phaser.Scene {
     this.clearDamageNumbers();
     this.shockCooldowns.clear();
     this.awakenings = {};
-    this.startingLegacyReward = null;
     this.echoUnlocked = false;
     this.starburstUnlocked = false;
     this.meteorUnlocked = false;
@@ -8437,14 +8458,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     this.pauseMenuPlate = this.add.graphics().setScrollFactor(0).setDepth(105).setVisible(false);
     this.pauseContentPlate = this.add.graphics().setScrollFactor(0).setDepth(106).setVisible(false);
-    this.pauseMenuTitle = this.add.text(PAUSE_LAYOUT.x + 28, PAUSE_LAYOUT.titleY, '일시정지', {
-      fontFamily: '"Noto Serif KR", Georgia, serif',
-      fontSize: '24px',
-      fontStyle: 'bold',
-      color: UI_COLOR.textBright,
-      letterSpacing: 4,
-    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(107).setVisible(false);
-
     this.pauseContentTitle = this.add.text(0, PAUSE_LAYOUT.titleY, '', {
       fontFamily: '"Noto Serif KR", Georgia, serif',
       fontSize: '21px',
@@ -8511,38 +8524,56 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const contentX = PAUSE_LAYOUT.x + PAUSE_LAYOUT.navWidth + PAUSE_LAYOUT.contentPad;
     const contentWidth = PAUSE_LAYOUT.width - PAUSE_LAYOUT.navWidth - PAUSE_LAYOUT.contentPad * 2;
     this.pauseBuildGraphics = this.add.graphics().setScrollFactor(0).setDepth(108).setVisible(false);
-    this.pauseBuildCategoryItems = PAUSE_BUILD_CATEGORIES.map((row, index) => this.add.text(
-      contentX + 58 + index * 124,
-      PAUSE_LAYOUT.titleY + 39,
-      row.label,
-      {
-        fontFamily: '"Noto Serif KR", Consolas, monospace',
-        fontSize: '11px',
-        fontStyle: 'bold',
-        color: UI_COLOR.textMuted,
-      },
-    ).setOrigin(0.5).setScrollFactor(0).setDepth(110).setVisible(false)
+    this.pauseBuildCategoryItems = PAUSE_BUILD_CATEGORIES.map((row, index) => {
+      const frame = pauseBuildTabFrame(index);
+      return this.add.text(
+        frame.x,
+        frame.y,
+        row.label,
+        {
+          fontFamily: '"Noto Serif KR", Consolas, monospace',
+          fontSize: '11px',
+          fontStyle: 'bold',
+          color: UI_COLOR.textMuted,
+        },
+      ).setOrigin(0.5).setScrollFactor(0).setDepth(110).setVisible(false);
+    });
+    this.pauseBuildCategoryZones = PAUSE_BUILD_CATEGORIES.map((row, index) => {
+      const frame = pauseBuildTabFrame(index);
+      return this.add.zone(
+        frame.x,
+        frame.y,
+        frame.width,
+        frame.height,
+      ).setOrigin(0.5).setScrollFactor(0).setDepth(111).setVisible(false)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => {
         if (!this.buildInspectOpen) return;
         this.selectPauseBuildCategory(row.id);
-      }));
+      });
+    });
 
     const gridX = contentX + 222;
     const gridWidth = contentWidth - 230;
     const cardWidth = (gridWidth - 21) / 4;
-    const cardHeight = 67;
+    const cardHeight = 78;
     for (let index = 0; index < 12; index += 1) {
       const column = index % 4;
       const row = Math.floor(index / 4);
       const x = gridX + column * (cardWidth + 7) + cardWidth / 2;
-      const y = PAUSE_LAYOUT.titleY + 104 + row * (cardHeight + 8);
+      const y = PAUSE_LAYOUT.titleY + 110 + row * (cardHeight + 5);
+      const glyph = this.add.text(x, y - cardHeight / 2 + 18, '', {
+        fontFamily: 'Consolas, monospace',
+        fontSize: '15px',
+        fontStyle: 'bold',
+        color: UI_COLOR.ink,
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(111).setVisible(false);
       const text = this.add.text(x, y, '', {
         fontFamily: 'Consolas, monospace',
-        fontSize: '10px',
+        fontSize: '9px',
         align: 'center',
         color: UI_COLOR.text,
-        wordWrap: { width: cardWidth - 10, useAdvancedWrap: true },
+        wordWrap: { width: cardWidth - 12, useAdvancedWrap: true },
       }).setOrigin(0.5).setScrollFactor(0).setDepth(110).setVisible(false);
       const zone = this.add.zone(x, y, cardWidth, cardHeight)
         .setOrigin(0.5)
@@ -8553,8 +8584,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         .on('pointerdown', () => {
           if (!this.buildInspectOpen) return;
           this.selectPauseBuildEntry(index);
-        });
+      });
       this.pauseBuildCardTexts.push(text);
+      this.pauseBuildCardGlyphs.push(glyph);
       this.pauseBuildCardZones.push(zone);
     }
 
@@ -8583,12 +8615,19 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         .setInteractive({ useHandCursor: true })
         .on('pointerdown', (pointer: Phaser.Input.Pointer) => {
           if (!this.buildInspectOpen) return;
-          this.setPauseSettingFromPointer(key, pointer.x);
+          this.beginPauseSettingDrag(key, pointer);
         });
       this.pauseSettingsLabelTexts.push(label);
       this.pauseSettingsValueTexts.push(value);
       this.pauseSettingsSliders.push(slider);
     }
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      const key = this.pauseSettingDragKey;
+      if (!key || !this.buildInspectOpen || !pointer.isDown) return;
+      this.setPauseSettingFromPointer(key, pointer.x);
+    });
+    const stopPauseSettingDrag = (): void => { this.releasePauseSettingPointer(); };
+    this.input.on('pointerup', stopPauseSettingDrag);
 
     this.pauseSettingsMuteButton = this.add.text(contentX, PAUSE_LAYOUT.top + PAUSE_LAYOUT.height - 56, '', {
       fontFamily: '"Noto Serif KR", Consolas, monospace',
@@ -8653,24 +8692,53 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private pauseSettingRange(key: SettingKey): { min: number; max: number } {
-    if (key === 'brightness') {
-      return { min: SETTINGS_CONFIG.brightnessMin, max: SETTINGS_CONFIG.brightnessMax };
-    }
-    if (key === 'vfxBrightness') {
-      return { min: SETTINGS_CONFIG.vfxBrightnessMin, max: SETTINGS_CONFIG.vfxBrightnessMax };
-    }
-    return { min: SETTINGS_CONFIG.volumeMin, max: SETTINGS_CONFIG.volumeMax };
+    return settingRange(key);
   }
 
-  /** 클릭한 슬라이더 위치를 0.1 단위의 기존 설정 값으로 변환한다. */
+  /** 클릭·드래그를 시작하고 즉시 그 위치의 값도 반영한다. */
+  private beginPauseSettingDrag(key: SettingKey, pointer: Phaser.Input.Pointer): void {
+    this.pauseSettingDragKey = key;
+    this.capturePauseSettingPointer(pointer);
+    this.setPauseSettingFromPointer(key, pointer.x);
+  }
+
+  /** 캔버스 밖으로 나가도 현재 슬라이더 드래그를 유지한다. */
+  private capturePauseSettingPointer(pointer: Phaser.Input.Pointer): void {
+    const event = pointer.event as PointerEvent | undefined;
+    if (typeof event?.pointerId !== 'number') return;
+    try {
+      this.game.canvas.setPointerCapture(event.pointerId);
+      this.pauseSettingPointerId = event.pointerId;
+    } catch {
+      // 지원하지 않는 환경은 기존 캔버스 내부 드래그로 안전하게 동작한다.
+    }
+  }
+
+  /** 포인터를 놓거나 ESC 화면을 닫을 때만 드래그와 capture를 해제한다. */
+  private releasePauseSettingPointer(): void {
+    this.pauseSettingDragKey = null;
+    const pointerId = this.pauseSettingPointerId;
+    this.pauseSettingPointerId = null;
+    if (pointerId === null) return;
+    try {
+      if (this.game.canvas.hasPointerCapture(pointerId)) {
+        this.game.canvas.releasePointerCapture(pointerId);
+      }
+    } catch {
+      // 씬 종료 중 이미 분리된 캔버스는 해제할 필요가 없다.
+    }
+  }
+
+  /** 클릭하거나 끄는 슬라이더 위치를 0.1 단위의 기존 설정 값으로 변환한다. */
   private setPauseSettingFromPointer(key: SettingKey, pointerX: number): void {
     const contentX = PAUSE_LAYOUT.x + PAUSE_LAYOUT.navWidth + PAUSE_LAYOUT.contentPad;
     const contentWidth = PAUSE_LAYOUT.width - PAUSE_LAYOUT.navWidth - PAUSE_LAYOUT.contentPad * 2;
     const start = contentX + 10;
     const length = contentWidth - 20;
     const ratio = Phaser.Math.Clamp((pointerX - start) / length, 0, 1);
-    const { min, max } = this.pauseSettingRange(key);
-    const value = Math.round((min + (max - min) * ratio) * 10) / 10;
+    const value = settingValueFromRatio(key, ratio);
+    // 포인터가 움직여도 0.1 단위에서 값이 같다면 렌더·localStorage 저장을 반복하지 않는다.
+    if (Math.abs(this.settings[key] - value) < 0.0001) return;
     this.commitPauseSettings({ ...this.settings, [key]: value });
   }
 
@@ -8681,7 +8749,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.pauseDim.setVisible(visible);
     this.pauseMenuPlate.setVisible(visible);
     this.pauseContentPlate.setVisible(visible);
-    this.pauseMenuTitle.setVisible(visible);
     this.pauseContentTitle.setVisible(visible);
     this.pauseContentText.setVisible(visible);
     this.pauseFooterText.setVisible(visible);
@@ -8689,7 +8756,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.pauseQuitButton.setVisible(false);
     this.pauseBuildGraphics.setVisible(false);
     this.pauseBuildCategoryItems.forEach((item) => item.setVisible(false));
+    this.pauseBuildCategoryZones.forEach((zone) => zone.setVisible(false));
     this.pauseBuildCardTexts.forEach((item) => item.setVisible(false));
+    this.pauseBuildCardGlyphs.forEach((item) => item.setVisible(false));
     this.pauseBuildCardZones.forEach((zone) => zone.setVisible(false));
     this.pauseSettingsGraphics.setVisible(false);
     this.pauseSettingsLabelTexts.forEach((item) => item.setVisible(false));
@@ -8706,7 +8775,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const contentX = PAUSE_LAYOUT.x + PAUSE_LAYOUT.navWidth + PAUSE_LAYOUT.contentPad;
     const contentWidth = PAUSE_LAYOUT.width - PAUSE_LAYOUT.navWidth - PAUSE_LAYOUT.contentPad * 2;
     const active = PAUSE_MAIN[this.pauseMenuIndex] ?? PAUSE_MAIN[0];
-    this.pauseMenuTitle.setText('일시정지');
+    // 지도 탭을 벗어나는 순간 즉시 끈다. HMR 뒤 이전 지도 프레임이 다음 탭 위에
+    // 잠깐 남는 것을 막는 방어선이며, 아래 syncMinimapVisibility가 최종 상태도 맞춘다.
+    if (active.id !== 'map') this.runMinimap?.setVisible(false);
     PAUSE_MAIN.forEach((row, i) => {
       const selected = i === this.pauseMenuIndex;
       this.pauseMenuItems[i]
@@ -8721,8 +8792,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     const g = this.pauseMenuPlate.clear();
     drawGrimoirePanel(g, PAUSE_LAYOUT.x, PAUSE_LAYOUT.top, PAUSE_LAYOUT.width, PAUSE_LAYOUT.height, 0.96);
-    drawTitleSigil(g, PAUSE_LAYOUT.x + 20, PAUSE_LAYOUT.titleY, 18);
-    drawSectionRule(g, PAUSE_LAYOUT.x + 14, PAUSE_LAYOUT.titleY + 25, PAUSE_LAYOUT.navWidth - 28);
     g.lineStyle(1, hex(UI_COLOR.border), 0.75);
     g.lineBetween(PAUSE_LAYOUT.x + PAUSE_LAYOUT.navWidth, PAUSE_LAYOUT.top + 22,
       PAUSE_LAYOUT.x + PAUSE_LAYOUT.navWidth, PAUSE_LAYOUT.top + PAUSE_LAYOUT.height - 22);
@@ -8760,7 +8829,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const len = PAUSE_MAIN.length;
     this.selectPauseTab((this.pauseMenuIndex + delta + len) % len);
   }
-
   private activatePauseMenuItem(): void {
     if (this.quitArmed) {
       this.abandonRun();
@@ -8832,17 +8900,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
   /** 상태/빌드 분류는 서로 섞지 않는다. 각 분류의 카드만 오른쪽 목록에 놓는다. */
   private pauseBuildEntries(category: PauseBuildCategory): PauseBuildEntry[] {
-    if (category === 'legacy') {
-      const legacy = this.startingLegacyReward;
-      return legacy ? [{
-        id: legacy.id,
-        title: legacy.title,
-        description: legacy.description,
-        glyph: '유',
-        accent: legacy.element ? this.elementPauseAccent(legacy.element) : UI_COLOR.accent,
-      }] : [];
-    }
-
     if (category === 'engrave') {
       return this.engraveManager.entries.map((entry) => ({
         id: entry.spellKey,
@@ -8928,6 +8985,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private renderPauseBuildContent(): void {
     const contentX = PAUSE_LAYOUT.x + PAUSE_LAYOUT.navWidth + PAUSE_LAYOUT.contentPad;
     const contentWidth = PAUSE_LAYOUT.width - PAUSE_LAYOUT.navWidth - PAUSE_LAYOUT.contentPad * 2;
+    const category = PAUSE_BUILD_CATEGORIES.find((row) => row.id === this.pauseBuildCategory)!;
     const detailX = contentX;
     const detailY = PAUSE_LAYOUT.titleY + 66;
     const detailWidth = 204;
@@ -8935,76 +8993,92 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const gridX = contentX + 222;
     const gridWidth = contentWidth - 230;
     const cardWidth = (gridWidth - 21) / 4;
-    const cardHeight = 67;
-    const category = PAUSE_BUILD_CATEGORIES.find((row) => row.id === this.pauseBuildCategory)!;
+    const cardHeight = 78;
     const entries = this.pauseBuildEntries(category.id);
     const selectedId = this.pauseBuildSelectedByCategory[category.id];
     const selected = entries.find((entry) => entry.id === selectedId) ?? entries.at(-1) ?? null;
     if (selected) this.pauseBuildSelectedByCategory[category.id] = selected.id;
 
     this.pauseContentTitle.setText(`상태 / 빌드 · ${category.label}`);
-    this.pauseContentText
-      .setPosition(detailX + 14, detailY + 16)
-      .setWordWrapWidth(detailWidth - 28)
-      .setVisible(true)
-      .setText(selected
-        ? `${category.label}\n\n${selected.title}\n\n${selected.description}`
-        : `${category.label}\n\n아직 획득한 항목이 없습니다.\n다음 선택지에서 얻으면 이곳에 기록됩니다.`);
+    if (selected) {
+      this.pauseContentText
+        .setPosition(detailX + 14, detailY + 16)
+        .setWordWrapWidth(detailWidth - 28)
+        .setVisible(true)
+        .setText(`${category.label}\n\n${selected.title}\n\n${selected.description}`);
+    } else {
+      // 빈 분류는 획득하지 않은 사실을 재확인시키지 않는다. 다음 보상에서 채워질 여백으로 둔다.
+      this.pauseContentText.setVisible(false);
+    }
 
     const g = this.pauseBuildGraphics.clear().setVisible(true);
-    drawGrimoirePanel(g, detailX, detailY, detailWidth, detailHeight, 0.58);
-    g.lineStyle(1, hex(UI_COLOR.border), 0.7);
-    g.lineBetween(gridX - 12, detailY, gridX - 12, detailY + detailHeight);
+    if (selected) {
+      drawGrimoirePanel(g, detailX, detailY, detailWidth, detailHeight, 0.58);
+      g.lineStyle(1, hex(UI_COLOR.border), 0.7);
+      g.lineBetween(gridX - 12, detailY, gridX - 12, detailY + detailHeight);
+    }
 
     PAUSE_BUILD_CATEGORIES.forEach((row, index) => {
       const active = row.id === category.id;
       const count = this.pauseBuildEntries(row.id).length;
-      const x = contentX + 58 + index * 124;
+      const frame = pauseBuildTabFrame(index);
       g.lineStyle(active ? 1.5 : 1, hex(active ? UI_COLOR.borderStrong : UI_COLOR.border), active ? 0.95 : 0.55);
-      g.strokeRoundedRect(x - 56, PAUSE_LAYOUT.titleY + 27, 112, 23, 4);
+      g.strokeRoundedRect(frame.x - frame.width / 2, PAUSE_BUILD_TAB.y, frame.width, frame.height, 4);
       this.pauseBuildCategoryItems[index]
         .setText(`${row.label}${count > 0 ? ` ${count}` : ''}`)
         .setColor(active ? UI_COLOR.textBright : UI_COLOR.textMuted)
         .setVisible(true);
+      this.pauseBuildCategoryZones[index].setVisible(true);
     });
 
     const shown = entries.slice(0, this.pauseBuildCardTexts.length);
-    if (shown.length === 0) {
-      this.pauseBuildCardTexts[0]
-        .setText('아직\n없음')
-        .setColor(UI_COLOR.textMuted)
-        .setVisible(true);
-    }
     shown.forEach((entry, index) => {
       const column = index % 4;
       const row = Math.floor(index / 4);
-      const x = gridX + column * (cardWidth + 7);
-      const y = PAUSE_LAYOUT.titleY + 104 + row * (cardHeight + 8);
+      const x = gridX + column * (cardWidth + 7) + cardWidth / 2;
+      const y = PAUSE_LAYOUT.titleY + 110 + row * (cardHeight + 5);
+      const cardLeft = x - cardWidth / 2;
+      const cardTop = y - cardHeight / 2;
       const isSelected = entry.id === selected?.id;
       g.fillStyle(hex(UI_COLOR.panelInset), isSelected ? 0.98 : 0.72);
-      g.fillRoundedRect(x, y - cardHeight / 2, cardWidth, cardHeight, 5);
+      g.fillRoundedRect(cardLeft, cardTop, cardWidth, cardHeight, 5);
       g.lineStyle(isSelected ? 1.7 : 1, hex(isSelected ? entry.accent : UI_COLOR.border), isSelected ? 1 : 0.65);
-      g.strokeRoundedRect(x, y - cardHeight / 2, cardWidth, cardHeight, 5);
-      g.lineStyle(2, hex(entry.accent), 0.8);
-      g.lineBetween(x + 6, y - cardHeight / 2 + 6, x + cardWidth - 6, y - cardHeight / 2 + 6);
-      const title = entry.title.length > 11 ? `${entry.title.slice(0, 10)}…` : entry.title;
-      this.pauseBuildCardTexts[index]
-        .setText(`${entry.glyph}\n${title}`)
-        .setColor(entry.accent)
+      g.strokeRoundedRect(cardLeft, cardTop, cardWidth, cardHeight, 5);
+      // 주문 도감처럼 속성색 아이콘을 먼저 읽고, 이름과 효과 요약을 뒤에서 읽게 한다.
+      g.fillStyle(hex(entry.accent), isSelected ? 0.95 : 0.78);
+      g.fillRoundedRect(x - 15, cardTop + 7, 30, 27, 5);
+      g.lineStyle(1, hex(UI_COLOR.ink), 0.7);
+      g.strokeRoundedRect(x - 15, cardTop + 7, 30, 27, 5);
+      const title = entry.title.length > 16 ? `${entry.title.slice(0, 15)}…` : entry.title;
+      const firstLine = entry.description.split('\n', 1)[0]?.replace(/\s+/g, ' ').trim() ?? '';
+      const summary = firstLine.length > 18 ? `${firstLine.slice(0, 17)}…` : firstLine;
+      this.pauseBuildCardGlyphs[index]
+        .setPosition(x, cardTop + 20)
+        .setText(entry.glyph)
         .setVisible(true);
-      this.pauseBuildCardZones[index].setVisible(true);
+      this.pauseBuildCardTexts[index]
+        .setPosition(x, cardTop + 53)
+        .setText(`${title}\n${summary}`)
+        .setColor(isSelected ? UI_COLOR.textBright : UI_COLOR.text)
+        .setVisible(true);
+      this.pauseBuildCardZones[index]
+        .setPosition(x, y)
+        .setSize(cardWidth, cardHeight)
+        .setVisible(true);
     });
   }
 
   /** 기존 설정 UI의 네 슬라이더와 음소거/초기화를 동일한 ESC 패널 안에 그린다. */
   private renderPauseSettingsContent(): void {
+    // 설정은 독립된 패널이다. 다른 탭의 지도 렌더러를 그대로 보이면 안 된다.
+    this.runMinimap?.setVisible(false);
     const contentX = PAUSE_LAYOUT.x + PAUSE_LAYOUT.navWidth + PAUSE_LAYOUT.contentPad;
     const contentWidth = PAUSE_LAYOUT.width - PAUSE_LAYOUT.navWidth - PAUSE_LAYOUT.contentPad * 2;
-    const settingsRows: ReadonlyArray<{ key: SettingKey; label: string; hint: string }> = [
-      { key: 'sfxVolume', label: '효과음', hint: '타격 · 시전 소리' },
-      { key: 'bgmVolume', label: '배경음악', hint: '전투 · 보스 음악' },
-      { key: 'brightness', label: '화면 밝기', hint: '배경과 적을 포함한 전체' },
-      { key: 'vfxBrightness', label: '이펙트 밝기', hint: '마법 연출만 조절' },
+    const settingsRows: ReadonlyArray<{ key: SettingKey; label: string }> = [
+      { key: 'sfxVolume', label: '효과음' },
+      { key: 'bgmVolume', label: '배경음악' },
+      { key: 'brightness', label: '화면 밝기' },
+      { key: 'vfxBrightness', label: '이펙트 밝기' },
     ];
     this.pauseContentTitle.setText('설정');
     this.pauseContentText.setVisible(false);
@@ -9016,7 +9090,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const { min, max } = this.pauseSettingRange(row.key);
       const ratio = Phaser.Math.Clamp((this.settings[row.key] - min) / (max - min), 0, 1);
       this.pauseSettingsLabelTexts[index]
-        .setText(`${row.label}\n${row.hint}`)
+        .setText(row.label)
         .setVisible(true);
       this.pauseSettingsValueTexts[index]
         .setText(settingDisplay(this.settings, row.key))
@@ -9191,6 +9265,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.incanting || this.casting || this.legacySelecting || this.researchSelecting
     )) return;
     this.buildInspectOpen = !this.buildInspectOpen;
+    this.releasePauseSettingPointer();
     this.time.paused = this.buildInspectOpen;
     // 열 때마다 상태/빌드 탭부터 — 지난번에 보던 지도·설정이 남지 않게 한다.
     if (this.buildInspectOpen) {

@@ -54,29 +54,24 @@ const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   );
 }
 
-// ── 4) **ESC가 두 겹을 한 번에 닫지 않는다** ───────────────────────────────
+// ── 4) 설정은 ESC 패널 안에 있다 ───────────────────────────────────────────
 //
-// 설정은 DOM 오버레이라 자체 Escape 핸들러를 갖는데, Phaser 키보드는 window에서
-// 듣기 때문에 **둘 다 발화한다.** 가드가 없으면 설정이 닫히면서 일시정지까지 풀려
-// 게임으로 튕겨 나간다 — 설정만 닫고 메뉴에 남아야 한다.
+// 예전 DOM 설정 창은 Phaser ESC와 함께 발화해 메뉴까지 닫는 문제가 있었다.
+// 이제 설정은 같은 ESC 패널 안에서 그리므로 별도 오버레이 가드 대신, ESC는
+// 타이틀 나가기 확인만 취소하고 메뉴에는 계속 남아야 한다.
 {
   assert.ok(
-    /private settingsOverlayOpen = false;/.test(scene),
-    '설정 오버레이 열림 플래그가 있어야 한다',
+    /private renderPauseSettingsContent\(\)/.test(scene),
+    '설정은 ESC 패널 안에서 그려야 한다',
   );
   const escAt = scene.indexOf("keydown-ESC");
   assert.ok(
-    /if \(this\.settingsOverlayOpen\) return;/.test(scene.slice(escAt, escAt + 600)),
-    'ESC 핸들러가 설정 오버레이 중에는 빠져나가야 한다',
-  );
-  // 플래그가 켜지고 **꺼지는지** — 안 꺼지면 그 뒤로 ESC가 영영 안 먹는다
-  assert.ok(
-    /this\.settingsOverlayOpen = true;/.test(scene),
-    '설정을 열 때 플래그를 켠다',
+    /this\.buildInspectOpen && this\.quitArmed/.test(scene.slice(escAt, escAt + 600)),
+    'ESC는 나가기 확인만 취소하고 일시정지 화면에는 남아야 한다',
   );
   assert.ok(
-    /this\.settingsOverlayOpen = false;/.test(scene),
-    '설정이 닫히면 플래그를 꺼야 한다 — 안 끄면 ESC가 영영 안 먹는다',
+    !/showSettingsOverlay/.test(scene),
+    '전투 씬은 구형 DOM 설정 오버레이를 다시 열면 안 된다',
   );
 }
 
@@ -141,7 +136,7 @@ const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   const shouldAt = scene.indexOf('private shouldShowMinimap');
   const shouldBlock = scene.slice(shouldAt, shouldAt + 500);
   assert.ok(
-    /this\.buildInspectOpen && PAUSE_MAIN\[this\.pauseMenuIndex\]\?\.id === 'map'/.test(shouldBlock),
+    /this\.buildInspectOpen[\s\S]*PAUSE_MAIN\[this\.pauseMenuIndex\]\?\.id === 'map'/.test(shouldBlock),
     '전체 경로는 ESC 전체가 아니라 지도 탭에서만 보여야 한다',
   );
   const placeAt = scene.indexOf('private placePauseMinimap');
@@ -154,4 +149,4 @@ const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   );
 }
 
-console.log('pause key regression: ESC토글·TAB해제·캡처유지·이중닫힘방지·안내일치·영창가드·지도탭 7군 통과');
+console.log('pause key regression: ESC토글·TAB해제·캡처유지·내장설정·안내일치·영창가드·지도탭 7군 통과');
