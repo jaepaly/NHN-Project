@@ -256,8 +256,8 @@ assert.ok(sceneSource.includes('원소 ${contract.usedElements.length}/${contrac
 assert.ok(sceneSource.includes("actionState = 'RESEARCH SELECT'"), '연구 선택 중 전투 정지 HUD');
 assert.equal(
   (sceneSource.match(/offerRunStartChoices\(\)/g) ?? []).length,
-  3,
-  '메서드 정의 + 최초 시작 + 사망 재시작 경로',
+  2,
+  '메서드 정의 + 최초 시작 경로 (사망 뒤에는 타이틀 재진입으로 새 런을 시작)',
 );
 
 console.log('research contract regression: 해금·3종목표·중복방지·이어가기·보너스 8군 통과');

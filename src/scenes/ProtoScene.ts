@@ -526,6 +526,9 @@ interface PauseBuildEntry {
   description: string;
   glyph: string;
   accent: string;
+  formGlyph?: SpellForm;
+  iconTint?: number;
+  cardLabel?: string;
 }
 
 interface PauseRow {
@@ -544,14 +547,14 @@ const PAUSE_LAYOUT = {
   width: 872,
   height: 410,
   navWidth: 184,
-  titleY: 112,
+  titleY: 122,
   firstY: 132,
   rowGap: 44,
   contentPad: 28,
 } as const;
 
 /** 전체 경로는 지도 탭에서만 보인다. 전투 HUD에 상시 두지 않는다. */
-const PAUSE_MAP = { top: 132, scale: 1.7, depth: 108 } as const;
+const PAUSE_MAP = { top: 142, scale: 1.7, depth: 108 } as const;
 
 const PAUSE_BUILD_CATEGORIES: readonly PauseBuildCategoryRow[] = [
   { id: 'engrave', label: '주문 각인' },
@@ -1070,6 +1073,9 @@ export class ProtoScene extends Phaser.Scene {
   /** 상태/빌드 카드의 속성색 아이콘. 주문 도감과 같은 읽기 순서를 만든다. */
   private pauseBuildCardGlyphs: Phaser.GameObjects.Text[] = [];
 
+  /** 주문 각인은 우하단 자동 각인 HUD와 같은 form 글리프를 그대로 재사용한다. */
+  private pauseBuildCardFormIcons: Phaser.GameObjects.Image[] = [];
+
   private pauseBuildCardZones: Phaser.GameObjects.Zone[] = [];
 
   private pauseBuildCategory: PauseBuildCategory = 'engrave';
@@ -1102,6 +1108,17 @@ export class ProtoScene extends Phaser.Scene {
 
   /** 탭이 아닌 별도 위험 동작. 첫 클릭은 확인 안내만, Enter/두 번째 클릭은 확정이다. */
   private pauseQuitButton!: Phaser.GameObjects.Text;
+
+  /** 나가기 확인은 일반 탭 본문과 구분되는 중앙 질문·YES/NO 버튼으로 그린다. */
+  private pauseQuitConfirmGraphics!: Phaser.GameObjects.Graphics;
+
+  private pauseQuitYesText!: Phaser.GameObjects.Text;
+
+  private pauseQuitNoText!: Phaser.GameObjects.Text;
+
+  private pauseQuitYesZone!: Phaser.GameObjects.Zone;
+
+  private pauseQuitNoZone!: Phaser.GameObjects.Zone;
 
   private pauseMenuIndex = 0;
 
@@ -1257,7 +1274,7 @@ export class ProtoScene extends Phaser.Scene {
   /** 속삭임 힌트 최근 노출 시각 — 15초 쿨다운 (announceManaShortage) */
   private lastWhisperHintAt = 0;
 
-  /** 런 누적 피해 귀속 원장 — restartRun에서 리셋, 방·런 종료 시 리포트 */
+  /** 런 누적 피해 귀속 원장 — 새 런 시작에서 리셋, 방·런 종료 시 리포트 */
   private damageLedger: Record<DamageSource, number> = {
     manual: 0, ultimate: 0, auto: 0, basic: 0, status: 0,
   };
@@ -1407,7 +1424,7 @@ export class ProtoScene extends Phaser.Scene {
   private bossHazardWarnings: Phaser.GameObjects.Container[] = [];
   private deathHandled = false;
   /** 다음 room-started가 새 런의 첫 방이면, 방 로그보다 먼저 남길 시작 사유. */
-  private pendingRunStartReason: 'continue' | 'death-restart' | null = null;
+  private pendingRunStartReason: 'continue' | null = null;
   private audio!: GameAudio;
   private backdropBase!: Phaser.GameObjects.Rectangle;
   private backdropGrid!: Phaser.GameObjects.Graphics;
@@ -1654,8 +1671,7 @@ export class ProtoScene extends Phaser.Scene {
     this.input.keyboard!.on('keydown-ESC', () => {
       // 타이틀로 나가기 확인은 취소하고 같은 일시정지 화면에 남는다.
       if (this.buildInspectOpen && this.quitArmed) {
-        this.quitArmed = false;
-        this.renderPauseMenu();
+        this.cancelPauseQuit();
         return;
       }
       this.toggleBuildInspect();
@@ -2103,6 +2119,7 @@ export class ProtoScene extends Phaser.Scene {
             void showRunSummaryOverlay(this.buildRunSummary('victory'))
               .then(() => {
                 this.audio.playSfx('ui-confirm');
+                this.supportSpellVfx?.reset();
                 this.destroyRunMapUi();
                 this.scene.start('title');
               });
@@ -2159,7 +2176,7 @@ export class ProtoScene extends Phaser.Scene {
     return result;
   }
 
-  /** 사망은 1회만 처리 — 요약 오버레이 → Enter로 새 런 (GDD §2 사망 흐름) */
+  /** 사망은 1회만 처리 — 요약 오버레이 → 아무 키로 타이틀 복귀 (GDD §2 사망 흐름) */
   private checkPlayerDeath(): void {
     if (this.playerState.alive || this.deathHandled) return;
     // 보스가 먼저 죽어 런이 완주된 뒤의 사망(지연 판정 등)은 승리가 선점 — 패배 처리 안 함
@@ -2173,7 +2190,9 @@ export class ProtoScene extends Phaser.Scene {
       void showRunSummaryOverlay(this.buildRunSummary('defeat'))
         .then(() => {
           this.audio.playSfx('ui-confirm');
-          this.restartRun();
+          this.supportSpellVfx?.reset();
+          this.destroyRunMapUi();
+          this.scene.start('title');
         });
     });
   }
@@ -2894,7 +2913,6 @@ export class ProtoScene extends Phaser.Scene {
     }
   }
 
-  /** 새 런 — 씬 재시작 없이 상태만 초기화. 컨트롤러 reset이 room-started를 발화해 방 1부터 재개된다. */
   /**
    * 씬 shutdown에서 런 중 생성물의 **참조만** 끊는다.
    * destroy를 부르지 않는 이유: 이 시점엔 Phaser가 이미 GameObject를 파괴해
@@ -2936,7 +2954,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   /**
-   * 보스 후 이어가기 — 빌드는 유지하고 전투만 새로. restartRun과 달리 playerState·각인·
+   * 보스 후 이어가기 — 빌드는 유지하고 전투만 새로. 새 런 시작과 달리 playerState·각인·
    * 정령·융합 게이지·주문 히스토리·성장 표식·친화를 **비우지 않는다**. 컨트롤러는
    * continueRun으로 친화·보상을 지킨 채 방만 새로 뽑고 루프를 올린다 (난이도↑).
    */
@@ -3045,7 +3063,7 @@ export class ProtoScene extends Phaser.Scene {
   /**
    * 새 런 진입 시 지속 매니저를 깨끗이 (create가 씬 재진입마다 호출). 컨트롤러는 silent
    * 리셋 — create가 곧 startRoom을 직접 부르므로 room-started 이중 발화를 막는다.
-   * restartRun(런 중 재시작)과 달리 offerLegacy/prepareEscalation은 create가 따로 한다.
+   * 유산 제시와 격상 준비는 create가 별도로 담당한다.
    */
   private resetForNewRun(): void {
     this.judge.resetRun?.();
@@ -3091,55 +3109,6 @@ export class ProtoScene extends Phaser.Scene {
     this.combatRunController.reset(Date.now(), false);
   }
 
-  private restartRun(): void {
-    this.judge.resetRun?.();
-    this.deathHandled = false;
-    this.demoRun = false;
-    this.practiceRun = false;
-    this.runElapsedMs = 0;
-    this.runWallClockMs = 0;
-    this.roomElapsedMs = 0;
-    this.roomTimings = [];
-    this.resetRunResearchTracking();
-    this.fusionGauge.reset();
-    this.damageLedger = { manual: 0, ultimate: 0, auto: 0, basic: 0, status: 0 };
-    this.bossResistance = { ...NO_BOSS_RESISTANCE };
-    this.activeBossResistances.clear();
-    this.enemyAilments.clear();
-    this.clearBurnEmbers();
-    this.clearWeakenMarks();
-    this.clearDamageNumbers();
-    this.shockCooldowns.clear();
-    this.awakenings = {};
-    this.echoUnlocked = false;
-    this.starburstUnlocked = false;
-    this.meteorUnlocked = false;
-    this.trailUnlocked = false;
-    this.elementalChorusStage = 0;
-    this.elementalChorusAvailableAnnounced = false;
-    this.rippleUnlocked = false;
-    this.altarAwakeningSelecting = false;
-    this.altarHighSelecting = false;
-    this.ownedAltarKinds = [];
-    this.lastResistNoticeAt = 0;
-    this.spellHistory.reset();
-    this.spellCastLog.clear();
-    this.engraveManager.reset();
-    this.spiritManager.reset();
-    this.clearSpiritViews();
-    this.growthMarks.reset();
-    this.engraveRewardRand = createRunRandom(Date.now());
-    this.playerState.reset();
-    this.supportSpellVfx?.reset();
-    this.runMovementDistance = 0;
-    this.resetMapGraph();
-    this.prepareRunEscalation();
-    this.pendingRunStartReason = 'death-restart';
-    this.combatRunController.reset();
-    // 새 런에도 연구→유산 순서로 선택한다.
-    void this.offerRunStartChoices();
-  }
-
   private resetRunResearchTracking(): void {
     this.elementalResearchEchoCharge = 0;
     this.recentManualPowers = [];
@@ -3169,7 +3138,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private logRunStarted(
-    reason: 'new' | 'continue' | 'death-restart',
+    reason: 'new' | 'continue',
     state: Readonly<RunStateSnapshot>,
   ): void {
     if (!import.meta.env.DEV) return;
@@ -9134,7 +9103,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       fontStyle: 'bold',
       color: UI_COLOR.textBright,
       letterSpacing: 3,
-    }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(109).setVisible(false);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(109).setVisible(false);
 
     this.pauseContentText = this.add.text(0, PAUSE_LAYOUT.titleY + 34, '', {
       fontFamily: '"Noto Serif KR", Consolas, monospace',
@@ -9193,6 +9162,51 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     const contentX = PAUSE_LAYOUT.x + PAUSE_LAYOUT.navWidth + PAUSE_LAYOUT.contentPad;
     const contentWidth = PAUSE_LAYOUT.width - PAUSE_LAYOUT.navWidth - PAUSE_LAYOUT.contentPad * 2;
+    const contentCenterX = contentX + contentWidth / 2;
+    const quitButtonY = PAUSE_LAYOUT.top + 225;
+    const quitButtonWidth = 112;
+    const quitButtonHeight = 38;
+    const quitButtonGap = 24;
+    const quitYesX = contentCenterX - quitButtonWidth / 2 - quitButtonGap / 2;
+    const quitNoX = contentCenterX + quitButtonWidth / 2 + quitButtonGap / 2;
+    this.pauseQuitConfirmGraphics = this.add.graphics()
+      .setScrollFactor(0)
+      .setDepth(109)
+      .setVisible(false);
+    this.pauseQuitYesText = this.add.text(quitYesX, quitButtonY, 'YES', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '15px',
+      fontStyle: 'bold',
+      color: UI_COLOR.danger,
+      letterSpacing: 2,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(111).setVisible(false);
+    this.pauseQuitNoText = this.add.text(quitNoX, quitButtonY, 'NO', {
+      fontFamily: 'Consolas, monospace',
+      fontSize: '15px',
+      fontStyle: 'bold',
+      color: UI_COLOR.textBright,
+      letterSpacing: 2,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(111).setVisible(false);
+    this.pauseQuitYesZone = this.add.zone(quitYesX, quitButtonY, quitButtonWidth, quitButtonHeight)
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(112)
+      .setVisible(false)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => {
+        if (!this.buildInspectOpen || !this.quitArmed) return;
+        this.abandonRun();
+      });
+    this.pauseQuitNoZone = this.add.zone(quitNoX, quitButtonY, quitButtonWidth, quitButtonHeight)
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(112)
+      .setVisible(false)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => {
+        if (!this.buildInspectOpen || !this.quitArmed) return;
+        this.cancelPauseQuit();
+      });
     this.pauseBuildGraphics = this.add.graphics().setScrollFactor(0).setDepth(108).setVisible(false);
     this.pauseBuildCategoryItems = PAUSE_BUILD_CATEGORIES.map((row, index) => {
       const frame = pauseBuildTabFrame(index);
@@ -9238,6 +9252,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         fontStyle: 'bold',
         color: UI_COLOR.ink,
       }).setOrigin(0.5).setScrollFactor(0).setDepth(111).setVisible(false);
+      const formIcon = this.add.image(x, y - cardHeight / 2 + 18, formGlyphTextureKey('bolt'))
+        .setDisplaySize(23, 23)
+        .setScrollFactor(0)
+        .setDepth(111)
+        .setVisible(false);
       const text = this.add.text(x, y, '', {
         fontFamily: 'Consolas, monospace',
         fontSize: '9px',
@@ -9257,6 +9276,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       });
       this.pauseBuildCardTexts.push(text);
       this.pauseBuildCardGlyphs.push(glyph);
+      this.pauseBuildCardFormIcons.push(formIcon);
       this.pauseBuildCardZones.push(zone);
     }
 
@@ -9424,11 +9444,17 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.pauseFooterText.setVisible(visible);
     this.pauseMenuItems.forEach((t) => t.setVisible(false));
     this.pauseQuitButton.setVisible(false);
+    this.pauseQuitConfirmGraphics.setVisible(false);
+    this.pauseQuitYesText.setVisible(false);
+    this.pauseQuitNoText.setVisible(false);
+    this.pauseQuitYesZone.setVisible(false);
+    this.pauseQuitNoZone.setVisible(false);
     this.pauseBuildGraphics.setVisible(false);
     this.pauseBuildCategoryItems.forEach((item) => item.setVisible(false));
     this.pauseBuildCategoryZones.forEach((zone) => zone.setVisible(false));
     this.pauseBuildCardTexts.forEach((item) => item.setVisible(false));
     this.pauseBuildCardGlyphs.forEach((item) => item.setVisible(false));
+    this.pauseBuildCardFormIcons.forEach((item) => item.setVisible(false));
     this.pauseBuildCardZones.forEach((zone) => zone.setVisible(false));
     this.pauseSettingsGraphics.setVisible(false);
     this.pauseSettingsLabelTexts.forEach((item) => item.setVisible(false));
@@ -9471,8 +9497,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const contentG = this.pauseContentPlate.clear();
     drawGrimoirePanel(contentG, contentX - 16, PAUSE_LAYOUT.top + 22, contentWidth + 32,
       PAUSE_LAYOUT.height - 44, 0.72);
-    this.pauseContentTitle.setPosition(contentX, PAUSE_LAYOUT.titleY);
-    this.pauseContentText.setPosition(contentX, PAUSE_LAYOUT.titleY + 32);
+    this.pauseContentTitle.setPosition(contentX + contentWidth / 2, PAUSE_LAYOUT.titleY);
+    this.pauseContentText
+      .setPosition(contentX, PAUSE_LAYOUT.titleY + 32)
+      .setOrigin(0)
+      .setAlign('left');
+    this.pauseFooterText.setText(this.quitArmed
+      ? 'ENTER  YES  ·  ESC  NO'
+      : 'W/S 탭 이동  ·  ENTER 선택  ·  ESC 게임으로 돌아가기');
     this.pauseFooterText.setPosition(width / 2, PAUSE_LAYOUT.top + PAUSE_LAYOUT.height + 17);
     this.renderPauseContent(active);
     this.syncMinimapVisibility();
@@ -9485,6 +9517,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
     this.quitArmed = true;
     this.audio.playSfx('ui-confirm');
+    this.renderPauseMenu();
+  }
+
+  private cancelPauseQuit(): void {
+    if (!this.quitArmed) return;
+    this.quitArmed = false;
+    this.audio.playSfx('ui-cursor-move');
     this.renderPauseMenu();
   }
 
@@ -9523,11 +9562,36 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   /** 선택한 탭에 맞는 한 화면짜리 정보를 만든다. 세부 수치는 전투 HUD와 중복하지 않는다. */
   private renderPauseContent(active: PauseRow): void {
     if (this.quitArmed) {
+      const contentX = PAUSE_LAYOUT.x + PAUSE_LAYOUT.navWidth + PAUSE_LAYOUT.contentPad;
+      const contentWidth = PAUSE_LAYOUT.width - PAUSE_LAYOUT.navWidth - PAUSE_LAYOUT.contentPad * 2;
+      const contentCenterX = contentX + contentWidth / 2;
+      const buttonY = PAUSE_LAYOUT.top + 225;
+      const buttonWidth = 112;
+      const buttonHeight = 38;
+      const buttonGap = 24;
+      const yesX = contentCenterX - buttonWidth / 2 - buttonGap / 2;
+      const noX = contentCenterX + buttonWidth / 2 + buttonGap / 2;
       this.pauseContentTitle.setText('타이틀로 나가기');
       this.pauseContentText
-        .setWordWrapWidth(PAUSE_LAYOUT.width - PAUSE_LAYOUT.navWidth - 58)
+        .setPosition(contentCenterX, PAUSE_LAYOUT.top + 145)
+        .setOrigin(0.5)
+        .setAlign('center')
+        .setWordWrapWidth(contentWidth - 80)
         .setVisible(true)
-        .setText('이번 런을 포기하고 결산 화면으로 이동하시겠습니까?\n\nENTER를 누르면 나가고, ESC를 누르면 취소합니다.');
+        .setText('이번 런을 포기하고 결산 화면으로 이동하시겠습니까?');
+      const g = this.pauseQuitConfirmGraphics.clear().setVisible(true);
+      for (const [x, danger] of [[yesX, true], [noX, false]] as const) {
+        g.fillStyle(hex(UI_COLOR.panelInset), 0.96);
+        g.fillRoundedRect(x - buttonWidth / 2, buttonY - buttonHeight / 2,
+          buttonWidth, buttonHeight, 6);
+        g.lineStyle(1.5, hex(danger ? UI_COLOR.danger : UI_COLOR.borderStrong), 0.95);
+        g.strokeRoundedRect(x - buttonWidth / 2, buttonY - buttonHeight / 2,
+          buttonWidth, buttonHeight, 6);
+      }
+      this.pauseQuitYesText.setVisible(true);
+      this.pauseQuitNoText.setVisible(true);
+      this.pauseQuitYesZone.setVisible(true);
+      this.pauseQuitNoZone.setVisible(true);
       return;
     }
     if (active.id !== 'build') {
@@ -9577,6 +9641,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         description: `${ELEMENT_LABELS[entry.spell.element_primary]} ${FORM_LABELS[entry.spell.form]} 자동 시전\n${entry.intervalSeconds.toFixed(1)}초마다 ${entry.shotCount}회 발사${entry.evolved ? ' · 진화 각인' : ''}`,
         glyph: entry.evolved ? '진' : '각',
         accent: this.elementPauseAccent(entry.spell.element_primary),
+        formGlyph: entry.spell.form,
+        iconTint: ELEMENT_PALETTES[entry.spell.element_primary].core,
+        cardLabel: entry.spell.name,
       }));
     }
 
@@ -9715,20 +9782,26 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       g.lineStyle(isSelected ? 1.7 : 1, hex(isSelected ? entry.accent : UI_COLOR.border), isSelected ? 1 : 0.65);
       g.strokeRoundedRect(cardLeft, cardTop, cardWidth, cardHeight, 5);
       // 주문 도감처럼 속성색 아이콘을 먼저 읽고, 이름과 효과 요약을 뒤에서 읽게 한다.
-      g.fillStyle(hex(entry.accent), isSelected ? 0.95 : 0.78);
+      g.fillStyle(hex(entry.formGlyph ? UI_COLOR.panelInset : entry.accent), isSelected ? 0.95 : 0.78);
       g.fillRoundedRect(x - 15, cardTop + 7, 30, 27, 5);
-      g.lineStyle(1, hex(UI_COLOR.ink), 0.7);
+      g.lineStyle(1, hex(entry.formGlyph ? entry.accent : UI_COLOR.ink), 0.78);
       g.strokeRoundedRect(x - 15, cardTop + 7, 30, 27, 5);
-      const title = entry.title.length > 16 ? `${entry.title.slice(0, 15)}…` : entry.title;
-      const firstLine = entry.description.split('\n', 1)[0]?.replace(/\s+/g, ' ').trim() ?? '';
-      const summary = firstLine.length > 18 ? `${firstLine.slice(0, 17)}…` : firstLine;
+      const cardLabel = entry.cardLabel ?? entry.title;
+      const title = cardLabel.length > 16 ? `${cardLabel.slice(0, 15)}…` : cardLabel;
       this.pauseBuildCardGlyphs[index]
         .setPosition(x, cardTop + 20)
         .setText(entry.glyph)
-        .setVisible(true);
+        .setVisible(entry.formGlyph === undefined);
+      this.pauseBuildCardFormIcons[index]
+        .setPosition(x, cardTop + 20)
+        .setTexture(formGlyphTextureKey(entry.formGlyph ?? 'bolt'))
+        // SVG가 브라우저별로 검은 원본 픽셀로 래스터화돼도 원소색을 강제로 채운다.
+        // 일반 setTint는 검정×원소색=검정이라 카드가 빈 칸처럼 보일 수 있다.
+        .setTintFill(entry.iconTint ?? 0xffffff)
+        .setVisible(entry.formGlyph !== undefined);
       this.pauseBuildCardTexts[index]
-        .setPosition(x, cardTop + 53)
-        .setText(`${title}\n${summary}`)
+        .setPosition(x, cardTop + 56)
+        .setText(title)
         .setColor(isSelected ? UI_COLOR.textBright : UI_COLOR.text)
         .setVisible(true);
       this.pauseBuildCardZones[index]
@@ -9817,6 +9890,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     void showRunSummaryOverlay(this.buildRunSummary('defeat'))
       .then(() => {
         this.audio.playSfx('ui-confirm');
+        this.supportSpellVfx?.reset();
         this.destroyRunMapUi();
         this.scene.start('title');
       });
@@ -9952,7 +10026,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       scale: 1,
       duration: 180,
       ease: 'Cubic.easeOut',
-      onComplete: () => this.time.delayedCall(1100, beginTravel),
+      // ESC는 전투용 Scene Clock만 멈춘다. 획득 UI의 체류 시간까지 그 Clock에 묶으면
+      // 시작 직후 ESC를 열었을 때 유산 각인 기록이 화면에 그대로 얼어붙는다.
+      onComplete: () => this.tweens.addCounter({
+        from: 0,
+        to: 1,
+        duration: 1100,
+        onComplete: beginTravel,
+      }),
     });
   }
 
@@ -10066,7 +10147,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         icon.setVisible(false);
         return;
       }
-
       // 채움 — 이중 원소는 위/아래 투톤으로 두 색을 다 보여준다
       g.fillStyle(core, 0.2);
       if (round) g.fillCircle(x, y, half);

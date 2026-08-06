@@ -1,5 +1,6 @@
 import type { GrowthLevel, RewardOption } from '../../run/runContract';
 import type { SpellSize, SpellSpec, SpellStatus } from '../../spell/types';
+import { isAutoEngraveSpell } from '../../spell/engraveEligibility';
 import { ELEMENT_LABELS, FORM_LABELS } from '../../render/palette';
 import { FUSION_ELEMENT_STATUS } from '../player/fusionGauge';
 
@@ -74,10 +75,7 @@ export class EngraveManager {
   /** 수동으로 실제 발동한 damage 주문만 보상 후보로 기억한다. */
   rememberManualCast(spellKey: string, spell: SpellSpec): void {
     const key = spellKey.trim();
-    if (!key
-      || spell.effect !== 'damage'
-      || spell.form === 'wall'
-      || spell.form === 'orbit') return;
+    if (!key || !isAutoEngraveSpell(spell)) return;
     const previous = this.candidates.get(key);
     if (!previous || previous.power <= spell.power) {
       this.candidates.set(key, cloneSpell(spell));

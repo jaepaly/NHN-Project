@@ -1,5 +1,6 @@
 import type { FormBehavior, ResolvedSpellPlan } from './sequencePlan';
 import type { SpellSpec } from './types';
+import { isAutoEngraveSpell } from './engraveEligibility';
 
 /**
  * R1 prototype policy for handing a composite incantation to R3's v1 engrave
@@ -15,9 +16,7 @@ export function sequenceEngraveCandidate(plan: ResolvedSpellPlan): SpellSpec | n
   const eligible = plan.sequences.flatMap((sequence) => (
     sequence.behaviors.filter((behavior): behavior is FormBehavior => (
       behavior.type === 'form'
-      && behavior.spec.effect === 'damage'
-      && behavior.spec.form !== 'wall'
-      && behavior.spec.form !== 'orbit'
+      && isAutoEngraveSpell(behavior.spec)
       && behavior.spec.power > 0
     ))
   ));
