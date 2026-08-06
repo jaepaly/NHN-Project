@@ -23,6 +23,8 @@ import { ROOM_FIXTURE_CONFIG } from '../src/run/roomFixtureConfig';
 import { MAP_GRAPH_PRESET_01 } from '../src/run/mapGraphPreset';
 import { generateRunMap } from '../src/run/mapGenerator';
 import type { MapNodeKind } from '../src/run/mapGraphContract';
+import { waveSpawnPositions, waveSpawnSeed } from '../src/combat-core/waves/waveSpawn';
+import { WAVE_CONFIG } from '../src/combat-core/waves/waveManager';
 
 /**
  * 방 지형 구조물 배치 회귀 (#214 지형 Tier 2 배선).
@@ -249,16 +251,13 @@ for (const kind of TERRAIN_KINDS) {
 
 // ── 9) 적 스폰이 구조물에 걸려도 조용히 해결된다 ──────────────────────────────
 //
-// 적은 **플레이어 현재 위치** 중심 원형으로 스폰되고 좌표 클램프만 한다
-// (`waveSpawnPosition`). 구조물을 피하지 않으므로 후속 웨이브는 구조물 안에 스폰될 수
-// 있다. 1웨이브만 보면 0건이라 안심하게 되는데(도착 지점이 왼쪽 끝이고 가장 왼쪽
-// 구조물이 x=700이라 사거리 350이 닿지 않는다) **플레이어가 움직이면 달라진다.**
+// 적은 **플레이어 현재 위치** 중심 300~450px 띠 안에서 시드 기반으로 스폰된다.
+// 구조물을 직접 피하지 않으므로 후속 웨이브는 구조물 안에 스폰될 수 있고, 이때 기존
+// 밀어내기가 과도한 순간이동 없이 해결해야 한다.
 //
 // 실측(방 전역 54곳 × 스폰 각도 88건): 겹침 1.3~1.8% · 최대 밀림 25px ·
 // 밀어낸 뒤 잔류 0건. 즉 스폰 다음 프레임에 조용히 밖으로 나간다.
 {
-  const clamp = (value: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, value));
-  const spawnDistance = 350;
   const enemyRadius = 18;
   for (const kind of TERRAIN_KINDS) {
     for (const stage of STAGES) {
@@ -269,10 +268,23 @@ for (const kind of TERRAIN_KINDS) {
         for (let py = 200; py <= 1080; py += 176) {
           for (let wave = 1; wave <= 4; wave += 1) {
             for (const count of [4, 5, 6, 7]) {
-              for (let i = 0; i < count; i += 1) {
-                const angle = wave * (Math.PI / 7) - Math.PI / 2 + (Math.PI * 2 * i) / count;
-                const x = clamp(px + Math.cos(angle) * spawnDistance, 80, ROOM_TERRAIN_BOUNDS.width - 80);
-                const y = clamp(py + Math.sin(angle) * spawnDistance, 80, ROOM_TERRAIN_BOUNDS.height - 80);
+              const points = waveSpawnPositions({
+                playerX: px,
+                playerY: py,
+                count,
+                minDistance: WAVE_CONFIG.spawnMinDistance,
+                maxDistance: WAVE_CONFIG.spawnMaxDistance,
+                minimumSeparation: WAVE_CONFIG.spawnMinimumSeparation,
+                bounds: {
+                  left: WAVE_CONFIG.spawnBoundaryMargin,
+                  right: ROOM_TERRAIN_BOUNDS.width - WAVE_CONFIG.spawnBoundaryMargin,
+                  top: WAVE_CONFIG.spawnBoundaryMargin,
+                  bottom: ROOM_TERRAIN_BOUNDS.height - WAVE_CONFIG.spawnBoundaryMargin,
+                },
+                seed: waveSpawnSeed(0x214, `${kind}:${stage}:${px}:${py}`, wave),
+                isAllowed: ({ x, y }) => !pointBlocked(x, y, blocks, enemyRadius),
+              });
+              for (const { x, y } of points) {
                 total += 1;
                 const clearance = enemyRadius;
                 if (!pointBlocked(x, y, blocks, clearance)) continue;
