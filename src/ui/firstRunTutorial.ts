@@ -1,4 +1,5 @@
 import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL } from './uiTokens';
+import { scheduleOverlayActivation } from './overlayActivation';
 import { cornerFlourish, divider, ornamentCss } from './grimoireOrnament';
 
 /**
@@ -191,7 +192,9 @@ export function showFirstRunTutorial(): Promise<void> {
 
   const go = wrap.querySelector<HTMLButtonElement>('.tut-go')!;
   return new Promise<void>((resolve) => {
+    let activation: { cancel(): void } | null = null;
     const finish = (): void => {
+      activation?.cancel();
       window.removeEventListener('keydown', onKeyDown, true);
       markTutorialSeen();
       wrap.classList.remove('active');
@@ -214,14 +217,10 @@ export function showFirstRunTutorial(): Promise<void> {
     // 이 안내는 런 시작 흐름을 붙잡고 있어서 안 보이면 게임이 멈춘 것처럼 된다
     // (실제로 브라우저 검증에서 DOM은 생겼는데 `active`가 안 붙는 걸 확인했다).
     // 보상 카드 오버레이가 같은 이유로 이미 쓰는 패턴을 그대로 따른다.
-    let activated = false;
-    const activate = (): void => {
-      if (activated) return;
-      activated = true;
+    // 닫힘이 예약을 이긴다 — 취소하지 않으면 뜨기 전에 닫은 오버레이가 화면에 남는다.
+    activation = scheduleOverlayActivation((): void => {
       wrap.classList.add('active');
       go.focus({ preventScroll: true });
-    };
-    requestAnimationFrame(activate);
-    window.setTimeout(activate, 60);
+    });
   });
 }

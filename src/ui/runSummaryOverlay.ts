@@ -1,5 +1,6 @@
 
 import { UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL } from './uiTokens';
+import { scheduleOverlayActivation } from './overlayActivation';
 import { formatRunElapsed } from '../combat-core/run/runTimer';
 import {
   cornerFlourish, deckleMask, divider, ornamentCss,
@@ -236,7 +237,9 @@ export function showRunSummaryOverlay(data: RunSummaryData): Promise<void> {
     </div>`;
 
   current = new Promise<void>((resolve) => {
+    let activation: { cancel(): void } | null = null;
     const finish = (): void => {
+      activation?.cancel();
       window.removeEventListener('keydown', onKeyDown, true);
       wrap.classList.remove('active');
       open = false;
@@ -252,14 +255,10 @@ export function showRunSummaryOverlay(data: RunSummaryData): Promise<void> {
     window.addEventListener('keydown', onKeyDown, true);
     wrap.addEventListener('click', finish, { once: true });
 
-    let activated = false;
-    const activate = (): void => {
-      if (activated) return;
-      activated = true;
+    // 닫힘이 예약을 이긴다 — 취소하지 않으면 뜨기 전에 닫은 오버레이가 화면에 남는다.
+    activation = scheduleOverlayActivation((): void => {
       wrap.classList.add('active');
-    };
-    requestAnimationFrame(activate);
-    window.setTimeout(activate, 60);
+    });
   });
   return current;
 }

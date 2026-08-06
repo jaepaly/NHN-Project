@@ -1,4 +1,5 @@
 import type { RewardOption } from '../run/runContract';
+import { scheduleOverlayActivation } from './overlayActivation';
 import {
   UI_COLOR, UI_FONT, UI_LAYER, UI_MATERIAL, UI_RAINBOW, UI_SEMANTIC, rainbowStops,
 } from './uiTokens';
@@ -572,7 +573,9 @@ export function showRewardCards(
     };
     window.addEventListener('resize', onResize);
 
+    let activation: { cancel(): void } | null = null;
     const cleanup = (): void => {
+      activation?.cancel();
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('resize', onResize);
       wrap.classList.remove('active');
@@ -583,17 +586,13 @@ export function showRewardCards(
     activeCleanup = cleanup;
 
     // rAF는 페이드인 프레임 확보용, setTimeout은 백그라운드 탭(rAF 정지) 폴백
-    let activated = false;
-    const activate = (): void => {
-      if (activated) return;
-      activated = true;
+    // 닫힘이 예약을 이긴다 — 취소하지 않으면 뜨기 전에 닫은 오버레이가 화면에 남는다.
+    activation = scheduleOverlayActivation((): void => {
       wrap.classList.add('active');
       // 카드가 다 붙고 wrap이 펴진 뒤라야 실제 폭으로 잴 수 있다. setFocus보다 먼저 —
       // 첫 카드를 그린 뒤에 높이를 잡으면 그 한 번이 눈에 보이는 흔들림이 된다.
       lockDetailPanelHeight();
       setFocus(0);
-    };
-    requestAnimationFrame(activate);
-    window.setTimeout(activate, 60);
+    });
   });
 }

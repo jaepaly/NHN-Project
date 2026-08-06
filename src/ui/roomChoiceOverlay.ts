@@ -4,6 +4,7 @@ import type {
   MinimapNode,
 } from '../run/mapGraphContract';
 import { MINIMAP_CONFIG, minimapLayout } from './minimapLayout';
+import { scheduleOverlayActivation } from './overlayActivation';
 import { UI_COLOR, UI_FONT, UI_LAYER, UI_ROOM } from './uiTokens';
 import {
   cornerFlourish, divider, ornamentCss,
@@ -586,7 +587,9 @@ export function showRoomChoices(
     let viewedStage = choiceStage;
     const selectableButtons = new Map<number, HTMLButtonElement>();
 
+    let activation: { cancel(): void } | null = null;
     const cleanup = (): void => {
+      activation?.cancel();
       window.removeEventListener('keydown', onKeyDown, true);
       wrap.classList.remove('active');
       activeCleanup = null;
@@ -779,15 +782,11 @@ export function showRoomChoices(
     window.addEventListener('keydown', onKeyDown, true);
     activeCleanup = cleanup;
 
-    let activated = false;
-    const activate = (): void => {
-      if (activated) return;
-      activated = true;
+    // 닫힘이 예약을 이긴다 — 취소하지 않으면 뜨기 전에 닫은 오버레이가 화면에 남는다.
+    activation = scheduleOverlayActivation((): void => {
       wrap.classList.add('active');
       setFocus(0);
-    };
-    requestAnimationFrame(activate);
-    window.setTimeout(activate, 60);
+    });
   });
 }
 

@@ -91,9 +91,15 @@ const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   // ⚠️ rAF만으로 활성화하면 **백그라운드 탭에서 영영 안 뜬다** — rAF가 멈추기 때문이다.
   // 이 안내는 런 시작 흐름을 붙잡고 있어서 안 보이면 게임이 멈춘 것처럼 된다.
   // 브라우저 검증에서 실제로 DOM은 생겼는데 `active`가 안 붙는 걸 확인했다.
+  //
+  // 이 두 겹 예약은 이제 `overlayActivation`이 소유한다 — 네 오버레이가 같은 패턴을
+  // 복사해 쓰다가, 뜨기 전에 닫으면 모달이 화면에 남는 버그를 다 같이 갖고 있었다.
+  // 폴백이 살아 있는지는 여기서, 취소가 되는지는 `overlay-activation-regression`에서 본다.
+  const activationHelper = readFileSync('src/ui/overlayActivation.ts', 'utf8');
   assert.ok(
-    tutorial.includes('requestAnimationFrame(activate);')
-    && /window\.setTimeout\(activate, \d+\);/.test(tutorial),
+    tutorial.includes('scheduleOverlayActivation(')
+    && activationHelper.includes('requestAnimationFrame(fire)')
+    && /window\.setTimeout\(fire, \d+\)/.test(activationHelper),
     'rAF와 setTimeout 폴백을 함께 써야 한다 — 백그라운드 탭에서 안내가 안 뜨면 게임이 멈춘다',
   );
   // 표시 여부는 totalRuns가 아니라 전용 플래그 — 첫 런에 죽고 재시작해도 다시 뜨면 성가시다
