@@ -14,7 +14,7 @@
 - [x] 최신 연구·정령·오버레이 변경을 보존하면서 ESC 탭, 상태/빌드 카드, 공명 장부, 내장 설정 패널과 타이틀 설정 통합을 다시 적용했다.
 - [x] 빈 상태/빌드 분류는 상세 패널과 `아직 없음` 문구 없이 비워 두도록 확인했고, 시작 주문은 `주문 각인` Lv1에 유지했다.
 - [x] `test:pausetabs`, `test:settings`, `test:pausekey`, `test:vfxbrightness`, `test:resonanceledger`, TypeScript·production build와 작업 트리 `diff --check`를 통과했다.
-- [ ] 통합 브랜치를 원격에 올리고 PR에서 최신 main 기준 리뷰를 요청한다.
+- [x] 통합 브랜치를 원격에 올리고 [PR #369](https://github.com/jaepaly/NHN-Project/pull/369)에서 최신 main 기준 리뷰를 요청했다.
 
 ---
 
