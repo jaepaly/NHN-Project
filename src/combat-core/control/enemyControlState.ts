@@ -80,6 +80,10 @@ export class EnemyControlState {
     return this.effects.get(enemy)?.rootRemaining ?? 0;
   }
 
+  slowRemainingFor(enemy: CombatEnemy): number {
+    return this.effects.get(enemy)?.slowRemaining ?? 0;
+  }
+
   remove(enemy: CombatEnemy): boolean {
     return this.effects.delete(enemy);
   }

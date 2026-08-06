@@ -1,0 +1,37 @@
+export const ENEMY_STATUS_VFX = {
+  burn: {
+    iconRadius: 10,
+    iconOffsetXRatio: 0.58,
+    iconOffsetYRatio: -0.58,
+    iconPulseMs: 620,
+    emberFrequencyMs: 170,
+    emberLifespanMs: 480,
+    emberStartScale: 0.16,
+    emberStartAlpha: 0.38,
+    tickPulseMs: 280,
+  },
+  slow: {
+    color: 0x69d4c2,
+    accent: 0xc8fff1,
+    bodyOffsetYRatio: 0.42,
+    chevronWidthRatio: 0.68,
+    chevronGap: 4,
+    pulseMs: 720,
+  },
+  freeze: {
+    color: 0x8fdcff,
+    accent: 0xe3f8ff,
+    radiusScale: 1.08,
+    pulseMs: 560,
+    shardSize: 5,
+  },
+  weaken: {
+    color: 0xb778e8,
+    accent: 0xf0c8ff,
+    sideGap: 8,
+    minShieldSize: 10,
+    maxShieldSize: 14,
+    shieldScaleRatio: 0.72,
+    pulseMs: 680,
+  },
+} as const;

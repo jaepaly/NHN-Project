@@ -37,6 +37,10 @@ export class EnemyAilmentState {
     return (this.burns.get(enemy)?.remaining ?? 0) > 0;
   }
 
+  weakenRemainingFor(enemy: CombatEnemy): number {
+    return this.weakens.get(enemy)?.remaining ?? 0;
+  }
+
   /**
    * 매 프레임 갱신 — burn을 0.5초 펄스로 onBurnTick에 전달(피해 적용은 소비자 몫),
    * weaken 만료 정리. 죽은 적은 제거.
