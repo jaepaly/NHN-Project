@@ -297,6 +297,19 @@ import {
     waveBody.includes('.slice(0, VARIATION_WAVE_MAX_TARGETS)'),
     '파동은 가까운 순으로 상한까지만 때려야 한다 — 정예 무리 스파이크 가드',
   );
+  // 피해 숫자 — 파동만 준다 (총괄 결정). 이 게임의 숫자는 타격감이 아니라 "내 문장에
+  // 대한 채점표"라 기본은 수동 전용인데, 파동은 3충전을 모은 **보상 순간**이라
+  // 합주·성운과 같은 급이다. 공명탄은 매회라 붙이면 화면이 숫자로 덮인다.
+  assert.ok(
+    waveBody.includes("'variation-wave',"),
+    '파동은 보너스 피해 숫자를 띄워야 한다 — 3충전을 모은 보상 순간이다',
+  );
+  const boltFull = scene.slice(boltAt - 3200, boltAt + 900);
+  assert.ok(
+    !boltFull.includes('bonusDamageNumber')
+    && !boltFull.includes("'variation-wave'"),
+    '공명탄에는 피해 숫자를 붙이지 않는다 — 매 공격마다라 화면이 덮인다',
+  );
   assert.ok(
     waveBody.includes('if (!this.hasLivingEnemy()) return;'),
     '빈 방에서는 파동이 침묵해야 한다 — 각인·정령과 같은 규칙',
