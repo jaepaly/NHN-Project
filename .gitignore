@@ -25,3 +25,8 @@ Thumbs.db
 
 # Cloudflare
 .wrangler/
+
+# 제출물 PDF — md가 원본이고 PDF는 산출물이다. 8/8 확정일에 다시 뽑으므로
+# 리포에 두면 md와 어긋난 옛 PDF가 남는다 (렌더 중간물도 함께 제외).
+submission/*.pdf
+submission/*.render.html
