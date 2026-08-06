@@ -2020,9 +2020,17 @@ export class ProtoScene extends Phaser.Scene {
     return `정령 계약 ${contract.spiritAcquisitions ?? 0}/2 · 융합 ${contract.spiritFusions ?? 0}/1`;
   }
 
-  private reportResearchAdvance(previous: ActiveResearchContract | null): void {
+  /**
+   * 연구 진행 효과를 반영하고, 이번 호출에서 새로 완료됐으면 그 계약을 돌려준다.
+   * 정령 융합처럼 완료 공지와 자체 공지가 한 순간에 겹치는 경로는 완료 공지만 보류해
+   * 호출측에서 하나의 짧은 통합 배너로 보여줄 수 있다.
+   */
+  private reportResearchAdvance(
+    previous: ActiveResearchContract | null,
+    emitCompletionBanner = true,
+  ): ActiveResearchContract | null {
     const current = this.runResearchTracker.snapshot().research;
-    if (!current) return;
+    if (!current) return null;
     const reward = researchMilestoneReward(previous, current);
     const newElements = current.id === 'variation-study'
       ? current.usedElements.filter((element) => !previous?.usedElements.includes(element))
@@ -2031,7 +2039,7 @@ export class ProtoScene extends Phaser.Scene {
       ? current.usedForms.filter((form) => !previous?.usedForms.includes(form))
       : [];
     if (current.progress === previous?.progress && newElements.length === 0 && newForms.length === 0) {
-      return;
+      return null;
     }
     this.playResearchProgressVfx(
       current,
@@ -2079,18 +2087,20 @@ export class ProtoScene extends Phaser.Scene {
         : '지원 영창 인정';
     const perkLine = `연구 특성 · ${this.researchPerkSummary(current)}`;
     if (current.completed && !previous?.completed) {
-      this.announceBanner({
-        title: `연구 완료 · ${this.researchTitle(current)}`,
-        lines: [
-          `${progressSubject} · ${researchProgressSlots(current)}`,
-          ...(rewardLine ? [rewardLine] : []),
-          perkLine,
-          `돌파 보상 · 통찰 +${current.rewardInsight} · 런 결산에 기록`,
-        ],
-        color: 0x72f1b8,
-        holdMs: 3400,
-      });
-      return;
+      if (emitCompletionBanner) {
+        this.announceBanner({
+          title: `연구 완료 · ${this.researchTitle(current)}`,
+          lines: [
+            `${progressSubject} · ${researchProgressSlots(current)}`,
+            ...(rewardLine ? [rewardLine] : []),
+            perkLine,
+            `돌파 보상 · 통찰 +${current.rewardInsight} · 런 결산에 기록`,
+          ],
+          color: 0x72f1b8,
+          holdMs: 3400,
+        });
+      }
+      return current;
     }
     this.announceSystemMessage(
       `연구 · ${progressSubject} ${researchProgressSlots(current)} ${current.progress}/${current.goal}`
@@ -2099,6 +2109,7 @@ export class ProtoScene extends Phaser.Scene {
       '#8fa4ff',
       2600,
     );
+    return null;
   }
 
   private researchProgressSummary(contract: ActiveResearchContract): string {
@@ -7947,10 +7958,22 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       if (fused) {
         const previousResearch = this.runResearchTracker.snapshot().research;
         this.runResearchTracker.recordSpiritResearch('fused');
-        this.reportResearchAdvance(previousResearch);
+        const completedResearch = this.reportResearchAdvance(previousResearch, false);
         this.syncSpiritViews();
         this.playEvolutionBurst(data.elements[0]);
-        this.announceBanner({ title: `정령 융합 — 『${name}』`, color: 0xffd166, holdMs: 2800 });
+        if (completedResearch) {
+          this.announceBanner({
+            title: '정령 융합 · 연구 완료',
+            lines: [
+              `『${name}』 탄생 · ${this.researchTitle(completedResearch)}`,
+              `연구 특성 · ${this.researchPerkSummary(completedResearch)} · 통찰 +${completedResearch.rewardInsight}`,
+            ],
+            color: 0x72f1b8,
+            holdMs: 2300,
+          });
+        } else {
+          this.announceBanner({ title: `정령 융합 — 『${name}』`, color: 0xffd166, holdMs: 2800 });
+        }
       }
     }
   }
