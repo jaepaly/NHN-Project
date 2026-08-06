@@ -395,6 +395,8 @@ import { HeatwaveCurseField } from '../render/heatwaveCurseField';
 import { showRoomCurseBanner } from '../render/roomCurseBanner';
 import {
   debugTrapProfileFromEnv,
+  TRAP_HAZARD_DAMAGE,
+  TRAP_HAZARD_DAMAGE_INTERVAL_SECONDS,
   trapHazardCirclePlacements,
   trapProfileFromLegacyCurse,
 } from '../run/trapRoomProfile';
@@ -572,7 +574,7 @@ interface FriendlyMissile {
  * manual=수동 영창(지속형 wall/orbit 포함) · auto=각인+정령+소환 · basic=기본탄 ·
  * status=상태이상 파생(burn DoT·shock 전이, 시전 주체 미추적이라 별도 버킷)
  */
-type DamageSource = 'manual' | 'auto' | 'basic' | 'status';
+type DamageSource = 'manual' | 'ultimate' | 'auto' | 'basic' | 'status';
 type BonusDamageNumberKind = 'chorus' | 'starburst' | 'variation-wave';
 
 interface CastFeedbackState {
@@ -675,6 +677,8 @@ interface HazardZone {
   damageCooldown: number;
   damage?: number;
   onDamage?: () => void;
+  /** 함정방의 여러 도형은 시각적으로만 분리되며 피해 판정은 공유한다. */
+  damageGroup?: 'trap-room';
 }
 
 interface UnstableWarning {
@@ -872,6 +876,7 @@ export class ProtoScene extends Phaser.Scene {
   private bannerRoomGeneration = 0;
   private enemyProjectiles: EnemyProjectile[] = [];
   private hazardZones: HazardZone[] = [];
+  private trapHazardDamageCooldown = 0;
   /** 함정방 입장 직후에는 배치가 보여도 즉시 피해를 주지 않는다. */
   private hazardEntryGraceRemaining = 0;
   private hazardDecorations: Phaser.GameObjects.GameObject[] = [];
@@ -1093,7 +1098,7 @@ export class ProtoScene extends Phaser.Scene {
 
   /** 런 누적 피해 귀속 원장 — restartRun에서 리셋, 방·런 종료 시 리포트 */
   private damageLedger: Record<DamageSource, number> = {
-    manual: 0, auto: 0, basic: 0, status: 0,
+    manual: 0, ultimate: 0, auto: 0, basic: 0, status: 0,
   };
   /** 활성 소환체들 — 분신 1 / 군체 N / 포탑 1 / 기본 오브 1 (#97 ②) */
   private activeSummons: SummonedOrb[] = [];
@@ -2682,10 +2687,11 @@ export class ProtoScene extends Phaser.Scene {
   }
   /** 오토 비중 스냅샷 — 콘솔 리포트·재측정(window.__autoShare)용 */
   private autoShareSnapshot(): Record<DamageSource, number> & { autoSharePercent: number } {
-    const { manual, auto, basic, status } = this.damageLedger;
-    const total = manual + auto + basic + status;
+    const { manual, ultimate, auto, basic, status } = this.damageLedger;
+    const total = manual + ultimate + auto + basic + status;
     return {
       manual: Math.round(manual),
+      ultimate: Math.round(ultimate),
       auto: Math.round(auto),
       basic: Math.round(basic),
       status: Math.round(status),
@@ -2697,7 +2703,7 @@ export class ProtoScene extends Phaser.Scene {
     const s = this.autoShareSnapshot();
     devInfo(
       `[auto-share] ${tag} — 오토 ${s.autoSharePercent}% `
-      + `(수동 ${s.manual} · 오토 ${s.auto} · 기본탄 ${s.basic} · 상태이상 ${s.status})`,
+      + `(수동 ${s.manual} · 필살 ${s.ultimate} · 오토 ${s.auto} · 기본탄 ${s.basic} · 상태이상 ${s.status})`,
     );
   }
 
@@ -2751,7 +2757,7 @@ export class ProtoScene extends Phaser.Scene {
     this.roomTimings = [];
     this.continueRunResearchTracking();
     // 전투 전용 상태만 초기화 (다음 보스가 내성 재계산, 장판·쿨다운은 방 단위)
-    this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
+    this.damageLedger = { manual: 0, ultimate: 0, auto: 0, basic: 0, status: 0 };
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
@@ -2822,7 +2828,7 @@ export class ProtoScene extends Phaser.Scene {
     this.pendingRunStartReason = null;
     this.resetRunResearchTracking();
     this.fusionGauge.reset();
-    this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
+    this.damageLedger = { manual: 0, ultimate: 0, auto: 0, basic: 0, status: 0 };
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
@@ -2862,7 +2868,7 @@ export class ProtoScene extends Phaser.Scene {
     this.roomTimings = [];
     this.resetRunResearchTracking();
     this.fusionGauge.reset();
-    this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
+    this.damageLedger = { manual: 0, ultimate: 0, auto: 0, basic: 0, status: 0 };
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
@@ -4836,6 +4842,7 @@ export class ProtoScene extends Phaser.Scene {
     }
     this.hazardZones = [];
     this.hazardEntryGraceRemaining = 0;
+    this.trapHazardDamageCooldown = 0;
   }
 
   private spawnHazards(safeCorridor?: TrapSafeCorridor): void {
@@ -4860,6 +4867,7 @@ export class ProtoScene extends Phaser.Scene {
         view,
         contains: (x, y) => Phaser.Math.Distance.Between(x, y, view.x, view.y) <= placement.radius,
         damageCooldown: 0,
+        damageGroup: 'trap-room',
       });
     }
 
@@ -4899,6 +4907,7 @@ export class ProtoScene extends Phaser.Scene {
           view,
           contains: (x, y) => bounds.contains(x, y),
           damageCooldown: 0,
+          damageGroup: 'trap-room',
         });
       }
       // 중앙 사각형과 십자 통로는 같은 안전영역이다. 두 영역의 연결부에는
@@ -4972,6 +4981,7 @@ export class ProtoScene extends Phaser.Scene {
         view,
         contains: (x, y) => bounds.contains(x, y),
         damageCooldown: 0,
+        damageGroup: 'trap-room',
       });
     }
 
@@ -4984,7 +4994,19 @@ export class ProtoScene extends Phaser.Scene {
   private updateHazards(deltaSeconds: number): void {
     this.hazardEntryGraceRemaining = Math.max(0, this.hazardEntryGraceRemaining - deltaSeconds);
     if (this.hazardEntryGraceRemaining > 0) return;
+    this.trapHazardDamageCooldown = Math.max(0, this.trapHazardDamageCooldown - deltaSeconds);
+    const insideTrapHazard = this.hazardZones.some(
+      (hazard) => hazard.damageGroup === 'trap-room'
+        && hazard.contains(this.player.x, this.player.y),
+    );
+    if (insideTrapHazard && this.trapHazardDamageCooldown <= 0) {
+      const applied = this.damagePlayer(TRAP_HAZARD_DAMAGE);
+      if (applied) this.playPlayerHit();
+      this.announceIncomingDamage(applied.hpDamage, applied.shieldDamage);
+      this.trapHazardDamageCooldown = TRAP_HAZARD_DAMAGE_INTERVAL_SECONDS;
+    }
     for (const hazard of this.hazardZones) {
+      if (hazard.damageGroup === 'trap-room') continue;
       hazard.damageCooldown = Math.max(0, hazard.damageCooldown - deltaSeconds);
       if (hazard.damageCooldown > 0) continue;
       if (!hazard.contains(this.player.x, this.player.y)) continue;
@@ -7213,6 +7235,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
             repeatPowerScale,
             plan.castMode === 'normal',
             allowEcho,
+            plan.castMode === 'ultimate' ? 'ultimate' : 'manual',
           );
           executedSpecs.push(executed);
         }
@@ -7306,6 +7329,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     repeatPowerScale: number,
     researchEligible = true,
     allowEcho = false,
+    damageSource: DamageSource = 'manual',
   ): SpellSpec {
     const { spec: baseSpec, tuning } = behavior;
     const priorUsages = this.spellHistory.allBehaviorUsages;
@@ -7349,6 +7373,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       controlDurationScale: tuningScale(tuning, 'duration'),
       controlStrengthScale: tuningScale(tuning, 'strength'),
       shieldAmountScale: tuningScale(tuning, 'amount'),
+      damageSource,
       onAffectEnemy: (enemy) => {
         if (targetState.lockedEnemy?.alive) return;
         targetState.lockedEnemy = enemy;
@@ -8263,7 +8288,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ? '#ff5c7a'
         : heatwaveDamaging ? '#e0a860' : UI_SEMANTIC.hp);
     this.manaText.setText(`${mana}/${this.playerState.maxMana}`);
-    this.shieldText.setText(`${shield}/${this.playerState.maxHp}`);
+    this.shieldText.setText(`${shield}/${Math.ceil(this.playerState.maxShield)}`);
     this.drawBuildChips();
     // 활성 자기 강화 — 매 프레임 남은 시간 갱신, 없으면 빈 줄
     const buffs = this.playerState.activeBuffs();
@@ -8805,7 +8830,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private drawHudBars(): void {
     const hpRatio = Phaser.Math.Clamp(this.playerState.hp / this.playerState.maxHp, 0, 1);
     const manaRatio = Phaser.Math.Clamp(this.playerState.mana / this.playerState.maxMana, 0, 1);
-    const shieldRatio = Phaser.Math.Clamp(this.playerState.shield / this.playerState.maxHp, 0, 1);
+    const shieldRatio = Phaser.Math.Clamp(this.playerState.shield / this.playerState.maxShield, 0, 1);
     const cooldownRatio = Phaser.Math.Clamp(
       // 분모를 실제 입력락 길이로 — 죽은 글로벌 쿨다운(3s) 분모는 게이지가 13%만 찼다
       this.playerState.cooldownRemaining / this.playerState.castInputLockSeconds,
@@ -10364,7 +10389,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 피해 숫자 — **수동 영창만**. 이 게임에서 숫자는 타격감이 아니라 "내 문장이 얼마나
     // 셌나"에 대한 답이므로, 자동 시전(각인·정령)·기본탄·상태이상 틱에는 붙이지 않는다.
     // 전부 띄우면 화면이 숫자로 덮이고 오토 비중을 시각적으로 과대평가하게 된다.
-    if (source === 'manual' && feedback !== 'status-tick') {
+    if ((source === 'manual' || source === 'ultimate') && feedback !== 'status-tick') {
       this.showDamageNumber(
         enemy, damage, this.isResistedHit(enemy, element), enemy.x, enemy.y,
       );
@@ -10890,7 +10915,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private scheduleUnstableExplosion(x: number, y: number): void {
-    const radius = 230;
+    const radius = 250;
     const warningDurationMs = 1500;
     const roomIndex = this.combatRunController.state.roomIndex;
     const warning = this.add.circle(x, y, radius, 0xff5370, 0.02)

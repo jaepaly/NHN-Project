@@ -25,6 +25,10 @@ export const TRAP_ROOM_PROFILES: Readonly<Record<TrapProfileKind, TrapRoomProfil
 /** 위험지대 함정방의 원형 장판 반경. 배치·통로 검증도 같은 값으로 계산한다. */
 export const TRAP_HAZARD_CIRCLE_RADIUS = 120;
 
+/** 함정방 위험지대의 전투 수치. 겹친 도형은 하나의 지대로 취급한다. */
+export const TRAP_HAZARD_DAMAGE = 9;
+export const TRAP_HAZARD_DAMAGE_INTERVAL_SECONDS = 0.75;
+
 /** 십자 통로 사이의 사분면에만 장판을 두어 네 방향 진입로를 모두 보존한다. */
 export const TRAP_HAZARD_CIRCLE_OFFSETS = [
   [-260, -220],
