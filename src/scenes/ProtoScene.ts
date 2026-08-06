@@ -112,7 +112,8 @@ import type { AltarTierKind } from '../combat-core/run/altarOffer';
 import { rewardOptionCount, rewardScaleFor } from '../combat-core/run/roomRewardScale';
 import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { showRoomChoices } from '../ui/roomChoiceOverlay';
-import { UI_COLOR, UI_HEX, UI_SEMANTIC, hex } from '../ui/uiTokens';
+import { UI_COLOR, UI_HEX, UI_SEMANTIC, hex, UI_RAINBOW,
+} from '../ui/uiTokens';
 import {
   AFFINITY_PANEL_LAYOUT,
   affinityBarY,
@@ -569,7 +570,7 @@ interface FriendlyMissile {
  * status=상태이상 파생(burn DoT·shock 전이, 시전 주체 미추적이라 별도 버킷)
  */
 type DamageSource = 'manual' | 'auto' | 'basic' | 'status';
-type BonusDamageNumberKind = 'chorus' | 'starburst';
+type BonusDamageNumberKind = 'chorus' | 'starburst' | 'variation-wave';
 
 interface CastFeedbackState {
   resistanceNoticeShown: boolean;
@@ -2422,6 +2423,11 @@ export class ProtoScene extends Phaser.Scene {
           false,
           'standard',
           0,
+          'auto',
+          undefined,
+          // 파동은 3충전을 모은 보상 순간이라 숫자를 준다 (총괄 결정). 공명탄은
+          // 매회라 제외 — 숫자를 붙이면 화면이 덮인다
+          'variation-wave',
         );
       }
     });
@@ -9722,12 +9728,21 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     x: number,
     y: number,
   ): void {
+    // 변주 파동 — 3충전을 모아 여러 적을 한 번에 때리는 **보상 순간**이라
+    // 합주·성운과 같은 급이다. 매 공격마다 나오는 공명탄은 여기 넣지 않는다
+    // (숫자가 화면을 덮고 오토 비중을 시각적으로 과대평가하게 된다).
+    const glyph = kind === 'chorus' ? '✦ 합주'
+      : kind === 'starburst' ? '✹ 성운'
+        : '✧ 변주';
+    const color = kind === 'chorus' ? '#79e6dc'
+      : kind === 'starburst' ? '#b78aff'
+        : UI_RAINBOW[3];
     const chorus = kind === 'chorus';
-    const label = this.add.text(x + (Math.random() - 0.5) * 26, y - 34, `${chorus ? '✦ 합주' : '✹ 성운'} ${Math.round(damage)}`, {
+    const label = this.add.text(x + (Math.random() - 0.5) * 26, y - 34, `${glyph} ${Math.round(damage)}`, {
       fontFamily: '"Consolas", "D2Coding", monospace',
       fontSize: chorus ? '13px' : '14px',
       fontStyle: 'bold',
-      color: chorus ? '#79e6dc' : '#b78aff',
+      color,
       stroke: '#080512',
       strokeThickness: 3,
     }).setOrigin(0.5).setDepth(12).setBlendMode(Phaser.BlendModes.ADD);
