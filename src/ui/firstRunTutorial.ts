@@ -105,13 +105,22 @@ ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .tut-example {
   margin-top: 10px; font: 15px ${UI_FONT.serif}; color: #e9d9a8;
 }
-#${WRAP_ID} .tut-rows { margin: 4px 0 0; display: grid; gap: 7px; }
-#${WRAP_ID} .tut-row {
-  display: flex; align-items: center; gap: 12px; justify-content: center;
-  font-size: 14px; color: ${UI_COLOR.textSoft};
+/* ⚠️ 행마다 가운데 정렬하면 **키가 어긋나 보인다** (총괄 지적). 설명 길이가 서로 달라
+   행의 총 너비가 다르고, 각 행을 따로 가운데에 맞추면 왼쪽 키 상자의 시작 x가 달라진다.
+   그래서 정렬 단위를 행이 아니라 **묶음**으로 올린다 — 바깥 그리드가 가장 넓은 행에 맞춰
+   한 번만 가운데로 가고, 행들은 그 폭을 함께 쓰며 안에서 왼쪽으로 붙는다. */
+#${WRAP_ID} .tut-rows {
+  margin: 4px 0 0; display: grid; gap: 7px;
+  grid-template-columns: max-content; justify-content: center;
 }
+#${WRAP_ID} .tut-row {
+  display: grid; grid-template-columns: 96px auto; align-items: center; gap: 12px;
+  text-align: left; font-size: 14px; color: ${UI_COLOR.textSoft};
+}
+/* 키 상자는 칸을 꽉 채운다 — content-box로 두면 패딩이 96px 밖으로 삐져나가 칸을 넘긴다 */
 #${WRAP_ID} .tut-row b {
-  min-width: 96px; padding: 4px 9px; color: ${UI_COLOR.textBright};
+  width: 100%; box-sizing: border-box; text-align: center;
+  padding: 4px 9px; color: ${UI_COLOR.textBright};
   border: 1px solid ${UI_COLOR.border}; border-radius: 5px;
   font: 700 13px ${UI_FONT.mono}; background: rgba(255, 255, 255, .04);
 }
@@ -120,8 +129,21 @@ ${ornamentCss(WRAP_ID)}
   color: ${UI_COLOR.ink}; background: ${UI_COLOR.accent};
   border: 1px solid ${UI_COLOR.accentGlow}; border-radius: 8px;
   font: 700 15px ${UI_FONT.serif};
+  transition: background 130ms ease, box-shadow 130ms ease, transform 130ms ease;
 }
+/* 눌리는 물건임을 손이 먼저 알게 한다 (총괄 지적) — 이 버튼은 안내를 닫는 유일한 출구라
+   "여기를 누르면 된다"가 확실해야 한다. 뜰 때 자동 포커스가 잡히므로 hover는 포커스 링과
+   겹칠 수 있어, 색·그림자·1px 부상으로 겹쳐도 어색하지 않게 잡았다. */
+#${WRAP_ID} .tut-go:hover {
+  background: ${UI_COLOR.accentGlow}; transform: translateY(-1px);
+  box-shadow: 0 6px 15px rgba(216, 187, 114, .32);
+}
+#${WRAP_ID} .tut-go:active { transform: translateY(0); box-shadow: none; }
 #${WRAP_ID} .tut-go:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  #${WRAP_ID} .tut-go { transition: background 130ms ease; }
+  #${WRAP_ID} .tut-go:hover, #${WRAP_ID} .tut-go:active { transform: none; }
+}
 `;
     document.head.appendChild(style);
   }

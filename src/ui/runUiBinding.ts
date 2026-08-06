@@ -1,6 +1,7 @@
 import type { RewardOption, RunController } from '../run/runContract';
 import type { SpellForm } from '../spell/types';
 import { showRewardCards } from './rewardCardOverlay';
+import { rewardGlossaryFor } from './rewardGlossary';
 import { ownedLabelFor, summarizeRunRewards } from '../run/runRewardSummary';
 import { playRoomTransition } from './roomTransition';
 // ROOM 칩(DOM)은 씬의 우상단 상태 패널로 합쳤다 (총괄 지적: 우상단 창이 너무 많다).
@@ -73,6 +74,9 @@ export function bindRunUi(controller: RunController, hooks: RunUiHooks = {}): vo
         ownedLabelFor: (option) => ownedLabelFor(option, ownedAtOffer),
         formFor: hooks.formFor,
         contextLines,
+        // 용어 사전 — "정령·각인·친화가 뭔지 모르겠다"는 제보. 카드가 적는 건 수치고,
+        // 이 패널이 적는 건 그 수치가 무엇의 수치인지다.
+        detailPanelFor: rewardGlossaryFor,
         disabledFor: (option) => option.altar?.locked === true,
       });
       if (!(await hooks.confirmRewardSelection?.(chosen) ?? true)) {

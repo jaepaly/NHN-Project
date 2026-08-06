@@ -257,6 +257,7 @@ import type { BossResistanceProfile, RunEscalationProfile } from '../spell/bossM
 import { EMPTY_RUN_MEMORY } from '../spell/runMemory';
 import { showRunSummaryOverlay } from '../ui/runSummaryOverlay';
 import { showRewardCards } from '../ui/rewardCardOverlay';
+import { rewardGlossaryFor } from '../ui/rewardGlossary';
 import { showAltarRiskConfirm } from '../ui/altarRiskConfirm';
 import { MinimapHud } from '../ui/minimapHud';
 import { allRoomIconTextures } from '../ui/roomKindIcon';
@@ -2612,6 +2613,7 @@ export class ProtoScene extends Phaser.Scene {
       const chosen = await showRewardCards(options, {
         kicker: 'GRIMOIRE',
         title: '주문서에서 유산을 꺼낸다',
+        detailPanelFor: rewardGlossaryFor,
         contextLines: ['유산 없이 시작해 이번 런의 새 발견으로 빌드를 정할 수도 있다'],
       });
       this.audio.playSfx('reward-select');
@@ -2731,6 +2733,7 @@ export class ProtoScene extends Phaser.Scene {
     const chosen = await showRewardCards(options, {
       kicker: 'INHERIT',
       title: '무엇을 남길 것인가',
+      detailPanelFor: rewardGlossaryFor,
     });
     this.audio.playSfx('ui-confirm');
     const picked = candidates.find((c) => `inherit-${c.element}` === chosen.id);
@@ -4552,6 +4555,7 @@ export class ProtoScene extends Phaser.Scene {
           kicker: 'HIGH ALTAR ARCANA',
           title: '고위 제단술 하나를 새긴다',
           contextLines: ['한 런에 같은 제단술은 한 번만 선택할 수 있다'],
+          detailPanelFor: rewardGlossaryFor,
         });
         this.applyHighAltar(picked.kind);
       } finally {
