@@ -97,6 +97,33 @@ export const UI_COLOR = {
   danger: '#b95f72',
 } as const;
 
+/** Shared room-map palette. Keep room glyph and route colors centralized here. */
+export const UI_ROOM = {
+  combat: '#aaa1c8',
+  elite: '#d58c65',
+  eliteDark: '#c26f49',
+  eliteLight: '#e0a070',
+  crown: '#e2b95f',
+  trap: '#72aa98',
+  trapAccent: '#8e79a8',
+  treasure: '#d2aa58',
+  treasureGem: '#8fe3e0',
+  treasureGemFill: '#63c9c9',
+  altar: '#a982c2',
+  altarLine: '#8f78a6',
+  altarFlame: '#d0a6e2',
+  altarFlameFill: '#b477cf',
+  altarGold: '#c5a466',
+  boss: '#b95f72',
+  bossStructure: '#8d7f91',
+  bossDark: '#a9465e',
+  bossDeep: '#7c2f43',
+  routeInk: '#171019',
+  routeHighlight: '#f0d58b',
+  routeRisk: '#c97c75',
+  routeShadow: '#050308',
+} as const;
+
 /**
  * 의미 색 — **장식이 아니라 정보다.** 마도서 톤으로 밀면 안 된다.
  *
