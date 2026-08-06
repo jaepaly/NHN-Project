@@ -146,7 +146,7 @@ const CSS = `
     radial-gradient(ellipse at 50% 44%, rgba(91, 67, 111, 0.2), transparent 43%),
     radial-gradient(circle at 18% 20%, rgba(154, 116, 71, 0.08), transparent 26%),
     linear-gradient(rgba(8, 5, 12, 0.9), rgba(4, 3, 8, 0.98));
-  backdrop-filter: blur(7px) saturate(0.48);
+  backdrop-filter: blur(4px) saturate(0.78);
   opacity: 0; visibility: hidden; transition: opacity 240ms ease;
   font-family: ${UI_FONT.serif}; color: #ded3bc;
 }

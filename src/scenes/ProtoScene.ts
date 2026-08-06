@@ -385,6 +385,8 @@ import {
   type ActiveResearchContract,
   type ResearchContractSelection,
 } from '../meta/researchContract';
+import { BOSS_PULL_FX, playBossPullTelegraph, spawnBossPullStreaks } from '../render/bossPullField';
+import { showFirstRunTutorial, tutorialSeen } from '../ui/firstRunTutorial';
 import { runSpellMatrixAudit, summarizeMatrix } from '../dev/spellMatrixAudit';
 import { SilenceCurseField } from '../render/silenceCurseField';
 import { BlackoutCurseField } from '../render/blackoutCurseField';
@@ -1888,7 +1890,41 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   /** 적이 주는 피해 — 이어가기 루프 난이도(loopDamageScale)를 반영해 감쇠 전 원본에 곱한다 */
-  private damagePlayer(amount: number): { hpDamage: number; shieldDamage: number } {
+  /**
+   * 피격 무적 시간 (총괄 제보 2026-08-06: *"피격시에 무적이 없어서 연속해서 데미지가
+   * 두두두두 들어오는 문제"*).
+   *
+   * ⚠️ 종전에도 접촉 피해 쿨다운은 있었지만 **적 개체별**이었다
+   * (`contactDamageCooldownRemaining`). 적 넷이 붙으면 각자 자기 쿨다운을 보므로
+   * **한 프레임에 네 대**를 맞는다. 투사체·위험지대는 플레이어 쪽 게이트가 아예 없었다.
+   *
+   * 0.5초는 접촉 쿨다운(0.8초)보다 짧게 잡았다. 더 길면 단일 적과 붙어 있을 때
+   * 무적이 접촉 쿨다운을 덮어 "때려도 안 아픈" 구간이 생긴다.
+   */
+  private static readonly HIT_INVULN_SECONDS = 0.5;
+  /** 무적 만료 시각 (`time.now` 기준). 런 리셋에서 비운다. */
+  private hitInvulnUntil = 0;
+  /** 보스 흡인 선 생성 간격 카운터(ms) */
+  private bossPullStreakCooldown = 0;
+
+  /**
+   * 플레이어 피해.
+   *
+   * @param channel 'hit'은 무적 프레임을 적용·갱신하는 타격(접촉·투사체·폭발·위험지대),
+   *   'tick'은 **무적을 무시하는 지속 피해**(용암·독지대를 밟고 서 있는 동안).
+   *
+   *   틱을 무적에 넣으면 장판이 무의미해진다 — 밟고 서 있어도 안 아프면 "피할 곳"이라는
+   *   설계가 사라진다. 반대로 틱이 무적을 **소모**하게 두면 장판 위에서 적에게 맞을 때
+   *   무적이 틱에 먹혀 타격을 그대로 맞는다. 그래서 두 채널을 완전히 분리한다.
+   */
+  private damagePlayer(
+    amount: number,
+    channel: 'hit' | 'tick' = 'hit',
+  ): { hpDamage: number; shieldDamage: number } {
+    if (channel === 'hit') {
+      if (this.time.now < this.hitInvulnUntil) return { hpDamage: 0, shieldDamage: 0 };
+      this.hitInvulnUntil = this.time.now + ProtoScene.HIT_INVULN_SECONDS * 1000;
+    }
     const scale = loopDamageScale(this.combatRunController.state.loopIndex);
     const result = this.playerState.takeDamage(amount * scale);
     if (result.hpDamage > 0) this.audio.playSfx('player-hit');
@@ -1947,9 +1983,26 @@ export class ProtoScene extends Phaser.Scene {
     });
   }
 
-  /** 새 런 시작 선택은 겹치지 않게 연구 → 유산 순서로 한 장씩 연다. */
+  /**
+   * 새 런 시작 선택은 겹치지 않게 연구 → 안내 → 유산 순서로 한 장씩 연다.
+   *
+   * ⚠️ 첫 런 안내를 **연구 선택 뒤**에 두는 게 의도다. 앞에 두면 아직 아무 맥락도
+   * 없는 상태에서 조작표부터 읽히고, 연구 카드가 그 인상을 덮는다. 카드로 "이 게임엔
+   * 고를 게 있다"를 본 직후에 "그 마법은 네가 문장으로 만든다"가 와야 이어진다.
+   *
+   * 안내 중에는 `researchSelecting`을 유지해 전투를 멈춘 채로 둔다 — 안내를 읽는
+   * 동안 맞으면 안 된다(연구·유산 선택과 같은 이유).
+   */
   private async offerRunStartChoices(): Promise<void> {
     await this.offerResearchContract();
+    if (!tutorialSeen()) {
+      this.researchSelecting = true;
+      try {
+        await showFirstRunTutorial();
+      } finally {
+        this.researchSelecting = false;
+      }
+    }
     await this.offerLegacyEngrave();
   }
 
@@ -2845,6 +2898,7 @@ export class ProtoScene extends Phaser.Scene {
   private resetRunResearchTracking(): void {
     this.elementalResearchEchoCharge = 0;
     this.recentManualPowers = [];
+    this.hitInvulnUntil = 0;
     this.spiritResonanceShotIndex.clear();
     this.variationWaveCharge = 0;
     this.variationWaveLastKey = null;
@@ -2858,6 +2912,7 @@ export class ProtoScene extends Phaser.Scene {
   private continueRunResearchTracking(): void {
     this.elementalResearchEchoCharge = 0;
     this.recentManualPowers = [];
+    this.hitInvulnUntil = 0;
     this.spiritResonanceShotIndex.clear();
     this.variationWaveCharge = 0;
     this.variationWaveLastKey = null;
@@ -3964,6 +4019,14 @@ export class ProtoScene extends Phaser.Scene {
     this.bossPullRemaining = BOSS_ARCANA_CONFIG.pullDurationSeconds
       + BOSS_ARCANA_CONFIG.pullTelegraphSeconds;
     this.announceSystemMessage('중력 인력 — 붙잡히기 전에 벗어나라', '#b18cff', 2200);
+    // 예고 링 — 종전엔 텍스트와 사운드뿐이라 화면에서 아무 일도 안 일어났다(총괄 제보).
+    // 링이 닫히는 시간을 실제 예고 시간에 맞춰야 "닫혔는데 안 끌린다"가 안 생긴다.
+    const boss = this.enemies.find(
+      (enemy): enemy is BossEnemy => enemy instanceof BossEnemy && enemy.alive,
+    );
+    if (boss) {
+      playBossPullTelegraph(this, boss.x, boss.y, BOSS_ARCANA_CONFIG.pullTelegraphSeconds);
+    }
   }
 
   /** 비전 마법 상태 진행 — 스케일된 델타(슬로모 존중) */
@@ -4010,6 +4073,13 @@ export class ProtoScene extends Phaser.Scene {
             const step = BOSS_ARCANA_CONFIG.pullSpeedPerSecond * deltaSeconds;
             this.player.x += (dx / distance) * step;
             this.player.y += (dy / distance) * step;
+          }
+          // 흡인 선 — **실제로 끄는 동안만** 나온다. 화면의 흐름과 몸의 이동이 같은
+          // 구간이어야 "내가 왜 움직이지"가 안 된다.
+          this.bossPullStreakCooldown -= deltaSeconds * 1000;
+          if (this.bossPullStreakCooldown <= 0) {
+            this.bossPullStreakCooldown = BOSS_PULL_FX.streakIntervalMs;
+            spawnBossPullStreaks(this, boss.x, boss.y);
           }
         } else {
           this.bossPullRemaining = 0; // 보스가 죽으면 인력도 사라진다
@@ -4656,7 +4726,9 @@ export class ProtoScene extends Phaser.Scene {
     ));
     const { kinds, state } = floorHazardTickKinds(this.floorHazardPlayer, insideKinds);
     this.floorHazardPlayer = state;
-    for (const kind of kinds) this.damagePlayer(floorHazardTickDamage(kind));
+    // 바닥 지형은 **무적을 무시하는 지속 피해**다 — 밟고 서 있으면 계속 아파야
+    // 장판이 "피할 곳"으로 성립한다. 타격 무적과 채널을 분리한다.
+    for (const kind of kinds) this.damagePlayer(floorHazardTickDamage(kind), 'tick');
   }
 
   /**
