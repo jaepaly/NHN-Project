@@ -341,6 +341,7 @@ import { GameAudio } from '../audio/gameAudio';
 import {
   behaviorElements,
   behaviorUsesAnyElement,
+  degradedSinglePlanFromSequence,
   resolveSpellPlan,
   sequencePlanHasActionBehavior,
   sequenceFlowTimeline,
@@ -6079,6 +6080,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.announceSystemMessage(`마나 부족 · 비용 ${cost} / 보유 ${held}`, '#ffd166');
   }
 
+  /** 단일·시퀀스가 같은 마나 감쇠 피드백을 공유한다. */
+  private announceDegradedCast(ratio: number): void {
+    this.announceSystemMessage(
+      `마나가 모자라 주문이 잦아들었다 · 위력 ${Math.round(ratio * 100)}%`,
+      '#ffd166',
+      2600,
+    );
+  }
+
   /** DOM 입력으로 포커스를 넘길 때 Phaser가 놓친 keyup이 이동 상태에 남지 않게 한다. */
   private resetMovementKeys(): void {
     Object.values(this.moveKeys).forEach((key) => key.reset());
@@ -6311,7 +6321,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     text: string,
     source: JudgeSource,
   ): Promise<void> {
-    const plan = resolveSpellPlan(rawPlan);
+    let plan = resolveSpellPlan(rawPlan);
+    let degradedToSingle = false;
     const ultimate = plan.castMode === 'ultimate';
     const resonanceNames = ultimate
       ? this.fusionGauge.resonance.recentNames.slice(-2)
@@ -6324,10 +6335,25 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceSystemMessage('필살영창 게이지가 부족합니다.', '#e2b7ff', 2200);
       return;
     }
-    if (!ultimate && !this.playerState.trySpendMana(plan.manaCost)) {
-      this.audio.playSfx('fizzle');
-      this.announceManaShortage(plan.manaCost);
-      return;
+    if (!ultimate) {
+      const castPlan = degradedCastPlan(plan.manaCost, this.playerState.mana);
+      if (!castPlan) {
+        this.audio.playSfx('fizzle');
+        this.announceManaShortage(plan.manaCost);
+        return;
+      }
+      if (castPlan.ratio < 1) {
+        const degraded = degradedSinglePlanFromSequence(plan, castPlan.spend, castPlan.ratio);
+        if (!degraded) {
+          this.audio.playSfx('fizzle');
+          this.announceManaShortage(plan.manaCost);
+          return;
+        }
+        plan = degraded;
+        degradedToSingle = true;
+        this.announceDegradedCast(castPlan.ratio);
+      }
+      this.playerState.trySpendMana(castPlan.spend);
     }
     const allowEcho = !ultimate && !sequencePlanHasActionBehavior(plan);
     const formSpecs = plan.sequences.flatMap((sequence) => sequence.behaviors.flatMap((behavior) => (
@@ -6407,7 +6433,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         name: plan.name,
         element_primary: sequenceElement,
         form: sequenceForm,
-      })} · 연계 ${plan.sequences.length}`,
+      })}${degradedToSingle ? ' · 감쇠 단일' : ` · 연계 ${plan.sequences.length}`}`,
       sequenceElement,
     );
     this.beginSequenceExecutionUx(plan, resonanceNames);
@@ -6595,11 +6621,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         });
       }
       if (castPlan.ratio < 1) {
-        this.announceSystemMessage(
-          `마나가 모자라 주문이 잦아들었다 · 위력 ${Math.round(castPlan.ratio * 100)}%`,
-          '#ffd166',
-          2600,
-        );
+        this.announceDegradedCast(castPlan.ratio);
       }
       // 같은 폼을 계속 쓰면 매 시전 반복되므로 방마다 폼별 1회만 알린다
       if (escalationWeaken < 1 && !this.escalationNoticed.has(spec.form)) {
