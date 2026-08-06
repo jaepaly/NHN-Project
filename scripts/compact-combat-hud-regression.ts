@@ -8,11 +8,13 @@ import {
 } from '../src/ui/combatHudPlacement';
 import { AFFINITY_PANEL_LAYOUT, affinityPanelGeometry } from '../src/ui/combatHudLayout';
 
-const buildSpan = 65;
-const standard = compactVitalGeometry(1180, 900, buildSpan);
-const buildLeft = 1180 - 20 - buildSpan;
+const buildWidth = 81;
+const buildHeight = 100;
+const buildSpan = buildWidth;
+const standard = compactVitalGeometry(1180, 900, buildWidth, buildHeight);
+const buildLeft = 1180 - 20 - buildWidth;
 assert.equal(standard.x + COMPACT_VITAL_HUD.width + COMPACT_VITAL_HUD.gapFromBuild, buildLeft);
-assert.equal(standard.y, 900 - 26 - buildSpan);
+assert.equal(standard.y, 900 - 26 - buildHeight);
 assert.ok(compactVitalGeometry(300, 180, buildSpan).x >= 8, '작은 화면에서 왼쪽 밖으로 나가면 안 된다');
 assert.ok(compactVitalGeometry(300, 80, buildSpan).y >= 8, '작은 화면에서 위쪽 밖으로 나가면 안 된다');
 assert.ok(compactVitalRowY(standard.y, 2) < standard.y + COMPACT_VITAL_HUD.height, '3행이 상태판 안에 있어야 한다');

@@ -572,15 +572,67 @@ const PAUSE_MAIN: readonly PauseRow[] = [
 ];
 
 /**
- * 빌드 칩 기하 — 2×2로 65×65px. 기존 텍스트 2줄(229×27=6183px²)보다 작은
- * 4225px²면서 글리프는 11px→17px로 커진다 (면적·가독성 동시 개선).
+ * 우하단 자동 시전 HUD. 각인과 정령은 둘 다 자동 시전이지만, 획득 경로·역할은 다르다.
+ * 그래서 큰 사각 각인 2칸과 작은 원형 정령 2칸을 `묶음 + 슬롯`으로 읽히게 나눈다.
  */
 const BUILD_CHIP = {
-  size: 30,
+  engraveSize: 38,
+  spiritSize: 28,
   gap: 5,
-  glyph: 17,
+  labelHeight: 12,
+  groupGap: 7,
+  engraveGlyph: 22,
+  spiritGlyph: 16,
   tooltipWidth: 210,
 } as const;
+
+interface BuildChipFrame {
+  x: number;
+  y: number;
+  size: number;
+  glyphSize: number;
+}
+
+type BuildChipArrivalKind = 'new' | 'upgrade' | 'evolve' | 'fuse' | 'legacy';
+
+function buildChipSpan(): number {
+  return BUILD_CHIP.engraveSize * 2 + BUILD_CHIP.gap;
+}
+
+function buildChipSpiritTop(): number {
+  return BUILD_CHIP.labelHeight + 2 + BUILD_CHIP.engraveSize
+    + BUILD_CHIP.groupGap + BUILD_CHIP.labelHeight + 2;
+}
+
+function buildChipHeight(): number {
+  return buildChipSpiritTop() + BUILD_CHIP.spiritSize;
+}
+
+function buildChipGroupLabelY(kind: BuildChip['kind']): number {
+  return kind === 'engrave'
+    ? 0
+    : BUILD_CHIP.labelHeight + 2 + BUILD_CHIP.engraveSize + BUILD_CHIP.groupGap;
+}
+
+function buildChipFrame(index: number): BuildChipFrame {
+  if (index < 2) {
+    const size = BUILD_CHIP.engraveSize;
+    return {
+      x: index * (size + BUILD_CHIP.gap) + size / 2,
+      y: BUILD_CHIP.labelHeight + 2 + size / 2,
+      size,
+      glyphSize: BUILD_CHIP.engraveGlyph,
+    };
+  }
+  const size = BUILD_CHIP.spiritSize;
+  const span = size * 2 + BUILD_CHIP.gap;
+  return {
+    x: (buildChipSpan() - span) / 2 + (index - 2) * (size + BUILD_CHIP.gap) + size / 2,
+    y: buildChipSpiritTop() + size / 2,
+    size,
+    glyphSize: BUILD_CHIP.spiritGlyph,
+  };
+}
 
 /** 친화 경험치 바가 채워지는 이정표 — 각성 임계(MASTERY_REDESIGN §5-b, 친화 0.9). */
 const AFFINITY_BAR_MILESTONE = 0.9;
@@ -941,6 +993,20 @@ export class ProtoScene extends Phaser.Scene {
   private buildChipGraphics!: Phaser.GameObjects.Graphics;
 
   private buildChipIcons: Phaser.GameObjects.Image[] = [];
+
+  private buildChipGroupLabels: Phaser.GameObjects.Text[] = [];
+
+  /** 보이는 카드와 정확히 같은 크기의 마우스 입력 영역. */
+  private buildChipZones: Phaser.GameObjects.Zone[] = [];
+
+  private buildChipTooltipGraphics!: Phaser.GameObjects.Graphics;
+
+  private buildChipTooltipText!: Phaser.GameObjects.Text;
+
+  private buildChipHoveredIndex: number | null = null;
+
+  /** 새 각인/정령은 획득 안내가 우하단 슬롯에 닿을 때까지 비어 있는 칸으로 남긴다. */
+  private readonly pendingBuildChipReveals = new Set<number>();
 
   private buildChips: BuildChip[] = [];
 
@@ -1760,7 +1826,9 @@ export class ProtoScene extends Phaser.Scene {
       this.audio.playSfx('reward-select');
       // ⑤ 강화 체감: 보상 색이 플레이어로 수렴 → 증가분 부상 텍스트 → 누적 표식 갱신
       playRewardConvergence(this, this.player.x, this.player.y, chosen);
-      showGainText(this, this.player.x, this.player.y, chosen);
+      if (!['engrave', 'spirit', 'evolve'].includes(chosen.kind)) {
+        showGainText(this, this.player.x, this.player.y, chosen);
+      }
       this.growthMarks.sync(
         state.rewards.length,
         state.elementalAffinity,
@@ -1869,6 +1937,9 @@ export class ProtoScene extends Phaser.Scene {
         devInfo('[Run] reward-applied', chosen, state);
         return;
       }
+      const engraveAlreadyOwned = chosen.engrave
+        ? this.engraveManager.entries.some((entry) => entry.spellKey === chosen.engrave!.spellKey)
+        : false;
       const engraved = this.engraveManager.applyReward(chosen);
       const spirit = this.spiritManager.applyReward(chosen);
       if (spirit) {
@@ -1877,12 +1948,31 @@ export class ProtoScene extends Phaser.Scene {
         this.reportResearchAdvance(previousResearch);
         this.syncSpiritViews();
       }
-      const message = engraved
-        ? `${engraved.spell.name} · 각인 Lv${engraved.level}`
-        : spirit
-          ? `${this.spiritName(spirit.role, spirit.element)} · 정령 Lv${spirit.level}`
-        : chosen.title;
-      this.announceSystemMessage(message, '#ffd166');
+      if (engraved) {
+        const slot = this.engraveManager.entries
+          .findIndex((entry) => entry.spellKey === engraved.spellKey);
+        if (slot >= 0) {
+          this.playBuildChipArrival(
+            'engrave',
+            slot,
+            engraveAlreadyOwned ? 'upgrade' : 'new',
+            !engraveAlreadyOwned && this.engraveManager.entries.length === 1,
+          );
+        }
+      } else if (spirit) {
+        const slot = this.spiritManager.entries
+          .findIndex((entry) => entry.spiritId === spirit.spiritId);
+        if (slot >= 0) {
+          this.playBuildChipArrival(
+            'spirit',
+            slot,
+            'new',
+            this.spiritManager.entries.length === 1,
+          );
+        }
+      } else {
+        this.announceSystemMessage(chosen.title, '#ffd166');
+      }
       devInfo('[Run] reward-applied', chosen, state);
     });
     this.combatRunController.on('room-transition', (state, durationMs) => {
@@ -2698,7 +2788,9 @@ export class ProtoScene extends Phaser.Scene {
         if (engraved) {
           // 유산의 시작 주문은 주문 각인 Lv1로 바로 기록된다.
           // 별도 상태/빌드 분류를 만들지 않아도 각인 탭에서 확인할 수 있다.
-          this.announceSystemMessage(`유산 각인 — 『${engraved.spell.name}』`, '#ffd166', 2800);
+          const slot = this.engraveManager.entries
+            .findIndex((candidate) => candidate.spellKey === engraved.spellKey);
+          if (slot >= 0) this.playBuildChipArrival('engrave', slot, 'legacy', true);
         }
       }
     } finally {
@@ -3529,7 +3621,7 @@ export class ProtoScene extends Phaser.Scene {
       .setAlpha(0)
       .setVisible(false);
 
-    const vital = vitalHudGeometry(width, height, BUILD_CHIP.size * 2 + BUILD_CHIP.gap);
+    const vital = vitalHudGeometry(width, height, buildChipSpan(), buildChipHeight());
     this.statusText = this.add.text(AFFINITY_HUD.x, AFFINITY_HUD.y, 'READY', {
       fontFamily: 'Consolas, monospace',
       fontSize: '14px',
@@ -8170,12 +8262,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.activeOrbits = this.activeOrbits.filter((active) => active !== orbit);
   }
 
-  private spiritName(role: 'attack' | 'heal' | 'guard', element?: SpellElement): string {
-    if (role === 'heal') return '치유';
-    if (role === 'guard') return '수호';
-    return ELEMENT_LABELS[element ?? 'light'];
-  }
-
   // ── 진화·융합 (성장 시스템 ④) ────────────────────────────────
   /**
    * 격상 이름 — 라이브 /evolve-name(캐시 포함) 우선.
@@ -8200,7 +8286,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const evolved = this.engraveManager.evolve(data.engraveKey, name);
       if (evolved) {
         this.playEvolutionBurst(data.elements[0] ?? evolved.spell.element_primary);
-        this.announceBanner({ title: `각인 진화 — 『${name}』`, color: 0xffd166, holdMs: 2800 });
+        const slot = this.engraveManager.entries
+          .findIndex((entry) => entry.spellKey === evolved.spellKey);
+        if (slot >= 0) this.playBuildChipArrival('engrave', slot, 'evolve');
       }
       return;
     }
@@ -8216,6 +8304,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         const completedResearch = this.reportResearchAdvance(previousResearch, false);
         this.syncSpiritViews();
         this.playEvolutionBurst(data.elements[0]);
+        const slot = this.spiritManager.entries
+          .findIndex((entry) => entry.spiritId === fused.spiritId);
+        if (slot >= 0) this.playBuildChipArrival('spirit', slot, 'fuse');
         if (completedResearch) {
           this.announceBanner({
             title: '정령 융합 · 연구 완료',
@@ -8226,8 +8317,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
             color: 0x72f1b8,
             holdMs: 2300,
           });
-        } else {
-          this.announceBanner({ title: `정령 융합 — 『${name}』`, color: 0xffd166, holdMs: 2800 });
         }
       }
     }
@@ -8415,29 +8504,62 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   /**
-   * 빌드 칩 생성 — 우하단 2×2. 앵커 (width-20, height-26)는 그대로 유지한다:
-   * 보스 미러캐스트 예고가 화면 바깥 26px 링을 채우므로 이보다 모서리로 밀 수 없다.
+   * 자동 시전 칩 생성. 앵커 (width-20, height-26)는 보스 미러캐스트 예고와 겹치지 않는다.
+   * 마우스 영역은 카드 프레임과 정확히 같은 크기라, 보이는 것보다 크게 눌리는 일이 없다.
    */
   private createBuildChips(width: number, height: number): void {
     const right = width - 20;
     const bottom = height - 26;
-    const span = BUILD_CHIP.size * 2 + BUILD_CHIP.gap;
-    this.buildChipRoot = this.add.container(right - span, bottom - span)
+    this.buildChipRoot = this.add.container(right - buildChipSpan(), bottom - buildChipHeight())
       .setScrollFactor(0)
       .setDepth(100);
-    // 그래픽은 컨테이너 로컬 좌표로 그린다 — 리사이즈 시 컨테이너만 옮기면 된다
     this.buildChipGraphics = this.add.graphics();
     this.buildChipRoot.add(this.buildChipGraphics);
 
+    this.buildChipGroupLabels = [
+      this.add.text(buildChipSpan() / 2, buildChipGroupLabelY('engrave'), '자동 각인', {
+        fontFamily: 'Consolas, monospace',
+        fontSize: '8px',
+        fontStyle: 'bold',
+        color: '#ffd166',
+        letterSpacing: 1.2,
+      }).setOrigin(0.5, 0),
+      this.add.text(buildChipSpan() / 2, buildChipGroupLabelY('spirit'), '계약 정령', {
+        fontFamily: 'Consolas, monospace',
+        fontSize: '8px',
+        fontStyle: 'bold',
+        color: '#9fc8ff',
+        letterSpacing: 1.2,
+      }).setOrigin(0.5, 0),
+    ];
+    this.buildChipGroupLabels.forEach((label) => this.buildChipRoot.add(label));
+
     this.buildChipIcons = [];
+    this.buildChipZones = [];
     for (let i = 0; i < 4; i += 1) {
-      const { x, y } = this.chipCenter(i);
-      const icon = this.add.image(x, y, formGlyphTextureKey('bolt'))
-        .setDisplaySize(BUILD_CHIP.glyph, BUILD_CHIP.glyph)
+      const frame = buildChipFrame(i);
+      const icon = this.add.image(frame.x, frame.y, formGlyphTextureKey('bolt'))
+        .setDisplaySize(frame.glyphSize, frame.glyphSize)
         .setVisible(false);
       this.buildChipRoot.add(icon);
       this.buildChipIcons.push(icon);
+
+      const zone = this.add.zone(frame.x, frame.y, frame.size, frame.size)
+        .setInteractive({ useHandCursor: true });
+      zone.on('pointerover', () => this.setBuildChipHover(i));
+      zone.on('pointerout', () => this.clearBuildChipHover(i));
+      this.buildChipRoot.add(zone);
+      this.buildChipZones.push(zone);
     }
+
+    this.buildChipTooltipGraphics = this.add.graphics().setScrollFactor(0).setDepth(103).setVisible(false);
+    this.buildChipTooltipText = this.add.text(0, 0, '', {
+      fontFamily: '"Noto Serif KR", Consolas, monospace',
+      fontSize: '11px',
+      lineSpacing: 4,
+      color: UI_COLOR.textBright,
+      wordWrap: { width: BUILD_CHIP.tooltipWidth - 24, useAdvancedWrap: true },
+    }).setScrollFactor(0).setDepth(104).setVisible(false);
 
     this.createPauseMenu(width, height);
   }
@@ -9153,30 +9275,234 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   /** 칩 i의 컨테이너 로컬 중심 (0·1=각인 윗줄, 2·3=정령 아랫줄) */
-  private chipCenter(index: number): { x: number; y: number } {
-    const col = index % 2;
-    const row = Math.floor(index / 2);
-    const step = BUILD_CHIP.size + BUILD_CHIP.gap;
-    return {
-      x: col * step + BUILD_CHIP.size / 2,
-      y: row * step + BUILD_CHIP.size / 2,
+  /**
+   * 획득 안내 → 우하단 슬롯으로 수렴 → 슬롯 생성.
+   * 전투 중 자동 시전마다 알림을 늘리지 않고, 보상을 고르는 순간에만 이 흐름을 쓴다.
+   */
+  private playBuildChipArrival(
+    kind: BuildChip['kind'],
+    slot: number,
+    arrival: BuildChipArrivalKind,
+    showFirstGuide = false,
+  ): void {
+    if (!this.scene?.isActive?.()) return;
+    const index = kind === 'engrave' ? slot : slot + 2;
+    this.drawBuildChips();
+    const chip = this.buildChips[index];
+    if (!chip?.filled) return;
+
+    const revealAfterArrival = arrival === 'new' || arrival === 'legacy';
+    if (revealAfterArrival) this.pendingBuildChipReveals.add(index);
+    this.clearBuildChipHover();
+    this.drawBuildChips();
+
+    const { width, height } = this.scale;
+    const frame = buildChipFrame(index);
+    const targetX = this.buildChipRoot.x + frame.x;
+    const targetY = this.buildChipRoot.y + frame.y;
+    const color = chip.element ? ELEMENT_PALETTES[chip.element].core : 0x8fa4ff;
+    const colorCss = paletteColorToCss(color);
+    const label = kind === 'engrave' ? '자동 각인' : '계약 정령';
+    const title = arrival === 'legacy'
+      ? '유산 각인 기록'
+      : arrival === 'upgrade'
+        ? '자동 각인 강화'
+        : arrival === 'evolve'
+          ? '자동 각인 진화'
+          : arrival === 'fuse'
+            ? '계약 정령 융합'
+            : `${label} 획득`;
+    const interval = chip.intervalSeconds === null ? null : chip.intervalSeconds.toFixed(1);
+    const actionLine = arrival === 'upgrade'
+      ? `『${chip.name}』 · Lv${chip.level}로 강화`
+      : arrival === 'evolve'
+        ? `『${chip.name}』 · 강화된 자동 시전`
+        : arrival === 'fuse'
+          ? `『${chip.name}』 · 융합 정령 자동 발동`
+          : interval === null
+            ? `『${chip.name}』`
+            : kind === 'engrave'
+              ? `『${chip.name}』 · ${interval}초마다 자동 시전`
+              : `『${chip.name}』 · ${interval}초마다 자동 발동`;
+    const lines = [actionLine];
+    if (showFirstGuide) {
+      lines.push(kind === 'engrave'
+        ? '선택한 주문만 주기적으로 자동 시전됩니다'
+        : '계약한 정령이 주기적으로 자동 발동합니다');
+    }
+
+    const panelWidth = 330;
+    const panelHeight = showFirstGuide ? 98 : 78;
+    const panel = this.add.container(width / 2, height * 0.56)
+      .setScrollFactor(0)
+      .setDepth(121)
+      .setAlpha(0)
+      .setScale(0.94);
+    const plate = this.add.graphics();
+    drawGrimoirePanel(plate, -panelWidth / 2, -panelHeight / 2, panelWidth, panelHeight, 0.98);
+    const titleText = this.add.text(-panelWidth / 2 + 50, -panelHeight / 2 + 16, title, {
+      fontFamily: '"Noto Serif KR", Georgia, serif',
+      fontSize: '18px',
+      fontStyle: 'bold',
+      color: colorCss,
+    });
+    const bodyText = this.add.text(-panelWidth / 2 + 50, -panelHeight / 2 + 43, lines.join('\n'), {
+      fontFamily: '"Noto Serif KR", Consolas, monospace',
+      fontSize: '11px',
+      color: UI_COLOR.textBright,
+      lineSpacing: 5,
+      wordWrap: { width: panelWidth - 66, useAdvancedWrap: true },
+    });
+    const crest = this.add.image(-panelWidth / 2 + 27, -panelHeight / 2 + 29, formGlyphTextureKey(chip.glyph ?? 'summon'))
+      .setTint(color)
+      .setDisplaySize(24, 24);
+    panel.add([plate, titleText, bodyText, crest]);
+
+    const travelingGlyph = this.add.image(panel.x, panel.y, formGlyphTextureKey(chip.glyph ?? 'summon'))
+      .setTint(color)
+      .setDisplaySize(Math.max(22, frame.glyphSize + 8), Math.max(22, frame.glyphSize + 8))
+      .setScrollFactor(0)
+      .setDepth(122)
+      .setAlpha(0);
+
+    const finish = () => {
+      panel.destroy();
+      travelingGlyph.destroy();
+      this.pendingBuildChipReveals.delete(index);
+      this.drawBuildChips();
+      this.pulseBuildChip(index, color);
     };
+    const beginTravel = () => {
+      if (!this.scene?.isActive?.()) {
+        finish();
+        return;
+      }
+      travelingGlyph.setAlpha(1).setScale(1.25);
+      this.tweens.add({
+        targets: panel,
+        x: targetX,
+        y: targetY,
+        alpha: 0,
+        scale: 0.14,
+        duration: 620,
+        ease: 'Cubic.easeIn',
+      });
+      this.tweens.add({
+        targets: travelingGlyph,
+        x: targetX,
+        y: targetY,
+        scale: 1,
+        alpha: 0.96,
+        duration: 620,
+        ease: 'Cubic.easeIn',
+        onComplete: finish,
+      });
+    };
+    this.tweens.add({
+      targets: panel,
+      alpha: 1,
+      scale: 1,
+      duration: 180,
+      ease: 'Cubic.easeOut',
+      onComplete: () => this.time.delayedCall(1100, beginTravel),
+    });
+  }
+
+  /** 슬롯 도착 직후의 짧은 점등. 기존 아이콘을 새로 얻었다는 마지막 확정 신호다. */
+  private pulseBuildChip(index: number, color: number): void {
+    const frame = buildChipFrame(index);
+    const x = this.buildChipRoot.x + frame.x;
+    const y = this.buildChipRoot.y + frame.y;
+    const ring = this.add.graphics().setScrollFactor(0).setDepth(103);
+    const pulse = { progress: 0 };
+    this.tweens.add({
+      targets: pulse,
+      progress: 1,
+      duration: 440,
+      ease: 'Cubic.easeOut',
+      onUpdate: () => {
+        const radius = frame.size * (0.36 + pulse.progress * 0.6);
+        ring.clear();
+        ring.lineStyle(2, color, (1 - pulse.progress) * 0.9);
+        ring.strokeCircle(x, y, radius);
+      },
+      onComplete: () => ring.destroy(),
+    });
+    const chip = this.buildChips[index];
+    const flashGlyph = this.add.image(x, y, formGlyphTextureKey(chip?.glyph ?? 'summon'))
+      .setTint(color)
+      .setDisplaySize(frame.glyphSize + 8, frame.glyphSize + 8)
+      .setScrollFactor(0)
+      .setDepth(104)
+      .setAlpha(0.9)
+      .setScale(0.7);
+    this.tweens.add({
+      targets: flashGlyph,
+      scale: 1.55,
+      alpha: 0,
+      duration: 380,
+      ease: 'Cubic.easeOut',
+      onComplete: () => flashGlyph.destroy(),
+    });
+  }
+
+  private setBuildChipHover(index: number): void {
+    if (this.buildInspectOpen
+      || this.pendingBuildChipReveals.has(index)
+      || !this.buildChips[index]?.filled) return;
+    this.buildChipHoveredIndex = index;
+    this.renderBuildChipTooltip();
+  }
+
+  private clearBuildChipHover(index?: number): void {
+    if (index !== undefined && this.buildChipHoveredIndex !== index) return;
+    this.buildChipHoveredIndex = null;
+    this.buildChipTooltipGraphics?.setVisible(false);
+    this.buildChipTooltipText?.setVisible(false);
+  }
+
+  /** 전투를 멈추지 않는 짧은 조회용 상세. ESC 상태/빌드의 긴 설명을 대체하지 않는다. */
+  private renderBuildChipTooltip(): void {
+    const index = this.buildChipHoveredIndex;
+    const chip = index === null ? null : this.buildChips[index];
+    if (index === null || !chip?.filled || this.buildInspectOpen || this.pendingBuildChipReveals.has(index)) {
+      this.clearBuildChipHover();
+      return;
+    }
+    const kindLabel = chip.kind === 'engrave' ? '자동 각인' : '계약 정령';
+    const remaining = chip.remainingSeconds === null ? null : Math.max(0, chip.remainingSeconds);
+    const interval = chip.intervalSeconds === null ? null : Math.max(0, chip.intervalSeconds);
+    const timing = remaining === null || interval === null
+      ? null
+      : `다음 자동 시전 ${remaining.toFixed(1)}초 / ${interval.toFixed(1)}초`;
+    const lines = [`${kindLabel} · ${chip.name}`, ...chip.detail, ...(timing ? [timing] : [])];
+    this.buildChipTooltipText.setText(lines.join('\n'));
+    const textHeight = Math.max(42, this.buildChipTooltipText.height + 22);
+    const x = Math.max(8, this.buildChipRoot.x + buildChipSpan() - BUILD_CHIP.tooltipWidth);
+    const y = Math.max(8, this.buildChipRoot.y - textHeight - 7);
+    this.buildChipTooltipGraphics.clear().setVisible(true);
+    drawGrimoirePanel(this.buildChipTooltipGraphics, x, y, BUILD_CHIP.tooltipWidth, textHeight, 0.96);
+    this.buildChipTooltipText.setPosition(x + 12, y + 11).setVisible(true);
   }
 
   /**
-   * 빌드 칩 그리기 — 텍스트 0글자로 여섯 채널을 인코딩한다.
    * 사각=각인·원=정령 / 채움=원소색 / 글리프=폼 / 금테=진화 / 3핍=레벨 / 호=쿨다운.
-   * 발광(ADD)·점멸을 쓰지 않는다 — HUD는 저진폭 알파만 쓰는 규율을 따른다(#220 맥락).
+   * 각인 행을 크게 두고 묶음명을 고정해, 어떤 주문이 자동으로 나가는지 바로 읽힌다.
    */
   private drawBuildChips(): void {
     this.buildChips = buildChipModel(
       this.engraveManager.entries, this.spiritManager.entries, this.awakenings,
     );
     const g = this.buildChipGraphics.clear();
-    const half = BUILD_CHIP.size / 2;
+    this.buildChipGroupLabels[0]?.setAlpha(this.buildChips.slice(0, 2)
+      .some((chip, index) => chip.filled && !this.pendingBuildChipReveals.has(index)) ? 1 : 0.66);
+    this.buildChipGroupLabels[1]?.setAlpha(this.buildChips.slice(2)
+      .some((chip, index) => chip.filled && !this.pendingBuildChipReveals.has(index + 2)) ? 1 : 0.66);
 
     this.buildChips.forEach((chip, i) => {
-      const { x, y } = this.chipCenter(i);
+      const frame = buildChipFrame(i);
+      const { x, y } = frame;
+      const half = frame.size / 2;
       const icon = this.buildChipIcons[i];
       const round = chip.kind === 'spirit';
       const core = chip.element ? ELEMENT_PALETTES[chip.element].core : 0x8fa4ff;
@@ -9184,11 +9510,11 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ? ELEMENT_PALETTES[chip.elementSecondary].core
         : core;
 
-      if (!chip.filled) {
+      if (!chip.filled || this.pendingBuildChipReveals.has(i)) {
         // 빈 슬롯 — 자리를 지켜 "채울 수 있다"를 알린다 (기존 0/2 표기의 의도 계승)
         g.lineStyle(1, 0x8fa4ff, 0.34);
         if (round) g.strokeCircle(x, y, half - 1);
-        else g.strokeRoundedRect(x - half + 1, y - half + 1, BUILD_CHIP.size - 2, BUILD_CHIP.size - 2, 5);
+        else g.strokeRoundedRect(x - half + 1, y - half + 1, frame.size - 2, frame.size - 2, 5);
         icon.setVisible(false);
         return;
       }
@@ -9196,14 +9522,14 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       // 채움 — 이중 원소는 위/아래 투톤으로 두 색을 다 보여준다
       g.fillStyle(core, 0.2);
       if (round) g.fillCircle(x, y, half);
-      else g.fillRoundedRect(x - half, y - half, BUILD_CHIP.size, BUILD_CHIP.size, 5);
+      else g.fillRoundedRect(x - half, y - half, frame.size, frame.size, 5);
       if (chip.elementSecondary) {
         g.fillStyle(glow, 0.2);
         if (round) {
           g.slice(x, y, half, 0, Math.PI, false);
           g.fillPath();
         } else {
-          g.fillRoundedRect(x - half, y, BUILD_CHIP.size, half, { tl: 0, tr: 0, bl: 5, br: 5 });
+          g.fillRoundedRect(x - half, y, frame.size, half, { tl: 0, tr: 0, bl: 5, br: 5 });
         }
       }
 
@@ -9215,7 +9541,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       } else {
         g.lineStyle(chip.evolved ? 2 : 1.2, borderColor, chip.evolved ? 0.95 : 0.62);
         if (round) g.strokeCircle(x, y, half - 1);
-        else g.strokeRoundedRect(x - half + 1, y - half + 1, BUILD_CHIP.size - 2, BUILD_CHIP.size - 2, 5);
+        else g.strokeRoundedRect(x - half + 1, y - half + 1, frame.size - 2, frame.size - 2, 5);
       }
 
       // 쿨다운 호 — 남은 만큼 위에서 시계방향으로 남는다 (0=지금 나간다)
@@ -9229,7 +9555,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
       // 레벨 3핍 — 채워진 길이로 읽힌다 ("Lv2" 4글자를 대체)
       if (chip.kind === 'engrave') {
-        const pipW = (BUILD_CHIP.size - 10) / 3;
+        const pipW = (frame.size - 10) / 3;
         for (let p = 0; p < 3; p += 1) {
           g.fillStyle(p < chip.level ? core : 0xffffff, p < chip.level ? 0.95 : 0.16);
           g.fillRect(x - half + 5 + p * pipW, y + half - 4, pipW - 1.5, 2);
@@ -9247,8 +9573,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
       icon.setTexture(formGlyphTextureKey(chip.glyph ?? 'summon'))
         .setTint(core)
+        .setDisplaySize(frame.glyphSize, frame.glyphSize)
         .setVisible(true);
     });
+    this.renderBuildChipTooltip();
   }
 
   /**
@@ -9265,6 +9593,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.incanting || this.casting || this.legacySelecting || this.researchSelecting
     )) return;
     this.buildInspectOpen = !this.buildInspectOpen;
+    this.clearBuildChipHover();
     this.releasePauseSettingPointer();
     this.time.paused = this.buildInspectOpen;
     // 열 때마다 상태/빌드 탭부터 — 지난번에 보던 지도·설정이 남지 않게 한다.
@@ -9306,7 +9635,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     const heatPulse = 0.36 + Math.sin(this.time.now / 420) * 0.12;
     const g = this.hudGraphics.clear();
     const { width, height } = this.scale;
-    const vital = vitalHudGeometry(width, height, BUILD_CHIP.size * 2 + BUILD_CHIP.gap);
+    const vital = vitalHudGeometry(width, height, buildChipSpan(), buildChipHeight());
 
     // 마도서 판 — 불규칙한 변 + 이중 괘선 + 모서리 갈고리.
     // 종전엔 `fillRoundedRect` + 1px 테두리였다(총괄 지적: "상자에 색만 칠한 느낌").

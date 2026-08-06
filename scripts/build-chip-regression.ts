@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   BUILD_CHIP_CONFIG,
   buildChipModel,
@@ -8,6 +9,23 @@ import {
 import type { EngravedSpellSnapshot } from '../src/combat-core/engrave/engraveManager';
 import type { SpiritSnapshot } from '../src/combat-core/spirit/spiritManager';
 import type { SpellSpec } from '../src/spell/types';
+
+// HUD는 자동 각인과 계약 정령을 독립 묶음으로 읽히게 하고,
+// 보이는 칸과 포인터 입력 영역이 정확히 일치해야 한다.
+{
+  const source = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+  assert.ok(source.includes('자동 각인'), '자동 각인 묶음명이 HUD에 있어야 한다');
+  assert.ok(source.includes('계약 정령'), '계약 정령 묶음명이 HUD에 있어야 한다');
+  assert.ok(source.includes('engraveSize: 38'), '각인 칸은 가시성을 위해 크게 유지한다');
+  assert.ok(source.includes('spiritSize: 28'), '정령 칸은 별도 크기로 유지한다');
+  assert.ok(source.includes('this.add.zone(frame.x, frame.y, frame.size, frame.size)'), '호버 영역은 보이는 칸과 같아야 한다');
+  assert.ok(source.includes('다음 자동 시전'), '채워진 칩은 실제 다음 자동 시전 시점을 보여야 한다');
+  assert.ok(source.includes('playBuildChipArrival('), '획득 안내가 슬롯 도착 연출을 시작해야 한다');
+  assert.ok(source.includes('pendingBuildChipReveals'), '새 슬롯은 도착 전까지 비어 있어야 한다');
+  assert.ok(source.includes("'legacy', true"), '유산 각인도 첫 자동 시전 안내와 함께 슬롯에 기록되어야 한다');
+  assert.ok(source.includes("engraveAlreadyOwned ? 'upgrade' : 'new'"), '신규 획득과 강화는 서로 다른 도착 연출을 써야 한다');
+  assert.ok(source.includes("'spirit', slot, 'fuse'"), '정령 융합도 계약 정령 슬롯으로 수렴해야 한다');
+}
 
 const spell = (over: Partial<SpellSpec> = {}): SpellSpec => ({
   name: '화염구',
@@ -75,6 +93,8 @@ assert.equal(e0.elementSecondary, 'earth', '부속성 = 칩 투톤');
 assert.equal(e0.form, 'slash', '폼 = 글리프 선택');
 assert.equal(e0.level, 3);
 assert.equal(e0.evolved, true, '진화 = 금테');
+assert.equal(e0.intervalSeconds, 4, '실제 주기를 툴팁에 전달');
+assert.equal(e0.remainingSeconds, 2, '다음 시전까지 남은 시간을 툴팁에 전달');
 assert.ok(e0.detail.some((d) => d.includes('90')), '위력이 툴팁에');
 assert.ok(e0.detail.some((d) => d.includes('진화')), '진화 표기');
 
@@ -102,6 +122,8 @@ assert.equal(cooldownRatio(Number.NaN, 4), 0, 'NaN 방어');
 assert.equal(cooldownRatio(2, Number.NaN), 0, 'NaN interval 방어');
 assert.equal(buildChipModel([engrave({ remainingSeconds: 1, intervalSeconds: 4 })], [])[0].cooldownRatio, 0.25);
 assert.equal(empty[0].cooldownRatio, 0, '빈 칸은 쿨다운 없음');
+assert.equal(empty[0].intervalSeconds, null, '빈 칸은 주기 없음');
+assert.equal(empty[0].remainingSeconds, null, '빈 칸은 남은 시간 없음');
 
 // 6) 순수성 — 입력을 만지지 않는다
 const src = [engrave()];
