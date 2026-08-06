@@ -24,15 +24,17 @@ export interface CompactVitalGeometry { x: number; y: number }
 export function compactVitalGeometry(
   screenWidth: number,
   screenHeight: number,
-  buildSpan: number,
+  buildWidth: number,
+  buildHeight = buildWidth,
 ): CompactVitalGeometry {
   const width = Number.isFinite(screenWidth) ? Math.max(0, screenWidth) : 0;
   const height = Number.isFinite(screenHeight) ? Math.max(0, screenHeight) : 0;
-  const span = Number.isFinite(buildSpan) ? Math.max(0, buildSpan) : 0;
-  const buildLeft = width - 20 - span;
+  const safeBuildWidth = Number.isFinite(buildWidth) ? Math.max(0, buildWidth) : 0;
+  const safeBuildHeight = Number.isFinite(buildHeight) ? Math.max(0, buildHeight) : 0;
+  const buildLeft = width - 20 - safeBuildWidth;
   return {
     x: Math.max(8, buildLeft - COMPACT_VITAL_HUD.gapFromBuild - COMPACT_VITAL_HUD.width),
-    y: Math.max(8, height - 26 - span),
+    y: Math.max(8, height - 26 - safeBuildHeight),
   };
 }
 

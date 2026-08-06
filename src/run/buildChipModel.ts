@@ -59,6 +59,9 @@ export interface BuildChip {
   awakening: AwakeningKind | null;
   /** 다음 자동 시전까지 남은 비율 0~1 (1=방금 쐈다, 0=지금 나간다). 빈 칸은 0 */
   cooldownRatio: number;
+  /** 마우스 상세에 쓰는 실제 자동 시전 주기·남은 시간. 빈 슬롯은 null이다. */
+  intervalSeconds: number | null;
+  remainingSeconds: number | null;
   /** 툴팁 상세 줄 — 이름 아래에 붙는다 */
   detail: string[];
 }
@@ -107,6 +110,8 @@ function emptyChip(kind: BuildChipKind, slot: number): BuildChip {
     evolved: false,
     awakening: null,
     cooldownRatio: 0,
+    intervalSeconds: null,
+    remainingSeconds: null,
     detail: [kind === 'engrave'
       ? '수동으로 외운 주문을 보상에서 각인할 수 있다'
       : '보상에서 정령을 얻을 수 있다'],
@@ -136,6 +141,8 @@ function engraveChip(
     evolved: entry.evolved,
     awakening: awakenings[spell.element_primary] ?? null,
     cooldownRatio: cooldownRatio(entry.remainingSeconds, entry.intervalSeconds),
+    intervalSeconds: entry.intervalSeconds,
+    remainingSeconds: entry.remainingSeconds,
     detail,
   };
 }
@@ -168,6 +175,8 @@ function spiritChip(
     evolved: entry.fused,
     awakening: element ? awakenings[element] ?? null : null,
     cooldownRatio: cooldownRatio(entry.remainingSeconds, entry.intervalSeconds),
+    intervalSeconds: entry.intervalSeconds,
+    remainingSeconds: entry.remainingSeconds,
     detail,
   };
 }

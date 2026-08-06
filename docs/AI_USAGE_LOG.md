@@ -36,6 +36,7 @@
 | 2026-08-07 | 이도원 | Codex + 사용자 플레이테스트 + TypeScript/Vite 회귀 | MockJudge 필살 게이지 오소비·판정 후 WASD 홀드 유실 수정 | Mock 단일 판정에서만 남아 있던 구형 자동 융합 방출을 제거해 게이지 소비를 검증된 Shift+Enter 필살영창으로 단일화하고, DOM capture 단계에서 물리 WASD 상태를 추적해 판정 전환 중 Phaser keydown 유실을 보완 | `FusionGauge`, `ProtoScene`, `PhysicalMovementState`, 게이지·이동 회귀, 설계 문서 | 전체 회귀 110종·production build·diff check 통과. 사용자가 인게임에서 두 글리치 수정 상태를 확인했으며 외부 Gemini 직접 호출은 미실시 |
 | 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
 |---|---|---|---|---|---|---|
+| 2026-08-06 | 임재윤(R2) | Codex + TypeScript/Vite 회귀 + 실플레이 검증 | 자동 각인·정령 획득 HUD 수렴 연출 | 자동 시전 주문과 정령을 얻는 순간, 획득 안내가 우하단의 정확한 HUD 슬롯으로 수렴해 새 보유 상태를 이해하게 한다. 자동 발동 때마다 추가 문구는 내지 않는다. | `ProtoScene.ts`, `buildChipModel.ts`, HUD 배치·회귀 스크립트, R2/진행 로그 | `test:buildchip`, `test:compacthud`, TypeScript, production build, diff check 통과. 유산 각인의 안내→수렴→HUD 채움은 사용자 실플레이로 확인했다. 정령은 동일 공통 경로를 정적 회귀로 확인했으며 별도 수동 시연은 하지 않았다. 외부 Gemini 호출·에셋 생성 없음. |
 | 2026-08-06 | 임재윤(R2) | Codex + Git rebase + TypeScript/Vite 회귀 | ESC 상태/빌드·설정 최신 main 통합, PR #369 | 최신 `origin/main`에서 기존 ESC 탭·상태/빌드·내장 설정 변경의 충돌을 확인·해소하고, 팀의 연구·정령·오버레이 수정은 보존한다. 빈 분류의 `아직 없음` 표시는 제거하며 주문별 일러스트 에셋은 후속 작업으로 분리 | `ProtoScene.ts`, `TitleScene.ts`, `gameSettings.ts`, `gameSettingsPanel.ts`, 공명 장부·회귀 스크립트, R2 진행 로그, PR #369 | rebase 중 실제 충돌은 공용 AI 사용 로그뿐이어서 최신 기록을 보존했다. `test:pausetabs`, `test:settings`, `test:pausekey`, `test:vfxbrightness`, `test:resonanceledger`, TypeScript·production build와 작업 트리 diff check 통과. 외부 Gemini 호출·에셋 생성 없음. |
 | 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
 |---|---|---|---|---|---|---|
