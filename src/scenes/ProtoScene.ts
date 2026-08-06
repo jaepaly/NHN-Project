@@ -1950,6 +1950,7 @@ export class ProtoScene extends Phaser.Scene {
       });
       const selected = contracts.find((contract) => chosen.id === `research-${contract.id}`);
       if (!selected) return;
+      this.audio.playSfx('ui-confirm');
       const active = this.runResearchTracker.selectResearch(selected);
       this.applyResearchStartBonus(selected);
       this.announceBanner({
@@ -2024,9 +2025,17 @@ export class ProtoScene extends Phaser.Scene {
     return `정령 계약 ${contract.spiritAcquisitions ?? 0}/2 · 융합 ${contract.spiritFusions ?? 0}/1`;
   }
 
-  private reportResearchAdvance(previous: ActiveResearchContract | null): void {
+  /**
+   * 연구 진행 효과를 반영하고, 이번 호출에서 새로 완료됐으면 그 계약을 돌려준다.
+   * 정령 융합처럼 완료 공지와 자체 공지가 한 순간에 겹치는 경로는 완료 공지만 보류해
+   * 호출측에서 하나의 짧은 통합 배너로 보여줄 수 있다.
+   */
+  private reportResearchAdvance(
+    previous: ActiveResearchContract | null,
+    emitCompletionBanner = true,
+  ): ActiveResearchContract | null {
     const current = this.runResearchTracker.snapshot().research;
-    if (!current) return;
+    if (!current) return null;
     const reward = researchMilestoneReward(previous, current);
     const newElements = current.id === 'variation-study'
       ? current.usedElements.filter((element) => !previous?.usedElements.includes(element))
@@ -2035,7 +2044,7 @@ export class ProtoScene extends Phaser.Scene {
       ? current.usedForms.filter((form) => !previous?.usedForms.includes(form))
       : [];
     if (current.progress === previous?.progress && newElements.length === 0 && newForms.length === 0) {
-      return;
+      return null;
     }
     this.playResearchProgressVfx(
       current,
@@ -2083,18 +2092,20 @@ export class ProtoScene extends Phaser.Scene {
         : '지원 영창 인정';
     const perkLine = `연구 특성 · ${this.researchPerkSummary(current)}`;
     if (current.completed && !previous?.completed) {
-      this.announceBanner({
-        title: `연구 완료 · ${this.researchTitle(current)}`,
-        lines: [
-          `${progressSubject} · ${researchProgressSlots(current)}`,
-          ...(rewardLine ? [rewardLine] : []),
-          perkLine,
-          `돌파 보상 · 통찰 +${current.rewardInsight} · 런 결산에 기록`,
-        ],
-        color: 0x72f1b8,
-        holdMs: 3400,
-      });
-      return;
+      if (emitCompletionBanner) {
+        this.announceBanner({
+          title: `연구 완료 · ${this.researchTitle(current)}`,
+          lines: [
+            `${progressSubject} · ${researchProgressSlots(current)}`,
+            ...(rewardLine ? [rewardLine] : []),
+            perkLine,
+            `돌파 보상 · 통찰 +${current.rewardInsight} · 런 결산에 기록`,
+          ],
+          color: 0x72f1b8,
+          holdMs: 3400,
+        });
+      }
+      return current;
     }
     this.announceSystemMessage(
       `연구 · ${progressSubject} ${researchProgressSlots(current)} ${current.progress}/${current.goal}`
@@ -2103,6 +2114,7 @@ export class ProtoScene extends Phaser.Scene {
       '#8fa4ff',
       2600,
     );
+    return null;
   }
 
   private researchProgressSummary(contract: ActiveResearchContract): string {
@@ -2466,7 +2478,7 @@ export class ProtoScene extends Phaser.Scene {
         title: '주문서에서 유산을 꺼낸다',
         contextLines: ['유산 없이 시작해 이번 런의 새 발견으로 빌드를 정할 수도 있다'],
       });
-      this.audio.playSfx('ui-confirm');
+      this.audio.playSfx('reward-select');
       const entry = offers.find((e) => `legacy-${e.normalized}` === chosen.id);
       if (entry) {
         saveLastLegacySelection(entry.normalized);
@@ -2820,6 +2832,9 @@ export class ProtoScene extends Phaser.Scene {
       return;
     }
     this.activateRoomCurse(roomIndex);
+    const roomKind = this.mapGraph.current().kind;
+    if (roomKind === 'trap') this.audio.playSfx('trap-room-enter');
+    else if (roomKind === 'elite') this.audio.playSfx('elite-room-enter');
     if (this.isBossEncounter()) {
       this.startBossRoom(encounter.encounterKind === 'memory-boss');
       return;
@@ -3687,6 +3702,7 @@ export class ProtoScene extends Phaser.Scene {
     // 재료가 없으면(수동 damage 주문 미달) 조용히 생략 — 밋밋한 미러는 역효과다.
     if (!spec) return;
     this.mirrorCastUsed = true;
+    this.audio.playBossIncantEnter();
 
     const targetX = this.player.x;
     const targetY = this.player.y;
@@ -3717,7 +3733,6 @@ export class ProtoScene extends Phaser.Scene {
       beamLine,
       caster: boss,
     };
-    this.audio.playSfx('boss-appear');
     requestCameraShake(this, 'weak', 1);
     this.announceSystemMessage(
       `보스가 『${spec.name}』을(를) 역영창한다 —`,
@@ -3760,6 +3775,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private fireMirrorCast(spec: SpellSpec, targetX: number, targetY: number): void {
+    this.audio.playBossElementCast(spec.element_primary);
     this.bossCastSpellAt(spec, targetX, targetY, MIRROR_CAST_CONFIG.damageScale);
     devInfo('[MirrorCast] fired', { spec: spec.name, targetX, targetY });
   }
@@ -3827,6 +3843,7 @@ export class ProtoScene extends Phaser.Scene {
     marker.fillStyle(pal.glow, 0.16).fillCircle(targetX, targetY, radius);
     marker.lineStyle(3, pal.core, 0.95).strokeCircle(targetX, targetY, radius);
     marker.lineStyle(1, pal.accent, 0.72).strokeCircle(targetX, targetY, Math.max(18, radius - 10));
+    this.audio.playBossIncantEnter();
     this.pendingBossArcana = {
       spec,
       targetX,
@@ -3865,6 +3882,7 @@ export class ProtoScene extends Phaser.Scene {
       if (pending.remainingSeconds <= 0) {
         pending.marker.destroy();
         this.pendingBossArcana = null;
+        this.audio.playBossElementCast(pending.spec.element_primary);
         this.bossCastSpellAt(
           pending.spec, pending.targetX, pending.targetY, BOSS_ARCANA_CONFIG.damageScale,
         );
@@ -3881,10 +3899,12 @@ export class ProtoScene extends Phaser.Scene {
     }
 
     if (this.bossPullRemaining > 0) {
+      const telegraphLeftBefore = this.bossPullRemaining - BOSS_ARCANA_CONFIG.pullDurationSeconds;
       this.bossPullRemaining -= deltaSeconds;
       const telegraphLeft = this.bossPullRemaining - BOSS_ARCANA_CONFIG.pullDurationSeconds;
       // 예고 구간(첫 0.6초)에는 끌지 않는다 — 반응할 시간을 준다.
       if (telegraphLeft <= 0) {
+        if (telegraphLeftBefore > 0) this.audio.playSfx('boss-gravity-pull');
         const boss = this.enemies.find(
           (enemy): enemy is BossEnemy => enemy instanceof BossEnemy && enemy.alive,
         );
@@ -4297,7 +4317,6 @@ export class ProtoScene extends Phaser.Scene {
    */
   private openRewardlessRoomChoice(): void {
     this.clearRoomFixture();
-    this.audio.playSfx('room-clear');
     this.combatRunController.notifyRoomCleared();
   }
 
@@ -4992,6 +5011,7 @@ if (applied) this.playPlayerHit();
       if (enemy instanceof BossEnemy) {
         if (wasCharging || enemy.charging) this.updateBossChargeTrail(enemy, deltaSeconds);
         if (wasCharging && !enemy.charging) {
+          this.audio.playSfx('boss-charge-end');
           this.showBossChargeShockwave(enemy.x, enemy.y, 0xd0a8ff);
           requestCameraShake(this, 'medium');
         }
@@ -5154,6 +5174,7 @@ if (applied) this.playPlayerHit(
         break;
       case 'charge-start':
         if (this.bossChargeTarget) {
+          this.audio.playSfx('boss-charge-start');
           requestCameraShake(this, 'weak');
           this.showBossChargeShockwave(boss.x, boss.y, 0xff5370);
           this.bossChargeTrailCooldown = 0;
@@ -5230,6 +5251,7 @@ if (applied) this.playPlayerHit(
   }
 
   private spawnBossVolley(boss: BossEnemy, angles: readonly number[]): void {
+    this.audio.playSfx('boss-volley-fire');
     this.showBossChargeShockwave(boss.x, boss.y, 0xff8f70);
     for (const angle of angles) {
       this.spawnEnemyProjectile({
@@ -5351,6 +5373,7 @@ if (applied) this.playPlayerHit(
   }
 
   private spawnBossSurroundMinions(): void {
+    this.audio.playSfx('boss-summon');
     for (let i = 0; i < 3; i++) {
       const angle = (Math.PI * 2 * i) / 3;
       const x = Phaser.Math.Clamp(this.player.x + Math.cos(angle) * 180, this.worldBounds.left + 30, this.worldBounds.right - 30);
@@ -5360,6 +5383,7 @@ if (applied) this.playPlayerHit(
   }
 
   private spawnBossEliteMinion(boss: BossEnemy): void {
+    this.audio.playSfx('boss-summon');
     const modifier = ELITE_MODIFIERS[this.bossEliteSummonIndex++ % ELITE_MODIFIERS.length];
     const angle = Math.random() * Math.PI * 2;
     const x = Phaser.Math.Clamp(
@@ -5381,12 +5405,17 @@ if (applied) this.playPlayerHit(
       && this.bossResistance.counterStrategy === 'ranged';
     const radius = enhanced ? 165 : 130;
     const centers = this.bossHazardCenters(radius, 5, enhanced);
-    for (const center of centers) {
-      this.spawnBossHazardAt(center.x, center.y, radius);
+    for (const [index, center] of centers.entries()) {
+      this.spawnBossHazardAt(center.x, center.y, radius, index === 0);
     }
   }
 
-  private spawnBossHazardAt(x: number, y: number, radius: number): void {
+  private spawnBossHazardAt(
+    x: number,
+    y: number,
+    radius: number,
+    playActivationSound: boolean,
+  ): void {
     const warningDurationMs = 1200;
     const outerRing = this.add.circle(0, 0, radius, 0xff5370, 0.06)
       .setStrokeStyle(4, 0xff5370, 0.92)
@@ -5410,6 +5439,7 @@ if (applied) this.playPlayerHit(
         warning.destroy();
         return;
       }
+      if (playActivationSound) this.audio.playSfx('boss-hazard-spawn');
       this.tweens.killTweensOf(outerRing);
       outerRing.setAlpha(1).setFillStyle(0x8f183e, 0.32)
         .setStrokeStyle(5, 0xff6b86, 1);
@@ -5883,7 +5913,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private openIncant(castMode: 'normal' | 'ultimate' = 'normal'): void {
-    this.audio.playSfx('incant-enter');
+    this.audio.playSfx(castMode === 'ultimate' ? 'ultimate-incant-enter' : 'incant-enter');
     this.resetMovementKeys();
     this.incanting = true;
     this.incantCastMode = castMode;
@@ -7784,6 +7814,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (enemy instanceof BossEnemy && enemy.charging && !startedTouching) {
       enemy.cancelCharge();
       enemy.view.setPosition(previous.x, previous.y);
+      this.audio.playSfx('boss-charge-end');
+      this.showBossChargeShockwave(enemy.x, enemy.y, 0xd0a8ff);
+      requestCameraShake(this, 'medium');
       // 아래 일반 둔화(1.5초 ×0.6)를 건너뛴다.
       //
       // `enemyControlState.applySlow`는 배수를 `min(기존, 신규)`, 지속을
@@ -7930,10 +7963,22 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       if (fused) {
         const previousResearch = this.runResearchTracker.snapshot().research;
         this.runResearchTracker.recordSpiritResearch('fused');
-        this.reportResearchAdvance(previousResearch);
+        const completedResearch = this.reportResearchAdvance(previousResearch, false);
         this.syncSpiritViews();
         this.playEvolutionBurst(data.elements[0]);
-        this.announceBanner({ title: `정령 융합 — 『${name}』`, color: 0xffd166, holdMs: 2800 });
+        if (completedResearch) {
+          this.announceBanner({
+            title: '정령 융합 · 연구 완료',
+            lines: [
+              `『${name}』 탄생 · ${this.researchTitle(completedResearch)}`,
+              `연구 특성 · ${this.researchPerkSummary(completedResearch)} · 통찰 +${completedResearch.rewardInsight}`,
+            ],
+            color: 0x72f1b8,
+            holdMs: 2300,
+          });
+        } else {
+          this.announceBanner({ title: `정령 융합 — 『${name}』`, color: 0xffd166, holdMs: 2800 });
+        }
       }
     }
   }
@@ -10740,6 +10785,7 @@ if (applied) this.playPlayerHit('strong');
   }
 
   private spawnBossMinions(boss: BossEnemy): void {
+    this.audio.playSfx('boss-summon');
     for (let i = 0; i < BOSS_CONFIG.minionsPerTrigger; i++) {
       const angle = Math.random() * Math.PI * 2;
       const x = Phaser.Math.Clamp(
