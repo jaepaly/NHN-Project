@@ -11,7 +11,7 @@ import {
   elementalFocusEchoUnlocked,
   elementalFocusSpatialScale,
   ELEMENTAL_FOCUS_START_AFFINITY,
-  EXPANDED_RESEARCH_UNLOCK_INSIGHT,
+  VARIATION_RESEARCH_UNLOCK_RUNS,
   ELEMENTAL_FOCUS_MILESTONE_AFFINITY,
   RESEARCH_FIRST_REWARD,
   RESEARCH_REPEAT_REWARD,
@@ -50,29 +50,57 @@ function spell(
   };
 }
 
-// 첫 런·통찰 미달은 선택을 요구하지 않는다.
-assert.deepEqual(availableBasicResearchContracts({ insight: 20, totalRuns: 0 }, 'fire'), []);
-assert.deepEqual(availableBasicResearchContracts({ insight: 3, totalRuns: 2 }, 'fire'), []);
-assert.deepEqual(
-  availableBasicResearchContracts({ insight: 4, totalRuns: 1 }, null),
-  [{ id: 'spirit-resonance' }],
-);
-assert.deepEqual(
-  availableBasicResearchContracts({ insight: 4, totalRuns: 1 }, 'fire'),
-  [{ id: 'elemental-focus', element: 'fire' }, { id: 'spirit-resonance' }],
-);
-assert.deepEqual(
-  availableBasicResearchContracts({ insight: EXPANDED_RESEARCH_UNLOCK_INSIGHT - 1, totalRuns: 1 }, 'fire'),
-  [{ id: 'elemental-focus', element: 'fire' }, { id: 'spirit-resonance' }],
-);
-assert.deepEqual(
-  availableBasicResearchContracts({ insight: EXPANDED_RESEARCH_UNLOCK_INSIGHT, totalRuns: 1 }, 'fire'),
-  [
-    { id: 'elemental-focus', element: 'fire' },
-    { id: 'spirit-resonance' },
-    { id: 'variation-study' },
-  ],
-);
+// ── 연구 해금 — **첫 런부터 뜬다** (총괄 결정 2026-08-06) ───────────────────
+//
+// ⚠️ 종전 게이트는 `totalRuns >= 1 && insight >= 4`였고, 그래서 **첫 판에 연구가
+// 아예 안 보였다**(총괄 제보). 심사위원은 대개 한 판만 하고, 통찰은 localStorage에
+// 쌓이므로 시크릿 창이면 항상 1회차다 — 소개 문서가 연구를 성장의 핵심으로 쓰는데
+// 화면에 없으면 그게 더 나쁘다. 이 단언들이 그 회귀를 막는다.
+{
+  // 아무것도 없는 새 프로필(첫 런)에도 둘은 뜬다
+  assert.deepEqual(
+    availableBasicResearchContracts({ insight: 0, totalRuns: 0 }, 'fire'),
+    [{ id: 'elemental-focus', element: 'fire' }, { id: 'spirit-resonance' }],
+    '첫 런에도 원소 심화·정령 공명은 제시돼야 한다',
+  );
+  // 통찰은 더 이상 게이트가 아니다 — 통찰 0이어도 위와 같아야 한다
+  assert.deepEqual(
+    availableBasicResearchContracts({ insight: 0, totalRuns: 0 }, 'fire'),
+    availableBasicResearchContracts({ insight: 999, totalRuns: 0 }, 'fire'),
+    '통찰량이 1회차 선택지를 바꾸면 안 된다 — 회차만 본다',
+  );
+  // 원소가 없으면 그 항목만 빠진다
+  assert.deepEqual(
+    availableBasicResearchContracts({ insight: 0, totalRuns: 0 }, null),
+    [{ id: 'spirit-resonance' }],
+  );
+
+  // 만물 변주는 2회차부터. 통찰이 아니라 **회차**로 여는 이유는 통찰 기준(옛 14)이
+  // 완주해야 겨우 닿는 값이라 "2회차에 열린다"가 보장되지 않았기 때문이다.
+  assert.deepEqual(
+    availableBasicResearchContracts({ insight: 999, totalRuns: VARIATION_RESEARCH_UNLOCK_RUNS - 1 }, 'fire'),
+    [{ id: 'elemental-focus', element: 'fire' }, { id: 'spirit-resonance' }],
+    '1회차에는 만물 변주가 없다',
+  );
+  assert.deepEqual(
+    availableBasicResearchContracts({ insight: 0, totalRuns: VARIATION_RESEARCH_UNLOCK_RUNS }, 'fire'),
+    [
+      { id: 'elemental-focus', element: 'fire' },
+      { id: 'spirit-resonance' },
+      { id: 'variation-study' },
+    ],
+    '2회차부터 만물 변주가 열린다 — 통찰 0이어도',
+  );
+  // 절대 빈 배열이 되지 않는다 — 빈 배열이면 연구 선택 화면 자체가 안 뜬다
+  for (const totalRuns of [0, 1, 5]) {
+    for (const insight of [0, 4, 100]) {
+      assert.ok(
+        availableBasicResearchContracts({ insight, totalRuns }, 'fire').length >= 2,
+        `연구 선택지가 비었다 (회차 ${totalRuns} · 통찰 ${insight})`,
+      );
+    }
+  }
+}
 assert.deepEqual(RESEARCH_ELEMENTS, ['fire', 'water', 'lightning', 'ice', 'earth', 'wind', 'light', 'dark']);
 
 // 최초 완료 +3, 다른 런의 반복 완료 +2.

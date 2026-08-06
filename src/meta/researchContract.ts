@@ -1,8 +1,14 @@
 import type { MetaProfileV1 } from './metaProfile';
 import type { SpellElement, SpellForm, SpellSpec } from '../spell/types';
 
-export const BASIC_RESEARCH_UNLOCK_INSIGHT = 4;
-export const EXPANDED_RESEARCH_UNLOCK_INSIGHT = 14;
+/**
+ * 만물 변주가 열리는 최소 완료 회차 (총괄 결정 2026-08-06).
+ *
+ * 종전엔 통찰 14(`EXPANDED_RESEARCH_UNLOCK_INSIGHT`)로 열었는데, 그 값은 완주해야
+ * 겨우 닿아서 "2회차에 열린다"가 보장되지 않았다 — 일찍 죽으면 3·4회차까지 밀린다.
+ * 회차 기준이면 결정적이다. 자세한 근거는 `availableBasicResearchContracts` 참조.
+ */
+export const VARIATION_RESEARCH_UNLOCK_RUNS = 1;
 export const RESEARCH_GOAL = 3;
 export const VARIATION_RESEARCH_GOAL = 4;
 export const RESEARCH_FIRST_REWARD = 3;
@@ -248,17 +254,48 @@ export function variationDiversityMaxBonus(contract: ActiveResearchContract | nu
   );
 }
 
+/**
+ * 이번 런에 고를 수 있는 연구 주제 (총괄 결정 2026-08-06 — 해금을 앞당김).
+ *
+ * ## 왜 첫 런부터 여는가
+ *
+ * 종전 게이트는 `totalRuns >= 1 && insight >= 4`였다. 설계 문서의
+ * *"첫 런에는 추가 선택을 요구하지 않는다"*를 따른 것인데, 실제로는 **첫 판에
+ * 연구 시스템이 아예 안 보였다**(총괄 제보).
+ *
+ * 제출 관점에서 이게 치명적이다:
+ *  - 심사위원은 대개 **한 판**만 한다. 그러면 연구를 한 번도 못 본다
+ *  - 통찰은 `localStorage`에 쌓이는데 시크릿 창·새 브라우저면 **항상 1회차**다
+ *  - 소개 문서(③)가 「연구 주제가 빌드를 가른다」를 성장의 핵심으로 서술한다 —
+ *    문서에는 있는데 화면에 없으면 그게 더 나쁘다
+ *
+ * 그리고 통찰 문턱 4는 방 4개만 돌면 채워지는 값이라 **실질적인 벽은 회차뿐**이었다.
+ * 그 벽이 막던 게 하필 가장 최근에 만든 시스템이다.
+ *
+ * ## 지금 규칙
+ *
+ * | 회차 | 열리는 주제 |
+ * |---|---|
+ * | 1회차 | 원소 심화 · 정령 공명 |
+ * | 2회차~ | + 만물 변주 |
+ *
+ * ⚠️ 만물 변주만 **통찰이 아니라 회차**로 연다. 통찰 기준(14)은 완주해야 겨우 닿는
+ * 값이라 "2회차에 열린다"가 보장되지 않았다 — 일찍 죽으면 3·4회차까지 밀린다.
+ * 회차 기준이면 결정적이다.
+ *
+ * 변주를 1회차에서 빼는 이유는 난이도가 아니라 **학습 순서**다. 변주는 "매번 다르게
+ * 쓰라"는 요구라, 무엇을 쓸 수 있는지 아직 모르는 첫 판에는 지시가 공허하다.
+ */
 export function availableBasicResearchContracts(
   profile: Pick<MetaProfileV1, 'insight' | 'totalRuns'>,
   elementalFocusElement: SpellElement | null,
 ): ResearchContractSelection[] {
-  if (profile.totalRuns < 1 || profile.insight < BASIC_RESEARCH_UNLOCK_INSIGHT) return [];
   return [
     ...(elementalFocusElement
       ? [{ id: 'elemental-focus' as const, element: elementalFocusElement }]
       : []),
     { id: 'spirit-resonance' as const },
-    ...(profile.insight >= EXPANDED_RESEARCH_UNLOCK_INSIGHT
+    ...(profile.totalRuns >= VARIATION_RESEARCH_UNLOCK_RUNS
       ? [{ id: 'variation-study' as const }]
       : []),
   ];
