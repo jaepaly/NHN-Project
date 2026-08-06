@@ -124,7 +124,9 @@
     "test:emptyroomfusionvfx": "esbuild scripts/empty-room-and-fusion-vfx-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-empty-room-fusion-vfx-regression.mjs && node node_modules/.cache/incant-empty-room-fusion-vfx-regression.mjs",
     "test:floorhazardwiring": "esbuild scripts/floor-hazard-wiring-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-floor-hazard-wiring-regression.mjs && node node_modules/.cache/incant-floor-hazard-wiring-regression.mjs",
     "test:researchrecurring": "esbuild scripts/research-recurring-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-research-recurring-regression.mjs && node node_modules/.cache/incant-research-recurring-regression.mjs",
-    "audit:judge-latency": "esbuild scripts/judge-latency-audit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-judge-latency-audit.mjs && node node_modules/.cache/incant-judge-latency-audit.mjs"
+    "audit:judge-latency": "esbuild scripts/judge-latency-audit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-judge-latency-audit.mjs && node node_modules/.cache/incant-judge-latency-audit.mjs",
+    "test:playtestfeedback": "esbuild scripts/playtest-feedback-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-playtest-feedback-regression.mjs && node node_modules/.cache/incant-playtest-feedback-regression.mjs",
+    "test:rewardglossary": "esbuild scripts/reward-glossary-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-reward-glossary-regression.mjs && node node_modules/.cache/incant-reward-glossary-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

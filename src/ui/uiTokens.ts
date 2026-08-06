@@ -260,7 +260,7 @@ export const UI_MATERIAL = {
   /** 금박 각인 — 발광이 아니라 **얇은 윤곽**. 잉크가 번진 정도로만 */
   gildEdge: 'drop-shadow(0 0 2px rgba(216, 187, 114, 0.5))',
   /** 낡음 — 채도를 깎아야 새 UI로 안 보인다 */
-  aged: 'saturate(0.55)',
+  aged: 'saturate(0.8)',
   /**
    * 모서리 — **네 귀퉁이를 다르게** 준다. 균일한 border-radius는 UI 컴포넌트의 문법이고
    * 손으로 자른 종이는 균일하지 않다. 값 차이는 작게(2~4px) — 크면 만화가 된다.
