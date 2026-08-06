@@ -61,6 +61,22 @@ export class SpiritOrbView {
     });
   }
 
+  lungeToward(scene: Phaser.Scene, targetX: number, targetY: number): void {
+    const dx = targetX - this.view.x;
+    const dy = targetY - this.view.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= 0) return;
+    const amount = Math.min(42, distance * 0.22);
+    scene.tweens.add({
+      targets: this.view,
+      x: this.view.x + (dx / distance) * amount,
+      y: this.view.y + (dy / distance) * amount,
+      duration: 150,
+      yoyo: true,
+      ease: 'Quad.Out',
+    });
+  }
+
   destroy(): void {
     this.view.destroy(true);
   }

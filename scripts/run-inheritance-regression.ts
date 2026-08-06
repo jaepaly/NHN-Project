@@ -5,6 +5,7 @@ import {
   inheritCandidates,
   inheritedAffinity,
   mutateInheritedAffinity,
+  mutateInheritedChorusAffinity,
 } from '../src/combat-core/run/runInheritance';
 import {
   ALTAR_OFFER_CONFIG,
@@ -122,6 +123,10 @@ import { AWAKENING_CONFIG } from '../src/combat-core/run/awakening';
     mutateInheritedAffinity({ fire: 0.9, ice: 0.3 }, 12345), mutation,
     '동률·변이 대상은 시드가 같으면 재현된다',
   );
+  const continuedChorus = mutateInheritedChorusAffinity(0.3, 12345);
+  assert.ok(continuedChorus, '합주 친화도도 다음 런 계승 대상으로 변환된다');
+  assert.equal(continuedChorus?.value, inheritedAffinity(0.3));
+  assert.equal(continuedChorus?.echoes.length, 3, '합주 3단계는 다중 잔향 3개를 남긴다');
 }
 
 // ── ④ 이어가기가 실제로 빌드를 비우는가 ────────────────────────────────────
@@ -137,7 +142,9 @@ import { AWAKENING_CONFIG } from '../src/combat-core/run/awakening';
 
   const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   const j = scene.indexOf('private continueToNextLoop(');
-  const loop = scene.slice(j, j + 1600);
+  // ⚠️ 창을 넉넉히. 1600으로는 리셋 항목이 두 줄만 늘어도 마지막 단언이 밖으로
+  // 밀려 조용히 실패한다 — 실제로 #349의 방 계측 두 줄에 1593자→창 밖이 됐다.
+  const loop = scene.slice(j, j + 2600);
   for (const call of ['engraveManager.reset()', 'spiritManager.reset()', 'playerState.reset()']) {
     assert.ok(loop.includes(call), `이어가기가 ${call}을 해야 한다 — 각인·정령은 씬 소유다`);
   }

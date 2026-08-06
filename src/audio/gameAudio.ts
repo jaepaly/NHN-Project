@@ -8,6 +8,7 @@ export const SFX_NAMES = [
   'enemy-defeat',
   'fizzle',
   'incant-enter',
+  'ultimate-incant-enter',
   'reward-select',
   'room-clear',
   'boss-appear',
@@ -17,6 +18,15 @@ export const SFX_NAMES = [
   'player-hit',
   'title-start',
   'run-complete',
+  'trap-room-enter',
+  'elite-room-enter',
+  'ui-cursor-move',
+  'boss-volley-fire',
+  'boss-charge-start',
+  'boss-charge-end',
+  'boss-hazard-spawn',
+  'boss-summon',
+  'boss-gravity-pull',
 ] as const;
 
 export type SfxName = (typeof SFX_NAMES)[number];
@@ -43,6 +53,7 @@ const SFX_KEYS: Record<SfxName, string> = {
   'enemy-defeat': 'audio-sfx-enemy-defeat',
   fizzle: 'audio-sfx-fizzle',
   'incant-enter': 'audio-sfx-incant-enter',
+  'ultimate-incant-enter': 'audio-sfx-ultimate-incant-enter',
   'reward-select': 'audio-sfx-reward-select',
   'room-clear': 'audio-sfx-room-clear',
   'boss-appear': 'audio-sfx-boss-appear',
@@ -52,6 +63,15 @@ const SFX_KEYS: Record<SfxName, string> = {
   'player-hit': 'audio-sfx-player-hit',
   'title-start': 'audio-sfx-title-start',
   'run-complete': 'audio-sfx-run-complete',
+  'trap-room-enter': 'audio-sfx-trap-room-enter',
+  'elite-room-enter': 'audio-sfx-elite-room-enter',
+  'ui-cursor-move': 'audio-sfx-ui-cursor-move',
+  'boss-volley-fire': 'audio-sfx-boss-volley-fire',
+  'boss-charge-start': 'audio-sfx-boss-charge-start',
+  'boss-charge-end': 'audio-sfx-boss-charge-end',
+  'boss-hazard-spawn': 'audio-sfx-boss-hazard-spawn',
+  'boss-summon': 'audio-sfx-boss-summon',
+  'boss-gravity-pull': 'audio-sfx-boss-gravity-pull',
 };
 
 interface SfxPolicy {
@@ -61,13 +81,23 @@ interface SfxPolicy {
 
 const DEFAULT_SFX_POLICY: SfxPolicy = { volumeScale: 1, cooldownMs: 0 };
 const SFX_POLICY: Partial<Record<SfxName, SfxPolicy>> = {
-  hit: { volumeScale: 0.75, cooldownMs: 35 },
+  hit: { volumeScale: 0.5, cooldownMs: 35 },
+  'enemy-defeat': { volumeScale: 0.6, cooldownMs: 50 },
   'player-hit': { volumeScale: 1, cooldownMs: 90 },
   'mana-crystal-pickup': { volumeScale: 0.65, cooldownMs: 110 },
   'ui-confirm': { volumeScale: 0.9, cooldownMs: 80 },
   'route-transition': { volumeScale: 1, cooldownMs: 250 },
   'title-start': { volumeScale: 1, cooldownMs: 250 },
   'run-complete': { volumeScale: 1, cooldownMs: 500 },
+  'trap-room-enter': { volumeScale: 1.25, cooldownMs: 500 },
+  'elite-room-enter': { volumeScale: 1.25, cooldownMs: 500 },
+  'ui-cursor-move': { volumeScale: 0.55, cooldownMs: 45 },
+  'boss-volley-fire': { volumeScale: 0.9, cooldownMs: 250 },
+  'boss-charge-start': { volumeScale: 0.9, cooldownMs: 250 },
+  'boss-charge-end': { volumeScale: 1.2, cooldownMs: 250 },
+  'boss-hazard-spawn': { volumeScale: 0.85, cooldownMs: 500 },
+  'boss-summon': { volumeScale: 0.85, cooldownMs: 350 },
+  'boss-gravity-pull': { volumeScale: 0.9, cooldownMs: 1000 },
 };
 
 /** 같은 -6dBFS 마스터라도 곡의 밀도·대역에 따라 체감 음량이 달라 공간별로 보정한다. */
@@ -135,6 +165,8 @@ export class GameAudio {
     scene.sound.volume = MASTER_VOLUME;
     scene.sound.mute = this.readStoredMute();
     scene.input.keyboard?.on('keydown-M', this.toggleMute, this);
+    document.addEventListener('pointerover', this.onDomPointerOver, true);
+    document.addEventListener('focusin', this.onDomFocusIn, true);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroy, this);
   }
 
@@ -160,6 +192,24 @@ export class GameAudio {
     this.lastSfxAt.set(name, now);
     this.scene.sound.play(SFX_KEYS[name], {
       volume: MASTER_VOLUME * this.settings.sfxVolume * policy.volumeScale,
+    });
+  }
+
+  /** 보스 영창 진입 표식 — 공격 범위 예고가 나타나는 순간 재생한다. */
+  playBossIncantEnter(): void {
+    const volume = MASTER_VOLUME * this.settings.sfxVolume;
+    this.scene.sound.play(SFX_KEYS['incant-enter'], {
+      volume: volume * 0.55,
+      detune: -180,
+    });
+  }
+
+  /** 보스 원소 공격음 — 예고가 끝나 실제 주문이 발사되는 순간 재생한다. */
+  playBossElementCast(element: SpellElement): void {
+    const volume = MASTER_VOLUME * this.settings.sfxVolume;
+    this.scene.sound.play(CAST_KEYS[element], {
+      volume: volume * 1.1,
+      detune: -180,
     });
   }
 
@@ -225,8 +275,30 @@ export class GameAudio {
     }
   }
 
+  private readonly onDomPointerOver = (event: PointerEvent): void => {
+    const target = this.interactiveDomTarget(event.target);
+    if (!target) return;
+    const previous = this.interactiveDomTarget(event.relatedTarget);
+    if (previous === target) return;
+    this.playSfx('ui-cursor-move');
+  };
+
+  private readonly onDomFocusIn = (event: FocusEvent): void => {
+    if (this.interactiveDomTarget(event.target)) this.playSfx('ui-cursor-move');
+  };
+
+  private interactiveDomTarget(value: EventTarget | null): Element | null {
+    if (!(value instanceof Element)) return null;
+    const target = value.closest('button, [role="button"], [tabindex]');
+    if (!target || target.getAttribute('aria-disabled') === 'true') return null;
+    if (target instanceof HTMLButtonElement && target.disabled) return null;
+    return target;
+  }
+
   private destroy(): void {
     this.scene.input.keyboard?.off('keydown-M', this.toggleMute, this);
+    document.removeEventListener('pointerover', this.onDomPointerOver, true);
+    document.removeEventListener('focusin', this.onDomFocusIn, true);
     this.stopBgm();
   }
 }

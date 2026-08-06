@@ -1,0 +1,166 @@
+// 제출물 md → PDF 변환기 (③⑤ 등 한글 문서용)
+//
+// 사용:  node scripts/build-submission-pdf.mjs docs/SUBMISSION_ROLES.md [out.pdf]
+//
+// 경로: md → (자체 미니 변환기) HTML → Chrome headless --print-to-pdf.
+// reportlab 대신 Chrome을 쓰는 이유: 한글(말군고딕)·표 레이아웃을 브라우저 엔진이
+// 그대로 처리해서 폰트 등록·셀 줄바꿈 문제가 아예 없다. 외부 npm 의존성 0.
+//
+// 지원 문법(제출 문서가 실제로 쓰는 것만): 제목 #~####, 표, 목록(-, 중첩 2칸),
+// 인용 >, 코드펜스 ```, 인라인 **굵게**·*기울임*·`코드`, 링크, 수평선 ---.
+
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { resolve, basename } from 'node:path';
+
+const CHROME_CANDIDATES = [
+  'C:/Program Files/Google/Chrome/Application/chrome.exe',
+  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+];
+
+const [, , srcArg, outArg] = process.argv;
+if (!srcArg) {
+  console.error('사용: node scripts/build-submission-pdf.mjs <입력.md> [출력.pdf]');
+  process.exit(1);
+}
+const srcPath = resolve(srcArg);
+const outPath = resolve(outArg ?? srcArg.replace(/\.md$/i, '.pdf'));
+const chrome = CHROME_CANDIDATES.find((p) => existsSync(p));
+if (!chrome) {
+  console.error('Chrome/Edge를 찾지 못했다 — CHROME_CANDIDATES에 경로를 추가하라.');
+  process.exit(1);
+}
+
+// ── 인라인 문법 ──────────────────────────────────────────────────────
+const escapeHtml = (s) => s
+  .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+
+function inline(s) {
+  return escapeHtml(s)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+}
+
+// ── 블록 변환 ────────────────────────────────────────────────────────
+function mdToHtml(md) {
+  const lines = md.replaceAll('\r\n', '\n').split('\n');
+  const out = [];
+  let i = 0;
+  const listStack = [];   // 중첩 목록 깊이 추적
+
+  const closeLists = (depth = 0) => {
+    while (listStack.length > depth) { out.push('</ul>'); listStack.pop(); }
+  };
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (line.startsWith('```')) {            // 코드펜스
+      closeLists();
+      const buf = [];
+      i += 1;
+      while (i < lines.length && !lines[i].startsWith('```')) { buf.push(lines[i]); i += 1; }
+      i += 1;
+      out.push(`<pre>${escapeHtml(buf.join('\n'))}</pre>`);
+      continue;
+    }
+
+    const h = line.match(/^(#{1,4}) (.+)$/);  // 제목
+    if (h) {
+      closeLists();
+      out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`);
+      i += 1; continue;
+    }
+
+    if (/^---+\s*$/.test(line)) { closeLists(); out.push('<hr>'); i += 1; continue; }
+
+    if (line.startsWith('|')) {              // 표 (다음 줄이 구분선일 때만)
+      closeLists();
+      const rows = [];
+      while (i < lines.length && lines[i].startsWith('|')) { rows.push(lines[i]); i += 1; }
+      const cells = (r) => r.replace(/^\||\|$/g, '').split('|').map((c) => inline(c.trim()));
+      const header = cells(rows[0]);
+      const body = rows.slice(2).map(cells);
+      out.push('<table><thead><tr>'
+        + header.map((c) => `<th>${c}</th>`).join('') + '</tr></thead><tbody>'
+        + body.map((r) => '<tr>' + r.map((c) => `<td>${c}</td>`).join('') + '</tr>').join('')
+        + '</tbody></table>');
+      continue;
+    }
+
+    if (line.startsWith('>')) {              // 인용 (연속 병합)
+      closeLists();
+      const buf = [];
+      while (i < lines.length && lines[i].startsWith('>')) {
+        buf.push(inline(lines[i].replace(/^>\s?/, '')));
+        i += 1;
+      }
+      out.push(`<blockquote>${buf.join('<br>')}</blockquote>`);
+      continue;
+    }
+
+    const li = line.match(/^(\s*)- (.+)$/);   // 목록 (2칸 들여쓰기 = 1중첩)
+    if (li) {
+      const depth = Math.floor(li[1].length / 2) + 1;
+      while (listStack.length < depth) { out.push('<ul>'); listStack.push(1); }
+      closeLists(depth);
+      out.push(`<li>${inline(li[2])}</li>`);
+      i += 1; continue;
+    }
+
+    if (line.trim() === '') { closeLists(); i += 1; continue; }
+
+    closeLists();
+    out.push(`<p>${inline(line)}</p>`);
+    i += 1;
+  }
+  closeLists();
+  return out.join('\n');
+}
+
+// ── HTML 셸 (제출용 인쇄 스타일) ─────────────────────────────────────
+const CSS = `
+  * { box-sizing: border-box; }
+  body { font-family: 'Malgun Gothic', sans-serif; font-size: 10.5pt; line-height: 1.55;
+         color: #1a1a2e; margin: 0; }
+  h1 { font-size: 19pt; border-bottom: 2.5px solid #2a2a4a; padding-bottom: 6px; margin: 0 0 10px; }
+  h2 { font-size: 14pt; border-bottom: 1px solid #c9c9d9; padding-bottom: 3px;
+       margin: 18px 0 8px; page-break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 14px 0 6px; page-break-after: avoid; }
+  p { margin: 5px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 9.5pt;
+          page-break-inside: avoid; }
+  th { background: #eef0f7; text-align: left; }
+  th, td { border: 1px solid #b9bccc; padding: 4.5px 8px; vertical-align: top; }
+  blockquote { border-left: 3px solid #8fa4ff; background: #f5f7ff; margin: 8px 0;
+               padding: 7px 12px; font-size: 9.5pt; color: #3a3a55; }
+  code { font-family: Consolas, monospace; background: #f0f0f5; padding: 0 3px;
+         border-radius: 3px; font-size: 0.92em; }
+  pre { background: #f0f0f5; padding: 9px 12px; border-radius: 5px;
+        font-family: Consolas, monospace; font-size: 8.8pt; overflow: hidden;
+        page-break-inside: avoid; }
+  ul { margin: 5px 0; padding-left: 22px; }
+  li { margin: 2.5px 0; }
+  hr { border: none; border-top: 1px solid #c9c9d9; margin: 14px 0; }
+  a { color: #3d5af1; text-decoration: none; }
+`;
+
+const md = readFileSync(srcPath, 'utf8');
+const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<title>${basename(srcPath)}</title><style>${CSS}</style></head>
+<body>${mdToHtml(md)}</body></html>`;
+
+const htmlPath = outPath.replace(/\.pdf$/i, '.render.html');
+writeFileSync(htmlPath, html, 'utf8');
+
+execFileSync(chrome, [
+  '--headless', '--disable-gpu', '--no-pdf-header-footer',
+  '--print-to-pdf-no-header',
+  `--print-to-pdf=${outPath}`,
+  `file:///${htmlPath.replaceAll('\\', '/')}`,
+], { stdio: 'pipe', timeout: 60_000 });
+
+console.log(`PDF 생성: ${outPath}`);

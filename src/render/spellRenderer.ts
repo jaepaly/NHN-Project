@@ -150,6 +150,8 @@ export interface CastContext {
     toY: number,
     projectileRadius: number,
   ) => { x: number; y: number } | null;
+  /** Returns the live target point for a flying bolt, allowing retargeting mid-flight. */
+  resolveBoltTarget?: () => { x: number; y: number } | null;
   /** Prevents delayed projectiles from resolving after their combat room has ended. */
   shouldResolveImpact?: () => boolean;
   /** Optional bounded modifiers used by sequence showcase tuning. */
@@ -293,7 +295,10 @@ function castBolt(ctx: CastContext, spec: SpellSpec): void {
   const { scene, from } = ctx;
   const pal = ELEMENT_PALETTES[spec.element_primary];
   const scale = SIZE_SCALE[spec.size];
-  const to = ctx.to ?? new Phaser.Math.Vector2(from.x, from.y - 400);
+  const initialTarget = ctx.resolveBoltTarget?.();
+  const to = initialTarget
+    ? new Phaser.Math.Vector2(initialTarget.x, initialTarget.y)
+    : ctx.to ?? new Phaser.Math.Vector2(from.x, from.y - 400);
 
   const speed = spec.speed === 'fast' ? 900 : spec.speed === 'slow' ? 350 : 600;
   const dist = Phaser.Math.Distance.Between(from.x, from.y, to.x, to.y);
@@ -377,12 +382,20 @@ function castBolt(ctx: CastContext, spec: SpellSpec): void {
     ease: 'Linear',
     onUpdate: (tween) => {
       if (finished) return;
+      const currentTarget = ctx.resolveBoltTarget?.();
+      if (currentTarget) {
+        tween.updateTo('x', currentTarget.x, false);
+        tween.updateTo('y', currentTarget.y, false);
+      }
       if (resolveCurrentSegment(body.x, body.y)) tween.stop();
     },
     onComplete: () => {
       if (finished) return;
-      if (ctx.resolveBoltCollision && resolveCurrentSegment(to.x, to.y)) return;
-      finish(to.x, to.y, !ctx.resolveBoltCollision);
+      const currentTarget = ctx.resolveBoltTarget?.();
+      const finalX = currentTarget?.x ?? to.x;
+      const finalY = currentTarget?.y ?? to.y;
+      if (ctx.resolveBoltCollision && resolveCurrentSegment(finalX, finalY)) return;
+      finish(finalX, finalY, !ctx.resolveBoltCollision);
     },
   });
 }

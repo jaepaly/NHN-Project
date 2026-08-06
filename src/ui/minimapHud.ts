@@ -3,6 +3,12 @@ import { UI_HEX } from './uiTokens';
 import { drawGrimoirePanel } from '../render/grimoireFrame';
 import type { MinimapModel, MinimapNode } from '../run/mapGraphContract';
 import { MINIMAP_CONFIG, minimapLayout } from './minimapLayout';
+import { roomIconTextureKey } from './roomKindIcon';
+import {
+  currentMinimapStage,
+  minimapStages,
+  projectMinimapStage,
+} from './minimapStageProjection';
 
 /**
  * 미니맵 HUD (#214) — 맵 그래프의 클리어/현재/도달가능/미방문을 한눈에.
@@ -46,20 +52,43 @@ const STYLE = {
   bossAccent: 0xb95f72,
 } as const;
 
+export interface MinimapHudLayout {
+  x: number;
+  y: number;
+  /** ESC 검사 화면에서는 같은 경로를 크게 읽는다. 기본값 1은 기존 크기다. */
+  scale?: number;
+  /** 일시정지 메뉴와의 정보 계층을 맞추는 HUD 깊이. */
+  depth?: number;
+}
+
 export class MinimapHud {
   private readonly graphics: Phaser.GameObjects.Graphics;
-  private readonly x: number;
+  private readonly scene: Phaser.Scene;
+  private readonly iconImages = new Map<string, Phaser.GameObjects.Image>();
+  private readonly stageTabs = new Map<number, Phaser.GameObjects.Text>();
+  private x: number;
   private y: number;
+  private scale: number;
   private lastModel: MinimapModel | null = null;
+  private selectedStage = 1;
+  private lastCurrentStage: number | null = null;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
+  constructor(scene: Phaser.Scene, x: number, y: number, options: Omit<MinimapHudLayout, 'x' | 'y'> = {}) {
+    this.scene = scene;
     this.x = x;
     this.y = y;
-    this.graphics = scene.add.graphics().setScrollFactor(0).setDepth(99);
+    this.scale = this.normalizedScale(options.scale);
+    this.graphics = scene.add.graphics().setScrollFactor(0).setDepth(options.depth ?? 99);
   }
 
   update(model: MinimapModel): void {
     this.lastModel = model;
+    const currentStage = currentMinimapStage(model);
+    if (this.lastCurrentStage === null || this.lastCurrentStage !== currentStage) {
+      this.selectedStage = currentStage;
+      this.lastCurrentStage = currentStage;
+    }
+    this.syncStageTabs();
     this.redraw();
   }
 
@@ -68,9 +97,23 @@ export class MinimapHud {
    * 미니맵도 그만큼 내려와야 겹치지 않는다. 씬이 패널 높이 변화 시에만 호출한다.
    */
   setTop(y: number): void {
-    if (this.y === y) return;
-    this.y = y;
-    this.redraw();
+    this.setLayout({ x: this.x, y });
+  }
+
+  /** ESC 전용 확대 지도와 일반 HUD 지도를 같은 렌더러로 유지한다. */
+  setLayout(layout: MinimapHudLayout): void {
+    const nextScale = this.normalizedScale(layout.scale ?? this.scale);
+    const changed = this.x !== layout.x || this.y !== layout.y || this.scale !== nextScale;
+    this.x = layout.x;
+    this.y = layout.y;
+    this.scale = nextScale;
+    if (layout.depth !== undefined) this.graphics.setDepth(layout.depth);
+    if (layout.depth !== undefined) {
+      for (const icon of this.iconImages.values()) icon.setDepth(layout.depth + 1);
+      for (const tab of this.stageTabs.values()) tab.setDepth(layout.depth + 2);
+    }
+    this.positionStageTabs();
+    if (changed) this.redraw();
   }
 
   /** 현재 노드 펄스용 — 씬 update에서 호출 (모델 불변 시 재계산 없이 다시 그림) */
@@ -80,26 +123,39 @@ export class MinimapHud {
 
   setVisible(visible: boolean): void {
     this.graphics.setVisible(visible);
+    for (const icon of this.iconImages.values()) icon.setVisible(visible && icon.active);
+    for (const tab of this.stageTabs.values()) tab.setVisible(visible);
   }
 
   destroy(): void {
     this.graphics.destroy();
+    for (const icon of this.iconImages.values()) icon.destroy();
+    this.iconImages.clear();
+    for (const tab of this.stageTabs.values()) tab.destroy();
+    this.stageTabs.clear();
   }
 
   private redraw(): void {
-    const model = this.lastModel;
+    const fullModel = this.lastModel;
     const g = this.graphics;
     g.clear();
-    if (!model || model.nodes.length === 0) return;
+    for (const icon of this.iconImages.values()) icon.setActive(false).setVisible(false);
+    if (!fullModel || fullModel.nodes.length === 0) return;
+    const model = projectMinimapStage(fullModel, this.selectedStage);
 
-    const { width, height, nodeRadius, currentRadius } = MINIMAP_CONFIG;
+    const scale = this.scale;
+    const width = MINIMAP_CONFIG.width * scale;
+    const height = MINIMAP_CONFIG.height * scale;
+    const nodeRadius = MINIMAP_CONFIG.nodeRadius * scale;
+    const currentRadius = MINIMAP_CONFIG.currentRadius * scale;
     // 마도서 판 — 일시정지를 열면 이 지도가 나온다. 옆의 HUD·상태 패널과 같은
     // 문법이어야 한 화면으로 읽힌다(총괄 지시)
     drawGrimoirePanel(g, this.x, this.y, width, height, STYLE.panelAlpha);
 
-    const points = new Map(
-      minimapLayout(model).map((point) => [point.id, point] as const),
-    );
+    const points = new Map(minimapLayout(model).map((point) => [point.id, {
+      x: point.x * scale,
+      y: point.y * scale,
+    }] as const));
     const nodesById = new Map(model.nodes.map((node) => [node.id, node] as const));
 
     // 엣지 먼저 (노드 아래 깔리게). 클리어된 경로는 밝게 — 지나온 길이 보인다.
@@ -109,7 +165,7 @@ export class MinimapHud {
       if (!from || !to) continue;
       const walked = nodesById.get(edge.from)?.status === 'cleared'
         && ['cleared', 'current'].includes(nodesById.get(edge.to)?.status ?? '');
-      g.lineStyle(walked ? 2 : 1, walked ? STYLE.edgeCleared : STYLE.edge, walked ? 0.9 : 0.55);
+      g.lineStyle((walked ? 2 : 1) * scale, walked ? STYLE.edgeCleared : STYLE.edge, walked ? 0.9 : 0.55);
       g.lineBetween(this.x + from.x, this.y + from.y, this.x + to.x, this.y + to.y);
     }
 
@@ -120,56 +176,116 @@ export class MinimapHud {
       const px = this.x + point.x;
       const py = this.y + point.y;
       const isBoss = node.kind === 'stage-boss' || node.kind === 'memory-boss';
+      const textureKey = roomIconTextureKey(node.kind);
+      const iconBackingRadius = (isBoss ? 14 : node.status === 'current' ? 13 : 11) * scale;
 
       if (node.status === 'current') {
         // 현재 위치 — 펄스 링. 미니맵에서 시선이 처음 가야 할 곳.
         const pulse = 0.5 + 0.5 * Math.abs(Math.sin(now / 260));
-        g.lineStyle(2, STYLE.node.current, 0.4 + 0.5 * pulse);
-        g.strokeCircle(px, py, currentRadius + 2 * pulse);
+        g.lineStyle(2 * scale, STYLE.node.current, 0.4 + 0.5 * pulse);
+        g.strokeCircle(px, py, (textureKey ? iconBackingRadius : currentRadius) + 2 * scale * pulse);
       }
 
       const color = STYLE.node[node.status];
       const radius = node.status === 'current' ? currentRadius : nodeRadius;
-      if (isBoss) {
-        // 보스는 다이아몬드 — 색만으로는 "끝판"이 안 읽힌다
-        this.drawDiamond(px, py, radius + 2, color, node.status !== 'unvisited');
-        g.lineStyle(1.5, STYLE.bossAccent, 0.9);
-        this.strokeDiamond(px, py, radius + 2);
-      } else if (node.kind === 'treasure' || node.kind === 'altar' || node.kind === 'trap') {
-        // 특수 방은 사각 — 전투방(원)과 실루엣부터 다르게
-        g.fillStyle(color, node.status === 'unvisited' ? 0.5 : 1);
-        g.fillRect(px - radius, py - radius, radius * 2, radius * 2);
+      if (textureKey) {
+        // 방 종류는 공통 아이콘이 전담하고 상태는 단일 원형 받침으로만 전달한다.
+        g.fillStyle(0x120e17, 0.94);
+        g.fillCircle(px, py, iconBackingRadius);
+        g.lineStyle(
+          (isBoss ? 2 : 1.25) * scale,
+          isBoss ? STYLE.bossAccent : color,
+          node.status === 'unvisited' ? 0.62 : 0.92,
+        );
+        g.strokeCircle(px, py, iconBackingRadius);
+        if (isBoss) {
+          g.lineStyle(1 * scale, color, 0.5);
+          g.strokeCircle(px, py, iconBackingRadius + 3 * scale);
+        }
       } else {
         g.fillStyle(color, node.status === 'unvisited' ? 0.5 : 1);
         g.fillCircle(px, py, radius);
       }
+
+      if (textureKey) {
+        let icon = this.iconImages.get(node.id);
+        if (!icon) {
+          icon = this.scene.add.image(px, py, textureKey).setScrollFactor(0);
+          this.iconImages.set(node.id, icon);
+        }
+        const iconSize = (isBoss ? 26 : 20) * scale;
+        icon
+          .setTexture(textureKey)
+          .setPosition(px, py)
+          .setDisplaySize(iconSize, iconSize)
+          .setAlpha(node.status === 'unvisited' ? 0.72 : node.status === 'cleared' ? 0.55 : 1)
+          .setDepth(this.graphics.depth + 1)
+          .setActive(true)
+          .setVisible(this.graphics.visible);
+      }
     }
   }
 
-  private drawDiamond(x: number, y: number, r: number, color: number, solid: boolean): void {
-    this.graphics.fillStyle(color, solid ? 1 : 0.5);
-    this.graphics.fillPoints(
-      [
-        new Phaser.Math.Vector2(x, y - r),
-        new Phaser.Math.Vector2(x + r, y),
-        new Phaser.Math.Vector2(x, y + r),
-        new Phaser.Math.Vector2(x - r, y),
-      ],
-      true,
-    );
+  private syncStageTabs(): void {
+    if (!this.lastModel) return;
+    const stages = minimapStages(this.lastModel);
+    for (const [stage, tab] of this.stageTabs) {
+      if (!stages.includes(stage)) {
+        tab.destroy();
+        this.stageTabs.delete(stage);
+      }
+    }
+    for (const stage of stages) {
+      let tab = this.stageTabs.get(stage);
+      if (!tab) {
+        tab = this.scene.add.text(0, 0, stage === 1 ? 'Ⅰ' : stage === 2 ? 'Ⅱ' : String(stage), {
+          fontFamily: '"Noto Serif KR", Georgia, serif',
+          fontSize: '13px',
+          fontStyle: 'bold',
+          color: '#8f8498',
+          backgroundColor: '#120e17',
+          padding: { x: 8, y: 3 },
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(this.graphics.depth + 2)
+          .setInteractive({ useHandCursor: true })
+          .on('pointerdown', () => {
+            this.selectedStage = stage;
+            this.redraw();
+            this.refreshStageTabStyles();
+          });
+        this.stageTabs.set(stage, tab);
+      }
+    }
+    this.positionStageTabs();
+    this.refreshStageTabStyles();
   }
 
-  private strokeDiamond(x: number, y: number, r: number): void {
-    this.graphics.strokePoints(
-      [
-        new Phaser.Math.Vector2(x, y - r),
-        new Phaser.Math.Vector2(x + r, y),
-        new Phaser.Math.Vector2(x, y + r),
-        new Phaser.Math.Vector2(x - r, y),
-      ],
-      true,
-      true,
-    );
+  private positionStageTabs(): void {
+    const stages = [...this.stageTabs.keys()].sort((a, b) => a - b);
+    const centerX = this.x + (MINIMAP_CONFIG.width * this.scale) / 2;
+    const gap = 34 * this.scale;
+    stages.forEach((stage, index) => {
+      this.stageTabs.get(stage)?.setPosition(
+        centerX + (index - (stages.length - 1) / 2) * gap,
+        this.y - 10 * this.scale,
+      );
+    });
+  }
+
+  private refreshStageTabStyles(): void {
+    const currentStage = this.lastModel ? currentMinimapStage(this.lastModel) : 1;
+    for (const [stage, tab] of this.stageTabs) {
+      const selected = stage === this.selectedStage;
+      tab
+        .setColor(selected ? '#ead9ad' : stage === currentStage ? '#c8ad77' : '#71687a')
+        .setAlpha(selected ? 1 : 0.72)
+        .setBackgroundColor(selected ? '#2b202f' : '#120e17')
+        .setStroke(selected ? '#8f7850' : '#3d3344', selected ? 1 : 0);
+    }
+  }
+
+  private normalizedScale(value: number | undefined): number {
+    const safe = Number.isFinite(value) ? value! : 1;
+    return Phaser.Math.Clamp(safe, 0.75, 2);
   }
 }
 

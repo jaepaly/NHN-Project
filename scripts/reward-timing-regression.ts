@@ -141,18 +141,34 @@ function makeRewards(): RewardOption[] {
   );
 }
 
-// ── 5) 런 타이머는 보상·방 전환 중에도 계속 간다 ───────────────────────────
+// ── 5) 결산 총계는 보상·방 전환 중에도 계속 간다 (R1 계측, #349) ───────────
+//
+// ⚠️ 원래 이 단언은 `updateRunElapsed`가 전투 게이트를 쓰면 안 된다고 했다. 그런데
+// 그 필드는 R2가 상단 HUD 타이머용으로 "조작·전투 시간만"이라고 회귀로 잠근 것이라
+// (`run-timer-hud-regression`) **두 회귀가 같은 함수를 두고 정반대를 요구했다.**
+//
+// 목적이 다른 두 지표를 한 필드에 얹은 게 원인이었다 — 총괄 결정으로 분리했다:
+//
+//   runElapsedMs    조작·전투 시간   → 상단 HUD (R2)
+//   runWallClockMs  전체 경과 시간   → 결산 총계·밸런스 계측 (R1)
+//
+// R1의 의도(보상·방 전환도 세야 방별 합계와 총계가 맞는다)는 새 필드가 그대로 지킨다.
 {
   const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   const timer = scene.match(
-    /private updateRunElapsed\(delta: number\): void \{[\s\S]*?\n {2}\}/,
+    /private updateRunWallClock\(delta: number\): void \{[\s\S]*?\n {2}\}/,
   );
-  assert.ok(timer, '런 타이머 갱신 함수를 찾아야 한다');
+  assert.ok(timer, '결산 총계 갱신 함수를 찾아야 한다');
   const body = timer[0];
   assert.ok(!body.includes('isCombatActive()'), '보상·방 전환을 전투 게이트로 제외하면 안 된다');
   assert.ok(body.includes("phase === 'run-over'"), '런 완료 뒤에는 타이머를 멈춰야 한다');
   assert.ok(body.includes('this.time.paused'), '명시적 일시정지는 런 타임에서 제외한다');
-  assert.ok(body.includes('this.runElapsedMs += Math.max(0, delta)'), '현실 시간 delta를 누적한다');
+  assert.ok(body.includes('this.runWallClockMs += Math.max(0, delta)'), '현실 시간 delta를 누적한다');
+  // 결산이 실제로 벽시계를 쓰는가 — HUD 필드를 쓰면 방별 합계와 총계가 어긋난다
+  assert.ok(
+    scene.includes('elapsedMs: this.runWallClockMs,'),
+    '런 결산 총계는 전체 경과 시간을 써야 한다 — 방별 합계와 정합해야 계측 표가 성립한다',
+  );
 }
 
 // ── 6) 설치물 단계에서도 따라다니는 것들이 갱신된다 ─────────────────────────

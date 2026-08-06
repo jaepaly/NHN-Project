@@ -41,12 +41,17 @@ export function buildEvolveOption(
 
   const fuse = spiritManager.fuseCandidate();
   if (fuse) {
-    const [a, b] = fuse.elements;
+    // ⚠️ 원소 **전부**를 쓴다. 종전엔 `const [a, b]`로 앞 둘만 읽어, 융합체를 다시
+    // 융합할 때(3속성 이상) 나머지가 카드에서 사라졌다 — 총괄 제보의 그 증상이다.
+    const [a] = fuse.elements;
+    const elementNames = fuse.elements.map((element) => ELEMENT_LABELS[element]).join('×');
     candidates.push({
-      id: `room-${roomIndex}-evolve-fuse-${a}-${b}`,
+      id: `room-${roomIndex}-evolve-fuse-${fuse.elements.join('-')}`,
       kind: 'evolve',
-      title: `정령 융합 · ${ELEMENT_LABELS[a]}×${ELEMENT_LABELS[b]}`,
-      description: '정령 2체를 하나로 — 주·부속성 이중 원소 마법이 태어나고, 새로운 이름을 얻는다',
+      title: `정령 융합 · ${elementNames}`,
+      description: fuse.elements.length > 2
+        ? `정령 2체를 하나로 — ${fuse.elements.length}속성 다원소 마법이 태어나고, 새로운 이름을 얻는다`
+        : '정령 2체를 하나로 — 주·부속성 이중 원소 마법이 태어나고, 새로운 이름을 얻는다',
       element: a,
       evolve: {
         target: 'spirit-fuse',

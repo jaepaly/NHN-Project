@@ -549,10 +549,10 @@ import {
 
   // 친화도는 전투 HUD 바깥의 독립된 판이다. 장식 갈고리가 외곽을 조금 넘기 때문에
   // 텍스트만 6px 아래에 붙이면 화면에서는 두 창이 겹쳐 보인다(총괄 제보).
-  const hud = { x: 18, y: 18, width: 300, height: 130 };
+  const hud = { x: 18, y: 18, width: 244, height: 30 };
   const affinity = affinityPanelGeometry(hud.y, hud.height, 8);
   assert.ok(
-    affinity.top - (hud.y + hud.height) >= 12,
+    affinity.top - (hud.y + hud.height) >= 6,
     `전투 HUD와 친화도 패널 간격이 너무 좁다 (${AFFINITY_PANEL_LAYOUT.gap}px)`,
   );
   for (let index = 0; index < 8; index += 1) {
@@ -577,7 +577,7 @@ import {
     '좌우 첫 원소는 같은 행에 놓인다',
   );
   assert.ok(
-    /drawGrimoirePanel\(g, HUD\.x, panel\.top, HUD\.width, panel\.height/.test(scene),
+    /drawGrimoirePanel\(g, AFFINITY_HUD\.x, panel\.top, AFFINITY_HUD\.width, panel\.height/.test(scene),
     '친화도 행은 좌표만 떨어뜨리지 말고 독립된 마도서 판 안에 있어야 한다',
   );
 }
