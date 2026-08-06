@@ -3,6 +3,7 @@ export interface BossHealthBarInput {
   hp: number;
   maxHp: number;
   phase: 1 | 2 | 3;
+  resistances?: readonly import('./bossCombatInfoModel').BossResistanceBadge[];
 }
 
 export interface BossHealthBarReadout {
