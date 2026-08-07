@@ -10,6 +10,8 @@ interface ActiveBuff {
 export const PLAYER_COMBAT_CONFIG = {
   maxHp: 100,
   maxMana: 100,
+  /** 보호막은 영구 누적되므로 별도 상한을 최대 HP의 60%로 제한한다. */
+  maxShieldHpRatio: 0.6,
   // 임시값: 플레이테스트와 팀 논의 후 조정한다 (GDD에는 초당 n으로 표기).
   // Issue #53 C prototype: passive recovery is only a soft-lock safeguard.
   manaRegenPerSecond: ACTIVE_MANA_CONFIG.passiveRegenPerSecond,
@@ -71,6 +73,10 @@ export class PlayerCombatState {
 
   get maxMana(): number {
     return this.maxManaValue;
+  }
+
+  get maxShield(): number {
+    return this.maxHpValue * PLAYER_COMBAT_CONFIG.maxShieldHpRatio;
   }
 
   /** 신속 영창 반영 후 실제 영창 입력락 (하한 적용) — C 경제엔 글로벌 쿨다운이 없다 */
@@ -236,7 +242,7 @@ export class PlayerCombatState {
   addShield(amount: number): number {
     if (!this.alive) return 0;
     const previous = this.shield;
-    this.shield = Math.min(this.maxHp, this.shield + Math.max(0, amount));
+    this.shield = Math.min(this.maxShield, this.shield + Math.max(0, amount));
     return this.shield - previous;
   }
 

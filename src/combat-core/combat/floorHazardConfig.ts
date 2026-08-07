@@ -48,7 +48,7 @@ export const FLOOR_HAZARD_CONFIG = {
    */
   poison: {
     element: 'dark' as SpellElement,
-    damagePerSecond: 4,
+    damagePerSecond: 6,
     lingerSeconds: 2,
     counterElements: ['light'] as readonly SpellElement[],
     counterEffects: ['heal'] as readonly SpellEffect[],
