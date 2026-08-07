@@ -56,7 +56,9 @@ assert.ok(scene.includes('this.supportSpellVfx = null'));
 // 8) 이 변경은 보호막 메커니즘을 바꾸지 않는다.
 const playerState = readFileSync('src/combat-core/player/playerCombatState.ts', 'utf8');
 assert.ok(playerState.includes('shield: number = 0'));
-assert.ok(playerState.includes('this.shield = Math.min(this.maxHp, this.shield + Math.max(0, amount))'));
+// 상한은 #383에서 maxHp → **maxShield**로 갈라졌다. 이 회귀가 지키려는 건 상한값이
+// 아니라 "보호막은 상한에 걸려 무한히 쌓이지 않는다"이므로, 그 성질만 본다.
+assert.ok(playerState.includes('this.shield = Math.min(this.maxShield, this.shield + Math.max(0, amount))'));
 
 // 9) 1차 화면 검토에서 발견된 가시성·방향성 문제의 재발을 막는다.
 assert.ok(SUPPORT_VFX_CONFIG.healDurationMs >= 700, 'heal 핵심 연출은 눈에 읽힐 만큼 유지되어야 한다');
