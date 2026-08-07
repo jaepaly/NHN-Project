@@ -39,6 +39,7 @@ import {
 } from '../render/roomBackdropConfig';
 import type { RoomBackdropPalette } from '../render/roomBackdropConfig';
 import { PlayerCombatState } from '../combat-core/player/playerCombatState';
+import { PhysicalMovementState } from '../combat-core/player/physicalMovementState';
 import { ChaserEnemy } from '../combat-core/enemies/chaserEnemy';
 import { ShooterEnemy } from '../combat-core/enemies/shooterEnemy';
 import { SplitterEnemy } from '../combat-core/enemies/splitterEnemy';
@@ -144,6 +145,7 @@ import { showBossChoice, showDemoCompletionChoice } from '../ui/bossChoiceOverla
 import { showSystemBanner } from '../render/systemBanner';
 import { bossResistanceReadout } from '../render/bossResistanceReadout';
 import { playAwakeningBrandMark, playAwakeningSigil } from '../render/awakeningSigil';
+import { SupportSpellVfx } from '../render/supportSpellVfx';
 import {
   PARTICLE_TEXTURES, ensureParticleTextures, particleKey,
 } from '../render/particleTextures';
@@ -271,8 +273,7 @@ import { allRoomIconTextures } from '../ui/roomKindIcon';
 import { MINIMAP_CONFIG } from '../ui/minimapLayout';
 import { RoomRadarHud } from '../ui/roomRadarHud';
 import { ROOM_RADAR_CONFIG } from '../ui/roomRadarModel';
-import { BossCombatInfoHud } from '../ui/bossCombatInfoHud';
-import { bossCombatInfoLines } from '../ui/bossCombatInfoModel';
+import { bossResistanceBadges } from '../ui/bossCombatInfoModel';
 import { BossHealthBarHud } from '../ui/bossHealthBarHud';
 import { SpellCastLogHud } from '../ui/spellCastLogHud';
 import {
@@ -304,6 +305,7 @@ import {
 } from '../combat-core/combat/floorHazardState';
 import { PortalField } from '../render/portalField';
 import { cleanseReadoutLine } from '../render/floorHazardReadout';
+import { TERRAIN_BARRIER_VFX } from '../render/terrainBarrierVfxConfig';
 import {
   blocksFromPlacements, floorHazardsForRoom, floorHazardsFromPlacements, terrainForRoom,
 } from '../run/roomTerrainConfig';
@@ -348,6 +350,7 @@ import { GameAudio } from '../audio/gameAudio';
 import {
   behaviorElements,
   behaviorUsesAnyElement,
+  degradedSinglePlanFromSequence,
   resolveSpellPlan,
   sequencePlanHasActionBehavior,
   sequenceFlowTimeline,
@@ -402,6 +405,8 @@ import { HeatwaveCurseField } from '../render/heatwaveCurseField';
 import { showRoomCurseBanner } from '../render/roomCurseBanner';
 import {
   debugTrapProfileFromEnv,
+  TRAP_HAZARD_DAMAGE,
+  TRAP_HAZARD_DAMAGE_INTERVAL_SECONDS,
   trapHazardCirclePlacements,
   trapProfileFromLegacyCurse,
 } from '../run/trapRoomProfile';
@@ -608,7 +613,7 @@ interface FriendlyMissile {
  * manual=수동 영창(지속형 wall/orbit 포함) · auto=각인+정령+소환 · basic=기본탄 ·
  * status=상태이상 파생(burn DoT·shock 전이, 시전 주체 미추적이라 별도 버킷)
  */
-type DamageSource = 'manual' | 'auto' | 'basic' | 'status';
+type DamageSource = 'manual' | 'ultimate' | 'auto' | 'basic' | 'status';
 type BonusDamageNumberKind = 'chorus' | 'starburst' | 'variation-wave';
 
 interface CastFeedbackState {
@@ -711,6 +716,8 @@ interface HazardZone {
   damageCooldown: number;
   damage?: number;
   onDamage?: () => void;
+  /** 함정방의 여러 도형은 시각적으로만 분리되며 피해 판정은 공유한다. */
+  damageGroup?: 'trap-room';
 }
 
 interface UnstableWarning {
@@ -758,8 +765,8 @@ export class ProtoScene extends Phaser.Scene {
   private playerBody!: Phaser.GameObjects.Image | Phaser.GameObjects.Arc;
   /** 최근 이동 방향 — 돌진(dash) 방향 결정에 쓴다. */
   private readonly lastMoveDir = new Phaser.Math.Vector2(0, 0);
-  /** 활성 자기 강화 오라 (한 번에 하나) */
-  private buffAura: Phaser.GameObjects.Arc | null = null;
+  /** 회복·보호막·자기 강화의 상태 동기화형 연출. */
+  private supportSpellVfx: SupportSpellVfx | null = null;
   private playerState = new PlayerCombatState();
   private readonly spellHistory = new SpellHistory();
   private metaProfile = loadMetaProfile();
@@ -892,6 +899,14 @@ export class ProtoScene extends Phaser.Scene {
     },
   });
   private moveKeys!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
+  private readonly physicalMovement = new PhysicalMovementState();
+  private readonly onPhysicalMoveKeyDown = (event: KeyboardEvent): void => {
+    this.physicalMovement.keyDown(event.code);
+  };
+  private readonly onPhysicalMoveKeyUp = (event: KeyboardEvent): void => {
+    this.physicalMovement.keyUp(event.code);
+  };
+  private readonly onPhysicalMoveBlur = (): void => this.physicalMovement.reset();
   private worldBounds = new Phaser.Geom.Rectangle();
   private enemies: CombatEnemy[] = [];
   /** 화면 중앙에 떠 있는 시스템 메시지들 — 세로 스택으로 겹침 방지 */
@@ -908,6 +923,7 @@ export class ProtoScene extends Phaser.Scene {
   private bannerRoomGeneration = 0;
   private enemyProjectiles: EnemyProjectile[] = [];
   private hazardZones: HazardZone[] = [];
+  private trapHazardDamageCooldown = 0;
   /** 함정방 입장 직후에는 배치가 보여도 즉시 피해를 주지 않는다. */
   private hazardEntryGraceRemaining = 0;
   private hazardDecorations: Phaser.GameObjects.GameObject[] = [];
@@ -920,6 +936,7 @@ export class ProtoScene extends Phaser.Scene {
   private roomClearPending = false;
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private statusText!: Phaser.GameObjects.Text;
+  private judgeOfflineText!: Phaser.GameObjects.Text;
   private hpText!: Phaser.GameObjects.Text;
   private manaText!: Phaser.GameObjects.Text;
   private shieldText!: Phaser.GameObjects.Text;
@@ -930,8 +947,6 @@ export class ProtoScene extends Phaser.Scene {
   private fusionLabelText!: Phaser.GameObjects.Text;
   /** #345 상단 중앙 런 타이머 — 우측 정보 패널과 중복 표시하지 않는다. */
   private runTimerText!: Phaser.GameObjects.Text;
-  /** #345 보스전에서만 보스를 따라다니는 전용 전투 정보판. */
-  private bossCombatInfoHud!: BossCombatInfoHud;
   /** #345 보스전에서만 화면 상단 중앙에 고정되는 HP·페이즈 바. */
   private bossHealthBarHud!: BossHealthBarHud;
   private waveText!: Phaser.GameObjects.Text;
@@ -1063,6 +1078,7 @@ export class ProtoScene extends Phaser.Scene {
   private eliteModifierAssignments: EliteModifier[] = [];
   private eliteSpawnIndex = 0;
   private incantWrap!: HTMLElement;
+  private incantKicker!: HTMLElement;
   private incantBar!: HTMLInputElement;
   private incantState!: HTMLElement;
   private incantCount!: HTMLElement;
@@ -1071,6 +1087,7 @@ export class ProtoScene extends Phaser.Scene {
   /** 대역 칩 컨테이너 (속삭임·영창·외침) — incantBands 모델로 채운다 */
   private incantBands!: HTMLElement;
   private incantGuideEl!: HTMLElement;
+  private incantUltimateResonance!: HTMLElement;
   /**
    * 영창 창 안에 띄울 첫 영창 안내 (총괄 지적: 영창하면 화면이 흐려져 배너가 안 읽힌다).
    * 배너는 캔버스에 그려지는데 영창 창은 그 위를 덮는 DOM이라 어둠·블러가 통째로 걸린다.
@@ -1163,7 +1180,7 @@ export class ProtoScene extends Phaser.Scene {
 
   /** 런 누적 피해 귀속 원장 — restartRun에서 리셋, 방·런 종료 시 리포트 */
   private damageLedger: Record<DamageSource, number> = {
-    manual: 0, auto: 0, basic: 0, status: 0,
+    manual: 0, ultimate: 0, auto: 0, basic: 0, status: 0,
   };
   /** 활성 소환체들 — 분신 1 / 군체 N / 포탑 1 / 기본 오브 1 (#97 ②) */
   private activeSummons: SummonedOrb[] = [];
@@ -1218,7 +1235,7 @@ export class ProtoScene extends Phaser.Scene {
    */
   /** 방 구조물 (정사각 블록) — 이동·투사체·**플레이어 주문**을 모두 막는다 */
   private terrainBarriers: TerrainBlock[] = [];
-  private terrainBarrierView: Phaser.GameObjects.Graphics | null = null;
+  private terrainBarrierView: Phaser.GameObjects.Graphics | Phaser.GameObjects.Container | null = null;
   /**
    * 바닥형 지형 (#214 지형 Tier 1 R2) — 용암·독지대. 배치는 R1 소유, 여기는 렌더·판정만.
    * 방 진입 시 채우고 방 전환 시 비운다. 장벽(막는 것)과 달리 밟으면 아픈 것.
@@ -1350,6 +1367,10 @@ export class ProtoScene extends Phaser.Scene {
       'bg-boss',
       `${import.meta.env.BASE_URL}assets/backgrounds/arena-boss.jpg`,
     );
+    this.load.image(
+      TERRAIN_BARRIER_VFX.textureKey,
+      `${import.meta.env.BASE_URL}assets/terrain-barrier-sealed-stone-game.png`,
+    );
     // 방 종류별 전용 배경 (총괄 생성, 2026-07-30) — 정예·함정·보물·제단.
     // 종전엔 이 넷이 스테이지 배경 + 색 틴트로만 구분됐다(#285). 검수 실측:
     // 워터마크 제거 확인(0.7 초과 화소 0개) · 2528×1696 → 1920×1280 리샘플.
@@ -1468,6 +1489,7 @@ export class ProtoScene extends Phaser.Scene {
 
     this.drawBackdrop(this.worldBounds.width, this.worldBounds.height);
     this.createPlayer(startX, startY);
+    this.supportSpellVfx = new SupportSpellVfx(this, this.player);
     this.growthMarks = new GrowthMarks(this);
     this.cameras.main
       .setBounds(
@@ -1485,6 +1507,15 @@ export class ProtoScene extends Phaser.Scene {
       left: Phaser.Input.Keyboard.KeyCodes.A,
       right: Phaser.Input.Keyboard.KeyCodes.D,
     }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
+    window.addEventListener('keydown', this.onPhysicalMoveKeyDown, true);
+    window.addEventListener('keyup', this.onPhysicalMoveKeyUp, true);
+    window.addEventListener('blur', this.onPhysicalMoveBlur);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      window.removeEventListener('keydown', this.onPhysicalMoveKeyDown, true);
+      window.removeEventListener('keyup', this.onPhysicalMoveKeyUp, true);
+      window.removeEventListener('blur', this.onPhysicalMoveBlur);
+      this.physicalMovement.reset();
+    });
     this.createHud(width, height);
     // 밝기 막은 createHud(→createPauseMenu)에서 만들어지므로 그 뒤에 적용한다
     this.applyBrightness();
@@ -1625,6 +1656,14 @@ export class ProtoScene extends Phaser.Scene {
       if (this.practiceRun) this.playerState.restoreMana(this.playerState.maxMana);
       this.basicAttackCooldownRemaining = Math.max(0, this.basicAttackCooldownRemaining - d);
       this.updatePlayerMovement(d);
+      this.supportSpellVfx?.update(
+        d,
+        this.playerState.shield,
+        this.playerState.maxHp,
+        this.playerState.activeBuffs(),
+        Object.values(this.moveKeys).some((key) => key.isDown),
+        this.lastMoveDir,
+      );
       this.updateRoomCurse(delta / 1000, d);
       this.updatePlayerAura(d);
       this.updateEnemyControls(d);
@@ -2000,6 +2039,9 @@ export class ProtoScene extends Phaser.Scene {
     }
     const scale = loopDamageScale(this.combatRunController.state.loopIndex);
     const result = this.playerState.takeDamage(amount * scale);
+    if (result.shieldDamage > 0) {
+      this.supportSpellVfx?.playShieldHit(result.shieldDamage, this.playerState.shield <= 0);
+    }
     if (result.hpDamage > 0) this.audio.playSfx('player-hit');
     return result;
   }
@@ -2750,16 +2792,18 @@ export class ProtoScene extends Phaser.Scene {
     this.hazardDecorations = [];
     this.activeWalls = [];
     this.activeOrbits = [];
+    this.supportSpellVfx = null;
     // 충전 핍 — 늦은 생성이라 파괴된 참조가 남으면 재입장 첫 프레임에 죽은 객체를 만진다
     this.researchChargePipsGfx = null;
     this.researchChargePipsKey = '';
   }
   /** 오토 비중 스냅샷 — 콘솔 리포트·재측정(window.__autoShare)용 */
   private autoShareSnapshot(): Record<DamageSource, number> & { autoSharePercent: number } {
-    const { manual, auto, basic, status } = this.damageLedger;
-    const total = manual + auto + basic + status;
+    const { manual, ultimate, auto, basic, status } = this.damageLedger;
+    const total = manual + ultimate + auto + basic + status;
     return {
       manual: Math.round(manual),
+      ultimate: Math.round(ultimate),
       auto: Math.round(auto),
       basic: Math.round(basic),
       status: Math.round(status),
@@ -2771,7 +2815,7 @@ export class ProtoScene extends Phaser.Scene {
     const s = this.autoShareSnapshot();
     devInfo(
       `[auto-share] ${tag} — 오토 ${s.autoSharePercent}% `
-      + `(수동 ${s.manual} · 오토 ${s.auto} · 기본탄 ${s.basic} · 상태이상 ${s.status})`,
+      + `(수동 ${s.manual} · 필살 ${s.ultimate} · 오토 ${s.auto} · 기본탄 ${s.basic} · 상태이상 ${s.status})`,
     );
   }
 
@@ -2825,7 +2869,7 @@ export class ProtoScene extends Phaser.Scene {
     this.roomTimings = [];
     this.continueRunResearchTracking();
     // 전투 전용 상태만 초기화 (다음 보스가 내성 재계산, 장판·쿨다운은 방 단위)
-    this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
+    this.damageLedger = { manual: 0, ultimate: 0, auto: 0, basic: 0, status: 0 };
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
@@ -2845,6 +2889,7 @@ export class ProtoScene extends Phaser.Scene {
     this.clearSpiritViews();
     this.growthMarks.reset();
     this.playerState.reset();
+    this.supportSpellVfx?.reset();
     // 제단 능력도 비운다 — 그래야 다음 런 제단이 다시 의미를 갖는다
     this.echoUnlocked = false;
     this.starburstUnlocked = false;
@@ -2886,6 +2931,7 @@ export class ProtoScene extends Phaser.Scene {
    * restartRun(런 중 재시작)과 달리 offerLegacy/prepareEscalation은 create가 따로 한다.
    */
   private resetForNewRun(): void {
+    this.judge.resetRun?.();
     this.deathHandled = false;
     this.demoRun = false;
     this.practiceRun = false;
@@ -2896,7 +2942,7 @@ export class ProtoScene extends Phaser.Scene {
     this.pendingRunStartReason = null;
     this.resetRunResearchTracking();
     this.fusionGauge.reset();
-    this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
+    this.damageLedger = { manual: 0, ultimate: 0, auto: 0, basic: 0, status: 0 };
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
@@ -2921,12 +2967,14 @@ export class ProtoScene extends Phaser.Scene {
     this.spiritManager.reset();
     this.clearSpiritViews();
     this.playerState.reset();
+    this.supportSpellVfx?.reset();
     this.runMovementDistance = 0;
     this.resetMapGraph();
     this.combatRunController.reset(Date.now(), false);
   }
 
   private restartRun(): void {
+    this.judge.resetRun?.();
     this.deathHandled = false;
     this.demoRun = false;
     this.practiceRun = false;
@@ -2936,7 +2984,7 @@ export class ProtoScene extends Phaser.Scene {
     this.roomTimings = [];
     this.resetRunResearchTracking();
     this.fusionGauge.reset();
-    this.damageLedger = { manual: 0, auto: 0, basic: 0, status: 0 };
+    this.damageLedger = { manual: 0, ultimate: 0, auto: 0, basic: 0, status: 0 };
     this.bossResistance = { ...NO_BOSS_RESISTANCE };
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
@@ -2963,6 +3011,7 @@ export class ProtoScene extends Phaser.Scene {
     this.growthMarks.reset();
     this.engraveRewardRand = createRunRandom(Date.now());
     this.playerState.reset();
+    this.supportSpellVfx?.reset();
     this.runMovementDistance = 0;
     this.resetMapGraph();
     this.prepareRunEscalation();
@@ -3536,6 +3585,17 @@ export class ProtoScene extends Phaser.Scene {
       fontStyle: 'bold',
       color: UI_SEMANTIC.ok,
     }).setScrollFactor(0).setDepth(100);
+    this.judgeOfflineText = this.add.text(
+      AFFINITY_HUD.x + 92,
+      AFFINITY_HUD.y + 1,
+      '● 오프라인 판정 · 연결 확인 중',
+      {
+        fontFamily: '"Noto Serif KR", "Malgun Gothic", sans-serif',
+        fontSize: '11px',
+        fontStyle: 'bold',
+        color: '#ffd166',
+      },
+    ).setScrollFactor(0).setDepth(100).setVisible(false);
     // 정적 라벨 — 값이 안 바뀌므로 한 번만 만든다
     (['HP', 'MANA', 'SHIELD'] as const).forEach((label, index) => {
       this.add.text(vital.x + VITAL_HUD.labelX, vitalRowY(vital.y, index), label, {
@@ -3610,7 +3670,6 @@ export class ProtoScene extends Phaser.Scene {
       letterSpacing: 1.4,
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
 
-    this.bossCombatInfoHud = new BossCombatInfoHud(this);
     this.bossHealthBarHud = new BossHealthBarHud(this);
 
     // 위험지대 정화처럼 즉시 대응할 문구만 레이더 아래에 잠시 남긴다.
@@ -3670,8 +3729,10 @@ export class ProtoScene extends Phaser.Scene {
     if (this.incanting || !this.playerState.alive) return;
 
     const direction = new Phaser.Math.Vector2(
-      Number(this.moveKeys.right.isDown) - Number(this.moveKeys.left.isDown),
-      Number(this.moveKeys.down.isDown) - Number(this.moveKeys.up.isDown),
+      Number(this.moveKeys.right.isDown || this.physicalMovement.isDown('right'))
+        - Number(this.moveKeys.left.isDown || this.physicalMovement.isDown('left')),
+      Number(this.moveKeys.down.isDown || this.physicalMovement.isDown('down'))
+        - Number(this.moveKeys.up.isDown || this.physicalMovement.isDown('up')),
     );
     if (direction.lengthSq() === 0) return;
 
@@ -4191,42 +4252,177 @@ export class ProtoScene extends Phaser.Scene {
    * 예산(#220)은 장식 VFX가 아닌 것도 화면을 밝히면 안 된다고 본다. 정지 상태로
    * 계속 떠 있는 물체라 미세한 깜빡임도 누적 피로가 된다 — 애니메이션도 없다.
    *
-   * 다섯 겹으로 부피를 만든다: 바닥 그림자 → 본체 → 상단 경사면(빛) →
-   * 하단 경사면(그늘) → 테두리. 여기에 룬 균열을 얹어 "마력 구조물"임을 드러낸다.
+   * 평면 잔해는 걸어 넘을 수 있는 석판처럼 읽혔다. 충돌 정사각형은 기단으로 유지하고
+   * 상판을 위로 들어 전면·측면을 노출한 봉인 석벽으로 그린다. 룬은 상판에 새긴다.
    */
   private setTerrainBarriers(blocks: readonly TerrainBlock[]): void {
     this.clearTerrainBarriers();
     if (blocks.length === 0) return;
     this.terrainBarriers = blocks.map((block) => ({ ...block }));
 
+    // 배경과 같은 래스터 석재 질감의 탑다운 스프라이트를 우선한다. PNG만 올려놓은
+    // 콜라주처럼 뜨지 않도록 바닥 접촉 그림자·주변 파편·희미한 봉인 흔적을 먼저 깔고,
+    // 본체는 배경 톤으로 낮춘다. 에셋 로드 실패 시 아래 절차적 석벽이 폴백한다.
+    if (this.textures.exists(TERRAIN_BARRIER_VFX.textureKey)) {
+      const container = this.add.container(0, 0).setDepth(4);
+      this.terrainBarriers.forEach((block, index) => {
+        const displaySize = block.half * 2 * TERRAIN_BARRIER_VFX.displayScale;
+        const ground = this.add.graphics();
+        const rotation = (index % 4) * (Math.PI / 2);
+
+        ground.fillStyle(TERRAIN_BARRIER_VFX.shadow, TERRAIN_BARRIER_VFX.contactShadowAlpha);
+        ground.fillEllipse(
+          block.x,
+          block.y + block.half * TERRAIN_BARRIER_VFX.contactShadowOffsetY,
+          displaySize * TERRAIN_BARRIER_VFX.contactShadowWidth,
+          displaySize * TERRAIN_BARRIER_VFX.contactShadowHeight,
+        );
+
+        // 충돌 모서리를 그대로 테두리로 그리지 않고, 바깥의 작은 파편으로 바닥과 잇는다.
+        const debris = [
+          { x: -0.54, y: -0.22, r: 0.09 },
+          { x: 0.50, y: -0.34, r: 0.07 },
+          { x: -0.42, y: 0.48, r: 0.075 },
+          { x: 0.55, y: 0.31, r: 0.055 },
+        ];
+        ground.fillStyle(TERRAIN_BARRIER_VFX.debrisTint, TERRAIN_BARRIER_VFX.debrisAlpha);
+        debris.forEach((piece, pieceIndex) => {
+          const cos = Math.cos(rotation);
+          const sin = Math.sin(rotation);
+          const px = piece.x * cos - piece.y * sin;
+          const py = piece.x * sin + piece.y * cos;
+          const radius = block.half * piece.r * (pieceIndex % 2 === 0 ? 1 : 0.82);
+          ground.fillEllipse(
+            block.x + px * displaySize,
+            block.y + py * displaySize,
+            radius * 2.2,
+            radius * 1.35,
+          );
+        });
+
+        ground.lineStyle(1.2, TERRAIN_BARRIER_VFX.runeGroundTint, TERRAIN_BARRIER_VFX.runeGroundAlpha);
+        ground.strokeEllipse(block.x, block.y, displaySize * 0.78, displaySize * 0.72);
+
+        // 두 겹 모두 원본 알파를 따르므로 정사각 프레임이 생기지 않는다. 바깥 검푸른
+        // 폐색막은 밝은 마법진에서, 안쪽 청록 림은 어두운 바닥에서 경계를 만든다.
+        const occlusion = this.add.image(block.x, block.y, TERRAIN_BARRIER_VFX.textureKey)
+          .setDisplaySize(
+            displaySize * TERRAIN_BARRIER_VFX.occlusionScale,
+            displaySize * TERRAIN_BARRIER_VFX.occlusionScale,
+          )
+          .setTint(TERRAIN_BARRIER_VFX.occlusionTint)
+          .setAlpha(TERRAIN_BARRIER_VFX.occlusionAlpha)
+          .setAngle((index % 4) * 90);
+        const silhouette = this.add.image(block.x, block.y, TERRAIN_BARRIER_VFX.textureKey)
+          .setDisplaySize(
+            displaySize * TERRAIN_BARRIER_VFX.silhouetteScale,
+            displaySize * TERRAIN_BARRIER_VFX.silhouetteScale,
+          )
+          .setTint(TERRAIN_BARRIER_VFX.silhouetteTint)
+          .setAlpha(TERRAIN_BARRIER_VFX.silhouetteAlpha)
+          .setAngle((index % 4) * 90);
+        const image = this.add.image(block.x, block.y, TERRAIN_BARRIER_VFX.textureKey)
+          .setDisplaySize(displaySize, displaySize)
+          .setTint(TERRAIN_BARRIER_VFX.spriteTint)
+          .setAlpha(TERRAIN_BARRIER_VFX.spriteAlpha)
+          .setAngle((index % 4) * 90);
+        container.add([ground, occlusion, silhouette, image]);
+      });
+      this.terrainBarrierView = container;
+      return;
+    }
+
     const view = this.add.graphics().setDepth(4);
+    const pal = TERRAIN_BARRIER_VFX;
     for (const block of this.terrainBarriers) {
       const { x, y, half } = block;
       const size = half * 2;
-      const bevel = Math.max(6, half * 0.22);
+      const left = x - half;
+      const right = x + half;
+      const top = y - half;
+      const bottom = y + half;
 
-      // ① 바닥 그림자 — 아래로 살짝 밀어 부피감을 만든다
-      view.fillStyle(0x030304, 0.62);
-      view.fillRoundedRect(x - half + 3, y - half + 8, size, size, 6);
-      // ② 본체 — 원소광이 아닌 흑요석 먹회색
-      view.fillStyle(0x211d23, 1);
-      view.fillRoundedRect(x - half, y - half, size, size, 6);
-      // ③ 상단 경사면 — 배경에서 구조물 윤곽을 잃지 않을 정도의 명암만 남긴다
-      view.fillStyle(0x3b343e, 1);
-      view.fillRect(x - half + bevel * 0.5, y - half + 3, size - bevel, bevel);
-      // ④ 하단 경사면 — 그늘
-      view.fillStyle(0x120f14, 1);
-      view.fillRect(x - half + bevel * 0.5, y + half - bevel - 3, size - bevel, bevel);
-      // ⑤ 테두리 — 저채도 회보라 안쪽 선 + 먹색 바깥 선
-      view.lineStyle(2, 0x716476, 0.72);
-      view.strokeRoundedRect(x - half + 2, y - half + 2, size - 4, size - 4, 5);
-      view.lineStyle(2, 0x070609, 0.95);
-      view.strokeRoundedRect(x - half, y - half, size, size, 6);
+      const height = Math.max(pal.minHeight, half * pal.heightRatio);
+      const cut = half * 0.18;
+      // 실제 충돌 범위와 같은 기단. 상단 구조물이 위로 솟아도 발 위치를 읽을 수 있다.
+      view.fillStyle(pal.shadow, 0.76);
+      view.fillEllipse(x, bottom + pal.shadowOffsetY, size * 1.02, half * 0.34);
+      view.fillStyle(pal.base, 0.92);
+      view.fillPoints([
+        new Phaser.Geom.Point(left + cut, top), new Phaser.Geom.Point(right - cut, top),
+        new Phaser.Geom.Point(right, top + cut), new Phaser.Geom.Point(right, bottom - cut),
+        new Phaser.Geom.Point(right - cut, bottom), new Phaser.Geom.Point(left + cut, bottom),
+        new Phaser.Geom.Point(left, bottom - cut), new Phaser.Geom.Point(left, top + cut),
+      ], true);
 
-      // 룬 균열 — 대각 한 줄 + 짧은 가지. 마력 구조물임을 드러내되 정지 상태다
-      view.lineStyle(2, 0x8b748f, 0.32);
-      view.lineBetween(x - half * 0.45, y - half * 0.5, x + half * 0.2, y + half * 0.45);
-      view.lineBetween(x - half * 0.1, y - half * 0.05, x + half * 0.4, y - half * 0.35);
+      // 상판을 위로 옮기고 전면·측면을 기단까지 연결해 명확한 수직 높이를 만든다.
+      const cap = [
+        new Phaser.Geom.Point(left + cut, top - height),
+        new Phaser.Geom.Point(x + half * 0.16, top - height * 0.9),
+        new Phaser.Geom.Point(right - cut * 0.4, top - height * 0.64),
+        new Phaser.Geom.Point(right, y - height + cut),
+        new Phaser.Geom.Point(right - cut, bottom - height),
+        new Phaser.Geom.Point(x - half * 0.24, bottom - height * 1.04),
+        new Phaser.Geom.Point(left, bottom - height - cut * 0.5),
+        new Phaser.Geom.Point(left + cut * 0.2, y - height - cut),
+      ];
+      view.fillStyle(pal.wallSide, 1);
+      view.fillPoints([
+        cap[3], cap[4], new Phaser.Geom.Point(right - cut, bottom),
+        new Phaser.Geom.Point(right, bottom - cut),
+      ], true);
+      view.fillStyle(pal.wallFront, 1);
+      view.fillPoints([
+        cap[4], cap[5], cap[6],
+        new Phaser.Geom.Point(left, bottom - cut),
+        new Phaser.Geom.Point(left + cut, bottom),
+        new Phaser.Geom.Point(right - cut, bottom),
+      ], true);
+      view.lineStyle(2, pal.stoneEdge, 0.5);
+      view.lineBetween(cap[6].x, cap[6].y, left, bottom - cut);
+      view.lineBetween(cap[4].x, cap[4].y, right - cut, bottom);
+
+      view.fillStyle(pal.stoneMid, 1);
+      view.fillPoints(cap, true);
+      // 상판 외곽은 일부만 밝게 해 파손된 유적 재질을 유지한다.
+      view.lineStyle(3, pal.stoneEdge, 0.72);
+      view.lineBetween(cap[0].x, cap[0].y, cap[1].x, cap[1].y);
+      view.lineBetween(cap[1].x, cap[1].y, cap[2].x, cap[2].y);
+      view.lineBetween(cap[4].x, cap[4].y, cap[5].x, cap[5].y);
+      view.lineBetween(cap[5].x, cap[5].y, cap[6].x, cap[6].y);
+
+      // 깨진 상판 조각과 돌결로 넓은 단색 면을 나눈다.
+      view.fillStyle(pal.stoneLight, 0.62);
+      view.fillPoints([
+        new Phaser.Geom.Point(x - half * 0.52, y - height - half * 0.34),
+        new Phaser.Geom.Point(x + half * 0.08, y - height - half * 0.48),
+        new Phaser.Geom.Point(x + half * 0.44, y - height - half * 0.12),
+        new Phaser.Geom.Point(x + half * 0.14, y - height + half * 0.16),
+        new Phaser.Geom.Point(x - half * 0.38, y - height + half * 0.04),
+      ], true);
+      view.lineStyle(1.5, pal.stoneEdge, 0.34);
+      view.lineBetween(x - half * 0.52, y - height - half * 0.34, x + half * 0.08, y - height - half * 0.48);
+      view.lineBetween(x + half * 0.08, y - height - half * 0.48, x + half * 0.44, y - height - half * 0.12);
+
+      // 상판에 새긴 파손 육각 봉인. 수직 면과 분리돼 장식보다 재질 각인으로 읽힌다.
+      const runeY = y - height;
+      const runeRadius = half * 0.25;
+      const runePoints = Array.from({ length: 6 }, (_, index) => {
+        const angle = -Math.PI / 2 + index * Math.PI / 3;
+        return new Phaser.Geom.Point(
+          x + Math.cos(angle) * runeRadius,
+          runeY + Math.sin(angle) * runeRadius,
+        );
+      });
+      view.lineStyle(2.2, pal.rune, pal.runeAlpha);
+      for (let index = 0; index < 4; index += 1) {
+        view.lineBetween(runePoints[index].x, runePoints[index].y, runePoints[index + 1].x, runePoints[index + 1].y);
+      }
+      view.lineBetween(runePoints[5].x, runePoints[5].y, runePoints[0].x, runePoints[0].y);
+      view.lineStyle(1.8, pal.runeCore, pal.runeAlpha * 0.82);
+      view.lineBetween(x, runeY - runeRadius * 0.58, x, runeY + runeRadius * 0.5);
+      view.lineBetween(x, runeY, x - runeRadius * 0.46, runeY + runeRadius * 0.3);
+      view.lineBetween(x, runeY + runeRadius * 0.16, x + runeRadius * 0.42, runeY + runeRadius * 0.46);
     }
     this.terrainBarrierView = view;
   }
@@ -4913,6 +5109,7 @@ export class ProtoScene extends Phaser.Scene {
     }
     this.hazardZones = [];
     this.hazardEntryGraceRemaining = 0;
+    this.trapHazardDamageCooldown = 0;
   }
 
   private spawnHazards(safeCorridor?: TrapSafeCorridor): void {
@@ -4937,6 +5134,7 @@ export class ProtoScene extends Phaser.Scene {
         view,
         contains: (x, y) => Phaser.Math.Distance.Between(x, y, view.x, view.y) <= placement.radius,
         damageCooldown: 0,
+        damageGroup: 'trap-room',
       });
     }
 
@@ -4976,6 +5174,7 @@ export class ProtoScene extends Phaser.Scene {
           view,
           contains: (x, y) => bounds.contains(x, y),
           damageCooldown: 0,
+          damageGroup: 'trap-room',
         });
       }
       // 중앙 사각형과 십자 통로는 같은 안전영역이다. 두 영역의 연결부에는
@@ -5049,6 +5248,7 @@ export class ProtoScene extends Phaser.Scene {
         view,
         contains: (x, y) => bounds.contains(x, y),
         damageCooldown: 0,
+        damageGroup: 'trap-room',
       });
     }
 
@@ -5061,7 +5261,19 @@ export class ProtoScene extends Phaser.Scene {
   private updateHazards(deltaSeconds: number): void {
     this.hazardEntryGraceRemaining = Math.max(0, this.hazardEntryGraceRemaining - deltaSeconds);
     if (this.hazardEntryGraceRemaining > 0) return;
+    this.trapHazardDamageCooldown = Math.max(0, this.trapHazardDamageCooldown - deltaSeconds);
+    const insideTrapHazard = this.hazardZones.some(
+      (hazard) => hazard.damageGroup === 'trap-room'
+        && hazard.contains(this.player.x, this.player.y),
+    );
+    if (insideTrapHazard && this.trapHazardDamageCooldown <= 0) {
+      const applied = this.damagePlayer(TRAP_HAZARD_DAMAGE);
+      if (applied) this.playPlayerHit();
+      this.announceIncomingDamage(applied.hpDamage, applied.shieldDamage);
+      this.trapHazardDamageCooldown = TRAP_HAZARD_DAMAGE_INTERVAL_SECONDS;
+    }
     for (const hazard of this.hazardZones) {
+      if (hazard.damageGroup === 'trap-room') continue;
       hazard.damageCooldown = Math.max(0, hazard.damageCooldown - deltaSeconds);
       if (hazard.damageCooldown > 0) continue;
       if (!hazard.contains(this.player.x, this.player.y)) continue;
@@ -5353,16 +5565,10 @@ if (applied) this.playPlayerHit(
         boss.applyCounterStrategy(this.bossResistance.counterStrategy);
       }
       this.bossPatternController?.setCounterStrategy(this.bossResistance.counterStrategy);
-      const resistanceLabel = this.bossResistance.resistedElement
-        ? `${ELEMENT_LABELS[this.bossResistance.resistedElement]} 내성 · `
-        : '';
-      const counterLabel = this.bossResistance.counterStrategy === 'rush'
-        ? '원거리 영창 대응: 돌진 강화'
-        : this.bossResistance.counterStrategy === 'ranged'
-          ? '근거리 영창 대응: 탄막·장판 강화'
-          : '기억 부족: 혼합 패턴 유지';
       this.announceSystemMessage(
-        `기억 적응 · ${resistanceLabel}${counterLabel}`,
+        this.bossResistance.resistedElement
+          ? `기억 적응 · ${ELEMENT_LABELS[this.bossResistance.resistedElement]} 내성`
+          : '기억 적응',
         '#d0a8ff',
         2800,
       );
@@ -6037,6 +6243,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   // ── 영창 모드 (DOM 입력 바 + 슬로모션) ───────────────────────
   private setupIncantBar(): void {
     this.incantWrap = document.getElementById('incant-wrap')!;
+    this.incantKicker = document.getElementById('incant-kicker')!;
     this.incantBar = document.getElementById('incant-bar') as HTMLInputElement;
     this.incantState = document.getElementById('incant-state')!;
     this.incantCount = document.getElementById('incant-count')!;
@@ -6044,6 +6251,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.incantChargeLabel = document.getElementById('incant-charge-label')!;
     this.incantBands = document.getElementById('incant-bands')!;
     this.incantGuideEl = document.getElementById('incant-guide')!;
+    this.incantUltimateResonance = document.getElementById('incant-ultimate-resonance')!;
 
     // 재진입 대비 — 같은 참조를 제거 후 등록해 누적을 차단한다 (#216 P0 겹시전).
     // 첫 호출에선 remove가 no-op이라 안전하고, 몇 번 들어와도 리스너는 정확히 1쌍이다.
@@ -6156,9 +6364,19 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.announceSystemMessage(`마나 부족 · 비용 ${cost} / 보유 ${held}`, '#ffd166');
   }
 
+  /** 단일·시퀀스가 같은 마나 감쇠 피드백을 공유한다. */
+  private announceDegradedCast(ratio: number): void {
+    this.announceSystemMessage(
+      `마나가 모자라 주문이 잦아들었다 · 위력 ${Math.round(ratio * 100)}%`,
+      '#ffd166',
+      2600,
+    );
+  }
+
   /** DOM 입력으로 포커스를 넘길 때 Phaser가 놓친 keyup이 이동 상태에 남지 않게 한다. */
   private resetMovementKeys(): void {
     Object.values(this.moveKeys).forEach((key) => key.reset());
+    this.physicalMovement.reset();
   }
 
   private openIncant(castMode: 'normal' | 'ultimate' = 'normal'): void {
@@ -6170,6 +6388,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.input.keyboard!.disableGlobalCapture();
     this.incantWrap.classList.add('active');
     this.incantWrap.classList.remove('judging');
+    this.incantWrap.classList.toggle('ultimate', castMode === 'ultimate');
     this.incantWrap.classList.toggle(
       'word-limit',
       this.activeRoomCurse?.kind === 'word-limit',
@@ -6178,8 +6397,16 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.incantBar.disabled = false;
     this.incantBar.value = '';
     // 온보딩: 열 때마다 예시 문장을 순환해 "이렇게 쓰면 된다"를 보여준다
-    this.incantBar.placeholder = onboardingPlaceholderAt(this.incantOpenCount);
+    this.incantKicker.textContent = castMode === 'ultimate' ? 'ULTIMATE INCANTATION' : 'INCANTATION LINK';
+    this.incantBar.placeholder = castMode === 'ultimate'
+      ? '필살영창을 선언하세요'
+      : onboardingPlaceholderAt(this.incantOpenCount);
     this.incantOpenCount += 1;
+    const resonance = this.fusionGauge.resonance;
+    const resonanceNames = resonance.recentNames.slice(-2);
+    this.incantUltimateResonance.textContent = resonanceNames.length > 0
+      ? `축적 공명 · ${resonanceNames.join(' · ')}`
+      : '축적 공명 · 이전 영창의 흐름을 이어 하나의 주문으로 완성합니다';
     // 위계: 마나(예산) → 입력 → 대역(선택지) → 조작 안내. 종전에는 요금표와 조작 안내가
     // 12px 회색 한 줄에 뭉쳐 있어 둘 다 안 읽혔다 — 이제 요금표는 대역 칩이 맡는다.
     this.incantHint.textContent = this.activeRoomCurse?.kind === 'word-limit'
@@ -6189,7 +6416,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         : this.fusionGauge.ready
           ? 'Enter 발동 · Shift+Enter로 필살영창 진입 · Esc 취소'
           : 'Enter 발동 · Esc 취소';
-    this.incantChargeLabel.textContent = '시간 흐름 10%';
+    this.incantChargeLabel.textContent = castMode === 'ultimate'
+      ? '공명 해방 준비'
+      : '시간 흐름 10%';
     this.renderIncantGuide();
     this.updateIncantCharge();
     this.focusIncantBar();
@@ -6216,6 +6445,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       'word-limit-over',
       'word-limit-blocked',
       'mana-dry',
+      'ultimate',
     );
     this.incantWrap.setAttribute('aria-hidden', 'true');
     this.incantBar.disabled = false;
@@ -6225,10 +6455,10 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private updateIncantCharge(): void {
     // 마나는 두 경로 공통 — 금언 방에서도 예산은 마나다 (금언은 그 위에 얹힌 제약)
     this.incantState.textContent = this.incantCastMode === 'ultimate'
-      ? '필살영창 · 준비 완료'
+      ? '출력 100'
       : `마나 ${Math.floor(this.playerState.mana)}`;
     this.incantWrap.classList.toggle(
-      'mana-dry', reachableBand(Math.floor(this.playerState.mana)) === null,
+      'mana-dry', this.incantCastMode !== 'ultimate' && reachableBand(Math.floor(this.playerState.mana)) === null,
     );
     if (this.activeRoomCurse?.kind === 'word-limit') {
       const cost = wordLimitCost(this.incantBar.value);
@@ -6349,7 +6579,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private beginJudging(): void {
-    this.resetMovementKeys();
     this.incanting = false;
     this.casting = true;
     this.setTimeScale(0.15);
@@ -6374,6 +6603,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       'word-limit-over',
       'word-limit-blocked',
       'mana-dry',
+      'ultimate',
     );
     this.incantWrap.setAttribute('aria-hidden', 'true');
     this.incantBar.disabled = false;
@@ -6388,7 +6618,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     text: string,
     source: JudgeSource,
   ): Promise<void> {
-    const plan = resolveSpellPlan(rawPlan);
+    let plan = resolveSpellPlan(rawPlan);
+    let degradedToSingle = false;
     const ultimate = plan.castMode === 'ultimate';
     const resonanceNames = ultimate
       ? this.fusionGauge.resonance.recentNames.slice(-2)
@@ -6401,10 +6632,25 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceSystemMessage('필살영창 게이지가 부족합니다.', '#e2b7ff', 2200);
       return;
     }
-    if (!ultimate && !this.playerState.trySpendMana(plan.manaCost)) {
-      this.audio.playSfx('fizzle');
-      this.announceManaShortage(plan.manaCost);
-      return;
+    if (!ultimate) {
+      const castPlan = degradedCastPlan(plan.manaCost, this.playerState.mana);
+      if (!castPlan) {
+        this.audio.playSfx('fizzle');
+        this.announceManaShortage(plan.manaCost);
+        return;
+      }
+      if (castPlan.ratio < 1) {
+        const degraded = degradedSinglePlanFromSequence(plan, castPlan.spend, castPlan.ratio);
+        if (!degraded) {
+          this.audio.playSfx('fizzle');
+          this.announceManaShortage(plan.manaCost);
+          return;
+        }
+        plan = degraded;
+        degradedToSingle = true;
+        this.announceDegradedCast(castPlan.ratio);
+      }
+      this.playerState.trySpendMana(castPlan.spend);
     }
     const allowEcho = !ultimate && !sequencePlanHasActionBehavior(plan);
     const formSpecs = plan.sequences.flatMap((sequence) => sequence.behaviors.flatMap((behavior) => (
@@ -6484,7 +6730,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         name: plan.name,
         element_primary: sequenceElement,
         form: sequenceForm,
-      })} · 연계 ${plan.sequences.length}`,
+      })}${degradedToSingle ? ' · 감쇠 단일' : ` · 연계 ${plan.sequences.length}`}`,
       sequenceElement,
     );
     this.beginSequenceExecutionUx(plan, resonanceNames);
@@ -6558,17 +6804,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
 
       const spec = judgement.spell;
-      // 필살기(융합 게이지) — 만충 + 이중 원소 판정이면 이 시전이 융합 방출로 격상된다.
-      // 방출 시전은 충전하지 않는다(리셋 직후 자기 마나로 재충전 방지).
-      //
-      // **마나 검사보다 먼저** 판정한다(총괄 결정: 필살기는 마나 소모 없음).
-      // 자원은 게이지 자체다 — 순서가 반대면 마나가 바닥일 때 만충 필살기가
-      // 거부되는 모순이 생긴다. 다 떨어졌을 때 뒤집는 한 방이 필살기의 존재 이유다.
-      const fusedSpec = this.fusionGauge.tryRelease(spec);
       // 감쇠 시전 — 마나 부족은 거부가 아니라 잦아든 주문 (바닥 미만일 때만 거부)
-      const castPlan = fusedSpec
-        ? { spend: 0, ratio: 1 }
-        : degradedCastPlan(spec.cost, this.playerState.mana);
+      const castPlan = degradedCastPlan(spec.cost, this.playerState.mana);
       if (!castPlan) {
         this.audio.playSfx('fizzle');
         this.announceManaShortage(spec.cost);
@@ -6581,7 +6818,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         this.reportResearchAdvance(previousResearch);
       }
 
-      if (!fusedSpec && this.fusionGauge.charge(castPlan.spend, {
+      if (this.fusionGauge.charge(castPlan.spend, {
         name: spec.name,
         elements: [spec.element_primary, ...(spec.element_secondary ? [spec.element_secondary] : [])],
         forms: [spec.form],
@@ -6599,8 +6836,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.clearIncantGuide();
 
       // 바닥지형 정화 — 판정이 준 원소·효과가 이 방의 지형을 카운터하면 면역을 준다 (#239).
-      // 융합본이 있으면 실제로 나가는 쪽(fusedSpec)의 원소로 판정한다.
-      this.tryCleanseFloorHazard(fusedSpec ?? spec);
+      this.tryCleanseFloorHazard(spec);
 
       const historyEntry = this.spellHistory.record({
         rawText: text,
@@ -6631,7 +6867,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         priorCasts.map((e) => ({ element: e.elementPrimary, form: e.form })),
         variationDiversityMaxBonus(this.runResearchTracker.snapshot().research),
       );
-      // 융합 방출은 페널티·친화·감쇠 체인을 덮는 고정 최대치 — "최대 방출"의 약속
       // 각성 — 수동 경로이므로 auto=false. 인장은 시전마다 발치에 잠깐 새겨진다
       // (밝기가 아니라 형태로 구분 — 친화 VFX는 이미 강도 상한이다).
       const awakened = awakeningFor(this.awakenings, spec, false);
@@ -6639,7 +6874,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         playAwakeningSigil(this, this.player.x, this.player.y, spec.element_primary, awakened);
       }
       const searing = awakened === 'searing';
-      const effectiveSpec: SpellSpec = fusedSpec ?? {
+      const effectiveSpec: SpellSpec = {
         ...spec,
         status: searing ? searingStatus(spec) : spec.status,
         power: Math.round(
@@ -6649,7 +6884,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           * castPlan.ratio, // 감쇠 시전 — 모자란 마나만큼 잦아든다
         ),
       };
-      if (fusedSpec) this.playFusionRelease(fusedSpec);
       // [dev] 실뎀 breakdown 로깅 — "같은 속성 뎀감" 스택 진단용 (logs/play.jsonl, 읽기전용)
       if (import.meta.env.DEV) {
         const base = historyEntry.basePower;
@@ -6672,11 +6906,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         });
       }
       if (castPlan.ratio < 1) {
-        this.announceSystemMessage(
-          `마나가 모자라 주문이 잦아들었다 · 위력 ${Math.round(castPlan.ratio * 100)}%`,
-          '#ffd166',
-          2600,
-        );
+        this.announceDegradedCast(castPlan.ratio);
       }
       // 같은 폼을 계속 쓰면 매 시전 반복되므로 방마다 폼별 1회만 알린다
       if (escalationWeaken < 1 && !this.escalationNoticed.has(spec.form)) {
@@ -6720,30 +6950,24 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceSpell(effectiveSpec);
       this.recordSpellLog(
         'manual',
-        this.spellLogLabel(effectiveSpec, fusedSpec ? '필살' : undefined),
+        this.spellLogLabel(effectiveSpec),
         effectiveSpec.element_primary,
       );
-      const fusionOptions = fusedSpec ? { fusionRelease: true } : undefined;
-      const researchSpatialScale = fusedSpec
-        ? 1
-        : elementalFocusSpatialScale(
-          this.runResearchTracker.snapshot().research,
-          effectiveSpec,
-        );
-      // 필살기면 친화 연출이 보조 원소까지 순차로 그린다 (총괄 지시).
-      // 에코·파문은 넘기지 않는다 — 그 둘은 같은 시전의 **반복**이라 여기까지 두
-      // 원소를 뿌리면 한 번의 필살기로 연출이 4개가 된다.
+      const researchSpatialScale = elementalFocusSpatialScale(
+        this.runResearchTracker.snapshot().research,
+        effectiveSpec,
+      );
       this.applySpellEffect(
         effectiveSpec,
         undefined,
         false,
         0,
-        fusionOptions ?? {
+        {
           rangeScale: researchSpatialScale,
           radiusScale: researchSpatialScale,
         },
       );
-      if (castMode === 'normal' && !fusedSpec) {
+      if (castMode === 'normal') {
         this.scheduleElementalResearchEcho([effectiveSpec]);
         this.scheduleVariationWave(effectiveSpec);
         this.recordManualPowerForResonance([effectiveSpec]);
@@ -7290,6 +7514,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
             repeatPowerScale,
             plan.castMode === 'normal',
             allowEcho,
+            plan.castMode === 'ultimate' ? 'ultimate' : 'manual',
           );
           executedSpecs.push(executed);
         }
@@ -7383,6 +7608,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     repeatPowerScale: number,
     researchEligible = true,
     allowEcho = false,
+    damageSource: DamageSource = 'manual',
   ): SpellSpec {
     const { spec: baseSpec, tuning } = behavior;
     const priorUsages = this.spellHistory.allBehaviorUsages;
@@ -7426,6 +7652,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       controlDurationScale: tuningScale(tuning, 'duration'),
       controlStrengthScale: tuningScale(tuning, 'strength'),
       shieldAmountScale: tuningScale(tuning, 'amount'),
+      damageSource,
       onAffectEnemy: (enemy) => {
         if (targetState.lockedEnemy?.alive) return;
         targetState.lockedEnemy = enemy;
@@ -7448,6 +7675,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       ?? new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
     if (spec.effect === 'heal') {
       const healed = this.playerState.heal(spellHealFromPower(spec.power));
+      this.supportSpellVfx?.playHeal(
+        healed,
+        this.playerState.maxHp,
+        spec.power,
+        spec.element_primary,
+        'spell',
+      );
       this.announceSystemMessage(`회복 +${Math.round(healed)} HP`, '#72f1a8');
       return;
     }
@@ -7459,6 +7693,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (spec.effect === 'shield') {
       const shielded = this.playerState.addShield(
         spellShieldFromPower(spec.power) * (options?.shieldAmountScale ?? 1),
+      );
+      this.supportSpellVfx?.playShieldGain(
+        shielded,
+        this.playerState.shield,
+        spec.power,
+        spec.element_primary,
+        'spell',
       );
       this.announceSystemMessage(`보호막 +${Math.round(shielded)}`, UI_SEMANTIC.shield);
       return;
@@ -7589,7 +7830,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private castSelfBuff(spec: SpellSpec): void {
     const outcome = resolveSelfBuff(spec.element_primary, spec.name, spec.power);
     this.playerState.applyTimedBuff(outcome.buff, outcome.multiplier, outcome.seconds);
-    this.showBuffAura(outcome.color, outcome.seconds);
+    this.supportSpellVfx?.playBuffCast(outcome.buff, spec.power, spec.element_primary);
     const magnitude = outcome.buff === 'ward'
       ? (outcome.multiplier <= 0 ? '무적' : `피해 −${Math.round((1 - outcome.multiplier) * 100)}%`)
       : `+${Math.round((outcome.multiplier - 1) * 100)}%`;
@@ -7597,24 +7838,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       `${outcome.label} · ${magnitude} · ${outcome.seconds.toFixed(1)}s`,
       paletteColorToCss(outcome.color),
     );
-  }
-
-  /** 활성 버프 오라 — 플레이어 컨테이너 뒤에 색으로 표시, 지속시간 후 소멸. */
-  private showBuffAura(color: number, seconds: number): void {
-    this.buffAura?.destroy();
-    const aura = this.add.circle(0, 0, 28, color, 0.22).setBlendMode(Phaser.BlendModes.ADD);
-    this.player.addAt(aura, 0);
-    this.buffAura = aura;
-    this.tweens.add({
-      targets: aura,
-      scale: { from: 1, to: 1.28 },
-      alpha: { from: 0.3, to: 0.12 },
-      yoyo: true, repeat: -1, duration: 650, ease: 'Sine.easeInOut',
-    });
-    this.time.delayedCall(seconds * 1000, () => {
-      if (aura.active) aura.destroy();
-      if (this.buffAura === aura) this.buffAura = null;
-    });
   }
 
   /** 살아 있는 적이 하나라도 있는가 — 빈 방에서 자동 시전을 막는 조건 */
@@ -7808,10 +8031,18 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       view?.pulse(this);
       if (request.kind === 'heal') {
         const amount = this.playerState.heal(request.amount);
+        this.supportSpellVfx?.playHeal(amount, this.playerState.maxHp, 50, 'light', 'spirit');
         if (amount > 0) this.announceSystemMessage(`치유 정령 · HP +${Math.round(amount)}`, '#72f1a8');
         continue;
       }
       const amount = this.playerState.addShield(request.amount);
+      this.supportSpellVfx?.playShieldGain(
+        amount,
+        this.playerState.shield,
+        50,
+        null,
+        'spirit',
+      );
       if (amount > 0) this.announceSystemMessage(`수호 정령 · 보호막 +${Math.round(amount)}`, UI_SEMANTIC.shield);
     }
   }
@@ -8327,6 +8558,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
               ? '#ffb86b'
               : '#72f1b8';
     this.statusText.setText(`● ${actionState}`).setColor(statusColor);
+    this.judgeOfflineText
+      .setX(this.statusText.x + this.statusText.displayWidth + 10)
+      .setVisible(this.judge.offlineMode === true);
     const heatwaveDamaging = this.activeRoomCurse?.kind === 'heatwave'
       && isHeatwaveDamaging({
         graceRemaining: this.heatwaveGraceRemaining,
@@ -8340,7 +8574,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         ? '#ff5c7a'
         : heatwaveDamaging ? '#e0a860' : UI_SEMANTIC.hp);
     this.manaText.setText(`${mana}/${this.playerState.maxMana}`);
-    this.shieldText.setText(`${shield}/${this.playerState.maxHp}`);
+    this.shieldText.setText(`${shield}/${Math.ceil(this.playerState.maxShield)}`);
     this.drawBuildChips();
     // 활성 자기 강화 — 매 프레임 남은 시간 갱신, 없으면 빈 줄
     const buffs = this.playerState.activeBuffs();
@@ -9291,7 +9525,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private drawHudBars(): void {
     const hpRatio = Phaser.Math.Clamp(this.playerState.hp / this.playerState.maxHp, 0, 1);
     const manaRatio = Phaser.Math.Clamp(this.playerState.mana / this.playerState.maxMana, 0, 1);
-    const shieldRatio = Phaser.Math.Clamp(this.playerState.shield / this.playerState.maxHp, 0, 1);
+    const shieldRatio = Phaser.Math.Clamp(this.playerState.shield / this.playerState.maxShield, 0, 1);
     const cooldownRatio = Phaser.Math.Clamp(
       // 분모를 실제 입력락 길이로 — 죽은 글로벌 쿨다운(3s) 분모는 게이지가 13%만 찼다
       this.playerState.cooldownRemaining / this.playerState.castInputLockSeconds,
@@ -9613,10 +9847,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
   }
 
-  /** 보스 체력바(위쪽)를 가리지 않도록 반대편 아래에 전용 정보를 붙인다. */
+  /** 보스 이름·체력·활성 원소 저항을 상단의 한 정보 계층에 모은다. */
   private updateBossCombatInfo(): void {
     if (!this.isBossEncounter()) {
-      this.bossCombatInfoHud.hide();
       this.bossHealthBarHud.hide();
       return;
     }
@@ -9624,7 +9857,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       (enemy): enemy is BossEnemy => enemy instanceof BossEnemy && enemy.alive,
     );
     if (!boss) {
-      this.bossCombatInfoHud.hide();
       this.bossHealthBarHud.hide();
       return;
     }
@@ -9642,11 +9874,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       hp: boss.hp,
       maxHp: boss.maxHp,
       phase: boss.phase,
+      resistances: bossResistanceBadges(resistance),
     });
-    this.bossCombatInfoHud.update(boss.x, boss.y + 72, bossCombatInfoLines({
-      counterStrategy: this.bossResistance.counterStrategy,
-      resistance,
-    }));
   }
 
   private affinityFor(element: SpellElement): number {
@@ -10136,49 +10365,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       });
     }
     this.activeSummons = survivors;
-  }
-
-  /**
-   * 융합 방출 대연출 — 게이지 만충의 카타르시스. 두 원소의 팔레트가 교차하는
-   * 이중 링 + 스파크 폭발 + 강한 셰이크. 판정 영역과 무관한 순수 오버레이.
-   */
-  private playFusionRelease(spec: SpellSpec): void {
-    const primary = ELEMENT_PALETTES[spec.element_primary];
-    const secondary = ELEMENT_PALETTES[spec.element_secondary ?? spec.element_primary];
-    const x = this.player.x;
-    const y = this.player.y;
-    requestCameraShake(this, 'strong', 1.6);
-    this.announceSystemMessage(
-      `융합 방출 — 『${spec.name}』`,
-      '#e2b7ff',
-      3000,
-    );
-    [primary, secondary].forEach((pal, index) => {
-      const ring = this.add.circle(x, y, 14, pal.glow, 0)
-        .setStrokeStyle(5, pal.core, 0.95)
-        .setBlendMode(Phaser.BlendModes.ADD)
-        .setDepth(9);
-      this.tweens.add({
-        targets: ring,
-        radius: 210 + index * 60,
-        alpha: 0,
-        delay: index * 110,
-        duration: 620,
-        ease: 'Cubic.Out',
-        onComplete: () => ring.destroy(),
-      });
-    });
-    const burst = this.add.particles(x, y, particleKey(this, PARTICLE_TEXTURES.glow), {
-      speed: { min: 240, max: 520 },
-      scale: { start: 1.1, end: 0 },
-      lifespan: 640,
-      quantity: 46,
-      tint: [primary.core, primary.glow, secondary.core, secondary.glow],
-      blendMode: Phaser.BlendModes.ADD,
-      emitting: false,
-    }).setDepth(9);
-    burst.explode(46, x, y);
-    this.time.delayedCall(900, () => burst.destroy());
   }
 
   /**
@@ -10850,7 +11036,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // 피해 숫자 — **수동 영창만**. 이 게임에서 숫자는 타격감이 아니라 "내 문장이 얼마나
     // 셌나"에 대한 답이므로, 자동 시전(각인·정령)·기본탄·상태이상 틱에는 붙이지 않는다.
     // 전부 띄우면 화면이 숫자로 덮이고 오토 비중을 시각적으로 과대평가하게 된다.
-    if (source === 'manual' && feedback !== 'status-tick') {
+    if ((source === 'manual' || source === 'ultimate') && feedback !== 'status-tick') {
       this.showDamageNumber(
         enemy, damage, this.isResistedHit(enemy, element), enemy.x, enemy.y,
       );
@@ -11376,7 +11562,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private scheduleUnstableExplosion(x: number, y: number): void {
-    const radius = 230;
+    const radius = 250;
     const warningDurationMs = 1500;
     const roomIndex = this.combatRunController.state.roomIndex;
     const warning = this.add.circle(x, y, radius, 0xff5370, 0.02)
