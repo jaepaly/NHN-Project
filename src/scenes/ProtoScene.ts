@@ -93,7 +93,7 @@ import {
 } from '../combat-core/run/awakening';
 import { allGlyphTextures, formGlyphTextureKey } from '../render/formGlyphs';
 import type { BuildChip } from '../run/buildChipModel';
-import { buildChipModel } from '../run/buildChipModel';
+import { buildChipModel, SPIRIT_GLYPH } from '../run/buildChipModel';
 import { bandAffordances, reachableBand } from '../run/incantBands';
 import { drawTreasureReward } from '../combat-core/run/treasureRewardConfig';
 import { ALTAR_OFFER_CONFIG, drawAltarOffer, drawHighAltarOptions } from '../combat-core/run/altarOffer';
@@ -528,7 +528,50 @@ interface PauseBuildEntry {
   accent: string;
   formGlyph?: SpellForm;
   iconTint?: number;
+  /** 융합 정령처럼 카드 아이콘에도 함께 보여 줄 구성 원소. */
+  elements?: readonly SpellElement[];
   cardLabel?: string;
+}
+
+interface PauseBuildDetailPart {
+  text: string;
+  color?: string;
+}
+
+/**
+ * 상세 설명의 문장 구조는 그대로 두고, 플레이 중 익혀야 하는 원소명만
+ * 기존 HUD 팔레트 색으로 읽히게 나눈다. 예: `빙결 + 광휘 + 질풍`.
+ */
+function pauseBuildDetailParts(line: string): PauseBuildDetailPart[] {
+  const labels = Object.entries(ELEMENT_LABELS) as [SpellElement, string][];
+  const parts: PauseBuildDetailPart[] = [];
+  let cursor = 0;
+  while (cursor < line.length) {
+    const next = labels
+      .map(([element, label]) => ({ element, label, index: line.indexOf(label, cursor) }))
+      .filter((match) => match.index >= 0)
+      .sort((a, b) => a.index - b.index || b.label.length - a.label.length)[0];
+    if (!next) {
+      parts.push({ text: line.slice(cursor) });
+      break;
+    }
+    if (next.index > cursor) parts.push({ text: line.slice(cursor, next.index) });
+    parts.push({
+      text: next.label,
+      color: paletteColorToCss(ELEMENT_PALETTES[next.element].core),
+    });
+    cursor = next.index + next.label.length;
+  }
+  return parts;
+}
+
+/**
+ * 판정 원문에는 분류어와 실제 주문명이 `·`로 함께 들어올 수 있다.
+ * 카드에는 유저가 기억해야 할 실제 주문명만 남긴다.
+ */
+function shortBuildName(name: string): string {
+  const names = name.split('·').map((part) => part.trim()).filter(Boolean);
+  return names.at(-1) ?? name;
 }
 
 interface PauseRow {
@@ -554,7 +597,9 @@ const PAUSE_LAYOUT = {
 } as const;
 
 /** 전체 경로는 지도 탭에서만 보인다. 전투 HUD에 상시 두지 않는다. */
-const PAUSE_MAP = { top: 142, scale: 1.7, depth: 108 } as const;
+// 제목은 제자리에 두고, 스테이지 탭·상단 노드가 겹치지 않도록 지도 본문만 내린다.
+// 우측 상세 판 안에서 아이콘·방 종류를 읽을 수 있도록 HUD보다 살짝 크게 쓴다.
+const PAUSE_MAP = { top: 170, scale: 1.85, depth: 108 } as const;
 
 const PAUSE_BUILD_CATEGORIES: readonly PauseBuildCategoryRow[] = [
   { id: 'engrave', label: '주문 각인' },
@@ -1057,6 +1102,9 @@ export class ProtoScene extends Phaser.Scene {
   private pauseContentTitle!: Phaser.GameObjects.Text;
 
   private pauseContentText!: Phaser.GameObjects.Text;
+
+  /** 상태/빌드 상세의 원소명만 색으로 분리해 그리는 작은 텍스트 조각들. */
+  private pauseBuildDetailTexts: Phaser.GameObjects.Text[] = [];
 
   private pauseFooterText!: Phaser.GameObjects.Text;
 
@@ -9113,6 +9161,15 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       wordWrap: { width: PAUSE_LAYOUT.width - PAUSE_LAYOUT.navWidth - 58, useAdvancedWrap: true },
     }).setScrollFactor(0).setDepth(109).setVisible(false);
 
+    // Phaser Text는 한 문장 중 일부에만 색을 넣는 rich text를 제공하지 않는다.
+    // 상세 줄을 작은 조각으로 나눠 그려, 기존 본문 서체·간격은 유지하면서
+    // 빙결/광휘/질풍 같은 원소명만 HUD와 같은 색으로 보이게 한다.
+    this.pauseBuildDetailTexts = Array.from({ length: 48 }, () => this.add.text(0, 0, '', {
+      fontFamily: '"Noto Serif KR", Consolas, monospace',
+      fontSize: '12px',
+      color: UI_COLOR.text,
+    }).setScrollFactor(0).setDepth(109).setVisible(false));
+
     this.pauseFooterText = this.add.text(width / 2, PAUSE_LAYOUT.top + PAUSE_LAYOUT.height + 17,
       'W/S 탭 이동  ·  ENTER 선택  ·  ESC 게임으로 돌아가기', {
         fontFamily: 'Consolas, monospace',
@@ -9253,13 +9310,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         color: UI_COLOR.ink,
       }).setOrigin(0.5).setScrollFactor(0).setDepth(111).setVisible(false);
       const formIcon = this.add.image(x, y - cardHeight / 2 + 18, formGlyphTextureKey('bolt'))
-        .setDisplaySize(23, 23)
+        .setDisplaySize(28, 28)
         .setScrollFactor(0)
         .setDepth(111)
         .setVisible(false);
       const text = this.add.text(x, y, '', {
         fontFamily: 'Consolas, monospace',
-        fontSize: '9px',
+        fontSize: '10px',
         align: 'center',
         color: UI_COLOR.text,
         wordWrap: { width: cardWidth - 12, useAdvancedWrap: true },
@@ -9441,6 +9498,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.pauseContentPlate.setVisible(visible);
     this.pauseContentTitle.setVisible(visible);
     this.pauseContentText.setVisible(visible);
+    this.pauseBuildDetailTexts.forEach((text) => text.setVisible(false));
     this.pauseFooterText.setVisible(visible);
     this.pauseMenuItems.forEach((t) => t.setVisible(false));
     this.pauseQuitButton.setVisible(false);
@@ -9628,6 +9686,32 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.renderPauseMenu();
   }
 
+  /** 좌측 상세의 원소명만 속성색으로 조각 렌더링한다. */
+  private renderPauseBuildDetail(lines: readonly string[], x: number, y: number, width: number): void {
+    let textIndex = 0;
+    let cursorY = y;
+    for (const line of lines) {
+      if (line.length === 0) {
+        cursorY += 12;
+        continue;
+      }
+      let cursorX = x;
+      for (const part of pauseBuildDetailParts(line)) {
+        if (!part.text) continue;
+        const text = this.pauseBuildDetailTexts[textIndex++];
+        if (!text) return;
+        text.setText(part.text).setColor(part.color ?? UI_COLOR.text).setVisible(true);
+        if (cursorX > x && cursorX + text.width > x + width) {
+          cursorX = x;
+          cursorY += 19;
+        }
+        text.setPosition(cursorX, cursorY);
+        cursorX += text.width;
+      }
+      cursorY += 20;
+    }
+  }
+
   private elementPauseAccent(element: SpellElement): string {
     return `#${ELEMENT_PALETTES[element].accent.toString(16).padStart(6, '0')}`;
   }
@@ -9635,16 +9719,23 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   /** 상태/빌드 분류는 서로 섞지 않는다. 각 분류의 카드만 오른쪽 목록에 놓는다. */
   private pauseBuildEntries(category: PauseBuildCategory): PauseBuildEntry[] {
     if (category === 'engrave') {
-      return this.engraveManager.entries.map((entry) => ({
+      return this.engraveManager.entries.map((entry) => {
+        const displayName = shortBuildName(entry.spell.name);
+        return {
         id: entry.spellKey,
-        title: `${entry.spell.name} · Lv${entry.level}${entry.evolved ? ' · 진화' : ''}`,
+        title: `${displayName} · Lv${entry.level}${entry.evolved ? ' · 진화' : ''}`,
         description: `${ELEMENT_LABELS[entry.spell.element_primary]} ${FORM_LABELS[entry.spell.form]} 자동 시전\n${entry.intervalSeconds.toFixed(1)}초마다 ${entry.shotCount}회 발사${entry.evolved ? ' · 진화 각인' : ''}`,
         glyph: entry.evolved ? '진' : '각',
         accent: this.elementPauseAccent(entry.spell.element_primary),
         formGlyph: entry.spell.form,
         iconTint: ELEMENT_PALETTES[entry.spell.element_primary].core,
-        cardLabel: entry.spell.name,
-      }));
+        // 자동 각인은 실제 발동하는 주 속성 하나만 보여 준다.
+        // 보조 속성은 이 화면의 상세에도 노출하지 않으므로 카드 테두리에만
+        // 갑자기 보이면 "광휘를 추가로 먹었다"고 오해하게 된다.
+        elements: [entry.spell.element_primary],
+        cardLabel: displayName,
+      };
+      });
     }
 
     if (category === 'spirit') {
@@ -9658,8 +9749,12 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           id: entry.spiritId,
           title: entry.fusedName ?? `${elementLabel} 정령`,
           description: `${elementLabel} · Lv${entry.level}${entry.fused ? ' · 융합' : ''}\n${entry.intervalSeconds.toFixed(1)}초마다 정령 효과가 발동합니다.`,
-          glyph: entry.fused ? '합' : '정',
+          glyph: '',
           accent: this.elementPauseAccent(primary),
+          formGlyph: SPIRIT_GLYPH[entry.role],
+          iconTint: ELEMENT_PALETTES[primary].core,
+          elements,
+          cardLabel: entry.fusedName ?? `${elementLabel} 정령`,
         };
       });
     }
@@ -9738,11 +9833,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
     this.pauseContentTitle.setText(`상태 / 빌드 · ${category.label}`);
     if (selected) {
-      this.pauseContentText
-        .setPosition(detailX + 14, detailY + 16)
-        .setWordWrapWidth(detailWidth - 28)
-        .setVisible(true)
-        .setText(`${category.label}\n\n${selected.title}\n\n${selected.description}`);
+      this.pauseContentText.setVisible(false);
+      this.renderPauseBuildDetail(
+        [category.label, '', selected.title, '', ...selected.description.split('\n')],
+        detailX + 14,
+        detailY + 16,
+        detailWidth - 28,
+      );
     } else {
       // 빈 분류는 획득하지 않은 사실을 재확인시키지 않는다. 다음 보상에서 채워질 여백으로 둔다.
       this.pauseContentText.setVisible(false);
@@ -9777,33 +9874,49 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       const cardLeft = x - cardWidth / 2;
       const cardTop = y - cardHeight / 2;
       const isSelected = entry.id === selected?.id;
-      g.fillStyle(hex(UI_COLOR.panelInset), isSelected ? 0.98 : 0.72);
-      g.fillRoundedRect(cardLeft, cardTop, cardWidth, cardHeight, 5);
-      g.lineStyle(isSelected ? 1.7 : 1, hex(isSelected ? entry.accent : UI_COLOR.border), isSelected ? 1 : 0.65);
-      g.strokeRoundedRect(cardLeft, cardTop, cardWidth, cardHeight, 5);
-      // 주문 도감처럼 속성색 아이콘을 먼저 읽고, 이름과 효과 요약을 뒤에서 읽게 한다.
+      // 자동 각인은 좌측 상세가 이름·효과를 전담한다. 림버스식 목록처럼
+      // 우측에는 HUD와 같은 큰 form 아이콘만 남겨 중복 텍스트를 없앤다.
+      const iconOnly = category.id === 'engrave';
+      const iconCenterY = iconOnly ? y : cardTop + 20;
+      const iconTileSize = iconOnly ? 48 : 34;
+      const iconSize = iconOnly ? 36 : 28;
+      if (!iconOnly) {
+        g.fillStyle(hex(UI_COLOR.panelInset), isSelected ? 0.98 : 0.72);
+        g.fillRoundedRect(cardLeft, cardTop, cardWidth, cardHeight, 5);
+        g.lineStyle(isSelected ? 1.7 : 1, hex(isSelected ? entry.accent : UI_COLOR.border), isSelected ? 1 : 0.65);
+        g.strokeRoundedRect(cardLeft, cardTop, cardWidth, cardHeight, 5);
+      }
       g.fillStyle(hex(entry.formGlyph ? UI_COLOR.panelInset : entry.accent), isSelected ? 0.95 : 0.78);
-      g.fillRoundedRect(x - 15, cardTop + 7, 30, 27, 5);
-      g.lineStyle(1, hex(entry.formGlyph ? entry.accent : UI_COLOR.ink), 0.78);
-      g.strokeRoundedRect(x - 15, cardTop + 7, 30, 27, 5);
+      g.fillRoundedRect(x - iconTileSize / 2, iconCenterY - iconTileSize / 2,
+        iconTileSize, iconTileSize, 6);
+      const iconElements = entry.elements ?? [];
+      if (iconElements.length > 1) {
+        // 융합 정령은 "합" 같은 글자 대신 HUD와 같은 다색 원소 테두리로 읽힌다.
+        drawElementSpectrumBorder(g, iconElements, x, iconCenterY, iconTileSize / 2, false);
+      } else {
+        g.lineStyle(isSelected ? 1.7 : 1, hex(entry.formGlyph ? entry.accent : UI_COLOR.ink), isSelected ? 1 : 0.78);
+        g.strokeRoundedRect(x - iconTileSize / 2, iconCenterY - iconTileSize / 2,
+          iconTileSize, iconTileSize, 6);
+      }
       const cardLabel = entry.cardLabel ?? entry.title;
       const title = cardLabel.length > 16 ? `${cardLabel.slice(0, 15)}…` : cardLabel;
       this.pauseBuildCardGlyphs[index]
-        .setPosition(x, cardTop + 20)
+        .setPosition(x, iconCenterY)
         .setText(entry.glyph)
         .setVisible(entry.formGlyph === undefined);
       this.pauseBuildCardFormIcons[index]
-        .setPosition(x, cardTop + 20)
+        .setPosition(x, iconCenterY)
         .setTexture(formGlyphTextureKey(entry.formGlyph ?? 'bolt'))
-        // SVG가 브라우저별로 검은 원본 픽셀로 래스터화돼도 원소색을 강제로 채운다.
-        // 일반 setTint는 검정×원소색=검정이라 카드가 빈 칸처럼 보일 수 있다.
-        .setTintFill(entry.iconTint ?? 0xffffff)
+        // 우하단 HUD와 같은 tint 경로를 재사용한다. 선만으로 된 파도 form도
+        // HUD와 동일하게 그려져 ESC 카드에서 빈 칸으로 보이지 않는다.
+        .setTint(entry.iconTint ?? 0xffffff)
+        .setDisplaySize(iconSize, iconSize)
         .setVisible(entry.formGlyph !== undefined);
       this.pauseBuildCardTexts[index]
         .setPosition(x, cardTop + 56)
         .setText(title)
         .setColor(isSelected ? UI_COLOR.textBright : UI_COLOR.text)
-        .setVisible(true);
+        .setVisible(!iconOnly);
       this.pauseBuildCardZones[index]
         .setPosition(x, y)
         .setSize(cardWidth, cardHeight)

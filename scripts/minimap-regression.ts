@@ -87,6 +87,20 @@ import type { MinimapModel } from '../src/run/mapGraphContract';
       && /private readonly stageTabs/.test(hud),
     'ESC 미니맵은 공통 스테이지 투영과 전환 탭을 사용해야 한다',
   );
+  assert.ok(
+    /roomChoicePresentation\(node\.kind\)/.test(hud)
+      && /private readonly nodeZones/.test(hud)
+      && /private showNodeTooltip\(node: MinimapNode\)/.test(hud),
+    'ESC map hover reuses room presentation data',
+  );
+  assert.match(hud, /\.on\('pointerover',[\s\S]{0,260}showNodeTooltip/,
+    'Map node hover must open the room information panel');
+  assert.match(hud, /pulse\(\): void \{\s*this\.drawCurrentPulse\(\);\s*\}/,
+    'Current-node pulse must not redraw the full map while a node is hovered');
+  assert.match(hud, /private drawCurrentPulse\(now = Date\.now\(\)\)/,
+    'Current-node pulse is rendered on its own layer');
+  assert.doesNotMatch(hud, /pulse\(\): void \{\s*if \(this\.lastModel\) this\.redraw\(\);\s*\}/,
+    'Frame pulse must never recreate hover input zones');
 }
 
 {

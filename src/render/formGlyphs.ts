@@ -13,19 +13,24 @@ import type { SpellForm } from '../spell/types';
 
 /** 폼별 SVG 내부 조각 — 원소색 위에 밝은 선으로 형태를 상징한다 (currentColor). */
 export const FORM_GLYPHS: Record<SpellForm, string> = {
-  bolt: '<path d="M14 3 6 15h4l-1 6 8-12h-4z" fill="currentColor"/>',
+  // 번개/화살표처럼 읽히지 않도록 둥근 탄환과 짧은 잔상으로 투사체를 표현한다.
+  bolt: '<circle cx="17" cy="12" r="3.8" fill="currentColor" stroke="none"/><path d="M3 7.5h6.5M3 12h4.5M3 16.5h6.5"/>',
   beam: '<line x1="3" y1="12" x2="19" y2="12"/><circle cx="20" cy="12" r="2.4" fill="currentColor" stroke="none"/>',
-  wave: '<path d="M3 12q3-7 6 0t6 0 6 0" fill="none"/>',
+  // 큰 봉우리가 앞으로 말려 올라가는 실루엣과 아래 물결을 겹쳐 '치는 파도'로 읽힌다.
+  wave: '<path d="M3 17c2.1-5.8 6.3-9.4 10.2-8.7 3.5.6 5.2 4.1 4.1 6.8-1.1 2.7-4.6 3.8-6.8 2.4-1.7-1.1-2-3.5-.6-5.2-.2 2 .6 3.2 2.2 3.4 1.7.2 3.1-.9 3.1-2.5 0-1.9-1.7-3.5-3.7-3.5-3.2-.1-5.8 2.3-7.2 5.6"/><path d="M3.4 19c3.5-1.3 7.1-.7 10.1.9"/>',
   nova: '<circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/>',
   rain: '<path d="M7 4 5 11M12 3l-2 7M17 4l-2 7M8 14l-1 5M13 13l-1 5M18 14l-1 5"/>',
   wall: '<rect x="4" y="8" width="16" height="9" rx="1" fill="none"/><path d="M4 12.5h16M9 8v4.5M14 12.5V17"/>',
-  cage: '<rect x="5" y="5" width="14" height="14" rx="1" fill="none"/><path d="M9.5 5v14M14 5v14M5 9.5h14M5 14h14"/>',
+  // 가로 격자를 제거하고 세로 창살만 남겨 감옥/구속의 실루엣을 분명히 한다.
+  cage: '<path d="M5 5.6c4.4-.7 9.6-.7 14 0v12.8c-4.4.7-9.6.7-14 0z"/><path d="M8.2 5.3v13.4M12 5v14M15.8 5.3v13.4"/>',
   orbit: '<circle cx="12" cy="12" r="7" fill="none"/><circle cx="12" cy="5" r="2.2" fill="currentColor" stroke="none"/>',
   summon: '<circle cx="12" cy="13" r="5.5" fill="none"/><circle cx="10" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="14" cy="12" r="1" fill="currentColor" stroke="none"/><path d="M9 4l1.5 3M15 4l-1.5 3"/>',
   buff: '<path d="M12 20V6M6.5 11.5 12 6l5.5 5.5" fill="none"/>',
   zone: '<circle cx="12" cy="12" r="8" fill="none" stroke-dasharray="3 3"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>',
-  chain: '<circle cx="7.5" cy="12" r="3.2" fill="none"/><circle cx="16.5" cy="12" r="3.2" fill="none"/><line x1="10.7" y1="12" x2="13.3" y2="12"/>',
-  slash: '<path d="M6 18 16 6M10 19 20 7" fill="none"/>',
+  // 맞물린 타원 세 개로, 안경처럼 보이던 기존 두 원을 실제 사슬 고리로 바꾼다.
+  chain: '<rect x="2.4" y="9.4" width="7" height="5.2" rx="2.6" transform="rotate(-38 5.9 12)"/><rect x="8.5" y="9.4" width="7" height="5.2" rx="2.6" transform="rotate(38 12 12)"/><rect x="14.6" y="9.4" width="7" height="5.2" rx="2.6" transform="rotate(-38 18.1 12)"/>',
+  // 바깥·안쪽을 모두 원호로 깎은 초승형 칼날. 가운데 구체 없이도 원형 베기로 읽힌다.
+  slash: '<path d="M17.8 4.5A9 9 0 1 0 17.8 19.5A6.5 6.5 0 1 1 17.8 4.5z" fill="currentColor" stroke="none"/>',
 };
 
 /** 시퀀스(다단계 영창)는 폼이 하나가 아니다 — 연결된 점으로 "단계"를 상징한다. */
