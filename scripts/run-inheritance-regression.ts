@@ -11,6 +11,7 @@ import {
   ALTAR_OFFER_CONFIG,
   ALTAR_TIERS,
   drawAltarOffer,
+  drawHighAltarOptions,
 } from '../src/combat-core/run/altarOffer';
 import { RESISTANCE } from '../src/spell/bossMemory';
 import { AWAKENING_CONFIG } from '../src/combat-core/run/awakening';
@@ -42,7 +43,7 @@ import { AWAKENING_CONFIG } from '../src/combat-core/run/awakening';
   assert.equal(owned.length, fresh.length, '저가·중가 거래도 반복 선택할 수 있다');
 }
 
-// ── ② 최상위가 둘이고, 값이 같고, 결이 다르다 ──────────────────────────────
+// ── ② 최상위는 한 등급이고, 그 안에서 고른다 ──────────────────────────────
 {
   const top = ALTAR_TIERS.filter((t) => t.cost === 50);
   assert.equal(top.length, 1, '최상위는 고위 제단술 선택 하나로 묶인다');
@@ -50,8 +51,19 @@ import { AWAKENING_CONFIG } from '../src/combat-core/run/awakening';
   // 같은 급이려면 값이 같아야 한다 — 하나가 싸면 그쪽만 고른다
   assert.equal(top[0].cost, 50, '고위 제단술의 대가는 최대 생명 50이다');
 
-  // 파문이 에코보다 위력이 낮은 이유: 대상이 늘어난다. 다만 적이 둘 이상일 때만
-  // 발동하므로 보스전에서는 논다 — 그 상황 의존성이 균형을 잡는다.
+  // ⚠️ 고위 선택지 수는 **보상 UI가 그리는 장수를 넘으면 안 된다.**
+  // `rewardCardOverlay`가 `options.slice(0, 4)`로 4장만 그리므로, 5종이 되면 하나가
+  // 조용히 잘려 "구현은 다 됐는데 절대 안 나오는 카드"가 생긴다(#365가 정확히 그 사고였다).
+  // 늘리려면 슬라이스 상한이나 "N종 중 4종 무작위" 정책을 **함께** 정해야 한다.
+  const offered = drawHighAltarOptions([]);
+  assert.equal(offered.length, 4, '고위 선택지는 4종 — 보상 UI가 그리는 장수와 같아야 한다');
+  assert.ok(
+    !offered.some((option) => option.kind === 'ripple'),
+    '파문은 이번 제출 범위 밖이다(#365) — 넣으려면 UI 4장 상한 정책부터 정해야 한다',
+  );
+
+  // 수치 불변식은 계속 지킨다 — 되살릴 때 균형이 무너진 채로 돌아오지 않게.
+  // 파문이 에코보다 위력이 낮은 이유: 대상이 늘어난다.
   assert.ok(
     ALTAR_OFFER_CONFIG.ripple.powerScale < ALTAR_OFFER_CONFIG.echo.powerScale,
     '파문은 대상이 늘어나므로 개당 위력이 낮아야 한다',
@@ -62,7 +74,8 @@ import { AWAKENING_CONFIG } from '../src/combat-core/run/awakening';
     '번지는 거리가 화면을 넘으면 무슨 일인지 안 읽힌다',
   );
 
-  // 씬이 실제로 구현했는가 — 등급만 추가하고 효과가 없으면 대가만 받는 사기가 된다
+  // 구현은 남아 있는가 — 되살릴 때 다시 만들지 않아도 되게. (지금은 rippleUnlocked가
+  // 영원히 false라 도달하지 않는 경로다 — 의도된 휴면 코드다)
   const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
   assert.ok(/private scheduleSpellRipple/.test(scene), '파문 구현이 있어야 한다');
   assert.ok(/this\.scheduleSpellRipple\(/.test(scene), '시전 경로가 파문을 불러야 한다');
@@ -179,4 +192,4 @@ import { AWAKENING_CONFIG } from '../src/combat-core/run/awakening';
   );
 }
 
-console.log('run inheritance regression: 소유잠금·최상위둘·관통문턱·빌드비움·보스구분 5군 통과');
+console.log('run inheritance regression: 소유잠금·고위4택·관통문턱·빌드비움·보스구분 5군 통과');
