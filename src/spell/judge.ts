@@ -13,6 +13,12 @@ export interface SpellJudge {
   readonly lastSource?: string;
   /** [디버그] fallback일 때 원격 판정이 실패한 이유. 관측 전용, 게임 로직에서 소비하지 않는다. */
   readonly lastFallbackReason?: string;
+  /** 런 단위 원격 판정 차단 상태. true면 현재 영창은 로컬 판정을 우선한다. */
+  readonly offlineMode?: boolean;
+  /** 새 런·재시작에서 런 단위 판정 상태를 초기화한다. */
+  resetRun?(): void;
+  /** 캐시를 우회해 실제 원격 판정 경로가 회복됐는지 확인한다. */
+  probeRemote?(text: string, options?: JudgeOptions): Promise<boolean>;
 }
 
 export type CastMode = 'normal' | 'ultimate';

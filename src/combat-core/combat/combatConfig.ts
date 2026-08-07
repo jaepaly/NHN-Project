@@ -118,7 +118,7 @@ export function spellHealFromPower(power: number): number {
 }
 
 export function spellShieldFromPower(power: number): number {
-  return Math.max(1, Math.round(8 + power * 0.6));
+  return Math.max(1, Math.round(8 + power * 0.5));
 }
 
 export function spellBuffManaFromPower(power: number): number {

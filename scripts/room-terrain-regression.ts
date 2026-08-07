@@ -23,6 +23,7 @@ import { ROOM_FIXTURE_CONFIG } from '../src/run/roomFixtureConfig';
 import { MAP_GRAPH_PRESET_01 } from '../src/run/mapGraphPreset';
 import { generateRunMap } from '../src/run/mapGenerator';
 import type { MapNodeKind } from '../src/run/mapGraphContract';
+import { TERRAIN_BARRIER_VFX } from '../src/render/terrainBarrierVfxConfig';
 import { waveSpawnPositions, waveSpawnSeed } from '../src/combat-core/waves/waveSpawn';
 import { WAVE_CONFIG } from '../src/combat-core/waves/waveManager';
 
@@ -91,9 +92,44 @@ const STAGES: readonly (1 | 2)[] = [1, 2];
   );
   assert.ok(renderBody.length > 1_000, 'setTerrainBarriers 렌더 본문을 찾을 수 있어야 한다');
   assert.ok(
-    renderBody.includes('fillStyle(0x211d23, 1)')
-      && renderBody.includes('lineStyle(2, 0x716476, 0.72)'),
-    '고정 지형 블록은 어두운 흑요석 본체와 저채도 회보라 윤곽을 써야 한다',
+      renderBody.includes('this.textures.exists(TERRAIN_BARRIER_VFX.textureKey)')
+        && renderBody.includes('.setDisplaySize(displaySize, displaySize)')
+        && renderBody.includes('.setTint(TERRAIN_BARRIER_VFX.spriteTint)')
+        && renderBody.includes('TERRAIN_BARRIER_VFX.occlusionScale')
+        && renderBody.includes('TERRAIN_BARRIER_VFX.occlusionTint')
+        && renderBody.includes('TERRAIN_BARRIER_VFX.silhouetteScale')
+        && renderBody.includes('TERRAIN_BARRIER_VFX.silhouetteTint')
+        && renderBody.includes('TERRAIN_BARRIER_VFX.contactShadowAlpha')
+        && renderBody.includes('TERRAIN_BARRIER_VFX.debrisTint')
+        && renderBody.includes('.setAngle((index % 4) * 90)'),
+      '장벽은 접지·이중 외곽·톤 보정을 거친 탑다운 석재 스프라이트를 우선해야 한다',
+  );
+  assert.ok(
+    renderBody.includes('fillStyle(pal.base, 0.92)')
+      && renderBody.includes('fillStyle(pal.stoneMid, 1)')
+      && renderBody.includes('fillStyle(pal.wallFront, 1)')
+      && renderBody.includes('fillStyle(pal.wallSide, 1)'),
+    '고정 지형은 기단·상판·전면·측면이 분리된 봉인 석벽이어야 한다',
+  );
+  assert.ok(
+    renderBody.includes('const height = Math.max(pal.minHeight, half * pal.heightRatio)')
+      && renderBody.includes('new Phaser.Geom.Point(right - cut, bottom)'),
+    '상판과 기단 사이에 실제 수직 높이를 만들고 충돌 범위를 기단으로 표시해야 한다',
+  );
+  assert.ok(
+    renderBody.includes('lineBetween(cap[0].x')
+      && !renderBody.includes('pal.footprint'),
+    '상판은 파손 석재 윤곽을 유지하고 선택 영역처럼 보이던 브래킷은 제거해야 한다',
+  );
+  assert.ok(
+    renderBody.includes('const runePoints = Array.from({ length: 6 }')
+      && renderBody.includes('const runeY = y - height'),
+    '파손 육각 봉인은 수직면이 아니라 솟은 상판에 새겨져야 한다',
+  );
+  assert.ok(
+    TERRAIN_BARRIER_VFX.stoneDark < TERRAIN_BARRIER_VFX.stoneLight
+      && TERRAIN_BARRIER_VFX.rune !== 0xb89bc4,
+    '석재 명도차와 배경 계열 청록 룬으로 유적 재질을 구분해야 한다',
   );
   assert.ok(
     !renderBody.includes('0x6d7fc4') && !renderBody.includes('0x8fa4ff'),

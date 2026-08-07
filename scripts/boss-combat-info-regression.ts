@@ -1,24 +1,26 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { bossCombatInfoLines } from '../src/ui/bossCombatInfoModel';
+import { bossResistanceBadges } from '../src/ui/bossCombatInfoModel';
 import { bossHealthBarReadout } from '../src/ui/bossHealthBarModel';
 
-const localLines = bossCombatInfoLines({
-  counterStrategy: 'rush',
-  resistance: {
-    resisted: [{ element: 'ice', reductionPercent: 25 }],
-    pierced: ['fire'],
-  },
+const badges = bossResistanceBadges({
+  resisted: [{ element: 'ice', reductionPercent: 25 }],
+  pierced: ['fire'],
 });
-assert.equal(localLines.length, 3, 'local plate contains only resistance, pierce, and pattern');
+assert.deepEqual(badges, [
+  { element: 'ice', reductionPercent: 25 },
+], 'only resistance that currently reduces damage becomes a persistent badge');
 
-assert.deepEqual(
-  bossCombatInfoLines({
-    counterStrategy: null,
-    resistance: { resisted: [], pierced: [] },
-  }).length,
-  1,
-  'local plate omits absent resistance lines',
+assert.equal(
+  bossResistanceBadges({ resisted: [], pierced: ['fire'] }).length,
+  0,
+  'mastery pierce remains transient feedback and does not occupy the boss HUD',
+);
+
+assert.equal(
+  bossResistanceBadges({ resisted: [], pierced: [] }).length,
+  0,
+  'stage boss and unadapted phase add no resistance row to the boss bar',
 );
 
 assert.deepEqual(bossHealthBarReadout({
@@ -41,6 +43,17 @@ assert.ok(sceneSource.includes('this.updateBossCombatInfo();'), 'boss HUD update
 assert.ok(sceneSource.includes('enemy instanceof BossEnemy && enemy.alive'), 'only a living boss is tracked');
 assert.ok(sceneSource.includes('this.bossHealthBarHud.update({'), 'global boss health HUD is updated');
 assert.ok(sceneSource.includes('this.bossHealthBarHud.hide();'), 'global boss health HUD hides outside boss fights');
-assert.ok(!sceneSource.includes('bossCombatInfoLines({\n      label:'), 'local plate does not duplicate HP and phase');
+assert.ok(sceneSource.includes('resistances: bossResistanceBadges(resistance)'),
+  'global boss bar receives resistance icon data');
+assert.ok(!sceneSource.includes('bossCombatInfoHud'), 'boss-following local plate is fully removed');
+assert.ok(!sceneSource.includes('패턴  '), 'persistent boss HUD does not expose pattern strategy text');
+assert.ok(!sceneSource.includes('돌진 강화') && !sceneSource.includes('탄막 강화'),
+  'phase notice does not expose adaptive pattern strategy text');
 
-console.log('boss combat info regression: global HP and local tactics separation passed');
+const hudSource = readFileSync('src/ui/bossHealthBarHud.ts', 'utf8');
+assert.ok(hudSource.includes('drawBossElementIcon'), 'global boss bar renders elemental silhouettes');
+assert.ok(hudSource.includes('RESISTANCE_ROW_HEIGHT'), 'resistance expands the fixed boss bar instead of floating in combat');
+assert.ok(!hudSource.includes("'내성'") && !hudSource.includes("'관통'"),
+  'resistance row does not repeat resistance or pierce as text');
+
+console.log('boss combat info regression: health bar and icon-only resistance badges passed');
