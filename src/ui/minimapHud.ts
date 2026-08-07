@@ -4,6 +4,7 @@ import { drawGrimoirePanel } from '../render/grimoireFrame';
 import type { MinimapModel, MinimapNode } from '../run/mapGraphContract';
 import { MINIMAP_CONFIG, minimapLayout } from './minimapLayout';
 import { roomIconTextureKey } from './roomKindIcon';
+import { roomChoicePresentation } from './roomChoiceOverlay';
 import {
   currentMinimapStage,
   minimapStages,
@@ -63,15 +64,23 @@ export interface MinimapHudLayout {
 
 export class MinimapHud {
   private readonly graphics: Phaser.GameObjects.Graphics;
+  /** 현재 방의 펄스만 매 프레임 갱신한다. 지도 전체를 다시 그리면 호버 입력이 끊긴다. */
+  private readonly pulseGraphics: Phaser.GameObjects.Graphics;
   private readonly scene: Phaser.Scene;
   private readonly iconImages = new Map<string, Phaser.GameObjects.Image>();
   private readonly stageTabs = new Map<number, Phaser.GameObjects.Text>();
+  /** ESC 지도에서만 노드 위에 올린 방의 정보를 보여주는 투명 입력 영역. */
+  private readonly nodeZones = new Map<string, Phaser.GameObjects.Zone>();
+  private readonly nodeTooltipGraphics: Phaser.GameObjects.Graphics;
+  private readonly nodeTooltipTitle: Phaser.GameObjects.Text;
+  private readonly nodeTooltipDescription: Phaser.GameObjects.Text;
   private x: number;
   private y: number;
   private scale: number;
   private lastModel: MinimapModel | null = null;
   private selectedStage = 1;
   private lastCurrentStage: number | null = null;
+  private pulseTarget: { x: number; y: number; radius: number } | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number, options: Omit<MinimapHudLayout, 'x' | 'y'> = {}) {
     this.scene = scene;
@@ -79,6 +88,21 @@ export class MinimapHud {
     this.y = y;
     this.scale = this.normalizedScale(options.scale);
     this.graphics = scene.add.graphics().setScrollFactor(0).setDepth(options.depth ?? 99);
+    this.pulseGraphics = scene.add.graphics().setScrollFactor(0).setDepth(this.graphics.depth);
+    this.nodeTooltipGraphics = scene.add.graphics().setScrollFactor(0).setDepth(this.graphics.depth + 3).setVisible(false);
+    this.nodeTooltipTitle = scene.add.text(0, 0, '', {
+      fontFamily: '"Noto Serif KR", Georgia, serif',
+      fontSize: '14px',
+      fontStyle: 'bold',
+      color: '#ead9ad',
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(this.graphics.depth + 4).setVisible(false);
+    this.nodeTooltipDescription = scene.add.text(0, 0, '', {
+      fontFamily: '"Noto Serif KR", Georgia, serif',
+      fontSize: '11px',
+      color: '#c8c0d2',
+      align: 'center',
+      wordWrap: { width: 350, useAdvancedWrap: true },
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(this.graphics.depth + 4).setVisible(false);
   }
 
   update(model: MinimapModel): void {
@@ -109,37 +133,59 @@ export class MinimapHud {
     this.scale = nextScale;
     if (layout.depth !== undefined) this.graphics.setDepth(layout.depth);
     if (layout.depth !== undefined) {
+      this.pulseGraphics.setDepth(layout.depth);
       for (const icon of this.iconImages.values()) icon.setDepth(layout.depth + 1);
       for (const tab of this.stageTabs.values()) tab.setDepth(layout.depth + 2);
+      this.nodeTooltipGraphics.setDepth(layout.depth + 3);
+      this.nodeTooltipTitle.setDepth(layout.depth + 4);
+      this.nodeTooltipDescription.setDepth(layout.depth + 4);
     }
     this.positionStageTabs();
     if (changed) this.redraw();
   }
 
-  /** 현재 노드 펄스용 — 씬 update에서 호출 (모델 불변 시 재계산 없이 다시 그림) */
+  /** 현재 노드 펄스용 — 호버 입력 영역을 다시 만들지 않고 시각 효과만 갱신한다. */
   pulse(): void {
-    if (this.lastModel) this.redraw();
+    this.drawCurrentPulse();
   }
 
   setVisible(visible: boolean): void {
     this.graphics.setVisible(visible);
+    this.pulseGraphics.setVisible(visible);
     for (const icon of this.iconImages.values()) icon.setVisible(visible && icon.active);
     for (const tab of this.stageTabs.values()) tab.setVisible(visible);
+    if (!visible) {
+      this.clearNodeTooltip();
+      for (const zone of this.nodeZones.values()) zone.disableInteractive();
+      return;
+    }
+    // 숨겨져 있던 ESC 지도도 다시 열 때 노드 입력 영역을 새 위치·크기로 되살린다.
+    if (this.lastModel) this.redraw();
   }
 
   destroy(): void {
     this.graphics.destroy();
+    this.pulseGraphics.destroy();
     for (const icon of this.iconImages.values()) icon.destroy();
     this.iconImages.clear();
     for (const tab of this.stageTabs.values()) tab.destroy();
     this.stageTabs.clear();
+    for (const zone of this.nodeZones.values()) zone.destroy();
+    this.nodeZones.clear();
+    this.nodeTooltipGraphics.destroy();
+    this.nodeTooltipTitle.destroy();
+    this.nodeTooltipDescription.destroy();
   }
 
   private redraw(): void {
     const fullModel = this.lastModel;
     const g = this.graphics;
     g.clear();
+    this.pulseGraphics.clear();
+    this.pulseTarget = null;
     for (const icon of this.iconImages.values()) icon.setActive(false).setVisible(false);
+    for (const zone of this.nodeZones.values()) zone.setActive(false).disableInteractive();
+    this.clearNodeTooltip();
     if (!fullModel || fullModel.nodes.length === 0) return;
     const model = projectMinimapStage(fullModel, this.selectedStage);
 
@@ -180,10 +226,12 @@ export class MinimapHud {
       const iconBackingRadius = (isBoss ? 14 : node.status === 'current' ? 13 : 11) * scale;
 
       if (node.status === 'current') {
-        // 현재 위치 — 펄스 링. 미니맵에서 시선이 처음 가야 할 곳.
-        const pulse = 0.5 + 0.5 * Math.abs(Math.sin(now / 260));
-        g.lineStyle(2 * scale, STYLE.node.current, 0.4 + 0.5 * pulse);
-        g.strokeCircle(px, py, (textureKey ? iconBackingRadius : currentRadius) + 2 * scale * pulse);
+        // 펄스는 별도 레이어에서 갱신해 호버 입력 영역을 매 프레임 초기화하지 않는다.
+        this.pulseTarget = {
+          x: px,
+          y: py,
+          radius: textureKey ? iconBackingRadius : currentRadius,
+        };
       }
 
       const color = STYLE.node[node.status];
@@ -223,7 +271,73 @@ export class MinimapHud {
           .setActive(true)
           .setVisible(this.graphics.visible);
       }
+
+      this.syncNodeZone(node, px, py, Math.max(iconBackingRadius * 2.35, 26 * scale));
     }
+    this.drawCurrentPulse(now);
+  }
+
+  /** 지도 본문과 분리된 현재 위치 펄스. ESC 노드 hover 중에도 포인터 영역을 유지한다. */
+  private drawCurrentPulse(now = Date.now()): void {
+    const g = this.pulseGraphics.clear();
+    const target = this.pulseTarget;
+    if (!target || !this.graphics.visible) return;
+    const pulse = 0.5 + 0.5 * Math.abs(Math.sin(now / 260));
+    g.lineStyle(2 * this.scale, STYLE.node.current, 0.4 + 0.5 * pulse);
+    g.strokeCircle(target.x, target.y, target.radius + 2 * this.scale * pulse);
+  }
+
+  /**
+   * 각 노드의 Phaser 입력 영역을 한 번만 만들고, 지도 갱신 때는 위치·대상만 갱신한다.
+   * 방을 이동하거나 바깥 HUD로 닫힌 뒤에도 오래된 노드가 입력을 가로채지 않게 한다.
+   */
+  private syncNodeZone(node: MinimapNode, x: number, y: number, size: number): void {
+    let zone = this.nodeZones.get(node.id);
+    if (!zone) {
+      zone = this.scene.add.zone(x, y, size, size)
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(this.graphics.depth + 2)
+        .on('pointerover', () => {
+          const hovered = zone?.getData('minimap-node') as MinimapNode | undefined;
+          if (hovered) this.showNodeTooltip(hovered);
+        })
+        .on('pointerout', () => this.clearNodeTooltip());
+      this.nodeZones.set(node.id, zone);
+    }
+    zone
+      .setPosition(x, y)
+      .setSize(size, size)
+      .setData('minimap-node', node)
+      .setActive(true)
+      .setInteractive({ useHandCursor: true });
+  }
+
+  /** 지도 패널 아래의 고정 정보판이라 노드가 가장자리에 있어도 화면 밖으로 잘리지 않는다. */
+  private showNodeTooltip(node: MinimapNode): void {
+    const presentation = roomChoicePresentation(node.kind);
+    const width = Math.min(390, MINIMAP_CONFIG.width * this.scale - 20);
+    const x = this.x + (MINIMAP_CONFIG.width * this.scale) / 2;
+    const y = this.y + MINIMAP_CONFIG.height * this.scale + 10;
+    const height = 45;
+
+    this.nodeTooltipGraphics.clear().setVisible(true);
+    drawGrimoirePanel(this.nodeTooltipGraphics, x - width / 2, y, width, height, 0.96);
+    this.nodeTooltipTitle
+      .setText(presentation.label)
+      .setColor(presentation.color)
+      .setPosition(x, y + 5)
+      .setVisible(true);
+    this.nodeTooltipDescription
+      .setText(presentation.description)
+      .setPosition(x, y + 23)
+      .setVisible(true);
+  }
+
+  private clearNodeTooltip(): void {
+    this.nodeTooltipGraphics.clear().setVisible(false);
+    this.nodeTooltipTitle.setVisible(false);
+    this.nodeTooltipDescription.setVisible(false);
   }
 
   private syncStageTabs(): void {
@@ -264,10 +378,12 @@ export class MinimapHud {
     const centerX = this.x + (MINIMAP_CONFIG.width * this.scale) / 2;
     const gap = 34 * this.scale;
     stages.forEach((stage, index) => {
-      this.stageTabs.get(stage)?.setPosition(
-        centerX + (index - (stages.length - 1) / 2) * gap,
-        this.y - 10 * this.scale,
-      );
+      this.stageTabs.get(stage)
+        ?.setFontSize(`${Math.round(11 + this.scale * 2)}px`)
+        .setPosition(
+          centerX + (index - (stages.length - 1) / 2) * gap,
+          this.y - 10 * this.scale,
+        );
     });
   }
 

@@ -135,7 +135,8 @@
     "audit:judge-latency": "esbuild scripts/judge-latency-audit.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-judge-latency-audit.mjs && node node_modules/.cache/incant-judge-latency-audit.mjs",
     "test:playtestfeedback": "esbuild scripts/playtest-feedback-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-playtest-feedback-regression.mjs && node node_modules/.cache/incant-playtest-feedback-regression.mjs",
     "test:overlayactivation": "esbuild scripts/overlay-activation-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-overlay-activation-regression.mjs && node node_modules/.cache/incant-overlay-activation-regression.mjs",
-    "test:rewardglossary": "esbuild scripts/reward-glossary-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-reward-glossary-regression.mjs && node node_modules/.cache/incant-reward-glossary-regression.mjs"
+    "test:rewardglossary": "esbuild scripts/reward-glossary-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-reward-glossary-regression.mjs && node node_modules/.cache/incant-reward-glossary-regression.mjs",
+    "test:formglyph": "esbuild scripts/form-glyph-regression.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/incant-form-glyph-regression.mjs && node node_modules/.cache/incant-form-glyph-regression.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

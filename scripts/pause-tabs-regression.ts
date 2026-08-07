@@ -90,21 +90,45 @@ assert.match(scene, /this\.pauseQuitNoZone[\s\S]{0,500}this\.cancelPauseQuit\(\)
   'NO 버튼은 나가기 확인만 취소해야 한다');
 
 const buildRenderAt = scene.indexOf('private renderPauseBuildContent()');
-const buildRender = scene.slice(buildRenderAt, buildRenderAt + 5_000);
+const buildRender = scene.slice(buildRenderAt, buildRenderAt + 7_500);
 assert.match(buildRender, /const detailWidth = 204/,
   '시작 유산은 하나뿐이므로 상세를 넓게 보여야 한다');
 assert.doesNotMatch(buildRender, /아직/,
   '빈 상태/빌드 분류는 획득하지 못했다는 문구 대신 비워 둬야 한다');
 assert.match(scene, /private pauseBuildCardFormIcons: Phaser\.GameObjects\.Image\[\]/,
   '주문 각인 카드는 전투 HUD와 같은 form 이미지를 별도로 그려야 한다');
+assert.match(scene, /private pauseBuildDetailTexts: Phaser\.GameObjects\.Text\[\]/,
+  'Build detail keeps text parts for element-specific colors');
+assert.match(scene, /function pauseBuildDetailParts\(/,
+  'Build detail splits element labels from ordinary prose');
+assert.match(scene, /paletteColorToCss\(ELEMENT_PALETTES\[next\.element\]\.core\)/,
+  'Element labels reuse the shared combat HUD palette');
+assert.match(buildRender, /this\.renderPauseBuildDetail\(/,
+  'Build panel uses the colored detail renderer');
 assert.match(content, /formGlyph: entry\.spell\.form/,
   '주문 각인 카드는 실제 주문 form을 아이콘 원천으로 사용해야 한다');
+assert.match(scene, /function shortBuildName\(/,
+  'Automatic-engrave cards normalize dotted judge labels into one player-facing spell name');
+assert.match(content, /const displayName = shortBuildName\(entry\.spell\.name\)/,
+  'Automatic-engrave cards use the normalized spell name');
+assert.match(content, /elements: \[entry\.spell\.element_primary\]/,
+  'Automatic-engrave card borders expose only the displayed primary element');
+assert.match(content, /formGlyph: SPIRIT_GLYPH\[entry\.role\]/,
+  'Contract spirit cards reuse the same glyph source as the HUD');
+assert.match(content, /cardLabel: entry\.fusedName \?\? `\$\{elementLabel\} 정령`/,
+  'Contract spirit cards use their concise display name');
 assert.match(buildRender, /setTexture\(formGlyphTextureKey\(entry\.formGlyph \?\? 'bolt'\)\)/,
   '주문 각인 카드는 우하단 HUD와 같은 formGlyphTextureKey를 재사용해야 한다');
-assert.match(buildRender, /setTintFill\(entry\.iconTint \?\? 0xffffff\)/,
+assert.match(buildRender, /setTint\(entry\.iconTint \?\? 0xffffff\)/,
   'SVG 원본 픽셀이 검어도 카드 글리프는 원소색으로 강제 표시되어야 한다');
-assert.match(buildRender, /fillRoundedRect\(x - 15, cardTop \+ 7, 30, 27, 5\)/,
-  '카드에는 이름보다 먼저 읽히는 속성색 아이콘 타일이 있어야 한다');
+assert.match(buildRender, /const iconOnly = category\.id === 'engrave'/,
+  'Automatic engraves use an icon-only card treatment');
+assert.match(buildRender, /const iconTileSize = iconOnly \? 48 : 34/,
+  'Automatic engrave icons are enlarged to HUD-readable size');
+assert.match(buildRender, /setVisible\(!iconOnly\)/,
+  'Automatic engrave cards do not repeat their spell names below the icon');
+assert.match(buildRender, /drawElementSpectrumBorder\(g, iconElements, x, iconCenterY, iconTileSize \/ 2, false\)/,
+  'Fused spirit cards draw a multi-element spectrum instead of a single tint');
 assert.match(buildRender, /\.setText\(title\)/,
   '작은 카드에는 주문명만 표시해야 한다');
 assert.doesNotMatch(buildRender, /cardMeta|`\$\{title\}\\n\$\{summary\}`/,
