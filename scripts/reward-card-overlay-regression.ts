@@ -20,5 +20,17 @@ for (const key of ['ArrowLeft', 'ArrowRight']) {
 assert.ok(source.includes('<b>A/D + Enter</b>'), '게임 이동키와 일치하는 조작 안내');
 assert.ok(source.includes("['1', '2', '3', '4']"), '숫자키 직접 선택 유지');
 assert.ok(source.includes("addEventListener('click'"), '마우스 직접 선택 유지');
+assert.ok(
+  source.includes('width: min(788px, calc(100vw - 32px)); box-sizing: border-box;'),
+  '선택 상세 설명과 무관한 viewport 기준 패널 총폭 고정',
+);
+assert.ok(
+  source.includes('translateY(calc(var(--card-lift, 0px) - 10px)) scale(1.035)'),
+  '선택 강조는 레이아웃 폭이 아닌 transform만 사용',
+);
+assert.ok(
+  source.includes('detailPanel.style.height = `${Math.ceil(tallest)}px`;'),
+  '기존 상세 패널 높이 잠금 유지',
+);
 
-console.log('reward card overlay regression: A/D·방향키 비활성·4장 직접 선택 3군 통과');
+console.log('reward card overlay regression: 입력·직접 선택·반응형 고정 폭·상세 높이 잠금 통과');
