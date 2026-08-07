@@ -23,22 +23,26 @@ assert.deepEqual(t1.weakenedForms, [], '티어1 약화 없음');
 assert.equal(t1.weakenMultiplier, 1);
 assert.equal(t1.bossDualResistance, false);
 
-// 3) 티어2 — 과의존 **폼** 런-전체 약화 시작 (#171: 원소→폼 전환, 중복 제거)
+// 3) 티어2 — 과의존 **폼** 런-전체 약화 시작 (#171: 원소→폼 전환, 최빈 1종)
 const t2 = runEscalationProfile(mk({ clears: 1, recentDominantForms: ['bolt', 'bolt', 'nova'] }));
 assert.equal(t2.tier, 2);
-assert.deepEqual(t2.weakenedForms, ['bolt', 'nova'], '중복 제거');
+assert.deepEqual(t2.weakenedForms, ['bolt'], '최빈 폼 1종만 약화');
 assert.ok(Math.abs(t2.weakenMultiplier - 0.85) < 1e-9, '티어2 약화 0.85');
 
-// 4) 티어3 — 방 기믹 해금 / 티어4 — 보스 이중 저항
+// 4) 최빈 동률 — 가장 최근 런의 대표 폼을 우선한다
+const tied = runEscalationProfile(mk({ clears: 2, recentDominantForms: ['bolt', 'nova', 'zone'] }));
+assert.deepEqual(tied.weakenedForms, ['zone'], '동률이면 최근 폼 우선');
+
+// 5) 티어3 — 방 기믹 해금 / 티어4 — 보스 이중 저항
 assert.equal(runEscalationProfile(mk({ clears: 2 })).bossDualResistance, false);
 assert.equal(runEscalationProfile(mk({ clears: 3 })).bossDualResistance, true, '티어4 이중 저항');
 
-// 5) 상한 — 티어5에서 약화 하한 0.4
+// 6) 상한 — 티어5에서 약화 하한 0.4
 const t5 = runEscalationProfile(mk({ clears: 9, recentDominantForms: ['bolt'] }));
 assert.equal(t5.tier, 5, '상한');
 assert.ok(Math.abs(t5.weakenMultiplier - 0.4) < 1e-9, '약화 하한 0.4');
 
-// 6) 구버전 프로필(폼 이력 없음) — 약화 없음이 정답. 원소 시절의 favoriteElement
+// 7) 구버전 프로필(폼 이력 없음) — 약화 없음이 정답. 원소 시절의 favoriteElement
 // 폴백 같은 대체 축은 두지 않는다: 잘못된 축으로 벌하느니 한 런 쉬는 게 낫다.
 // (원소를 약화하면 다채로운 화염 마스터까지 때리는 자기모순이 되살아난다)
 const legacyProfile = runEscalationProfile(
@@ -46,7 +50,7 @@ const legacyProfile = runEscalationProfile(
 );
 assert.deepEqual(legacyProfile.weakenedForms, [], '폼 이력 없으면 약화 없음 (원소 폴백 금지)');
 
-// 7) 원소는 약화 축에서 완전히 빠졌는가 — 원소 집중은 이제 벌 대상이 아니다
+// 8) 원소는 약화 축에서 완전히 빠졌는가 — 원소 집중은 이제 벌 대상이 아니다
 {
   const p = runEscalationProfile(
     mk({ clears: 4, recentDominantElements: ['fire', 'fire', 'fire'], recentDominantForms: ['zone'] }),
@@ -57,4 +61,4 @@ assert.deepEqual(legacyProfile.weakenedForms, [], '폼 이력 없으면 약화 �
   assert.equal(p.bossDualResistance, true, '이중저항 게이트는 유지');
 }
 
-console.log('RunEscalation regression: 티어·폼약화·기믹/이중저항 게이트·구프로필·원소제외 7군 통과');
+console.log('RunEscalation regression: 티어·최빈 단일 폼약화·동률 최신우선·기믹/이중저항 게이트·구프로필·원소제외 8군 통과');

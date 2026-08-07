@@ -890,6 +890,10 @@ export class ProtoScene extends Phaser.Scene {
   private attunementText!: Phaser.GameObjects.Text;
   /** 친화 경험치 바 라벨 — 상위 원소별 1행씩 (HUD 박스 아래, 주력이 맨 위) */
   private affinityLabelTexts: Phaser.GameObjects.Text[] = [];
+  /** 런 전체의 주문 형태 약화 — 친화 패널 아래에 상시 표시한다. */
+  private formWeakeningText!: Phaser.GameObjects.Text;
+  /** 연구·유산 선택이 닫힌 뒤 한 번만 알릴 새 약화 대상. */
+  private pendingFormWeakeningNotice: SpellForm | null = null;
   /** 필살기(융합) 게이지 라벨 — 하단 중앙 미터 위 (충전%·준비 알림) */
   private fusionLabelText!: Phaser.GameObjects.Text;
   /** #345 상단 중앙 런 타이머 — 우측 정보 패널과 중복 표시하지 않는다. */
@@ -987,8 +991,6 @@ export class ProtoScene extends Phaser.Scene {
   private heatwaveDamageNotice = 0;
   private heatwaveDamageNoticeElapsed = 0;
   private activeCurseBanner: Phaser.GameObjects.Container | null = null;
-  /** 약화 안내를 이미 띄운 원소 — 방마다 비워 같은 경고가 시전마다 반복되지 않게 한다 */
-  private readonly escalationNoticed = new Set<SpellForm>();
   private waveManager = new WaveManager();
   private eliteModifierAssignments: EliteModifier[] = [];
   private eliteSpawnIndex = 0;
@@ -1475,6 +1477,7 @@ export class ProtoScene extends Phaser.Scene {
     // 시연 런은 연구·유산 선택을 건너뛴다 — 이미 후반 상태라 카드가 겹치고,
     // 심사위원을 시작하자마자 선택 UI로 막는 게 이 모드의 취지에 어긋난다.
     if (!this.demoRun) void this.offerRunStartChoices();
+    else this.announcePendingFormWeakeningNotice();
   }
 
   /**
@@ -2005,6 +2008,7 @@ export class ProtoScene extends Phaser.Scene {
       }
     }
     await this.offerLegacyEngrave();
+    this.announcePendingFormWeakeningNotice();
   }
 
   private async offerResearchContract(): Promise<void> {
@@ -2952,7 +2956,18 @@ export class ProtoScene extends Phaser.Scene {
   private prepareRunEscalation(): void {
     const memory = loadRunMemory();
     this.runEscalation = runEscalationProfile(memory);
-    this.escalationNoticed.clear();
+    this.pendingFormWeakeningNotice = this.runEscalation.weakenedForms[0] ?? null;
+  }
+
+  private announcePendingFormWeakeningNotice(): void {
+    const form = this.pendingFormWeakeningNotice;
+    if (form === null) return;
+    this.pendingFormWeakeningNotice = null;
+    this.announceSystemMessage(
+      `세계가 네 수를 읽었다 · ${FORM_LABELS[form]} 약화`,
+      '#b18cff',
+      2800,
+    );
   }
 
   private startRoom(roomIndex: number): void {
@@ -2962,8 +2977,6 @@ export class ProtoScene extends Phaser.Scene {
     this.enemyHitStop.clear();
     this.enemyKnockbacks.clear();
     resetCameraShake(this);
-    // 약화 안내는 방마다 다시 한 번씩 — 새 방에서 상황을 상기시키되 도배하지 않는다
-    this.escalationNoticed.clear();
     this.roomClearPending = false;
     this.manaPotionSpawnedThisRoom = false;
     this.manaPotionSpawnRemaining = manaPotionSpawnDelay(Math.random());
@@ -3515,6 +3528,13 @@ export class ProtoScene extends Phaser.Scene {
         color: '#8fa4ff',
         },
       ).setScrollFactor(0).setDepth(100));
+    this.formWeakeningText = this.add.text(0, 0, '', {
+      fontFamily: '"Noto Serif KR", Consolas, monospace',
+      fontSize: '10px',
+      fontStyle: 'bold',
+      color: '#c7a6ff',
+      lineSpacing: 3,
+    }).setScrollFactor(0).setDepth(100).setVisible(false);
     // 필살기(융합) 미터 라벨 — 하단 중앙, 궁극기 게이지처럼 항상 노출해 존재를 가르친다
     this.fusionLabelText = this.add.text(width / 2, height - 62, '', {
       fontFamily: '"Noto Serif KR", Consolas, monospace',
@@ -6601,14 +6621,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           2600,
         );
       }
-      // 같은 폼을 계속 쓰면 매 시전 반복되므로 방마다 폼별 1회만 알린다
-      if (escalationWeaken < 1 && !this.escalationNoticed.has(spec.form)) {
-        this.escalationNoticed.add(spec.form);
-        this.announceSystemMessage(
-          `${FORM_LABELS[spec.form]} 약화 ${Math.round((1 - escalationWeaken) * 100)}% · 세계가 네 수를 읽었다`,
-          '#b18cff',
-        );
-      }
       if (historyEntry.power < historyEntry.basePower) {
         // 반복 패널티를 원인과 함께 표시 — 다양성 유도가 게임의 핵심 경험 (PHASE_2 R3 P1)
         const penaltyPct = Math.round(
@@ -7332,13 +7344,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       ? elementalFocusSpatialScale(this.runResearchTracker.snapshot().research, spec)
       : 1;
     this.spellHistory.recordBehaviorUsage(baseSpec, Date.now());
-    if (escalationWeaken < 1 && !this.escalationNoticed.has(baseSpec.form)) {
-      this.escalationNoticed.add(baseSpec.form);
-      this.announceSystemMessage(
-        `${FORM_LABELS[baseSpec.form]} 약화 ${Math.round((1 - escalationWeaken) * 100)}% · 세계가 네 수를 읽었다`,
-        '#b18cff',
-      );
-    }
     this.audio.playCast(spec.element_primary);
     this.applySpellPalette(spec);
     const options: SpellExecutionOptions = {
@@ -8866,6 +8871,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     );
 
     this.drawAffinityBar(g);
+    this.drawFormWeakeningHud(g);
     this.drawFusionGauge(g);
 
     // ROOM/WAVE/ENEMIES는 현재 방 레이더 안으로 들어갔다. 위험지대 정화만 필요할 때
@@ -8975,6 +8981,37 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         .setAlpha(alpha)
         .setFontSize(main ? 11 : 10);
     }
+  }
+
+  /**
+   * 최근 런에서 반복한 주문 형태의 약화를 런 내내 표시한다.
+   * 시전 순간 팝업은 다른 전투 메시지를 밀어내고 방마다 반복됐으므로, 런 상태인
+   * 친화도와 같은 좌상단 정보 계층에 둔다. 약화가 없는 첫 런에는 패널도 숨긴다.
+   */
+  private drawFormWeakeningHud(g: Phaser.GameObjects.Graphics): void {
+    const forms = this.runEscalation.weakenedForms;
+    if (forms.length === 0) {
+      this.formWeakeningText.setVisible(false).setText('');
+      return;
+    }
+
+    const affinityRows = this.combatRunController.state.chorusAffinity !== null ? 1 : AFFINITY_ROWS;
+    const affinityPanel = affinityPanelGeometry(
+      AFFINITY_HUD.y,
+      AFFINITY_HUD.headerHeight,
+      affinityRows,
+    );
+    const panelX = AFFINITY_HUD.x;
+    const panelY = affinityPanel.top + affinityPanel.height + AFFINITY_PANEL_LAYOUT.gap;
+    const panelHeight = 42;
+    const weakenPercent = Math.round((1 - this.runEscalation.weakenMultiplier) * 100);
+    const labels = forms.map((form) => FORM_LABELS[form]).join(' · ');
+
+    drawGrimoirePanel(g, panelX, panelY, AFFINITY_HUD.width, panelHeight, 0.86);
+    this.formWeakeningText
+      .setPosition(panelX + AFFINITY_PANEL_LAYOUT.padX, panelY + 7)
+      .setText(`주문 형태 약화  −${weakenPercent}%\n${labels}`)
+      .setVisible(true);
   }
 
   /**
