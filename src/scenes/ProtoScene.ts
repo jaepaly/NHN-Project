@@ -137,6 +137,7 @@ import { showBossChoice, showDemoCompletionChoice } from '../ui/bossChoiceOverla
 import { showSystemBanner } from '../render/systemBanner';
 import { bossResistanceReadout } from '../render/bossResistanceReadout';
 import { playAwakeningBrandMark, playAwakeningSigil } from '../render/awakeningSigil';
+import { SupportSpellVfx } from '../render/supportSpellVfx';
 import {
   PARTICLE_TEXTURES, ensureParticleTextures, particleKey,
 } from '../render/particleTextures';
@@ -297,6 +298,7 @@ import {
 } from '../combat-core/combat/floorHazardState';
 import { PortalField } from '../render/portalField';
 import { cleanseReadoutLine } from '../render/floorHazardReadout';
+import { TERRAIN_BARRIER_VFX } from '../render/terrainBarrierVfxConfig';
 import {
   blocksFromPlacements, floorHazardsForRoom, floorHazardsFromPlacements, terrainForRoom,
 } from '../run/roomTerrainConfig';
@@ -722,8 +724,8 @@ export class ProtoScene extends Phaser.Scene {
   private playerBody!: Phaser.GameObjects.Image | Phaser.GameObjects.Arc;
   /** 최근 이동 방향 — 돌진(dash) 방향 결정에 쓴다. */
   private readonly lastMoveDir = new Phaser.Math.Vector2(0, 0);
-  /** 활성 자기 강화 오라 (한 번에 하나) */
-  private buffAura: Phaser.GameObjects.Arc | null = null;
+  /** 회복·보호막·자기 강화의 상태 동기화형 연출. */
+  private supportSpellVfx: SupportSpellVfx | null = null;
   private playerState = new PlayerCombatState();
   private readonly spellHistory = new SpellHistory();
   private metaProfile = loadMetaProfile();
@@ -1150,7 +1152,7 @@ export class ProtoScene extends Phaser.Scene {
    */
   /** 방 구조물 (정사각 블록) — 이동·투사체·**플레이어 주문**을 모두 막는다 */
   private terrainBarriers: TerrainBlock[] = [];
-  private terrainBarrierView: Phaser.GameObjects.Graphics | null = null;
+  private terrainBarrierView: Phaser.GameObjects.Graphics | Phaser.GameObjects.Container | null = null;
   /**
    * 바닥형 지형 (#214 지형 Tier 1 R2) — 용암·독지대. 배치는 R1 소유, 여기는 렌더·판정만.
    * 방 진입 시 채우고 방 전환 시 비운다. 장벽(막는 것)과 달리 밟으면 아픈 것.
@@ -1282,6 +1284,10 @@ export class ProtoScene extends Phaser.Scene {
       'bg-boss',
       `${import.meta.env.BASE_URL}assets/backgrounds/arena-boss.jpg`,
     );
+    this.load.image(
+      TERRAIN_BARRIER_VFX.textureKey,
+      `${import.meta.env.BASE_URL}assets/terrain-barrier-sealed-stone-game.png`,
+    );
     // 방 종류별 전용 배경 (총괄 생성, 2026-07-30) — 정예·함정·보물·제단.
     // 종전엔 이 넷이 스테이지 배경 + 색 틴트로만 구분됐다(#285). 검수 실측:
     // 워터마크 제거 확인(0.7 초과 화소 0개) · 2528×1696 → 1920×1280 리샘플.
@@ -1401,6 +1407,7 @@ export class ProtoScene extends Phaser.Scene {
 
     this.drawBackdrop(this.worldBounds.width, this.worldBounds.height);
     this.createPlayer(startX, startY);
+    this.supportSpellVfx = new SupportSpellVfx(this, this.player);
     this.growthMarks = new GrowthMarks(this);
     this.cameras.main
       .setBounds(
@@ -1555,6 +1562,14 @@ export class ProtoScene extends Phaser.Scene {
       if (this.practiceRun) this.playerState.restoreMana(this.playerState.maxMana);
       this.basicAttackCooldownRemaining = Math.max(0, this.basicAttackCooldownRemaining - d);
       this.updatePlayerMovement(d);
+      this.supportSpellVfx?.update(
+        d,
+        this.playerState.shield,
+        this.playerState.maxHp,
+        this.playerState.activeBuffs(),
+        Object.values(this.moveKeys).some((key) => key.isDown),
+        this.lastMoveDir,
+      );
       this.updateRoomCurse(delta / 1000, d);
       this.updatePlayerAura(d);
       this.updateEnemyControls(d);
@@ -1930,6 +1945,9 @@ export class ProtoScene extends Phaser.Scene {
     }
     const scale = loopDamageScale(this.combatRunController.state.loopIndex);
     const result = this.playerState.takeDamage(amount * scale);
+    if (result.shieldDamage > 0) {
+      this.supportSpellVfx?.playShieldHit(result.shieldDamage, this.playerState.shield <= 0);
+    }
     if (result.hpDamage > 0) this.audio.playSfx('player-hit');
     return result;
   }
@@ -2678,6 +2696,7 @@ export class ProtoScene extends Phaser.Scene {
     this.hazardDecorations = [];
     this.activeWalls = [];
     this.activeOrbits = [];
+    this.supportSpellVfx = null;
     // 충전 핍 — 늦은 생성이라 파괴된 참조가 남으면 재입장 첫 프레임에 죽은 객체를 만진다
     this.researchChargePipsGfx = null;
     this.researchChargePipsKey = '';
@@ -2773,6 +2792,7 @@ export class ProtoScene extends Phaser.Scene {
     this.clearSpiritViews();
     this.growthMarks.reset();
     this.playerState.reset();
+    this.supportSpellVfx?.reset();
     // 제단 능력도 비운다 — 그래야 다음 런 제단이 다시 의미를 갖는다
     this.echoUnlocked = false;
     this.starburstUnlocked = false;
@@ -2849,6 +2869,7 @@ export class ProtoScene extends Phaser.Scene {
     this.spiritManager.reset();
     this.clearSpiritViews();
     this.playerState.reset();
+    this.supportSpellVfx?.reset();
     this.runMovementDistance = 0;
     this.resetMapGraph();
     this.combatRunController.reset(Date.now(), false);
@@ -2891,6 +2912,7 @@ export class ProtoScene extends Phaser.Scene {
     this.growthMarks.reset();
     this.engraveRewardRand = createRunRandom(Date.now());
     this.playerState.reset();
+    this.supportSpellVfx?.reset();
     this.runMovementDistance = 0;
     this.resetMapGraph();
     this.prepareRunEscalation();
@@ -4119,42 +4141,177 @@ export class ProtoScene extends Phaser.Scene {
    * 예산(#220)은 장식 VFX가 아닌 것도 화면을 밝히면 안 된다고 본다. 정지 상태로
    * 계속 떠 있는 물체라 미세한 깜빡임도 누적 피로가 된다 — 애니메이션도 없다.
    *
-   * 다섯 겹으로 부피를 만든다: 바닥 그림자 → 본체 → 상단 경사면(빛) →
-   * 하단 경사면(그늘) → 테두리. 여기에 룬 균열을 얹어 "마력 구조물"임을 드러낸다.
+   * 평면 잔해는 걸어 넘을 수 있는 석판처럼 읽혔다. 충돌 정사각형은 기단으로 유지하고
+   * 상판을 위로 들어 전면·측면을 노출한 봉인 석벽으로 그린다. 룬은 상판에 새긴다.
    */
   private setTerrainBarriers(blocks: readonly TerrainBlock[]): void {
     this.clearTerrainBarriers();
     if (blocks.length === 0) return;
     this.terrainBarriers = blocks.map((block) => ({ ...block }));
 
+    // 배경과 같은 래스터 석재 질감의 탑다운 스프라이트를 우선한다. PNG만 올려놓은
+    // 콜라주처럼 뜨지 않도록 바닥 접촉 그림자·주변 파편·희미한 봉인 흔적을 먼저 깔고,
+    // 본체는 배경 톤으로 낮춘다. 에셋 로드 실패 시 아래 절차적 석벽이 폴백한다.
+    if (this.textures.exists(TERRAIN_BARRIER_VFX.textureKey)) {
+      const container = this.add.container(0, 0).setDepth(4);
+      this.terrainBarriers.forEach((block, index) => {
+        const displaySize = block.half * 2 * TERRAIN_BARRIER_VFX.displayScale;
+        const ground = this.add.graphics();
+        const rotation = (index % 4) * (Math.PI / 2);
+
+        ground.fillStyle(TERRAIN_BARRIER_VFX.shadow, TERRAIN_BARRIER_VFX.contactShadowAlpha);
+        ground.fillEllipse(
+          block.x,
+          block.y + block.half * TERRAIN_BARRIER_VFX.contactShadowOffsetY,
+          displaySize * TERRAIN_BARRIER_VFX.contactShadowWidth,
+          displaySize * TERRAIN_BARRIER_VFX.contactShadowHeight,
+        );
+
+        // 충돌 모서리를 그대로 테두리로 그리지 않고, 바깥의 작은 파편으로 바닥과 잇는다.
+        const debris = [
+          { x: -0.54, y: -0.22, r: 0.09 },
+          { x: 0.50, y: -0.34, r: 0.07 },
+          { x: -0.42, y: 0.48, r: 0.075 },
+          { x: 0.55, y: 0.31, r: 0.055 },
+        ];
+        ground.fillStyle(TERRAIN_BARRIER_VFX.debrisTint, TERRAIN_BARRIER_VFX.debrisAlpha);
+        debris.forEach((piece, pieceIndex) => {
+          const cos = Math.cos(rotation);
+          const sin = Math.sin(rotation);
+          const px = piece.x * cos - piece.y * sin;
+          const py = piece.x * sin + piece.y * cos;
+          const radius = block.half * piece.r * (pieceIndex % 2 === 0 ? 1 : 0.82);
+          ground.fillEllipse(
+            block.x + px * displaySize,
+            block.y + py * displaySize,
+            radius * 2.2,
+            radius * 1.35,
+          );
+        });
+
+        ground.lineStyle(1.2, TERRAIN_BARRIER_VFX.runeGroundTint, TERRAIN_BARRIER_VFX.runeGroundAlpha);
+        ground.strokeEllipse(block.x, block.y, displaySize * 0.78, displaySize * 0.72);
+
+        // 두 겹 모두 원본 알파를 따르므로 정사각 프레임이 생기지 않는다. 바깥 검푸른
+        // 폐색막은 밝은 마법진에서, 안쪽 청록 림은 어두운 바닥에서 경계를 만든다.
+        const occlusion = this.add.image(block.x, block.y, TERRAIN_BARRIER_VFX.textureKey)
+          .setDisplaySize(
+            displaySize * TERRAIN_BARRIER_VFX.occlusionScale,
+            displaySize * TERRAIN_BARRIER_VFX.occlusionScale,
+          )
+          .setTint(TERRAIN_BARRIER_VFX.occlusionTint)
+          .setAlpha(TERRAIN_BARRIER_VFX.occlusionAlpha)
+          .setAngle((index % 4) * 90);
+        const silhouette = this.add.image(block.x, block.y, TERRAIN_BARRIER_VFX.textureKey)
+          .setDisplaySize(
+            displaySize * TERRAIN_BARRIER_VFX.silhouetteScale,
+            displaySize * TERRAIN_BARRIER_VFX.silhouetteScale,
+          )
+          .setTint(TERRAIN_BARRIER_VFX.silhouetteTint)
+          .setAlpha(TERRAIN_BARRIER_VFX.silhouetteAlpha)
+          .setAngle((index % 4) * 90);
+        const image = this.add.image(block.x, block.y, TERRAIN_BARRIER_VFX.textureKey)
+          .setDisplaySize(displaySize, displaySize)
+          .setTint(TERRAIN_BARRIER_VFX.spriteTint)
+          .setAlpha(TERRAIN_BARRIER_VFX.spriteAlpha)
+          .setAngle((index % 4) * 90);
+        container.add([ground, occlusion, silhouette, image]);
+      });
+      this.terrainBarrierView = container;
+      return;
+    }
+
     const view = this.add.graphics().setDepth(4);
+    const pal = TERRAIN_BARRIER_VFX;
     for (const block of this.terrainBarriers) {
       const { x, y, half } = block;
       const size = half * 2;
-      const bevel = Math.max(6, half * 0.22);
+      const left = x - half;
+      const right = x + half;
+      const top = y - half;
+      const bottom = y + half;
 
-      // ① 바닥 그림자 — 아래로 살짝 밀어 부피감을 만든다
-      view.fillStyle(0x030304, 0.62);
-      view.fillRoundedRect(x - half + 3, y - half + 8, size, size, 6);
-      // ② 본체 — 원소광이 아닌 흑요석 먹회색
-      view.fillStyle(0x211d23, 1);
-      view.fillRoundedRect(x - half, y - half, size, size, 6);
-      // ③ 상단 경사면 — 배경에서 구조물 윤곽을 잃지 않을 정도의 명암만 남긴다
-      view.fillStyle(0x3b343e, 1);
-      view.fillRect(x - half + bevel * 0.5, y - half + 3, size - bevel, bevel);
-      // ④ 하단 경사면 — 그늘
-      view.fillStyle(0x120f14, 1);
-      view.fillRect(x - half + bevel * 0.5, y + half - bevel - 3, size - bevel, bevel);
-      // ⑤ 테두리 — 저채도 회보라 안쪽 선 + 먹색 바깥 선
-      view.lineStyle(2, 0x716476, 0.72);
-      view.strokeRoundedRect(x - half + 2, y - half + 2, size - 4, size - 4, 5);
-      view.lineStyle(2, 0x070609, 0.95);
-      view.strokeRoundedRect(x - half, y - half, size, size, 6);
+      const height = Math.max(pal.minHeight, half * pal.heightRatio);
+      const cut = half * 0.18;
+      // 실제 충돌 범위와 같은 기단. 상단 구조물이 위로 솟아도 발 위치를 읽을 수 있다.
+      view.fillStyle(pal.shadow, 0.76);
+      view.fillEllipse(x, bottom + pal.shadowOffsetY, size * 1.02, half * 0.34);
+      view.fillStyle(pal.base, 0.92);
+      view.fillPoints([
+        new Phaser.Geom.Point(left + cut, top), new Phaser.Geom.Point(right - cut, top),
+        new Phaser.Geom.Point(right, top + cut), new Phaser.Geom.Point(right, bottom - cut),
+        new Phaser.Geom.Point(right - cut, bottom), new Phaser.Geom.Point(left + cut, bottom),
+        new Phaser.Geom.Point(left, bottom - cut), new Phaser.Geom.Point(left, top + cut),
+      ], true);
 
-      // 룬 균열 — 대각 한 줄 + 짧은 가지. 마력 구조물임을 드러내되 정지 상태다
-      view.lineStyle(2, 0x8b748f, 0.32);
-      view.lineBetween(x - half * 0.45, y - half * 0.5, x + half * 0.2, y + half * 0.45);
-      view.lineBetween(x - half * 0.1, y - half * 0.05, x + half * 0.4, y - half * 0.35);
+      // 상판을 위로 옮기고 전면·측면을 기단까지 연결해 명확한 수직 높이를 만든다.
+      const cap = [
+        new Phaser.Geom.Point(left + cut, top - height),
+        new Phaser.Geom.Point(x + half * 0.16, top - height * 0.9),
+        new Phaser.Geom.Point(right - cut * 0.4, top - height * 0.64),
+        new Phaser.Geom.Point(right, y - height + cut),
+        new Phaser.Geom.Point(right - cut, bottom - height),
+        new Phaser.Geom.Point(x - half * 0.24, bottom - height * 1.04),
+        new Phaser.Geom.Point(left, bottom - height - cut * 0.5),
+        new Phaser.Geom.Point(left + cut * 0.2, y - height - cut),
+      ];
+      view.fillStyle(pal.wallSide, 1);
+      view.fillPoints([
+        cap[3], cap[4], new Phaser.Geom.Point(right - cut, bottom),
+        new Phaser.Geom.Point(right, bottom - cut),
+      ], true);
+      view.fillStyle(pal.wallFront, 1);
+      view.fillPoints([
+        cap[4], cap[5], cap[6],
+        new Phaser.Geom.Point(left, bottom - cut),
+        new Phaser.Geom.Point(left + cut, bottom),
+        new Phaser.Geom.Point(right - cut, bottom),
+      ], true);
+      view.lineStyle(2, pal.stoneEdge, 0.5);
+      view.lineBetween(cap[6].x, cap[6].y, left, bottom - cut);
+      view.lineBetween(cap[4].x, cap[4].y, right - cut, bottom);
+
+      view.fillStyle(pal.stoneMid, 1);
+      view.fillPoints(cap, true);
+      // 상판 외곽은 일부만 밝게 해 파손된 유적 재질을 유지한다.
+      view.lineStyle(3, pal.stoneEdge, 0.72);
+      view.lineBetween(cap[0].x, cap[0].y, cap[1].x, cap[1].y);
+      view.lineBetween(cap[1].x, cap[1].y, cap[2].x, cap[2].y);
+      view.lineBetween(cap[4].x, cap[4].y, cap[5].x, cap[5].y);
+      view.lineBetween(cap[5].x, cap[5].y, cap[6].x, cap[6].y);
+
+      // 깨진 상판 조각과 돌결로 넓은 단색 면을 나눈다.
+      view.fillStyle(pal.stoneLight, 0.62);
+      view.fillPoints([
+        new Phaser.Geom.Point(x - half * 0.52, y - height - half * 0.34),
+        new Phaser.Geom.Point(x + half * 0.08, y - height - half * 0.48),
+        new Phaser.Geom.Point(x + half * 0.44, y - height - half * 0.12),
+        new Phaser.Geom.Point(x + half * 0.14, y - height + half * 0.16),
+        new Phaser.Geom.Point(x - half * 0.38, y - height + half * 0.04),
+      ], true);
+      view.lineStyle(1.5, pal.stoneEdge, 0.34);
+      view.lineBetween(x - half * 0.52, y - height - half * 0.34, x + half * 0.08, y - height - half * 0.48);
+      view.lineBetween(x + half * 0.08, y - height - half * 0.48, x + half * 0.44, y - height - half * 0.12);
+
+      // 상판에 새긴 파손 육각 봉인. 수직 면과 분리돼 장식보다 재질 각인으로 읽힌다.
+      const runeY = y - height;
+      const runeRadius = half * 0.25;
+      const runePoints = Array.from({ length: 6 }, (_, index) => {
+        const angle = -Math.PI / 2 + index * Math.PI / 3;
+        return new Phaser.Geom.Point(
+          x + Math.cos(angle) * runeRadius,
+          runeY + Math.sin(angle) * runeRadius,
+        );
+      });
+      view.lineStyle(2.2, pal.rune, pal.runeAlpha);
+      for (let index = 0; index < 4; index += 1) {
+        view.lineBetween(runePoints[index].x, runePoints[index].y, runePoints[index + 1].x, runePoints[index + 1].y);
+      }
+      view.lineBetween(runePoints[5].x, runePoints[5].y, runePoints[0].x, runePoints[0].y);
+      view.lineStyle(1.8, pal.runeCore, pal.runeAlpha * 0.82);
+      view.lineBetween(x, runeY - runeRadius * 0.58, x, runeY + runeRadius * 0.5);
+      view.lineBetween(x, runeY, x - runeRadius * 0.46, runeY + runeRadius * 0.3);
+      view.lineBetween(x, runeY + runeRadius * 0.16, x + runeRadius * 0.42, runeY + runeRadius * 0.46);
     }
     this.terrainBarrierView = view;
   }
@@ -7388,6 +7545,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       ?? new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
     if (spec.effect === 'heal') {
       const healed = this.playerState.heal(spellHealFromPower(spec.power));
+      this.supportSpellVfx?.playHeal(
+        healed,
+        this.playerState.maxHp,
+        spec.power,
+        spec.element_primary,
+        'spell',
+      );
       this.announceSystemMessage(`회복 +${Math.round(healed)} HP`, '#72f1a8');
       return;
     }
@@ -7399,6 +7563,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (spec.effect === 'shield') {
       const shielded = this.playerState.addShield(
         spellShieldFromPower(spec.power) * (options?.shieldAmountScale ?? 1),
+      );
+      this.supportSpellVfx?.playShieldGain(
+        shielded,
+        this.playerState.shield,
+        spec.power,
+        spec.element_primary,
+        'spell',
       );
       this.announceSystemMessage(`보호막 +${Math.round(shielded)}`, UI_SEMANTIC.shield);
       return;
@@ -7529,7 +7700,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private castSelfBuff(spec: SpellSpec): void {
     const outcome = resolveSelfBuff(spec.element_primary, spec.name, spec.power);
     this.playerState.applyTimedBuff(outcome.buff, outcome.multiplier, outcome.seconds);
-    this.showBuffAura(outcome.color, outcome.seconds);
+    this.supportSpellVfx?.playBuffCast(outcome.buff, spec.power, spec.element_primary);
     const magnitude = outcome.buff === 'ward'
       ? (outcome.multiplier <= 0 ? '무적' : `피해 −${Math.round((1 - outcome.multiplier) * 100)}%`)
       : `+${Math.round((outcome.multiplier - 1) * 100)}%`;
@@ -7537,24 +7708,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       `${outcome.label} · ${magnitude} · ${outcome.seconds.toFixed(1)}s`,
       paletteColorToCss(outcome.color),
     );
-  }
-
-  /** 활성 버프 오라 — 플레이어 컨테이너 뒤에 색으로 표시, 지속시간 후 소멸. */
-  private showBuffAura(color: number, seconds: number): void {
-    this.buffAura?.destroy();
-    const aura = this.add.circle(0, 0, 28, color, 0.22).setBlendMode(Phaser.BlendModes.ADD);
-    this.player.addAt(aura, 0);
-    this.buffAura = aura;
-    this.tweens.add({
-      targets: aura,
-      scale: { from: 1, to: 1.28 },
-      alpha: { from: 0.3, to: 0.12 },
-      yoyo: true, repeat: -1, duration: 650, ease: 'Sine.easeInOut',
-    });
-    this.time.delayedCall(seconds * 1000, () => {
-      if (aura.active) aura.destroy();
-      if (this.buffAura === aura) this.buffAura = null;
-    });
   }
 
   /** 살아 있는 적이 하나라도 있는가 — 빈 방에서 자동 시전을 막는 조건 */
@@ -7748,10 +7901,18 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       view?.pulse(this);
       if (request.kind === 'heal') {
         const amount = this.playerState.heal(request.amount);
+        this.supportSpellVfx?.playHeal(amount, this.playerState.maxHp, 50, 'light', 'spirit');
         if (amount > 0) this.announceSystemMessage(`치유 정령 · HP +${Math.round(amount)}`, '#72f1a8');
         continue;
       }
       const amount = this.playerState.addShield(request.amount);
+      this.supportSpellVfx?.playShieldGain(
+        amount,
+        this.playerState.shield,
+        50,
+        null,
+        'spirit',
+      );
       if (amount > 0) this.announceSystemMessage(`수호 정령 · 보호막 +${Math.round(amount)}`, UI_SEMANTIC.shield);
     }
   }
