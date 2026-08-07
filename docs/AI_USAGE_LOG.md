@@ -6,6 +6,18 @@
 
 | 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
 |---|---|---|---|---|---|---|
+| 2026-08-07 | 이도원 | Codex + TypeScript/Vite 회귀 | 보상 창 반응형 폭 안정화 | 서로 다른 화면 비율에서 선택 상세 설명의 줄바꿈에 따라 보상 패널 좌우 폭이 바뀌는 현상을 분석하고 기존 데스크톱 외곽 크기를 보존한 viewport 기준 고정 폭으로 교정 | `rewardCardOverlay.ts`, 보상 카드 UI 회귀, 비교 스크린샷 2장 | 전용 회귀와 production build 통과. 선택·상세 높이·카드 강조 계약은 유지했으며 실제 화면 비교 확인은 남음 |
+|---|---|---|---|---|---|---|
+| 2026-08-06 | 이도원 | Codex + TypeScript/Vite 회귀 + 사용자 플레이테스트 | heal·shield·buff 지원 영창 VFX | 보호막 메커니즘은 현행 합산·영구 유지 방식으로 보존하고 전용 상태 동기화 렌더러를 구현. heal·shield·buff에 0.85~1.2배 power 시각 배율을 연결하고, 120ms 안의 중첩 shield는 수치를 건드리지 않은 채 획득 VFX만 최고 power 기준으로 병합. 화면 검토에 따라 heal 확대, shield 전방위화, haste 기존 이동 잔상 재사용도 반영 | `supportSpellVfx.ts`, 설정·회귀, `ProtoScene.ts` 배선 | 신규 회귀 10군, 전체 회귀 110종, TypeScript, production build, diff check 통과. 최종안 승인 완료 |
+| 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
+|---|---|---|---|---|---|---|
+| 2026-08-07 | 이도원 | Codex + OpenAI 이미지 생성 + TypeScript/Vite 회귀 + 사용자 화면 피드백 | 장벽 지형 UI 개선 | 절차적 4개 시안 기각 후 정탑뷰 파손 석판 스프라이트를 연결. PNG 콜라주 느낌은 톤다운·접촉 그림자·파편으로 교정하고, 과도한 배경 동화는 실제 돌 알파를 따르는 이중 외곽으로 보완. 검푸른 폐색막이 과도해 보여 확대폭 11→7%, 알파 0.62→0.36으로 축소 | `terrain-barrier-sealed-stone-game.png`, `ProtoScene.ts`, 장벽 VFX config, 지형 회귀 | 사용자 화면 승인 후 첫 방 강제 DEV 배선을 제거. 충돌 범위·배치 무변경, 절차적 렌더는 로드 실패 fallback으로 보존 |
+| 2026-08-04 | 이도원 | Codex + Git/GitHub CLI + TypeScript/Vite 회귀 | 1차 전투 밸런스 팀 플레이테스트 PR 준비 | #341 병합 후 13개 main 커밋 위로 밸런스 변경을 rebase하고 최신 게임플레이 수정·Gemini 빠른 재시도를 보존. 로컬 Worker 불안정으로 팀원별 완주 검증을 요청하기 위해 DEV 방별 시간 결산을 임시 유지 | 밸런스 브랜치, R1 작업 로그 | 전체 회귀 96종·production build·diff check 통과. 방별 시간 UI는 밸런스 플레이테스트 종료 후 제거 예정이며 shield 구조와 적 공격 외 환경 피해는 후속 범위 |
+| 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
+|---|---|---|---|---|---|---|
+| 2026-08-07 | 이도원 | Codex + 사용자 플레이테스트 + 로컬 브라우저 + TypeScript/Vite 회귀 | 필살영창 전용 UI 초안 | 일반 영창과 같은 입력 패널을 사용하되 필살 진입 시 시각적 위계와 자원 계약을 명확히 구분하고, 축적된 공명 맥락을 입력 화면에 노출 | `index.html`, `ProtoScene.ts`, `room-curse-regression.ts`, `codex/ultimate-incant-ui` | 보라·금색 전용 테마, 출력 100과 마나 무소모·게이지 전량 소비를 중복 없이 표시하고 최근 영창 공명을 노출. 금언 복합 화면과 실제 게이지 누적→필살영창 진입 흐름 플레이테스트 완료. 관련 회귀 3종과 production build 통과 |
+| 날짜 | 담당 | 도구 | 작업 | 프롬프트/지시 요약 | 산출물 | 비고 |
+|---|---|---|---|---|---|---|
 | 2026-08-07 | 이도원 | Codex + 사용자 플레이테스트 + TypeScript/Vite 회귀 | 신규 보스 저항 UI 정보 계층 개편 | 보스 주변의 패턴 설명을 제거하고 실제 적용 중인 원소 저항만 상단 보스 HP 패널에 아이콘과 감소율로 통합. 관통은 기존 최초 1회 순간 안내로 유지하고 보스 행동은 변경하지 않음 | 보스 저항 모델·원소 아이콘·상단 보스바·회귀 테스트, R1 작업 로그 | 임시 기억 보스·이중 저항 훅으로 다중 표시를 플레이 확인한 뒤 제거. 최종 자동 검증 결과는 프로젝트 작업 로그에 기록 |
 | 2026-08-04 | 이도원 | Codex + Git/GitHub CLI + TypeScript/Vite 회귀 | 1차 전투 밸런스 팀 플레이테스트 PR 준비 | #341 병합 후 13개 main 커밋 위로 밸런스 변경을 rebase하고 최신 게임플레이 수정·Gemini 빠른 재시도를 보존. 로컬 Worker 불안정으로 팀원별 완주 검증을 요청하기 위해 DEV 방별 시간 결산을 임시 유지 | 밸런스 브랜치, R1 작업 로그 | 전체 회귀 96종·production build·diff check 통과. 방별 시간 UI는 밸런스 플레이테스트 종료 후 제거 예정이며 shield 구조와 적 공격 외 환경 피해는 후속 범위 |
 | 2026-08-04 | 임재윤 | Codex + TypeScript/Vite 회귀 | #314 간헐 Gemini timeout fallback 완화용 빠른 재시도 | 정상 응답은 대체로 약 2초이나 드물게 6초 timeout 뒤에도 프록시에서 늦게 200이 도착하는 사례가 있어, 전체 대기 연장이 아닌 2.5초 timeout 시 즉시 1회 재시도·총 5초 예산으로 전환. HTTP·할당량·지역 제한·무효 JSON은 재시도하지 않음 | `geminiJudge.ts`, `gemini-timeout-retry-regression.ts`, R2 진행 로그, PR #348 | timeout→재시도 성공, 2회 timeout→fallback, 확정 오류 비재시도 회귀와 기존 judge fallback·spell 회귀, TypeScript, production build, diff check 통과. 외부 Gemini 호출 없음. #314의 Worker 관측 보강은 별도 미완료로 유지 |
