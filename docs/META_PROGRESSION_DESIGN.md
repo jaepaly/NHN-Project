@@ -252,7 +252,7 @@ damage:water:lightning:wave
 fusionGauge.seedCharge(FUSION_CONFIG.fullCharge * 0.25);
 ```
 
-구형 `FusionGauge.tryRelease()` 경로를 연구 완료로 인정할지는 별도 결정한다. 장기적으로 Shift+Enter 필살영창과 구형 자동 융합 방출을 하나의 계약으로 정리한다.
+구형 `FusionGauge.tryRelease()` 자동 융합 방출은 제거한다. 게이지 소비와 연구 완료는 Shift+Enter로 진입해 검증된 `castMode='ultimate'` plan을 실행하는 단일 계약만 사용한다.
 
 ### 4-3. 연구 보상 지급 규칙
 
@@ -772,7 +772,7 @@ P0-C 안정화 후에만 추가한다.
 
 - PR #319 일반·필살 실행 이벤트 계약 확정
 - 일반 시퀀스의 검증된 form spec 전달 형태
-- 필살영창과 구형 `tryRelease`의 장기 통합 방향
+- 필살영창의 명시적 진입·소비 계약 유지
 - 판정 power와 실제 전투 power 분리 시 HUD 문구
 
 ### R3 / 총괄·UI
