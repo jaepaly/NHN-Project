@@ -3,6 +3,8 @@ import { MockJudge } from './mockJudge';
 import { GeminiJudge, JUDGE_PROMPT_VERSION, seedJudgeCache } from './geminiJudge';
 import { CACHE_SEED } from './cacheSeed.generated';
 import { LoggingJudge } from './loggingJudge';
+import { RunRecoveryJudge } from './runRecoveryJudge';
+import { DebugRecoveryRemoteJudge } from './debugRecoveryJudge';
 
 /**
  * 판정기를 선택한다 — GDD §3.5 판정기 추상화.
@@ -29,7 +31,13 @@ export function createJudge(): SpellJudge {
   } catch {
     // localStorage 비활성 등 — 프리워밍은 선택적이므로 게임 진행에 영향 없다.
   }
-  return withDevLogging(new GeminiJudge(proxyUrl));
+  const remote = import.meta.env.DEV && window.location.hash === '#judge-recovery'
+    ? new DebugRecoveryRemoteJudge()
+    : new GeminiJudge(proxyUrl);
+  return withDevLogging(new RunRecoveryJudge(
+    remote,
+    new MockJudge(),
+  ));
 }
 
 /** 개발 모드에서만 판정을 logs/play.jsonl로 기록 (피드백용). 프로덕션은 그대로 반환. */

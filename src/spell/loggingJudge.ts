@@ -65,6 +65,14 @@ export class LoggingJudge implements SpellJudge {
     return this.inner.lastFallbackReason;
   }
 
+  get offlineMode(): boolean | undefined {
+    return this.inner.offlineMode;
+  }
+
+  resetRun(): void {
+    this.inner.resetRun?.();
+  }
+
   async judge(text: string, options?: JudgeOptions): Promise<SpellJudgement> {
     const startedAt = Date.now();
     const j = await this.inner.judge(text, options);
