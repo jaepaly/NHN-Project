@@ -32,7 +32,7 @@ export interface GameSettings {
 export const SETTINGS_CONFIG = {
   storageKey: 'incant:settings:v1',
   /** 한 번 조절에 움직이는 폭 — 조작 횟수와 정밀도의 절충 */
-  step: 0.1,
+  step: 0.01,
   volumeMin: 0,
   volumeMax: 1,
   /** 완전 암전·과다 발광을 막는 밝기 범위 (광과민성 대응이 되레 위험해지면 안 된다) */
@@ -57,26 +57,27 @@ function clamp(value: number, min: number, max: number, fallback: number): numbe
 }
 
 /** 부동소수 누적 오차를 막는다 — 0.1씩 더하면 0.30000000000000004가 화면에 샌다. */
-function round1(value: number): number {
-  return Math.round(value * 10) / 10;
+function roundToStep(value: number): number {
+  const factor = 1 / SETTINGS_CONFIG.step;
+  return Math.round(value * factor) / factor;
 }
 
 export function normalizeSettings(raw: Partial<GameSettings> | null | undefined): GameSettings {
   const c = SETTINGS_CONFIG;
   return {
-    sfxVolume: round1(clamp(
+    sfxVolume: roundToStep(clamp(
       raw?.sfxVolume ?? DEFAULT_SETTINGS.sfxVolume,
       c.volumeMin, c.volumeMax, DEFAULT_SETTINGS.sfxVolume,
     )),
-    bgmVolume: round1(clamp(
+    bgmVolume: roundToStep(clamp(
       raw?.bgmVolume ?? DEFAULT_SETTINGS.bgmVolume,
       c.volumeMin, c.volumeMax, DEFAULT_SETTINGS.bgmVolume,
     )),
-    brightness: round1(clamp(
+    brightness: roundToStep(clamp(
       raw?.brightness ?? DEFAULT_SETTINGS.brightness,
       c.brightnessMin, c.brightnessMax, DEFAULT_SETTINGS.brightness,
     )),
-    vfxBrightness: round1(clamp(
+    vfxBrightness: roundToStep(clamp(
       raw?.vfxBrightness ?? DEFAULT_SETTINGS.vfxBrightness,
       c.vfxBrightnessMin, c.vfxBrightnessMax, DEFAULT_SETTINGS.vfxBrightness,
     )),
@@ -85,10 +86,28 @@ export function normalizeSettings(raw: Partial<GameSettings> | null | undefined)
 
 export type SettingKey = keyof GameSettings;
 
+/** 설정별 슬라이더 범위의 단일 출처 — 타이틀과 ESC가 같은 조작 범위를 쓴다. */
+export function settingRange(key: SettingKey): { min: number; max: number } {
+  if (key === 'brightness') {
+    return { min: SETTINGS_CONFIG.brightnessMin, max: SETTINGS_CONFIG.brightnessMax };
+  }
+  if (key === 'vfxBrightness') {
+    return { min: SETTINGS_CONFIG.vfxBrightnessMin, max: SETTINGS_CONFIG.vfxBrightnessMax };
+  }
+  return { min: SETTINGS_CONFIG.volumeMin, max: SETTINGS_CONFIG.volumeMax };
+}
+
+/** 슬라이더 비율을 저장 가능한 0.01 단위 설정값으로 바꾼다. */
+export function settingValueFromRatio(key: SettingKey, ratio: number): number {
+  const { min, max } = settingRange(key);
+  const clampedRatio = Math.min(1, Math.max(0, ratio));
+  return roundToStep(min + (max - min) * clampedRatio);
+}
+
 /** 화면에 쓰는 표시값 — 밝기 계열은 배율(×1.0), 볼륨은 백분율. */
 export function settingDisplay(settings: GameSettings, key: SettingKey): string {
   if (key === 'brightness' || key === 'vfxBrightness') {
-    return `×${settings[key].toFixed(1)}`;
+    return `×${settings[key].toFixed(2)}`;
   }
   return `${Math.round(settings[key] * 100)}%`;
 }

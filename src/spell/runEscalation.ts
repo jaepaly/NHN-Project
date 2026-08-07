@@ -67,11 +67,28 @@ export function runEscalationProfile(memory: RunMemory): RunEscalationProfile {
 }
 
 /**
- * 최근 과의존 폼 — recentDominantForms에서 중복 제거.
+ * 최근 과의존 폼 — recentDominantForms의 최빈 1종만 선택한다.
+ * 동률이면 최근 런의 대표 폼을 우선해 현재 플레이 성향을 반영한다. 여러 폼을
+ * 두루 사용했다는 이유로 약화 대상이 계속 누적되는 것은 다양성 유도와 충돌한다.
  * 구버전 프로필(폼 이력 없음)은 빈 배열 → 데이터가 쌓일 때까지 약화 없음.
  * 원소 시절의 favoriteElement 폴백 같은 대체 축은 두지 않는다 — 잘못된 축으로
  * 벌하느니 한 런 쉬는 게 낫다.
  */
 function overRelliedForms(memory: RunMemory): SpellForm[] {
-  return [...new Set(memory.recentDominantForms)];
+  const counts = new Map<SpellForm, number>();
+  for (const form of memory.recentDominantForms) {
+    counts.set(form, (counts.get(form) ?? 0) + 1);
+  }
+
+  let selected: SpellForm | null = null;
+  let selectedCount = 0;
+  for (let index = memory.recentDominantForms.length - 1; index >= 0; index -= 1) {
+    const form = memory.recentDominantForms[index];
+    const count = counts.get(form) ?? 0;
+    if (count > selectedCount) {
+      selected = form;
+      selectedCount = count;
+    }
+  }
+  return selected ? [selected] : [];
 }
