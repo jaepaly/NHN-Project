@@ -151,12 +151,33 @@ assert.equal(
     '함정방에서는 바닥지형을 비워야 한다 — 이전 방 것이 남으면 안 된다',
   );
 
-  // DEV 프리뷰 말고 **실런 경로**에서 부른다 — 종전 실패가 정확히 이것이었다
+  // **실런 경로**에서 부른다 — 종전 실패가 정확히 이것이었다
   const calls = scene.match(/this\.setFloorHazards\(/g) ?? [];
   assert.ok(
-    calls.length >= 3,
+    calls.length >= 2,
     `setFloorHazards 호출이 ${calls.length}곳뿐이다 —`
-    + ' DEV 프리뷰 1곳 + 실런 경로 2곳(적용·함정방 비우기)이 있어야 한다',
+      + ' 실런 경로 2곳(적용·함정방 비우기)이 있어야 한다',
+  );
+  assert.ok(
+    /playFloorHazardDamageFeedback\(kind\)/.test(scene)
+      && /playFloorHazardTick\(kind\)/.test(scene),
+    '용암·독 틱은 플레이어 시각·청각 피드백 경로를 함께 타야 한다',
+  );
+  assert.ok(
+    /floorHazardPlayer\.linger\.poison > 0/.test(scene)
+      && /clearFloorHazardPoisonAura\(\)/.test(scene),
+    '독 잔류 오라는 linger 동안 유지되고 정화·방 전환 시 정리되어야 한다',
+  );
+  assert.ok(
+    /playHitReact\(this, this\.player, this\.playerBody, 0x5abf68\)/.test(scene)
+      && /setPlayerPoisonTint\(true\)/.test(scene)
+      && /setPlayerPoisonTint\(false\)/.test(scene),
+    '독 틱은 플래시·표준 스퀴시를 주고 잔류 시작·종료에 플레이어 색조를 전환해야 한다',
+  );
+  const audio = readFileSync('src/audio/gameAudio.ts', 'utf8');
+  assert.ok(
+    /playFloorHazardTick\(kind: 'lava' \| 'poison'\)/.test(audio),
+    '바닥 지속 피해는 일반 피격과 구분되는 낮은 전용 재생 경로를 가져야 한다',
   );
 }
 
@@ -256,5 +277,5 @@ assert.equal(
 }
 
 console.log(
-  'floor hazard wiring regression: 원형통과·도착출구보호·반경상한·씬배선·기본배치안전·오라벨금지 6군 통과',
+  'floor hazard wiring regression: 원형통과·도착출구보호·반경상한·씬배선·피드백·기본배치안전·오라벨금지 7군 통과',
 );

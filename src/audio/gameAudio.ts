@@ -112,6 +112,7 @@ export class GameAudio {
   private currentBgm: BgmName | null = null;
   private bgmGeneration = 0;
   private readonly lastSfxAt = new Map<SfxName, number>();
+  private lastHazardTickAt = -Infinity;
   /** 설정의 볼륨 — 일시정지 메뉴에서 조절하면 applySettings로 들어온다 */
   private settings: GameSettings = { ...DEFAULT_SETTINGS };
 
@@ -192,6 +193,17 @@ export class GameAudio {
     this.lastSfxAt.set(name, now);
     this.scene.sound.play(SFX_KEYS[name], {
       volume: MASTER_VOLUME * this.settings.sfxVolume * policy.volumeScale,
+    });
+  }
+
+  /** 바닥 지속 피해는 일반 타격보다 낮고 둔하게 들려 원인을 구분한다. */
+  playFloorHazardTick(kind: 'lava' | 'poison'): void {
+    const now = this.scene.time.now;
+    if (now - this.lastHazardTickAt < 180) return;
+    this.lastHazardTickAt = now;
+    this.scene.sound.play(SFX_KEYS['player-hit'], {
+      volume: MASTER_VOLUME * this.settings.sfxVolume * (kind === 'lava' ? 0.58 : 0.38),
+      detune: kind === 'lava' ? -140 : -420,
     });
   }
 

@@ -56,8 +56,8 @@ import {
 
 // ── 3) 표시는 배율로 — 볼륨(%)과 섞이면 안 된다 ─────────────────────────────
 {
-  assert.equal(settingDisplay(normalizeSettings({ vfxBrightness: 0.5 }), 'vfxBrightness'), '×0.5');
-  assert.equal(settingDisplay(normalizeSettings({ vfxBrightness: 1 }), 'vfxBrightness'), '×1.0');
+  assert.equal(settingDisplay(normalizeSettings({ vfxBrightness: 0.5 }), 'vfxBrightness'), '×0.50');
+  assert.equal(settingDisplay(normalizeSettings({ vfxBrightness: 1 }), 'vfxBrightness'), '×1.00');
   assert.equal(settingDisplay(normalizeSettings({ sfxVolume: 0.8 }), 'sfxVolume'), '80%');
 }
 
@@ -155,11 +155,12 @@ import {
 //
 // 설정 화면에서 둘이 같은 설명을 달고 있으면 플레이어가 무엇을 내려야 할지 모른다.
 {
-  const overlay = readFileSync('src/ui/settingsOverlay.ts', 'utf8');
-  assert.ok(/key: 'vfxBrightness'/.test(overlay), '설정 행이 있어야 한다');
-  const rows = overlay.match(/\{ key: '(?:brightness|vfxBrightness)'[^}]*\}/g) ?? [];
+  const panel = readFileSync('src/ui/gameSettingsPanel.ts', 'utf8');
+  assert.ok(/key: 'vfxBrightness'/.test(panel), '설정 행이 있어야 한다');
+  const rows = panel.match(/\{ key: '(?:brightness|vfxBrightness)'[^}]*\}/g) ?? [];
   assert.equal(rows.length, 2, '밝기 행이 둘이어야 한다');
-  const hints = rows.map((row) => row.match(/hint: '([^']*)'/)?.[1] ?? '');
+  const hints = rows.map((row) => row.includes('vfxBrightness') ? 'effects' : 'world');
+  assert.match(panel, /settingRange\(row\.key\)/, '두 축은 공유 범위 규칙으로 구분돼야 한다');
   assert.notEqual(hints[0], hints[1], '두 행의 설명이 달라야 한다 — 무엇을 내릴지 구분되어야 한다');
 }
 

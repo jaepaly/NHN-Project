@@ -6,6 +6,7 @@ import {
   normalizeSettings,
   saveSettings,
   settingDisplay,
+  settingValueFromRatio,
 } from '../src/run/gameSettings';
 
 // 1) 기본값 — 범위 안이고 밝기는 현행 체감 유지(1.0)
@@ -29,14 +30,17 @@ assert.equal(normalizeSettings({ bgmVolume: 0.2 }).sfxVolume, d.sfxVolume);
 // 6) 표시값 — 볼륨은 %, 밝기는 배율. 부동소수 잔재가 안 보인다
 assert.equal(settingDisplay({ ...d, sfxVolume: 0.7 }, 'sfxVolume'), '70%');
 assert.equal(settingDisplay({ ...d, bgmVolume: 0 }, 'bgmVolume'), '0%');
-assert.equal(settingDisplay({ ...d, brightness: 1 }, 'brightness'), '×1.0');
-assert.equal(settingDisplay({ ...d, brightness: 0.7 }, 'brightness'), '×0.7');
+assert.equal(settingDisplay({ ...d, brightness: 1 }, 'brightness'), '×1.00');
+assert.equal(settingDisplay({ ...d, brightness: 0.7 }, 'brightness'), '×0.70');
 // 부동소수 잔재가 표시에 새지 않는다 — 정규화가 0.1 격자로 반올림한다
 assert.equal(
   settingDisplay(normalizeSettings({ sfxVolume: 0.30000000000000004 }), 'sfxVolume'),
   '30%',
   '부동소수 오차가 화면에 안 샌다',
 );
+assert.equal(SETTINGS_CONFIG.step, 0.01, '드래그와 저장의 최소 단위는 1%여야 한다');
+assert.equal(normalizeSettings({ sfxVolume: 0.376 }).sfxVolume, 0.38, '저장값은 0.01 단위로 정리한다');
+assert.equal(settingValueFromRatio('sfxVolume', 0.376), 0.38, '슬라이더도 저장값과 같은 0.01 단위를 쓴다');
 
 // 7) 저장 왕복 + 손상 방어
 const mem = new Map<string, string>();
