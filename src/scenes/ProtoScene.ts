@@ -202,6 +202,7 @@ import {
   WaveManager,
 } from '../combat-core/waves/waveManager';
 import type { WaveDefinition } from '../combat-core/waves/waveManager';
+import { waveSpawnPositions, waveSpawnSeed } from '../combat-core/waves/waveSpawn';
 import { resolveEliteAssignments } from '../combat-core/waves/encounterPresets';
 import { CombatRunController } from '../combat-core/run/runController';
 import { ELITE_MODIFIERS } from '../combat-core/run/encounterConfig';
@@ -5079,8 +5080,33 @@ export class ProtoScene extends Phaser.Scene {
       );
       this.eliteSpawnIndex = 0;
     }
+    const encounter = this.combatRunController.state;
+    const margin = WAVE_CONFIG.spawnBoundaryMargin;
+    const positions = waveSpawnPositions({
+      playerX: this.player.x,
+      playerY: this.player.y,
+      count: sequence.length,
+      minDistance: WAVE_CONFIG.spawnMinDistance,
+      maxDistance: WAVE_CONFIG.spawnMaxDistance,
+      minimumSeparation: WAVE_CONFIG.spawnMinimumSeparation,
+      bounds: {
+        left: this.worldBounds.left + margin,
+        right: this.worldBounds.right - margin,
+        top: this.worldBounds.top + margin,
+        bottom: this.worldBounds.bottom - margin,
+      },
+      seed: waveSpawnSeed(
+        this.currentMapSeed ?? 0,
+        encounter.encounterId,
+        this.waveManager.currentWaveNumber,
+      ),
+      isAllowed: ({ x, y }) => {
+        const pushed = pushOutOfBlocks(x, y, 24, this.terrainBarriers);
+        return Math.hypot(pushed.x - x, pushed.y - y) < 0.01;
+      },
+    });
     sequence.forEach((kind, index) => {
-      const position = this.waveSpawnPosition(index, sequence.length);
+      const position = positions[index];
       this.spawnEnemy(kind, position.x, position.y, true);
     });
     if (definition.hazard && this.hazardZones.length === 0) this.spawnHazards();
@@ -5283,22 +5309,6 @@ if (applied) this.playPlayerHit();
       hazard.onDamage?.();
       hazard.damageCooldown = 0.75;
     }
-  }
-
-  private waveSpawnPosition(index: number, total: number): Phaser.Math.Vector2 {
-    const angleOffset = this.waveManager.currentWaveNumber * (Math.PI / 7);
-    const angle = angleOffset - Math.PI / 2 + (Math.PI * 2 * index) / total;
-    const x = Phaser.Math.Clamp(
-      this.player.x + Math.cos(angle) * WAVE_CONFIG.spawnDistance,
-      this.worldBounds.left + 80,
-      this.worldBounds.right - 80,
-    );
-    const y = Phaser.Math.Clamp(
-      this.player.y + Math.sin(angle) * WAVE_CONFIG.spawnDistance,
-      this.worldBounds.top + 80,
-      this.worldBounds.bottom - 80,
-    );
-    return new Phaser.Math.Vector2(x, y);
   }
 
   /**
