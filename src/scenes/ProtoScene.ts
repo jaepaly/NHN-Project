@@ -137,6 +137,7 @@ import { showBossChoice, showDemoCompletionChoice } from '../ui/bossChoiceOverla
 import { showSystemBanner } from '../render/systemBanner';
 import { bossResistanceReadout } from '../render/bossResistanceReadout';
 import { playAwakeningBrandMark, playAwakeningSigil } from '../render/awakeningSigil';
+import { SupportSpellVfx } from '../render/supportSpellVfx';
 import {
   PARTICLE_TEXTURES, ensureParticleTextures, particleKey,
 } from '../render/particleTextures';
@@ -723,8 +724,8 @@ export class ProtoScene extends Phaser.Scene {
   private playerBody!: Phaser.GameObjects.Image | Phaser.GameObjects.Arc;
   /** 최근 이동 방향 — 돌진(dash) 방향 결정에 쓴다. */
   private readonly lastMoveDir = new Phaser.Math.Vector2(0, 0);
-  /** 활성 자기 강화 오라 (한 번에 하나) */
-  private buffAura: Phaser.GameObjects.Arc | null = null;
+  /** 회복·보호막·자기 강화의 상태 동기화형 연출. */
+  private supportSpellVfx: SupportSpellVfx | null = null;
   private playerState = new PlayerCombatState();
   private readonly spellHistory = new SpellHistory();
   private metaProfile = loadMetaProfile();
@@ -1404,6 +1405,7 @@ export class ProtoScene extends Phaser.Scene {
 
     this.drawBackdrop(this.worldBounds.width, this.worldBounds.height);
     this.createPlayer(startX, startY);
+    this.supportSpellVfx = new SupportSpellVfx(this, this.player);
     this.growthMarks = new GrowthMarks(this);
     this.cameras.main
       .setBounds(
@@ -1558,6 +1560,14 @@ export class ProtoScene extends Phaser.Scene {
       if (this.practiceRun) this.playerState.restoreMana(this.playerState.maxMana);
       this.basicAttackCooldownRemaining = Math.max(0, this.basicAttackCooldownRemaining - d);
       this.updatePlayerMovement(d);
+      this.supportSpellVfx?.update(
+        d,
+        this.playerState.shield,
+        this.playerState.maxHp,
+        this.playerState.activeBuffs(),
+        Object.values(this.moveKeys).some((key) => key.isDown),
+        this.lastMoveDir,
+      );
       this.updateRoomCurse(delta / 1000, d);
       this.updatePlayerAura(d);
       this.updateEnemyControls(d);
@@ -1933,6 +1943,9 @@ export class ProtoScene extends Phaser.Scene {
     }
     const scale = loopDamageScale(this.combatRunController.state.loopIndex);
     const result = this.playerState.takeDamage(amount * scale);
+    if (result.shieldDamage > 0) {
+      this.supportSpellVfx?.playShieldHit(result.shieldDamage, this.playerState.shield <= 0);
+    }
     if (result.hpDamage > 0) this.audio.playSfx('player-hit');
     return result;
   }
@@ -2681,6 +2694,7 @@ export class ProtoScene extends Phaser.Scene {
     this.hazardDecorations = [];
     this.activeWalls = [];
     this.activeOrbits = [];
+    this.supportSpellVfx = null;
     // 충전 핍 — 늦은 생성이라 파괴된 참조가 남으면 재입장 첫 프레임에 죽은 객체를 만진다
     this.researchChargePipsGfx = null;
     this.researchChargePipsKey = '';
@@ -2776,6 +2790,7 @@ export class ProtoScene extends Phaser.Scene {
     this.clearSpiritViews();
     this.growthMarks.reset();
     this.playerState.reset();
+    this.supportSpellVfx?.reset();
     // 제단 능력도 비운다 — 그래야 다음 런 제단이 다시 의미를 갖는다
     this.echoUnlocked = false;
     this.starburstUnlocked = false;
@@ -2852,6 +2867,7 @@ export class ProtoScene extends Phaser.Scene {
     this.spiritManager.reset();
     this.clearSpiritViews();
     this.playerState.reset();
+    this.supportSpellVfx?.reset();
     this.runMovementDistance = 0;
     this.resetMapGraph();
     this.combatRunController.reset(Date.now(), false);
@@ -2894,6 +2910,7 @@ export class ProtoScene extends Phaser.Scene {
     this.growthMarks.reset();
     this.engraveRewardRand = createRunRandom(Date.now());
     this.playerState.reset();
+    this.supportSpellVfx?.reset();
     this.runMovementDistance = 0;
     this.resetMapGraph();
     this.prepareRunEscalation();
@@ -7511,6 +7528,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       ?? new Phaser.Math.Vector2(this.player.x, this.player.y - 20);
     if (spec.effect === 'heal') {
       const healed = this.playerState.heal(spellHealFromPower(spec.power));
+      this.supportSpellVfx?.playHeal(
+        healed,
+        this.playerState.maxHp,
+        spec.power,
+        spec.element_primary,
+        'spell',
+      );
       this.announceSystemMessage(`회복 +${Math.round(healed)} HP`, '#72f1a8');
       return;
     }
@@ -7522,6 +7546,13 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     if (spec.effect === 'shield') {
       const shielded = this.playerState.addShield(
         spellShieldFromPower(spec.power) * (options?.shieldAmountScale ?? 1),
+      );
+      this.supportSpellVfx?.playShieldGain(
+        shielded,
+        this.playerState.shield,
+        spec.power,
+        spec.element_primary,
+        'spell',
       );
       this.announceSystemMessage(`보호막 +${Math.round(shielded)}`, UI_SEMANTIC.shield);
       return;
@@ -7652,7 +7683,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private castSelfBuff(spec: SpellSpec): void {
     const outcome = resolveSelfBuff(spec.element_primary, spec.name, spec.power);
     this.playerState.applyTimedBuff(outcome.buff, outcome.multiplier, outcome.seconds);
-    this.showBuffAura(outcome.color, outcome.seconds);
+    this.supportSpellVfx?.playBuffCast(outcome.buff, spec.power, spec.element_primary);
     const magnitude = outcome.buff === 'ward'
       ? (outcome.multiplier <= 0 ? '무적' : `피해 −${Math.round((1 - outcome.multiplier) * 100)}%`)
       : `+${Math.round((outcome.multiplier - 1) * 100)}%`;
@@ -7660,24 +7691,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       `${outcome.label} · ${magnitude} · ${outcome.seconds.toFixed(1)}s`,
       paletteColorToCss(outcome.color),
     );
-  }
-
-  /** 활성 버프 오라 — 플레이어 컨테이너 뒤에 색으로 표시, 지속시간 후 소멸. */
-  private showBuffAura(color: number, seconds: number): void {
-    this.buffAura?.destroy();
-    const aura = this.add.circle(0, 0, 28, color, 0.22).setBlendMode(Phaser.BlendModes.ADD);
-    this.player.addAt(aura, 0);
-    this.buffAura = aura;
-    this.tweens.add({
-      targets: aura,
-      scale: { from: 1, to: 1.28 },
-      alpha: { from: 0.3, to: 0.12 },
-      yoyo: true, repeat: -1, duration: 650, ease: 'Sine.easeInOut',
-    });
-    this.time.delayedCall(seconds * 1000, () => {
-      if (aura.active) aura.destroy();
-      if (this.buffAura === aura) this.buffAura = null;
-    });
   }
 
   /** 살아 있는 적이 하나라도 있는가 — 빈 방에서 자동 시전을 막는 조건 */
@@ -7871,10 +7884,18 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       view?.pulse(this);
       if (request.kind === 'heal') {
         const amount = this.playerState.heal(request.amount);
+        this.supportSpellVfx?.playHeal(amount, this.playerState.maxHp, 50, 'light', 'spirit');
         if (amount > 0) this.announceSystemMessage(`치유 정령 · HP +${Math.round(amount)}`, '#72f1a8');
         continue;
       }
       const amount = this.playerState.addShield(request.amount);
+      this.supportSpellVfx?.playShieldGain(
+        amount,
+        this.playerState.shield,
+        50,
+        null,
+        'spirit',
+      );
       if (amount > 0) this.announceSystemMessage(`수호 정령 · 보호막 +${Math.round(amount)}`, UI_SEMANTIC.shield);
     }
   }
