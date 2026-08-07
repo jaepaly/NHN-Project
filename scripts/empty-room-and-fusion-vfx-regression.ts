@@ -147,10 +147,10 @@ const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
     '기본값은 꺼짐이어야 한다 — 필살기만 특별하다',
   );
 
-  // 씬이 융합 방출일 때만 넘긴다
+  // 일반 단일 영창을 자동 융합 방출로 격상하는 레거시 경로는 없어야 한다.
   assert.ok(
-    scene.includes('fusedSpec ? { fusionRelease: true } : undefined'),
-    '융합 방출일 때만 플래그를 넘겨야 한다',
+    !scene.includes('fusedSpec') && !scene.includes('fusionGauge.tryRelease'),
+    '일반 단일 영창이 자동으로 게이지를 소비하면 안 된다',
   );
   // 에코·파문에는 넘기지 않는다 — 같은 시전의 **반복**이라 한 번의 필살기로 연출이 4개가 된다
   const echoAt = scene.indexOf('this.scheduleSpellEcho(effectiveSpec)');

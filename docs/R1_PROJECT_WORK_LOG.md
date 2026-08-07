@@ -3624,3 +3624,9 @@
 - 이전 런의 늦은 복구 응답이 새 런의 상태를 변경하지 않도록 런 세대값을 둔다. 강제 `VITE_JUDGE_MOCK=1`은 기존처럼 복구 요청 없는 순수 MockJudge 경로로 유지한다.
 - 모드 유지 중에는 좌측 상단 행동 상태 옆에 황색 `오프라인 판정 · 연결 확인 중` 배지만 지속 표시하고 전환·복구 토스트는 추가하지 않았다. DEV `#judge-recovery`는 첫 두 영창을 fallback 처리하고 다음 영창의 복구 확인을 2.5초 뒤 성공시켜 외부 장애 없이 흐름을 볼 수 있다.
 - 전용 회귀 8군에서 임계치, 즉시 로컬 반환, 단일 probe, 다음 영창 복귀, 연속성 초기화, 실패 재시도, 런 리셋 경쟁 상태와 UI 배선을 검증했다. 기존 `test:judge-fallback`, `test:judge-retry`, `test:playlog`, 전체 회귀 110종, production build와 `git diff --check`를 통과했다. 실제 Gemini 장애 호출 대신 DEV 재현 모드를 사용했으며 사용자가 2회 fallback 이후 전환, 지속 배지, MockJudge 우선 실행과 자동 복구 흐름의 수동 테스트를 완료했다.
+# [R1] 필살 게이지 오소비·판정 후 이동키 유실 수정 (2026-08-07)
+
+- 브랜치: `codex/fix-cast-input-glitches`. MockJudge 단일 `SpellSpec` 경로에서 만충 게이지와 보조 원소가 만나면 일반 Enter 영창도 구형 `FusionGauge.tryRelease()`가 필살 방출로 격상해 게이지를 소모하던 원인을 확인했다. Gemini가 주로 `SpellPlan`을 반환하는 현재 계약과 달리 Mock 단일 경로에서만 쉽게 재현되던 이유다.
+- 구형 자동 융합 방출과 전용 단일 주문 연출을 제거했다. 이제 게이지는 일반 영창으로 충전되며, Shift+Enter로 필살영창에 진입하고 검증된 `castMode='ultimate'` plan이 실행될 때 `consumeUltimate()`에서만 소비된다. 일반·Mock 단일 영창의 원소 수와 판정 형태는 소비 조건이 아니다. 메타 진행 설계 문서도 이 단일 계약으로 갱신했다.
+- 판정 시작의 `resetMovementKeys()`가 Phaser의 `isDown`을 강제로 지운 뒤, DOM 입력 전환에서 브라우저가 이미 누른 WASD의 새 keydown을 Phaser에 전달하지 않으면 키를 놓았다 다시 누를 때까지 이동이 끊겼다. window capture 단계에서 실제 WASD keydown/keyup을 별도 추적하고 이동 판정에서 Phaser 상태와 합성했으며, 판정 시작에서는 이동 상태를 지우지 않는다. 영창창 진입·일시정지·방 전환·scene 종료의 명시적 초기화는 유지한다.
+- 검증: 신규 `test:physical-movement`, 개편 `test:fusion`, 기존 `test:slowmoscope`, `test:sequence`, `test:judge-fallback`, `test:emptyroomfusionvfx`가 통과했다. 전체 회귀 110종과 TypeScript/Vite production build, `git diff --check`도 통과했다. 이후 사용자가 인게임에서 두 글리치가 수정된 상태를 확인했다. 외부 Gemini 직접 호출은 수행하지 않았다.

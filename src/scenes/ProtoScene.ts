@@ -39,6 +39,7 @@ import {
 } from '../render/roomBackdropConfig';
 import type { RoomBackdropPalette } from '../render/roomBackdropConfig';
 import { PlayerCombatState } from '../combat-core/player/playerCombatState';
+import { PhysicalMovementState } from '../combat-core/player/physicalMovementState';
 import { ChaserEnemy } from '../combat-core/enemies/chaserEnemy';
 import { ShooterEnemy } from '../combat-core/enemies/shooterEnemy';
 import { SplitterEnemy } from '../combat-core/enemies/splitterEnemy';
@@ -858,6 +859,14 @@ export class ProtoScene extends Phaser.Scene {
     },
   });
   private moveKeys!: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
+  private readonly physicalMovement = new PhysicalMovementState();
+  private readonly onPhysicalMoveKeyDown = (event: KeyboardEvent): void => {
+    this.physicalMovement.keyDown(event.code);
+  };
+  private readonly onPhysicalMoveKeyUp = (event: KeyboardEvent): void => {
+    this.physicalMovement.keyUp(event.code);
+  };
+  private readonly onPhysicalMoveBlur = (): void => this.physicalMovement.reset();
   private worldBounds = new Phaser.Geom.Rectangle();
   private enemies: CombatEnemy[] = [];
   /** 화면 중앙에 떠 있는 시스템 메시지들 — 세로 스택으로 겹침 방지 */
@@ -1424,6 +1433,15 @@ export class ProtoScene extends Phaser.Scene {
       left: Phaser.Input.Keyboard.KeyCodes.A,
       right: Phaser.Input.Keyboard.KeyCodes.D,
     }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
+    window.addEventListener('keydown', this.onPhysicalMoveKeyDown, true);
+    window.addEventListener('keyup', this.onPhysicalMoveKeyUp, true);
+    window.addEventListener('blur', this.onPhysicalMoveBlur);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      window.removeEventListener('keydown', this.onPhysicalMoveKeyDown, true);
+      window.removeEventListener('keyup', this.onPhysicalMoveKeyUp, true);
+      window.removeEventListener('blur', this.onPhysicalMoveBlur);
+      this.physicalMovement.reset();
+    });
     this.createHud(width, height);
     // 밝기 막은 createHud(→createPauseMenu)에서 만들어지므로 그 뒤에 적용한다
     this.applyBrightness();
@@ -3631,8 +3649,10 @@ export class ProtoScene extends Phaser.Scene {
     if (this.incanting || !this.playerState.alive) return;
 
     const direction = new Phaser.Math.Vector2(
-      Number(this.moveKeys.right.isDown) - Number(this.moveKeys.left.isDown),
-      Number(this.moveKeys.down.isDown) - Number(this.moveKeys.up.isDown),
+      Number(this.moveKeys.right.isDown || this.physicalMovement.isDown('right'))
+        - Number(this.moveKeys.left.isDown || this.physicalMovement.isDown('left')),
+      Number(this.moveKeys.down.isDown || this.physicalMovement.isDown('down'))
+        - Number(this.moveKeys.up.isDown || this.physicalMovement.isDown('up')),
     );
     if (direction.lengthSq() === 0) return;
 
@@ -6257,6 +6277,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   /** DOM 입력으로 포커스를 넘길 때 Phaser가 놓친 keyup이 이동 상태에 남지 않게 한다. */
   private resetMovementKeys(): void {
     Object.values(this.moveKeys).forEach((key) => key.reset());
+    this.physicalMovement.reset();
   }
 
   private openIncant(castMode: 'normal' | 'ultimate' = 'normal'): void {
@@ -6459,7 +6480,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private beginJudging(): void {
-    this.resetMovementKeys();
     this.incanting = false;
     this.casting = true;
     this.setTimeScale(0.15);
@@ -6685,17 +6705,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
 
       const spec = judgement.spell;
-      // 필살기(융합 게이지) — 만충 + 이중 원소 판정이면 이 시전이 융합 방출로 격상된다.
-      // 방출 시전은 충전하지 않는다(리셋 직후 자기 마나로 재충전 방지).
-      //
-      // **마나 검사보다 먼저** 판정한다(총괄 결정: 필살기는 마나 소모 없음).
-      // 자원은 게이지 자체다 — 순서가 반대면 마나가 바닥일 때 만충 필살기가
-      // 거부되는 모순이 생긴다. 다 떨어졌을 때 뒤집는 한 방이 필살기의 존재 이유다.
-      const fusedSpec = this.fusionGauge.tryRelease(spec);
       // 감쇠 시전 — 마나 부족은 거부가 아니라 잦아든 주문 (바닥 미만일 때만 거부)
-      const castPlan = fusedSpec
-        ? { spend: 0, ratio: 1 }
-        : degradedCastPlan(spec.cost, this.playerState.mana);
+      const castPlan = degradedCastPlan(spec.cost, this.playerState.mana);
       if (!castPlan) {
         this.audio.playSfx('fizzle');
         this.announceManaShortage(spec.cost);
@@ -6708,7 +6719,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         this.reportResearchAdvance(previousResearch);
       }
 
-      if (!fusedSpec && this.fusionGauge.charge(castPlan.spend, {
+      if (this.fusionGauge.charge(castPlan.spend, {
         name: spec.name,
         elements: [spec.element_primary, ...(spec.element_secondary ? [spec.element_secondary] : [])],
         forms: [spec.form],
@@ -6726,8 +6737,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.clearIncantGuide();
 
       // 바닥지형 정화 — 판정이 준 원소·효과가 이 방의 지형을 카운터하면 면역을 준다 (#239).
-      // 융합본이 있으면 실제로 나가는 쪽(fusedSpec)의 원소로 판정한다.
-      this.tryCleanseFloorHazard(fusedSpec ?? spec);
+      this.tryCleanseFloorHazard(spec);
 
       const historyEntry = this.spellHistory.record({
         rawText: text,
@@ -6758,7 +6768,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         priorCasts.map((e) => ({ element: e.elementPrimary, form: e.form })),
         variationDiversityMaxBonus(this.runResearchTracker.snapshot().research),
       );
-      // 융합 방출은 페널티·친화·감쇠 체인을 덮는 고정 최대치 — "최대 방출"의 약속
       // 각성 — 수동 경로이므로 auto=false. 인장은 시전마다 발치에 잠깐 새겨진다
       // (밝기가 아니라 형태로 구분 — 친화 VFX는 이미 강도 상한이다).
       const awakened = awakeningFor(this.awakenings, spec, false);
@@ -6766,7 +6775,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         playAwakeningSigil(this, this.player.x, this.player.y, spec.element_primary, awakened);
       }
       const searing = awakened === 'searing';
-      const effectiveSpec: SpellSpec = fusedSpec ?? {
+      const effectiveSpec: SpellSpec = {
         ...spec,
         status: searing ? searingStatus(spec) : spec.status,
         power: Math.round(
@@ -6776,7 +6785,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
           * castPlan.ratio, // 감쇠 시전 — 모자란 마나만큼 잦아든다
         ),
       };
-      if (fusedSpec) this.playFusionRelease(fusedSpec);
       // [dev] 실뎀 breakdown 로깅 — "같은 속성 뎀감" 스택 진단용 (logs/play.jsonl, 읽기전용)
       if (import.meta.env.DEV) {
         const base = historyEntry.basePower;
@@ -6843,30 +6851,24 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.announceSpell(effectiveSpec);
       this.recordSpellLog(
         'manual',
-        this.spellLogLabel(effectiveSpec, fusedSpec ? '필살' : undefined),
+        this.spellLogLabel(effectiveSpec),
         effectiveSpec.element_primary,
       );
-      const fusionOptions = fusedSpec ? { fusionRelease: true } : undefined;
-      const researchSpatialScale = fusedSpec
-        ? 1
-        : elementalFocusSpatialScale(
-          this.runResearchTracker.snapshot().research,
-          effectiveSpec,
-        );
-      // 필살기면 친화 연출이 보조 원소까지 순차로 그린다 (총괄 지시).
-      // 에코·파문은 넘기지 않는다 — 그 둘은 같은 시전의 **반복**이라 여기까지 두
-      // 원소를 뿌리면 한 번의 필살기로 연출이 4개가 된다.
+      const researchSpatialScale = elementalFocusSpatialScale(
+        this.runResearchTracker.snapshot().research,
+        effectiveSpec,
+      );
       this.applySpellEffect(
         effectiveSpec,
         undefined,
         false,
         0,
-        fusionOptions ?? {
+        {
           rangeScale: researchSpatialScale,
           radiusScale: researchSpatialScale,
         },
       );
-      if (castMode === 'normal' && !fusedSpec) {
+      if (castMode === 'normal') {
         this.scheduleElementalResearchEcho([effectiveSpec]);
         this.scheduleVariationWave(effectiveSpec);
         this.recordManualPowerForResonance([effectiveSpec]);
@@ -9852,49 +9854,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       });
     }
     this.activeSummons = survivors;
-  }
-
-  /**
-   * 융합 방출 대연출 — 게이지 만충의 카타르시스. 두 원소의 팔레트가 교차하는
-   * 이중 링 + 스파크 폭발 + 강한 셰이크. 판정 영역과 무관한 순수 오버레이.
-   */
-  private playFusionRelease(spec: SpellSpec): void {
-    const primary = ELEMENT_PALETTES[spec.element_primary];
-    const secondary = ELEMENT_PALETTES[spec.element_secondary ?? spec.element_primary];
-    const x = this.player.x;
-    const y = this.player.y;
-    requestCameraShake(this, 'strong', 1.6);
-    this.announceSystemMessage(
-      `융합 방출 — 『${spec.name}』`,
-      '#e2b7ff',
-      3000,
-    );
-    [primary, secondary].forEach((pal, index) => {
-      const ring = this.add.circle(x, y, 14, pal.glow, 0)
-        .setStrokeStyle(5, pal.core, 0.95)
-        .setBlendMode(Phaser.BlendModes.ADD)
-        .setDepth(9);
-      this.tweens.add({
-        targets: ring,
-        radius: 210 + index * 60,
-        alpha: 0,
-        delay: index * 110,
-        duration: 620,
-        ease: 'Cubic.Out',
-        onComplete: () => ring.destroy(),
-      });
-    });
-    const burst = this.add.particles(x, y, particleKey(this, PARTICLE_TEXTURES.glow), {
-      speed: { min: 240, max: 520 },
-      scale: { start: 1.1, end: 0 },
-      lifespan: 640,
-      quantity: 46,
-      tint: [primary.core, primary.glow, secondary.core, secondary.glow],
-      blendMode: Phaser.BlendModes.ADD,
-      emitting: false,
-    }).setDepth(9);
-    burst.explode(46, x, y);
-    this.time.delayedCall(900, () => burst.destroy());
   }
 
   /**
