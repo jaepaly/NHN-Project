@@ -29,6 +29,15 @@ assert.ok(
   '선택 강조는 레이아웃 폭이 아닌 transform만 사용',
 );
 assert.ok(
+  source.includes('.keyboard-navigation .reward-card:hover:not(.focused)'),
+  'keyboard navigation restores a hovered non-focused card to its base Y position',
+);
+assert.ok(
+  source.includes("wrap.classList.add('keyboard-navigation')")
+    && source.includes("wrap.classList.remove('keyboard-navigation')"),
+  'keyboard and pointer modes keep the lift on only one card',
+);
+assert.ok(
   source.includes('detailPanel.style.height = `${Math.ceil(tallest)}px`;'),
   '기존 상세 패널 높이 잠금 유지',
 );

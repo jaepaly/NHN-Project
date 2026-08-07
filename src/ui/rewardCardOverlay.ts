@@ -92,6 +92,7 @@ ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .reward-detail-panel.active { display: block; }
 #${WRAP_ID} .reward-detail-title { font-size: 17px; font-weight: 700; color: ${UI_COLOR.textBright}; }
 #${WRAP_ID} .reward-detail-copy { margin-top: 7px; white-space: pre-line; font-size: 14px; line-height: 1.7; color: ${UI_COLOR.textSoft}; }
+#${WRAP_ID} .reward-detail-copy strong { color: ${UI_COLOR.textBright}; font-weight: 800; }
 #${WRAP_ID} .reward-cards { display: flex; gap: 20px; justify-content: center; }
 #${WRAP_ID} .reward-card {
   --card-core: ${UI_COLOR.accent}; --card-glow: ${UI_COLOR.borderStrong};
@@ -118,6 +119,9 @@ ${ornamentCss(WRAP_ID)}
   /* 글로우가 아니라 **더 높이 들린 종이**. 금박 윤곽만 얇게 남긴다 */
   box-shadow: ${UI_MATERIAL.paperShadowLift},
               inset 0 0 0 1px color-mix(in srgb, var(--card-core) 30%, transparent);
+}
+#${WRAP_ID}.keyboard-navigation .reward-card:hover:not(.focused) {
+  transform: rotate(var(--card-tilt, 0deg)) translateY(var(--card-lift, 0px));
 }
 #${WRAP_ID} .reward-card:disabled {
   cursor: not-allowed; opacity: 0.42; filter: grayscale(0.72);
@@ -361,6 +365,32 @@ function escapeText(text: string): string {
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] ?? ch
   ));
 }
+/**
+ * 상세 설명에서 쓰는 최소 강조 문법. `innerHTML`로 마크다운을 흉내 내면 카드 문구가
+ * HTML이 되는 순간 주입 표면이 생기므로, 텍스트 노드와 strong만 직접 조립한다.
+ * 닫히지 않은 `**`는 평문으로 남겨 작성 오류도 숨기지 않는다.
+ */
+export function setRewardDetailText(element: HTMLElement, text: string): void {
+  element.replaceChildren();
+  let cursor = 0;
+  while (cursor < text.length) {
+    const open = text.indexOf('**', cursor);
+    if (open < 0) {
+      element.append(document.createTextNode(text.slice(cursor)));
+      break;
+    }
+    const close = text.indexOf('**', open + 2);
+    if (close < 0) {
+      element.append(document.createTextNode(text.slice(cursor)));
+      break;
+    }
+    if (open > cursor) element.append(document.createTextNode(text.slice(cursor, open)));
+    const strong = document.createElement('strong');
+    strong.textContent = text.slice(open + 2, close);
+    element.append(strong);
+    cursor = close + 2;
+  }
+}
 
 let activeCleanup: (() => void) | null = null;
 
@@ -454,7 +484,7 @@ export function showRewardCards(
       shown.forEach((option, i) => {
         if (details[i] === null) return;
         detailPanelTitle.textContent = option.title;
-        detailPanelCopy.textContent = details[i]!;
+        setRewardDetailText(detailPanelCopy, details[i]!);
         tallest = Math.max(tallest, detailPanel.getBoundingClientRect().height);
       });
       if (tallest <= 0) return;
@@ -481,7 +511,7 @@ export function showRewardCards(
       // 그 카드로 옮길 때 패널이 사라져 카드가 통째로 밀려 올라간다 (총괄 지적).
       detailPanel.classList.toggle('active', detailPanelLocked || detail !== null);
       detailPanelTitle.textContent = detail ? shown[focusIdx].title : '';
-      detailPanelCopy.textContent = detail ?? '';
+      setRewardDetailText(detailPanelCopy, detail ?? '');
       buttons[focusIdx].focus({ preventScroll: true });
     };
 
@@ -540,7 +570,12 @@ export function showRewardCards(
       }
       if (!disabled) {
         btn.addEventListener('click', () => finish(i));
-        btn.addEventListener('mouseenter', () => setFocus(i));
+        const focusFromPointer = (): void => {
+          wrap.classList.remove('keyboard-navigation');
+          if (focusIdx !== i) setFocus(i);
+        };
+        btn.addEventListener('mouseenter', focusFromPointer);
+        btn.addEventListener('pointermove', focusFromPointer);
       }
       cardsEl.appendChild(btn);
       buttons.push(btn);
@@ -557,6 +592,7 @@ export function showRewardCards(
       const focusDirection = rewardCardFocusDirection(e);
       if (focusDirection !== 0) {
         e.preventDefault(); e.stopImmediatePropagation();
+        wrap.classList.add('keyboard-navigation');
         setFocus(focusIdx + focusDirection);
         return;
       }

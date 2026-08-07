@@ -145,6 +145,19 @@ import type { MinimapModel } from '../src/run/mapGraphContract';
   }
   // 씬 프리뷰 훅이 본 게임 경로에 새지 않았는가 — DEV 가드 안에만 존재해야 한다
   const scene = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
+  const pauseMap = scene.match(/const PAUSE_MAP = \{ top: (\d+), scale: ([\d.]+), depth:/);
+  assert.ok(pauseMap, 'ESC 지도 배치 상수 누락');
+  const mapTop = Number(pauseMap![1]);
+  const mapScale = Number(pauseMap![2]);
+  const stageTabY = mapTop - 10 * mapScale;
+  assert.ok(stageTabY >= 148,
+    `스테이지 탭 y=${stageTabY}가 지도 제목과 겹친다`);
+  const pauseLayout = scene.match(/const PAUSE_LAYOUT = \{[\s\S]*?top: (\d+),[\s\S]*?height: (\d+),/);
+  assert.ok(pauseLayout, 'ESC 상세 패널 배치 상수 누락');
+  const panelBottom = Number(pauseLayout![1]) + Number(pauseLayout![2]);
+  const tooltipBottom = mapTop + MINIMAP_CONFIG.height * mapScale + 10 + 45;
+  assert.ok(tooltipBottom <= panelBottom,
+    `확대 지도와 호버 설명 하단 y=${tooltipBottom}가 ESC 상세 패널 y=${panelBottom} 밖으로 이탈한다`);
   const hookAt = scene.indexOf('__mapPreview');
   const devGuardAt = scene.lastIndexOf('if (import.meta.env.DEV)', hookAt);
   assert.ok(hookAt >= 0 && devGuardAt >= 0 && hookAt - devGuardAt < 400,

@@ -64,6 +64,14 @@ assert.equal(resetGauge.resonance.recentNames.length, 0);
   const sequenceBody = scene.slice(sequenceAt, sequenceEnd);
   assert.ok(sequenceBody.includes("plan.castMode === 'ultimate'"));
   assert.ok(sequenceBody.includes('this.fusionGauge.consumeUltimate()'));
+
+  const readyNotice = '필살영창 준비 완료 — Shift+Enter로 공명을 해방하라';
+  assert.equal(scene.split(readyNotice).length - 1, 2,
+    '단일·시퀀스 충전 경로가 같은 현행 중앙 안내를 사용해야 한다');
+  assert.ok(!scene.includes('융합의 힘이 응축됐다 — 두 원소를 담아 영창하라'),
+    '초기 원소 융합 설계의 중앙 안내가 남아 있으면 안 된다');
+  assert.ok(scene.includes('✦ 필살영창 준비 · Shift+Enter · 마나 무소모 ✦'),
+    '하단 게이지의 기존 준비 상태 문구는 이번 교정 대상이 아니다');
 }
 
 console.log('fusion gauge regression: 명시적 필살영창 전용 소비 6그룹 통과');
