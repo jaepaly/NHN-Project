@@ -59,8 +59,15 @@ export class BossHealthBarHud {
       const iconX = entryLeft + 12;
       const iconY = y + BASE_HEIGHT + 8;
       drawBossElementIcon(g, resistance.element, iconX, iconY, ELEMENT_PALETTES[resistance.element].core);
+      if (resistance.negated) {
+        // 원소 아이콘 자체는 남겨 "어떤 저항"인지 보이고, 금색 사선으로 제거 상태를
+        // 전달한다. 저항 아이콘을 통째로 숨기면 마스터리 보상이 지속 UI에서 사라진다.
+        g.lineStyle(2, UI_HEX.accent, 0.95);
+        g.lineBetween(iconX - 7, iconY + 7, iconX + 7, iconY - 7);
+      }
       this.resistanceValueAt(index)
-        .setText(`−${resistance.reductionPercent}%`)
+        .setText(resistance.negated ? '0%' : `−${resistance.reductionPercent}%`)
+        .setColor(resistance.negated ? UI_COLOR.accent : '#f3d8d8')
         .setPosition(iconX + 13, iconY)
         .setVisible(true);
     });

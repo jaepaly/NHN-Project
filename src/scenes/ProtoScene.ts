@@ -1363,6 +1363,8 @@ export class ProtoScene extends Phaser.Scene {
   private demoRun = false;
   /** DEV 전용 피해 연습실 — 일반 웨이브·방 진행을 멈추고 허수아비만 유지한다. */
   private practiceRun = false;
+  /** 보스 몸체에 마지막으로 그린 유효 저항 링. 마스터리 임계 통과 때만 다시 그린다. */
+  private bossRenderedResistanceKey = '';
   /** #214 선행 개발 프리뷰 전용 (DEV 콘솔 훅이 생성) — 본 게임 경로 미배선 */
   private devMinimap: MinimapHud | null = null;
   private devPortalField: PortalField | null = null;
@@ -3355,7 +3357,6 @@ export class ProtoScene extends Phaser.Scene {
         }
       }
     }
-
     // 플레이어가 방 중앙에서 시작하므로 보스는 기존에 검증됐던 340px 위에서 시작한다.
     // 둘 다 중앙에 겹쳐 즉시 접촉 피해가 발생하지 않게 절대 좌표로 유지한다.
     const boss = new BossEnemy(
@@ -3374,7 +3375,8 @@ export class ProtoScene extends Phaser.Scene {
         && boss.alive
         && this.enemies.includes(boss);
     };
-    boss.showResistances(this.sortedBossResistanceElements());
+    this.bossRenderedResistanceKey = '';
+    this.syncBossResistanceRings(boss);
     if (this.bossResistance.counterStrategy) {
       boss.applyCounterStrategy(this.bossResistance.counterStrategy);
     }
@@ -3411,14 +3413,24 @@ export class ProtoScene extends Phaser.Scene {
     }
     // 저항 알림은 activeBossResistances(단일 소스)에서 뽑는다 — 격상 이중 저항이면 두 원소를
     // 함께 알려야 플레이어가 대응할 수 있다. 단일 저항이면 기존과 동일하게 한 원소만 나온다.
-    const resistedElements = this.sortedBossResistanceElements();
-    if (resistedElements.length > 0) {
-      const [primary] = resistedElements;
-      const labels = resistedElements.map((element) => ELEMENT_LABELS[element]).join('·');
+    const resistanceReadout = this.currentBossResistanceReadout();
+    if (resistanceReadout.resisted.length > 0 || resistanceReadout.pierced.length > 0) {
+      const primary = resistanceReadout.resisted[0]?.element ?? resistanceReadout.pierced[0];
+      const reduced = resistanceReadout.resisted
+        .map((entry) => ELEMENT_LABELS[entry.element])
+        .join('·');
+      const negated = resistanceReadout.pierced
+        .map((element) => ELEMENT_LABELS[element])
+        .join('·');
+      const message = reduced && negated
+        ? `보스가 ${reduced}에 대비했다 — 피해 감소 · ${negated} 저항은 마스터리로 무효`
+        : reduced
+          ? `보스가 ${reduced}에 대비했다 — 해당 원소 피해 대폭 감소`
+          : `${negated} 저항을 마스터리로 무효화했다`;
       this.time.delayedCall(1500, () => {
         if (!isCurrentBossRoom()) return;
         this.announceSystemMessage(
-          `보스가 ${labels}에 대비했다 — 해당 원소 피해 대폭 감소`,
+          message,
           paletteColorToCss(ELEMENT_PALETTES[primary].core),
           2800,
         );
@@ -5998,7 +6010,7 @@ if (applied) this.playPlayerHit(
           this.bossResistance.resistMultiplier,
         );
       }
-      boss.showResistances(this.sortedBossResistanceElements());
+      this.syncBossResistanceRings(boss);
       if (this.bossResistance.counterStrategy) {
         boss.applyCounterStrategy(this.bossResistance.counterStrategy);
       }
@@ -7129,7 +7141,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       forms: formSpecs.map((spec) => spec.form),
       effects: formSpecs.map((spec) => spec.effect),
     })) {
-      this.announceSystemMessage('융합의 힘이 응축됐다 — 두 원소를 담아 영창하라 (마나 무소모)', '#e2b7ff', 3400);
+      this.announceSystemMessage('필살영창 준비 완료 — Shift+Enter로 공명을 해방하라', '#e2b7ff', 3400);
     }
     // 사용 기반 친화 성장 — 시퀀스도 수동 영창. 대표(첫) 원소만 올려 다원소 폭증 방지.
     if (sequenceElements[0]) {
@@ -7263,7 +7275,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
         effects: [spec.effect],
       })) {
         this.announceSystemMessage(
-          '융합의 힘이 응축됐다 — 두 원소를 담아 영창하라 (마나 무소모)',
+          '필살영창 준비 완료 — Shift+Enter로 공명을 해방하라',
           '#e2b7ff',
           3400,
         );
@@ -10728,14 +10740,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       this.bossHealthBarHud.hide();
       return;
     }
-    const resistance = bossResistanceReadout(
-      this.sortedBossResistanceEntries().map(([element, multiplier]) => ({
-        element,
-        multiplier,
-        affinity: this.affinityFor(element),
-      })),
-      RESISTANCE.masteryImmunityAffinity,
-    );
+    const resistance = this.currentBossResistanceReadout();
+    this.syncBossResistanceRings(boss, resistance);
     const label = this.mapGraph.current().kind === 'memory-boss' ? '기억의 주인' : '수문장';
     this.bossHealthBarHud.update({
       label,
@@ -10744,6 +10750,29 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       phase: boss.phase,
       resistances: bossResistanceBadges(resistance),
     });
+  }
+
+  private currentBossResistanceReadout() {
+    return bossResistanceReadout(
+      this.sortedBossResistanceEntries().map(([element, multiplier]) => ({
+        element,
+        multiplier,
+        affinity: this.affinityFor(element),
+      })),
+      RESISTANCE.masteryImmunityAffinity,
+    );
+  }
+
+  /** 친화도 변화로 실제 적용 중인 저항이 달라질 때 보스 몸체의 링도 즉시 동기화한다. */
+  private syncBossResistanceRings(
+    boss: BossEnemy,
+    resistance = this.currentBossResistanceReadout(),
+  ): void {
+    const elements = resistance.resisted.map((entry) => entry.element);
+    const key = elements.join('|');
+    if (key === this.bossRenderedResistanceKey) return;
+    this.bossRenderedResistanceKey = key;
+    boss.showResistances(elements);
   }
 
   private affinityFor(element: SpellElement): number {
@@ -11156,10 +11185,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   private sortedBossResistanceEntries(): [SpellElement, number][] {
     return [...this.activeBossResistances.entries()]
       .sort((a, b) => a[1] - b[1]);
-  }
-
-  private sortedBossResistanceElements(): SpellElement[] {
-    return this.sortedBossResistanceEntries().map(([element]) => element);
   }
 
   private createSummon(spec: SpellSpec): void {
