@@ -17,7 +17,6 @@ import {
  * #301이 경로 지도를 마도서 톤으로 재설계하면서 나머지 화면과 갈렸다. 실측으로
  * 드러난 진짜 문제는 색이 아니라 **토큰이 죽어 있었다는 것**이다:
  *
- *   settingsOverlay  토큰 19회 · 하드코딩 2
  *   rewardCardOverlay 토큰 0회 · 하드코딩 45   ← 토큰을 바꿔도 안 따라온다
  *   codexOverlay      토큰 0회 · 하드코딩 28
  *
@@ -136,7 +135,6 @@ import {
     'rewardCardOverlay',   // 매 방마다 본다 — 경로 지도 바로 다음 화면
     'runSummaryOverlay',
     'bossChoiceOverlay',
-    'settingsOverlay',
   ];
   for (const name of MIGRATED) {
     const src = readFileSync(`src/ui/${name}.ts`, 'utf8');

@@ -227,6 +227,19 @@ export class CombatRunController implements RunController {
   }
 
   /**
+   * 제단처럼 한 번 더 선택해야 효과가 정해지는 보상은, 처음 고른 "경로" 대신
+   * 실제로 얻은 최종 공명을 런 기록에 남긴다. HUD 이벤트 순서는 바꾸지 않는다.
+   */
+  replaceLatestReward(expectedId: string, replacement: RewardOption): boolean {
+    for (let index = this.rewards.length - 1; index >= 0; index -= 1) {
+      if (this.rewards[index].id !== expectedId) continue;
+      this.rewards[index] = cloneReward(replacement);
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * 새 런 시작 (R1 내부 API — RunController 계약 외).
    * 초기 상태로 되돌리고 'room-started'를 발화해 씬·UI가 방 1부터 다시 진행하게 한다.
    */
