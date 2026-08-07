@@ -10,7 +10,10 @@ export interface WaveDefinition {
 
 export const WAVE_CONFIG = {
   betweenWaveDelaySeconds: 2,
-  spawnDistance: 350,
+  spawnMinDistance: 300,
+  spawnMaxDistance: 450,
+  spawnMinimumSeparation: 70,
+  spawnBoundaryMargin: 80,
 } as const;
 
 export const WAVE_DEFINITIONS: readonly WaveDefinition[] = [
