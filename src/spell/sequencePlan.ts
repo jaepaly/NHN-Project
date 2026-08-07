@@ -99,6 +99,48 @@ export interface ResolvedSpellPlan {
   sequences: ResolvedSpellSequence[];
 }
 
+/**
+ * 마나가 부족한 일반 시퀀스를 대표 form 하나의 즉발 영창으로 잦아들게 한다.
+ * 대표 form의 모양·원소·효과는 보존하되, 전체 power는 지불 가능한 마나 비율만큼
+ * 감쇠한다. 원본 시퀀스의 wait·병렬/후속 form은 실행하지 않는다.
+ */
+export function degradedSinglePlanFromSequence(
+  plan: ResolvedSpellPlan,
+  spend: number,
+  ratio: number,
+): ResolvedSpellPlan | null {
+  if (plan.castMode === 'ultimate') return null;
+  const forms = plan.sequences.flatMap((sequence) => (
+    sequence.behaviors.filter((behavior): behavior is FormBehavior => behavior.type === 'form')
+  ));
+  const representative = forms.reduce<FormBehavior | null>((best, behavior) => (
+    !best || behavior.spec.power >= best.spec.power ? behavior : best
+  ), null);
+  if (!representative) return null;
+  const safeRatio = Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : 0;
+  const safeSpend = Number.isFinite(spend) ? Math.max(0, spend) : 0;
+  const degradedPower = Math.max(0, Math.round(plan.power * safeRatio));
+  return {
+    name: plan.name,
+    castMode: 'normal',
+    power: degradedPower,
+    manaCost: safeSpend,
+    sequences: [{
+      durationMs: 0,
+      behaviors: [{
+        ...representative,
+        powerWeight: 1,
+        spec: {
+          ...representative.spec,
+          name: plan.name,
+          power: degradedPower,
+          cost: safeSpend,
+        },
+      }],
+    }],
+  };
+}
+
 export function tuningScale(
   tuning: BehaviorTuning | undefined,
   key: keyof BehaviorTuning,

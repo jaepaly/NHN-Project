@@ -8,9 +8,9 @@ import type {
 } from './combatEnemy';
 
 const ELITE_CONFIG = {
-  swiftRateMultiplier: 1.3,
+  swiftRateMultiplier: 1.4,
   swiftTrailIntervalSeconds: 0.11,
-  guardShieldRatio: 0.4,
+  guardShieldRatio: 0.5,
   guardRecoverySeconds: 4,
 } as const;
 

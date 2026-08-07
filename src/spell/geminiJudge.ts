@@ -137,6 +137,23 @@ export class GeminiJudge implements SpellJudge {
     return this.fallback.judge(text, options);
   }
 
+  /** 오프라인 우선 모드 복구 확인용. 캐시를 우회하고 결과를 게임에 적용하지 않는다. */
+  async probeRemote(text: string, options: JudgeOptions = {}): Promise<boolean> {
+    const key = text.trim();
+    const castMode = options.castMode === 'ultimate' ? 'ultimate' : 'normal';
+    const resonance = castMode === 'ultimate' ? options.resonance : undefined;
+    try {
+      const raw = await this.fetchWithFastRetry(key, castMode, resonance);
+      const validated = validateJudgement(raw);
+      if (!validated || validated.disposition === 'fizzle') return false;
+      return validated.disposition !== 'cast'
+        || castMode !== 'ultimate'
+        || validated.plan?.castMode === 'ultimate';
+    } catch {
+      return false;
+    }
+  }
+
   /** timeout일 때만 즉시 한 번 새 요청으로 전환한다. */
   private async fetchWithFastRetry(
     text: string,

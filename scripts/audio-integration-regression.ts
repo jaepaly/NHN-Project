@@ -92,7 +92,8 @@ assert.match(proto, /playBgm\(kind === 'altar' \? 'altar' : 'reward'\)/);
 assert.match(proto, /showBossChoice[\s\S]*?this\.audio\.playSfx\('ui-confirm'\)/);
 assert.match(proto, /chooseInheritedAffinity[\s\S]*?this\.audio\.playSfx\('ui-confirm'\)/);
 assert.match(proto, /activatePauseMenuItem[\s\S]*?this\.audio\.playSfx\('ui-confirm'\)/);
-assert.match(proto, /showSettingsOverlay[\s\S]*?this\.audio\.playSfx\('ui-confirm'\)/);
+assert.doesNotMatch(title, /showSettingsOverlay/, '타이틀도 기존 DOM 설정 창을 다시 열면 안 된다');
+assert.match(title, /new GameSettingsPanel\(/, '타이틀 설정은 게임 UI 패널을 열어야 한다');
 assert.match(proto, /if \(result\.hpDamage > 0\) this\.audio\.playSfx\('player-hit'\)/);
 assert.equal(
   [...proto.matchAll(/if \(restored > 0\) this\.audio\.playSfx\('mana-crystal-pickup'\)/g)].length,

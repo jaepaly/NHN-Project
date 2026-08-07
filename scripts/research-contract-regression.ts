@@ -247,7 +247,8 @@ assert.ok(sceneSource.includes('this.reportResearchAdvance(previousResearch, fal
 assert.ok(sceneSource.includes("title: '정령 융합 · 연구 완료'"), '융합·연구 완료는 단일 통합 공지로 표시한다');
 assert.ok(sceneSource.includes('holdMs: 2300'), '통합 공지는 다음 방을 오래 가리지 않도록 짧게 유지한다');
 assert.ok(sceneSource.includes('researchMilestoneReward(previous, current)'), '단계별 즉시 보상 배선');
-assert.ok(sceneSource.includes('researchProgressSlots(research)'), '상시 연구 진행 슬롯 HUD 배선');
+// 호출 인자 이름은 씬 리팩터링마다 바뀐다(research → current). 배선 여부만 본다.
+assert.ok(/researchProgressSlots\(\w+\)/.test(sceneSource), '상시 연구 진행 슬롯 HUD 배선');
 assert.ok(sceneSource.includes('scheduleElementalResearchEcho(executedSpecs)'), '시퀀스 공명 재시전 배선');
 assert.ok(sceneSource.includes('enableFusionResonance()'), '정령 연성 완료 특성 배선');
 assert.ok(sceneSource.includes('variationDiversityMaxBonus('), '변주 단계별 다양성 상한 배선');

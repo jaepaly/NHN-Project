@@ -10,10 +10,10 @@ import {
 } from '../spell/spellCodex';
 import { showCodexOverlay } from '../ui/codexOverlay';
 import { clearRunHud } from '../ui/runHud';
-import { showSettingsOverlay } from '../ui/settingsOverlay';
 import { loadSettings } from '../run/gameSettings';
 import { setVfxBrightness } from '../render/vfxBrightness';
 import { UI_COLOR, UI_FONT } from '../ui/uiTokens';
+import { GameSettingsPanel } from '../ui/gameSettingsPanel';
 import { DEMO_BUILD_OPTIONS, demoBuildFromOptionId, requestDemoRun } from '../run/demoLoadout';
 import { GameAudio } from '../audio/gameAudio';
 import { showRewardCards } from '../ui/rewardCardOverlay';
@@ -40,6 +40,9 @@ export class TitleScene extends Phaser.Scene {
 
   /** 밝기 막 — 설정에서 조절하면 타이틀에서도 즉시 반영된다 */
   private brightnessVeil!: Phaser.GameObjects.Graphics;
+
+  /** 타이틀 설정도 DOM이 아닌 게임 UI 패널로 열어 전투 ESC와 입력·표현을 맞춘다. */
+  private settingsPanel?: GameSettingsPanel;
 
   constructor() {
     super('title');
@@ -92,6 +95,7 @@ export class TitleScene extends Phaser.Scene {
     this.input.on('pointerdown', (_pointer: Phaser.Input.Pointer, currentlyOver: unknown[]) => {
       if (currentlyOver.length === 0) this.startGame();
     });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.settingsPanel?.destroy());
 
     applyWorldFx(this.cameras.main); // Phase 5 네온 후처리 (블룸+비네트)
   }
@@ -117,7 +121,7 @@ export class TitleScene extends Phaser.Scene {
       tab.on('pointerdown', onPick);
     };
     makeTab(width * 0.25, '〔 주문 도감 〕', () => { void this.openCodex(); });
-    makeTab(width * 0.5, '〔 설정 〕', () => { void this.openSettings(); });
+    makeTab(width * 0.5, '〔 설정 〕', () => { this.openSettings(); });
     makeTab(width * 0.75, '〔 상점 〕', () => { void this.openShop(); });
   }
 
@@ -126,25 +130,22 @@ export class TitleScene extends Phaser.Scene {
    * 타이틀의 시작음도 저장된 SFX 볼륨을 쓰지만, 슬라이더 조절 중 미리듣지는 않는다.
    * 밝기는 여기서도 즉시 반영해 조절이 눈으로 확인되게 한다.
    */
-  private async openSettings(): Promise<void> {
+  private openSettings(): void {
     if (this.codexOpen || this.starting) return;
-    this.codexOpen = true; // 시작 트리거 차단 — 도감과 같은 가드를 공유한다
-    try {
-      await showSettingsOverlay({
-        audioNote: '소리 크기는 시작·전투에서 적용된다 · 밝기는 지금 바로',
-        onChange: (settings) => {
-          // 이펙트 밝기는 막이 아니라 렌더러 배율이라 여기서도 같이 반영해야
-          // 설정을 닫고 바로 시작했을 때 첫 시전부터 적용된다
-          setVfxBrightness(settings.vfxBrightness);
-          this.applyBrightness(settings.brightness);
-          this.audio.applySettings(settings);
-        },
-        mute: { get: () => this.audio.muted, toggle: () => this.audio.toggleMute() },
-      });
-      GameAudio.playOneShot(this, 'ui-confirm', loadSettings(window.localStorage));
-    } finally {
-      this.time.delayedCall(50, () => { this.codexOpen = false; });
-    }
+    this.codexOpen = true; // 패널이 열린 동안 빈 곳 클릭·Enter 시작을 막는다
+    this.settingsPanel ??= new GameSettingsPanel(this, {
+      onChange: (settings) => {
+        setVfxBrightness(settings.vfxBrightness);
+        this.applyBrightness(settings.brightness);
+        this.audio.applySettings(settings);
+      },
+      mute: { get: () => this.audio.muted, toggle: () => this.audio.toggleMute() },
+      onClose: () => {
+        GameAudio.playOneShot(this, 'ui-confirm', loadSettings(window.localStorage));
+        this.time.delayedCall(50, () => { this.codexOpen = false; });
+      },
+    });
+    this.settingsPanel.open();
   }
 
   /** 타이틀 밝기 막 — 전투 HUD가 없으므로 최상단에 덮어도 가릴 정보가 없다. */

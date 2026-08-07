@@ -17,7 +17,6 @@ import {
  * #301이 경로 지도를 마도서 톤으로 재설계하면서 나머지 화면과 갈렸다. 실측으로
  * 드러난 진짜 문제는 색이 아니라 **토큰이 죽어 있었다는 것**이다:
  *
- *   settingsOverlay  토큰 19회 · 하드코딩 2
  *   rewardCardOverlay 토큰 0회 · 하드코딩 45   ← 토큰을 바꿔도 안 따라온다
  *   codexOverlay      토큰 0회 · 하드코딩 28
  *
@@ -136,7 +135,6 @@ import {
     'rewardCardOverlay',   // 매 방마다 본다 — 경로 지도 바로 다음 화면
     'runSummaryOverlay',
     'bossChoiceOverlay',
-    'settingsOverlay',
   ];
   for (const name of MIGRATED) {
     const src = readFileSync(`src/ui/${name}.ts`, 'utf8');
@@ -473,10 +471,14 @@ import {
     (scene.match(/drawGrimoirePanel\(g/g) ?? []).length >= 5,
     `씬의 UI 판이 모두 장식 판을 써야 한다 (현재 ${(scene.match(/drawGrimoirePanel\(g/g) ?? []).length}건)`,
   );
-  // 일시정지는 판이 커서 제목만 두면 비어 보인다 — 표제 인장 한 쌍 + 구획 괘선
+  // 일시정지는 판이 커서 허전하면 안 된다. 종전엔 표제 인장 한 쌍으로 채웠는데, #369에서
+  // 제목 위에 **탭 줄**(빌드·연구·지도·설정)이 생기며 인장 자리가 없어졌다 — 탭과 인장을
+  // 함께 두면 머리가 두 겹이 된다. 채우는 방식이 바뀐 것이지 규칙이 사라진 게 아니므로,
+  // 일시정지가 **메뉴와 내용 두 판 모두** 장식 판을 쓰는지로 본다(둘 중 하나만 쓰면 튄다).
+  const pauseBlock = scene.slice(scene.indexOf('renderPauseMenu(): void'));
   assert.ok(
-    (scene.match(/drawTitleSigil\(g/g) ?? []).length >= 2,
-    '일시정지 제목 양옆에 인장 한 쌍을 둔다',
+    (pauseBlock.match(/drawGrimoirePanel\(/g) ?? []).length >= 2,
+    '일시정지의 메뉴 판과 내용 판이 모두 장식 판을 쓴다',
   );
 
   // 미니맵 — 일시정지를 열면 나온다. 통일에서 빠져 청색이 남아 있었다.
