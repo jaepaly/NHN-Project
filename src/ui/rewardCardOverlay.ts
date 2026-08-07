@@ -42,7 +42,9 @@ const CSS = `
 ${ornamentCss(WRAP_ID)}
 #${WRAP_ID} .reward-panel {
   position: relative; text-align: center;
-  max-width: min(720px, calc(100vw - 32px));
+  /* 기존 content 720px + 좌우 padding 68px의 총폭을 보존하되, 선택한 상세 설명의
+     고유 너비가 패널 폭을 다시 계산하지 못하게 viewport별 총폭을 명시적으로 잠근다. */
+  width: min(788px, calc(100vw - 32px)); box-sizing: border-box;
   /* 장식은 currentColor를 쓴다 — 색을 여기서 한 번만 정해 팔레트와 갈리지 않게 */
   --orn: ${UI_COLOR.accent}; --seal: ${UI_COLOR.accent};
   /* 모서리 당초무늬가 놓일 자리 */
