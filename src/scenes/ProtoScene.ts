@@ -146,6 +146,7 @@ import { showSystemBanner } from '../render/systemBanner';
 import { bossResistanceReadout } from '../render/bossResistanceReadout';
 import { playAwakeningBrandMark, playAwakeningSigil } from '../render/awakeningSigil';
 import { SupportSpellVfx } from '../render/supportSpellVfx';
+import { ENEMY_STATUS_VFX } from '../render/enemyStatusVfxConfig';
 import {
   PARTICLE_TEXTURES, ensureParticleTextures, particleKey,
 } from '../render/particleTextures';
@@ -1304,7 +1305,13 @@ export class ProtoScene extends Phaser.Scene {
    * 소리·모션"이 나던 것을, 지속 상태 VFX + 약한 틱 펄스로 원인을 보여주는
    * 방식으로 바꾼다. 틱 자체는 무음이다 — 잔불이 "타고 있다"를 전담한다.
    */
-  private readonly burnEmbers = new Map<CombatEnemy, Phaser.GameObjects.Particles.ParticleEmitter>();
+  private readonly burnEmbers = new Map<CombatEnemy, {
+    emitter: Phaser.GameObjects.Particles.ParticleEmitter;
+    icon: Phaser.GameObjects.Container;
+  }>();
+  private readonly slowMarks = new Map<CombatEnemy, Phaser.GameObjects.Graphics>();
+  private readonly freezeMarks = new Map<CombatEnemy, Phaser.GameObjects.Graphics>();
+  private readonly weakenMarks = new Map<CombatEnemy, Phaser.GameObjects.Graphics>();
 
   /**
    * 적별 피해 숫자 — 짧은 창(mergeWindowMs) 안의 재타격은 새 숫자를 띄우지 않고
@@ -1316,7 +1323,6 @@ export class ProtoScene extends Phaser.Scene {
   }>();
   /** 연쇄 감전 남발 방지 — 적별 마지막 발동 시각 */
   private readonly shockCooldowns = new Map<CombatEnemy, number>();
-  private readonly controlIndicators = new Map<CombatEnemy, Phaser.GameObjects.Arc>();
   /** 보스방 진입 시 주문 히스토리로 계산 — R2 내성 모듈이 오면 계산부만 교체 */
   private bossResistance: BossResistanceProfile = { ...NO_BOSS_RESISTANCE };
   /** 페이즈를 넘어 유지되는 원소별 내성. 같은 원소는 더 강한(낮은) 배수 하나만 유지한다. */
@@ -2892,6 +2898,7 @@ export class ProtoScene extends Phaser.Scene {
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
     this.clearBurnEmbers();
+    this.clearWeakenMarks();
     this.clearDamageNumbers();
     this.shockCooldowns.clear();
     // Memory-boss history survives, but repeat damage penalty starts fresh per loop.
@@ -2965,6 +2972,7 @@ export class ProtoScene extends Phaser.Scene {
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
     this.clearBurnEmbers();
+    this.clearWeakenMarks();
     this.clearDamageNumbers();
     this.shockCooldowns.clear();
     this.awakenings = {};
@@ -3007,6 +3015,7 @@ export class ProtoScene extends Phaser.Scene {
     this.activeBossResistances.clear();
     this.enemyAilments.clear();
     this.clearBurnEmbers();
+    this.clearWeakenMarks();
     this.clearDamageNumbers();
     this.shockCooldowns.clear();
     this.awakenings = {};
@@ -5562,36 +5571,78 @@ if (applied) this.playPlayerHit();
       const existing = this.burnEmbers.get(enemy);
       if (burning && !existing) {
         const pal = ELEMENT_PALETTES.fire;
-        const emitter = this.add.particles(enemy.x, enemy.y - 8, particleKey(this, PARTICLE_TEXTURES.glow), {
-          speedY: { min: -36, max: -16 },
+        const cfg = ENEMY_STATUS_VFX.burn;
+        const icon = this.createBurnStatusIcon(enemy.collisionRadius, pal.core, pal.accent);
+        enemy.view.add(icon);
+        this.tweens.add({
+          targets: icon,
+          scale: { from: 0.96, to: 1.06 },
+          alpha: { from: 0.82, to: 1 },
+          duration: cfg.iconPulseMs,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut',
+        });
+        const emitter = this.add.particles(enemy.x, enemy.y - 2, particleKey(this, PARTICLE_TEXTURES.glow), {
+          speedY: { min: -34, max: -18 },
           speedX: { min: -10, max: 10 },
-          scale: { start: 0.16, end: 0 },
-          alpha: { start: 0.5, end: 0 },
-          lifespan: 460,
-          frequency: 140,
+          scale: { start: cfg.emberStartScale, end: 0 },
+          alpha: { start: cfg.emberStartAlpha, end: 0 },
+          lifespan: cfg.emberLifespanMs,
+          frequency: cfg.emberFrequencyMs,
           quantity: 1,
-          tint: [pal.core, pal.accent],
+          tint: [pal.core, pal.accent, pal.glow],
           blendMode: Phaser.BlendModes.ADD,
         });
-        emitter.startFollow(enemy.view, 0, -8);
-        this.burnEmbers.set(enemy, emitter);
+        emitter.startFollow(
+          enemy.view,
+          enemy.collisionRadius * cfg.iconOffsetXRatio,
+          enemy.collisionRadius * cfg.iconOffsetYRatio,
+        );
+        this.burnEmbers.set(enemy, { emitter, icon });
       } else if (!burning && existing) {
-        existing.destroy();
+        this.destroyBurnVfx(existing);
         this.burnEmbers.delete(enemy);
       }
     }
     // 목록에서 이미 빠진 적(사망 등)의 잔불 정리 — 죽은 컨테이너를 따라다니지 않게
-    for (const [enemy, emitter] of this.burnEmbers) {
+    for (const [enemy, vfx] of this.burnEmbers) {
       if (!enemy.alive || !this.enemies.includes(enemy)) {
-        emitter.destroy();
+        this.destroyBurnVfx(vfx);
         this.burnEmbers.delete(enemy);
       }
     }
   }
 
   private dropBurnEmber(enemy: CombatEnemy): void {
-    this.burnEmbers.get(enemy)?.destroy();
+    const vfx = this.burnEmbers.get(enemy);
+    if (vfx) this.destroyBurnVfx(vfx);
     this.burnEmbers.delete(enemy);
+  }
+
+  private destroyBurnVfx(vfx: {
+    emitter: Phaser.GameObjects.Particles.ParticleEmitter;
+    icon: Phaser.GameObjects.Container;
+  }): void {
+    this.tweens.killTweensOf(vfx.icon);
+    vfx.emitter.destroy();
+    vfx.icon.destroy(true);
+  }
+
+  private createBurnStatusIcon(radius: number, color: number, accent: number): Phaser.GameObjects.Container {
+    const cfg = ENEMY_STATUS_VFX.burn;
+    const flame = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    flame.fillStyle(color, 0.96);
+    flame.fillTriangle(0, -7, -5, 3, 5, 3);
+    flame.fillCircle(0, 2, 5);
+    flame.fillStyle(accent, 0.96);
+    flame.fillTriangle(1, -3, -2.5, 4, 3.5, 4);
+    flame.fillCircle(0.5, 3, 2.8);
+    return this.add.container(
+      radius * cfg.iconOffsetXRatio,
+      radius * cfg.iconOffsetYRatio,
+      [flame],
+    );
   }
 
   private clearDamageNumbers(): void {
@@ -5600,7 +5651,7 @@ if (applied) this.playPlayerHit();
   }
 
   private clearBurnEmbers(): void {
-    for (const emitter of this.burnEmbers.values()) emitter.destroy();
+    for (const vfx of this.burnEmbers.values()) this.destroyBurnVfx(vfx);
     this.burnEmbers.clear();
   }
 
@@ -5608,16 +5659,104 @@ if (applied) this.playPlayerHit();
   private showBurnTickPulse(enemy: CombatEnemy): void {
     if (!enemy.alive) return;
     const pal = ELEMENT_PALETTES.fire;
-    const pulse = this.add.circle(enemy.x, enemy.y - 6, 9, pal.core, 0.4)
+    const cfg = ENEMY_STATUS_VFX.burn;
+    const x = enemy.x + enemy.collisionRadius * cfg.iconOffsetXRatio;
+    const y = enemy.y + enemy.collisionRadius * cfg.iconOffsetYRatio;
+    const pulse = this.add.circle(x, y, cfg.iconRadius, pal.core, 0.18)
+      .setStrokeStyle(2, pal.accent, 0.82)
       .setBlendMode(Phaser.BlendModes.ADD);
     this.tweens.add({
       targets: pulse,
-      scale: 1.7,
+      scale: 1.65,
       alpha: 0,
-      duration: 260,
+      duration: cfg.tickPulseMs,
       ease: 'Cubic.easeOut',
       onComplete: () => pulse.destroy(),
     });
+  }
+
+  private syncWeakenMarks(): void {
+    for (const enemy of this.enemies) {
+      const weakened = enemy.alive && this.enemyAilments.weakenRemainingFor(enemy) > 0;
+      const existing = this.weakenMarks.get(enemy);
+      if (weakened && !existing) {
+        const mark = this.createWeakenMark(enemy.collisionRadius);
+        enemy.view.add(mark);
+        this.weakenMarks.set(enemy, mark);
+      } else if (!weakened && existing) {
+        this.destroyWeakenMark(existing);
+        this.weakenMarks.delete(enemy);
+      }
+    }
+    for (const [enemy, mark] of this.weakenMarks) {
+      if (!enemy.alive || !this.enemies.includes(enemy)) {
+        this.destroyWeakenMark(mark);
+        this.weakenMarks.delete(enemy);
+      }
+    }
+  }
+
+  private createWeakenMark(radius: number): Phaser.GameObjects.Graphics {
+    const cfg = ENEMY_STATUS_VFX.weaken;
+    const size = Phaser.Math.Clamp(
+      radius * cfg.shieldScaleRatio,
+      cfg.minShieldSize,
+      cfg.maxShieldSize,
+    );
+    const mark = this.add.graphics().setPosition(
+      -radius - cfg.sideGap - size,
+      0,
+    );
+    // 취약은 몸체 위 균열만으로는 적 윤곽과 섞이고, 머리 위는 체력바와 충돌한다.
+    // 방어력 상태를 몸체 손상처럼 오해하지 않도록 좌측 외곽으로 분리한다.
+    mark.fillStyle(0x24142f, 0.88);
+    mark.beginPath();
+    mark.moveTo(0, -size);
+    mark.lineTo(size * 0.78, -size * 0.66);
+    mark.lineTo(size * 0.66, size * 0.34);
+    mark.lineTo(0, size);
+    mark.lineTo(-size * 0.66, size * 0.34);
+    mark.lineTo(-size * 0.78, -size * 0.66);
+    mark.closePath();
+    mark.fillPath();
+    mark.lineStyle(2.5, cfg.color, 1);
+    mark.strokePath();
+    mark.lineStyle(2.2, cfg.accent, 1);
+    mark.beginPath();
+    mark.moveTo(size * 0.12, -size * 0.82);
+    mark.lineTo(-size * 0.18, -size * 0.2);
+    mark.lineTo(size * 0.14, size * 0.02);
+    mark.lineTo(-size * 0.2, size * 0.72);
+    mark.strokePath();
+    mark.lineStyle(1.5, cfg.color, 0.96);
+    mark.lineBetween(-size * 0.16, -size * 0.18, -size * 0.62, size * 0.05);
+    mark.lineBetween(size * 0.12, size * 0.02, size * 0.58, size * 0.3);
+    this.tweens.add({
+      targets: mark,
+      alpha: { from: 0.76, to: 1 },
+      scale: { from: 0.96, to: 1.05 },
+      duration: cfg.pulseMs,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+    return mark;
+  }
+
+  private destroyWeakenMark(mark: Phaser.GameObjects.Graphics): void {
+    this.tweens.killTweensOf(mark);
+    mark.destroy();
+  }
+
+  private dropWeakenMark(enemy: CombatEnemy): void {
+    const mark = this.weakenMarks.get(enemy);
+    if (mark) this.destroyWeakenMark(mark);
+    this.weakenMarks.delete(enemy);
+  }
+
+  private clearWeakenMarks(): void {
+    for (const mark of this.weakenMarks.values()) this.destroyWeakenMark(mark);
+    this.weakenMarks.clear();
   }
 
   private updateEnemies(deltaSeconds: number): void {
@@ -5632,6 +5771,7 @@ if (applied) this.playPlayerHit();
       this.showBurnTickPulse(enemy);
     });
     this.syncBurnEmbers();
+    this.syncWeakenMarks();
 
     const stoppedEnemies = new Set<CombatEnemy>();
     for (const enemy of this.enemies) {
@@ -10948,18 +11088,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       durationOverrideSeconds,
       movementMultiplierOverride,
     );
-    if (!this.controlIndicators.has(enemy)) {
-      const indicator = this.add.circle(
-        0,
-        0,
-        CONTROL_CONFIG.indicatorRadius,
-        CONTROL_CONFIG.indicatorColor,
-        0.08,
-      ).setStrokeStyle(2, CONTROL_CONFIG.indicatorColor, 0.85)
-        .setBlendMode(Phaser.BlendModes.ADD);
-      enemy.view.addAt(indicator, 0);
-      this.controlIndicators.set(enemy, indicator);
-    }
     // 핫패스(컨트롤 적중마다) — 호출부째 가드해야 인자 객체 생성까지 제거된다
     if (import.meta.env.DEV) {
       console.info('[Control] slow-applied', {
@@ -10972,22 +11100,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
 
   private applyRoot(enemy: CombatEnemy, durationSeconds: number): void {
     const remaining = this.enemyControlState.applyRoot(enemy, durationSeconds);
-    let indicator = this.controlIndicators.get(enemy);
-    if (!indicator) {
-      indicator = this.add.circle(
-        0,
-        0,
-        CAGE_CONFIG.baseRadius,
-        CAGE_CONFIG.indicatorColor,
-        0.08,
-      ).setBlendMode(Phaser.BlendModes.ADD);
-      enemy.view.addAt(indicator, 0);
-      this.controlIndicators.set(enemy, indicator);
-    }
-    indicator
-      .setRadius(CAGE_CONFIG.baseRadius)
-      .setFillStyle(CAGE_CONFIG.indicatorColor, 0.08)
-      .setStrokeStyle(3, CAGE_CONFIG.indicatorColor, 0.95);
     if (import.meta.env.DEV) {
       console.info('[Control] root-applied', {
         enemy: enemy.kind,
@@ -10998,44 +11110,150 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
   }
 
   private updateEnemyControls(deltaSeconds: number): void {
-    for (const enemy of this.enemyControlState.update(deltaSeconds)) {
-      this.removeControlIndicator(enemy);
+    this.enemyControlState.update(deltaSeconds);
+    this.syncSlowMarks();
+    this.syncFreezeMarks();
+  }
+
+  private syncSlowMarks(): void {
+    for (const enemy of this.enemies) {
+      const slowed = enemy.alive && this.enemyControlState.slowRemainingFor(enemy) > 0;
+      const existing = this.slowMarks.get(enemy);
+      if (slowed && !existing) {
+        const mark = this.createSlowMark(enemy.collisionRadius);
+        enemy.view.add(mark);
+        this.slowMarks.set(enemy, mark);
+      } else if (!slowed && existing) {
+        this.destroySlowMark(existing);
+        this.slowMarks.delete(enemy);
+      }
     }
-    for (const [enemy, indicator] of this.controlIndicators) {
-      if (!indicator.active) continue;
-      if (this.enemyControlState.movementMultiplierFor(enemy) === 0) {
-        indicator
-          .setRadius(CAGE_CONFIG.baseRadius)
-          .setFillStyle(CAGE_CONFIG.indicatorColor, 0.08)
-          .setStrokeStyle(3, CAGE_CONFIG.indicatorColor, 0.95);
-      } else {
-        indicator
-          .setRadius(CONTROL_CONFIG.indicatorRadius)
-          .setFillStyle(CONTROL_CONFIG.indicatorColor, 0.08)
-          .setStrokeStyle(2, CONTROL_CONFIG.indicatorColor, 0.85);
+    for (const [enemy, mark] of this.slowMarks) {
+      if (!enemy.alive || !this.enemies.includes(enemy)) {
+        this.destroySlowMark(mark);
+        this.slowMarks.delete(enemy);
       }
     }
   }
 
+  private createSlowMark(radius: number): Phaser.GameObjects.Graphics {
+    const cfg = ENEMY_STATUS_VFX.slow;
+    const mark = this.add.graphics().setPosition(0, radius * cfg.bodyOffsetYRatio)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const half = radius * cfg.chevronWidthRatio;
+    mark.lineStyle(2.4, cfg.color, 0.9);
+    for (let index = 0; index < 2; index += 1) {
+      const y = index * cfg.chevronGap;
+      mark.beginPath();
+      mark.moveTo(-half, y - 2);
+      mark.lineTo(0, y + 2);
+      mark.lineTo(half, y - 2);
+      mark.strokePath();
+    }
+    mark.lineStyle(1.2, cfg.accent, 0.62);
+    mark.lineBetween(-half * 0.72, -6, -half * 0.72, 5);
+    mark.lineBetween(half * 0.72, -6, half * 0.72, 5);
+    this.tweens.add({
+      targets: mark,
+      alpha: { from: 0.58, to: 1 },
+      y: { from: mark.y - 1, to: mark.y + 1 },
+      duration: cfg.pulseMs,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+    return mark;
+  }
+
+  private destroySlowMark(mark: Phaser.GameObjects.Graphics): void {
+    this.tweens.killTweensOf(mark);
+    mark.destroy();
+  }
+
+  private syncFreezeMarks(): void {
+    for (const enemy of this.enemies) {
+      const frozen = enemy.alive && this.enemyControlState.rootRemainingFor(enemy) > 0;
+      const existing = this.freezeMarks.get(enemy);
+      if (frozen && !existing) {
+        const mark = this.createFreezeMark(enemy.collisionRadius);
+        enemy.view.add(mark);
+        this.freezeMarks.set(enemy, mark);
+      } else if (!frozen && existing) {
+        this.destroyFreezeMark(existing);
+        this.freezeMarks.delete(enemy);
+      }
+    }
+    for (const [enemy, mark] of this.freezeMarks) {
+      if (!enemy.alive || !this.enemies.includes(enemy)) {
+        this.destroyFreezeMark(mark);
+        this.freezeMarks.delete(enemy);
+      }
+    }
+  }
+
+  private createFreezeMark(radius: number): Phaser.GameObjects.Graphics {
+    const cfg = ENEMY_STATUS_VFX.freeze;
+    const r = radius * cfg.radiusScale;
+    const mark = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    mark.lineStyle(2.2, cfg.color, 0.86);
+    mark.strokePoints([
+      new Phaser.Geom.Point(0, -r),
+      new Phaser.Geom.Point(r * 0.86, -r * 0.48),
+      new Phaser.Geom.Point(r * 0.86, r * 0.48),
+      new Phaser.Geom.Point(0, r),
+      new Phaser.Geom.Point(-r * 0.86, r * 0.48),
+      new Phaser.Geom.Point(-r * 0.86, -r * 0.48),
+    ], true);
+    mark.fillStyle(cfg.accent, 0.76);
+    for (const angle of [-Math.PI / 2, 0, Math.PI / 2, Math.PI]) {
+      const x = Math.cos(angle) * r;
+      const y = Math.sin(angle) * r;
+      const tangentX = -Math.sin(angle) * cfg.shardSize;
+      const tangentY = Math.cos(angle) * cfg.shardSize;
+      const outerX = Math.cos(angle) * cfg.shardSize;
+      const outerY = Math.sin(angle) * cfg.shardSize;
+      mark.fillTriangle(
+        x - tangentX * 0.55,
+        y - tangentY * 0.55,
+        x + tangentX * 0.55,
+        y + tangentY * 0.55,
+        x + outerX,
+        y + outerY,
+      );
+    }
+    this.tweens.add({
+      targets: mark,
+      alpha: { from: 0.64, to: 1 },
+      scale: { from: 0.98, to: 1.03 },
+      duration: cfg.pulseMs,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+    return mark;
+  }
+
+  private destroyFreezeMark(mark: Phaser.GameObjects.Graphics): void {
+    this.tweens.killTweensOf(mark);
+    mark.destroy();
+  }
+
   private removeEnemyControl(enemy: CombatEnemy): void {
     this.enemyControlState.remove(enemy);
-    this.removeControlIndicator(enemy);
+    const slowMark = this.slowMarks.get(enemy);
+    if (slowMark) this.destroySlowMark(slowMark);
+    this.slowMarks.delete(enemy);
+    const freezeMark = this.freezeMarks.get(enemy);
+    if (freezeMark) this.destroyFreezeMark(freezeMark);
+    this.freezeMarks.delete(enemy);
   }
 
   private clearEnemyControls(): void {
-    for (const enemy of this.enemyControlState.clear()) {
-      this.removeControlIndicator(enemy);
-    }
-    for (const enemy of [...this.controlIndicators.keys()]) {
-      this.removeControlIndicator(enemy);
-    }
-  }
-
-  private removeControlIndicator(enemy: CombatEnemy): void {
-    const indicator = this.controlIndicators.get(enemy);
-    if (!indicator) return;
-    if (indicator.active) indicator.destroy();
-    this.controlIndicators.delete(enemy);
+    this.enemyControlState.clear();
+    for (const mark of this.slowMarks.values()) this.destroySlowMark(mark);
+    this.slowMarks.clear();
+    for (const mark of this.freezeMarks.values()) this.destroyFreezeMark(mark);
+    this.freezeMarks.clear();
   }
 
   private pointToSegmentDistance(
@@ -11302,6 +11520,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     this.enemyHitStop.remove(enemy);
     this.enemyKnockbacks.delete(enemy);
     this.dropBurnEmber(enemy);
+    this.dropWeakenMark(enemy);
+    this.enemyAilments.remove(enemy);
     this.damageNumbers.delete(enemy);
     enemy.destroy();
     this.enemies = this.enemies.filter((candidate) => candidate !== enemy);
