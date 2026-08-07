@@ -17,7 +17,8 @@ import {
 
 /**
  * 런 요약 오버레이 — 승리(RUN COMPLETE)·패배(YOU DIED) 공용, "이번 런의 주문서" (GDD §2 사망 흐름)
- * R3 소유 자립형 DOM 오버레이 — 씬은 데이터만 넘기고 Enter/클릭으로 재도전을 resolve받는다.
+ * R3 소유 자립형 DOM 오버레이 — 씬은 데이터만 넘기고 아무 키/클릭으로
+ * 타이틀 복귀를 resolve받는다.
  */
 
 const STYLE_ID = 'r3-summary-style';
@@ -156,7 +157,7 @@ let open = false;
 let current: Promise<void> | null = null;
 
 /**
- * 요약을 표시하고 플레이어가 Enter/클릭으로 재도전을 선택할 때까지 기다린다.
+ * 요약을 표시하고 플레이어가 아무 키/클릭으로 타이틀 복귀를 선택할 때까지 기다린다.
  * 이미 열려 있으면 진행 중인 Promise를 공유한다 — 즉시 resolve로 뒤에서
  * 재시작이 실행되는 사고 방지 (호출측도 승/패 선점 가드를 함께 둔다).
  */
@@ -233,7 +234,7 @@ export function showRunSummaryOverlay(data: RunSummaryData): Promise<void> {
         </section>
       </div>
       ${debugTable}
-      <div class="summary-hint"><b>Enter</b> — 새로운 런 (보스는 이번 런을 기억한다…)</div>
+      <div class="summary-hint"><b>아무 키</b> — 타이틀 화면으로</div>
     </div>`;
 
   current = new Promise<void>((resolve) => {
@@ -248,7 +249,7 @@ export function showRunSummaryOverlay(data: RunSummaryData): Promise<void> {
       resolve();
     };
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== 'Enter') return;
+      if (e.repeat) return;
       e.preventDefault(); e.stopImmediatePropagation();
       finish();
     };

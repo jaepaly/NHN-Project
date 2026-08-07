@@ -68,6 +68,9 @@ assert.ok(overlaySource.includes('hiddenDiscoveryCount'), '숨긴 발견 수 표
 assert.ok(overlaySource.includes('data.meta.insightEarned'), '이번 런 통찰 데이터 배선');
 assert.ok(overlaySource.includes('data.meta.totalInsight'), '누적 통찰 데이터 배선');
 assert.ok(overlaySource.includes('data.meta.researchInsight'), '연구 통찰 데이터 배선');
+assert.ok(overlaySource.includes('<b>아무 키</b> — 타이틀 화면으로'), '결산 종료 안내를 아무 키 타이틀 복귀로 표시');
+assert.ok(!overlaySource.includes("if (e.key !== 'Enter') return;"), '결산이 Enter 전용 입력으로 제한되지 않음');
+assert.ok(overlaySource.includes('if (e.repeat) return;'), '키를 길게 눌러도 결산 복귀는 한 번만 실행');
 
 const sceneSource = readFileSync('src/scenes/ProtoScene.ts', 'utf8');
 assert.ok(sceneSource.includes('buildMetaRunSummary(this.metaProfile'), '저장 후 메타 프로필 결산 배선');
@@ -75,6 +78,11 @@ assert.equal(
   (sceneSource.match(/showRunSummaryOverlay\(this\.buildRunSummary\('(victory|defeat)'\)\)/g) ?? []).length,
   3,
   '승리·사망·포기 공용 결산 화면',
+);
+assert.ok(
+  sceneSource.includes("showRunSummaryOverlay(this.buildRunSummary('defeat'))")
+    && sceneSource.includes("this.destroyRunMapUi();\n          this.scene.start('title');"),
+  '패배 결산도 새 런 재시작이 아니라 타이틀로 복귀',
 );
 
 console.log('meta run summary regression: 해금·발견라벨·대표빌드·승패배선 6군 통과');

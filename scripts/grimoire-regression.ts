@@ -125,7 +125,19 @@ function entry(
   history.record({ rawText: '불 화살', spell: spell('불 화살', 'fire', 80, 'damage', 'bolt'), source: 'mock', castAt: 1 });
   history.record({ rawText: '불 폭발', spell: spell('불 폭발', 'fire', 75, 'damage', 'nova'), source: 'mock', castAt: 2 });
   history.record({ rawText: '물 파도', spell: spell('물 파도', 'water', 70, 'damage', 'wave'), source: 'mock', castAt: 3 });
+  history.record({ rawText: '불의 벽', spell: spell('불의 벽', 'fire', 100, 'damage', 'wall'), source: 'mock', castAt: 4 });
+  history.record({ rawText: '불의 궤도', spell: spell('불의 궤도', 'fire', 99, 'damage', 'orbit'), source: 'mock', castAt: 5 });
   assert.deepEqual(bestEntriesFromRun(history, 'win').map((item) => item.form), ['bolt', 'nova', 'wave'], '승리 런의 서로 다른 원소·형태 유산 기록');
+
+  const legacyWall = entry('불의 벽', 'fire', 100, 'wall');
+  const legacyOrbit = entry('불의 궤도', 'fire', 99, 'orbit');
+  assert.equal(
+    offerEntries([legacyWall, legacyOrbit, ...book], 3)
+      .every((item) => item.form !== 'wall' && item.form !== 'orbit'),
+    true,
+    '기존 저장본의 수동 전용 wall·orbit을 시작 유산으로 제시하지 않음',
+  );
+  assert.deepEqual(offerEntries([legacyWall, legacyOrbit], 3), [], '수동 전용 유산뿐이면 선택창을 건너뜀');
 }
 
 // 4) 각인용 spec 복원 — 광역 폼은 area로

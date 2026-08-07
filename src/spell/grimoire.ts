@@ -1,6 +1,7 @@
 import { ELEMENTS, FORMS } from './types';
 import type { SpellElement, SpellForm, SpellSpec } from './types';
 import type { SpellHistory } from './spellHistory';
+import { isAutoEngraveForm } from './engraveEligibility';
 
 /**
  * 주문서(Grimoire) — 런 간 유산 (Phase 5).
@@ -77,7 +78,7 @@ export function bestEntriesFromRun(
 ): GrimoireEntry[] {
   const candidates: GrimoireEntry[] = [];
   for (const entry of history.all) {
-    if (entry.effect !== 'damage') continue;
+    if (entry.effect !== 'damage' || !isAutoEngraveForm(entry.form)) continue;
     candidates.push({
       normalized: entry.normalized,
       rawText: entry.rawText,
@@ -142,7 +143,11 @@ export function offerEntries(
   rand: () => number = Math.random,
   excludedNormalized: string | null = null,
 ): GrimoireEntry[] {
-  const sorted = [...entries].sort((a, b) => b.power - a.power || b.recordedAt - a.recordedAt);
+  // v1 주문서 유산은 곧 Lv1 자동 각인이다. 예전 저장본에 남아 있는 수동 전용
+  // wall·orbit을 제시하면 선택 직후 EngraveManager에서 거부되어 슬롯이 사라진다.
+  const sorted = entries
+    .filter((entry) => isAutoEngraveForm(entry.form))
+    .sort((a, b) => b.power - a.power || b.recordedAt - a.recordedAt);
   const pool = sorted.filter((entry) => entry.normalized !== excludedNormalized);
   const selectable = pool.length >= Math.min(count, sorted.length) ? pool : sorted;
   if (selectable.length === 0) return [];
