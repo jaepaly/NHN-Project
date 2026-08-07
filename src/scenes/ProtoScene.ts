@@ -308,6 +308,14 @@ import { PortalField } from '../render/portalField';
 import { cleanseReadoutLine } from '../render/floorHazardReadout';
 import { TERRAIN_BARRIER_VFX } from '../render/terrainBarrierVfxConfig';
 import {
+  TRAP_HAZARD_PARTICLE_VFX,
+  visibleBoundaryOutlineSegments,
+  visibleCircleOutlineSegments,
+  type TrapHazardCircleShape,
+  type TrapHazardLineSegment,
+  type TrapHazardRectShape,
+} from '../render/trapHazardVfx';
+import {
   blocksFromPlacements, floorHazardsForRoom, floorHazardsFromPlacements, terrainForRoom,
 } from '../run/roomTerrainConfig';
 import type { MapNodeKind, MapTerrainPlacement } from '../run/mapGraphContract';
@@ -5145,17 +5153,21 @@ export class ProtoScene extends Phaser.Scene {
       safeCorridor,
       PLAYER_HIT_RADIUS,
     );
+    const circles: TrapHazardCircleShape[] = [];
     for (const placement of placements) {
       // 안전 통로의 중심과 플레이어 스폰이 바뀌어도 발밑에 원형 함정이 놓이지 않게 한다.
       if (Phaser.Math.Distance.Between(this.player.x, this.player.y, placement.x, placement.y)
         <= placement.radius + PLAYER_HIT_RADIUS + 48) continue;
+      const x = Phaser.Math.Clamp(placement.x, this.worldBounds.left + placement.radius, this.worldBounds.right - placement.radius);
+      const y = Phaser.Math.Clamp(placement.y, this.worldBounds.top + placement.radius, this.worldBounds.bottom - placement.radius);
       const view = this.add.circle(
-        Phaser.Math.Clamp(placement.x, this.worldBounds.left + placement.radius, this.worldBounds.right - placement.radius),
-        Phaser.Math.Clamp(placement.y, this.worldBounds.top + placement.radius, this.worldBounds.bottom - placement.radius),
+        x,
+        y,
         placement.radius,
         0x8f183e,
         0.14,
-      ).setStrokeStyle(4, 0xff5370, 0.92);
+      );
+      circles.push({ x, y, radius: placement.radius });
       this.hazardZones.push({
         view,
         contains: (x, y) => Phaser.Math.Distance.Between(x, y, view.x, view.y) <= placement.radius,
@@ -5164,7 +5176,9 @@ export class ProtoScene extends Phaser.Scene {
       });
     }
 
-    this.spawnBoundaryHazards(900, 650, safeCorridor);
+    const boundary = this.spawnBoundaryHazards(900, 650, safeCorridor);
+    this.drawMergedTrapHazardOutline(circles, boundary.rects, boundary.outlineSegments);
+    this.spawnTrapHazardParticles(circles, boundary.rects);
     // 입장 장면을 읽고 첫 걸음을 뗄 수 있는 최소 유예. 유예 중에도 장판은 보인다.
     this.hazardEntryGraceRemaining = 1.25;
   }
@@ -5173,7 +5187,7 @@ export class ProtoScene extends Phaser.Scene {
     safeWidth: number,
     safeHeight: number,
     safeCorridor?: TrapSafeCorridor,
-  ): void {
+  ): { rects: TrapHazardRectShape[]; outlineSegments: TrapHazardLineSegment[] } {
     if (safeCorridor) {
       const halfWidth = safeCorridor.halfWidth;
       const centerX = this.worldBounds.centerX;
@@ -5205,8 +5219,7 @@ export class ProtoScene extends Phaser.Scene {
       }
       // 중앙 사각형과 십자 통로는 같은 안전영역이다. 두 영역의 연결부에는
       // 경계선을 그리지 않고, 합쳐진 안전영역의 외곽선만 표시한다.
-      const boundaryLine = this.add.graphics().lineStyle(3, 0xff5370, 0.72);
-      const outlineSegments = [
+      const outlineSegments: TrapHazardLineSegment[] = [
         [centerX - halfWidth, this.worldBounds.top, centerX - halfWidth, safeTop],
         [centerX + halfWidth, this.worldBounds.top, centerX + halfWidth, safeTop],
         [safeLeft, safeTop, centerX - halfWidth, safeTop],
@@ -5224,11 +5237,7 @@ export class ProtoScene extends Phaser.Scene {
         [centerX - halfWidth, safeBottom, centerX - halfWidth, this.worldBounds.bottom],
         [centerX + halfWidth, safeBottom, centerX + halfWidth, this.worldBounds.bottom],
       ];
-      for (const [x1, y1, x2, y2] of outlineSegments) {
-        boundaryLine.lineBetween(x1, y1, x2, y2);
-      }
-      this.hazardDecorations.push(boundaryLine);
-      return;
+      return { rects: boundaryRects, outlineSegments };
     }
     const safeLeft = this.worldBounds.centerX - safeWidth / 2;
     const safeRight = this.worldBounds.centerX + safeWidth / 2;
@@ -5278,10 +5287,65 @@ export class ProtoScene extends Phaser.Scene {
       });
     }
 
-    const boundaryLine = this.add.graphics()
-      .lineStyle(3, 0xff5370, 0.72)
-      .strokeRect(safeLeft, safeTop, safeWidth, safeHeight);
-    this.hazardDecorations.push(boundaryLine);
+    const outlineSegments: TrapHazardLineSegment[] = [
+      [safeLeft, safeTop, safeRight, safeTop],
+      [safeRight, safeTop, safeRight, safeBottom],
+      [safeRight, safeBottom, safeLeft, safeBottom],
+      [safeLeft, safeBottom, safeLeft, safeTop],
+    ];
+    return { rects: boundaryRects, outlineSegments };
+  }
+
+  private drawMergedTrapHazardOutline(
+    circles: readonly TrapHazardCircleShape[],
+    boundaryRects: readonly TrapHazardRectShape[],
+    boundarySegments: readonly TrapHazardLineSegment[],
+  ): void {
+    const outline = this.add.graphics().lineStyle(3, 0xff5370, 0.78);
+    for (const circle of circles) {
+      for (const [x1, y1, x2, y2] of visibleCircleOutlineSegments(circle, boundaryRects)) {
+        outline.lineBetween(x1, y1, x2, y2);
+      }
+    }
+    for (const [x1, y1, x2, y2] of visibleBoundaryOutlineSegments(boundarySegments, circles)) {
+      outline.lineBetween(x1, y1, x2, y2);
+    }
+    this.hazardDecorations.push(outline);
+  }
+
+  private spawnTrapHazardParticles(
+    circles: readonly TrapHazardCircleShape[],
+    boundaryRects: readonly TrapHazardRectShape[],
+  ): void {
+    const shapes = [...circles, ...boundaryRects];
+    if (shapes.length === 0) return;
+    const vfx = TRAP_HAZARD_PARTICLE_VFX;
+    const particles = this.add.particles(0, 0, particleKey(this, PARTICLE_TEXTURES.glow), {
+      emitZone: new Phaser.GameObjects.Particles.Zones.RandomZone({
+        getRandomPoint: (point: Phaser.Types.Math.Vector2Like) => {
+          const shape = shapes[Math.floor(Math.random() * shapes.length)];
+          if ('radius' in shape) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = Math.sqrt(Math.random()) * shape.radius * 0.82;
+            point.x = shape.x + Math.cos(angle) * distance;
+            point.y = shape.y + Math.sin(angle) * distance;
+            return;
+          }
+          point.x = shape.x + Math.random() * shape.width;
+          point.y = shape.y + Math.random() * shape.height;
+        },
+      }),
+      speed: { min: vfx.speedMin, max: vfx.speedMax },
+      angle: { min: vfx.angleMin, max: vfx.angleMax },
+      lifespan: { min: vfx.lifespanMin, max: vfx.lifespanMax },
+      frequency: vfx.frequency,
+      quantity: vfx.quantity,
+      scale: { start: vfx.scaleStart, end: 0 },
+      alpha: { start: vfx.alphaStart, end: 0 },
+      tint: [0xff5370, 0xff8fa3, 0xb44dff],
+      blendMode: Phaser.BlendModes.ADD,
+    });
+    this.hazardDecorations.push(particles);
   }
 
   private updateHazards(deltaSeconds: number): void {
