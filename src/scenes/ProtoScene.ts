@@ -265,8 +265,7 @@ import { allRoomIconTextures } from '../ui/roomKindIcon';
 import { MINIMAP_CONFIG } from '../ui/minimapLayout';
 import { RoomRadarHud } from '../ui/roomRadarHud';
 import { ROOM_RADAR_CONFIG } from '../ui/roomRadarModel';
-import { BossCombatInfoHud } from '../ui/bossCombatInfoHud';
-import { bossCombatInfoLines } from '../ui/bossCombatInfoModel';
+import { bossResistanceBadges } from '../ui/bossCombatInfoModel';
 import { BossHealthBarHud } from '../ui/bossHealthBarHud';
 import { SpellCastLogHud } from '../ui/spellCastLogHud';
 import {
@@ -896,8 +895,6 @@ export class ProtoScene extends Phaser.Scene {
   private fusionLabelText!: Phaser.GameObjects.Text;
   /** #345 상단 중앙 런 타이머 — 우측 정보 패널과 중복 표시하지 않는다. */
   private runTimerText!: Phaser.GameObjects.Text;
-  /** #345 보스전에서만 보스를 따라다니는 전용 전투 정보판. */
-  private bossCombatInfoHud!: BossCombatInfoHud;
   /** #345 보스전에서만 화면 상단 중앙에 고정되는 HP·페이즈 바. */
   private bossHealthBarHud!: BossHealthBarHud;
   private waveText!: Phaser.GameObjects.Text;
@@ -3560,7 +3557,6 @@ export class ProtoScene extends Phaser.Scene {
       letterSpacing: 1.4,
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
 
-    this.bossCombatInfoHud = new BossCombatInfoHud(this);
     this.bossHealthBarHud = new BossHealthBarHud(this);
 
     // 위험지대 정화처럼 즉시 대응할 문구만 레이더 아래에 잠시 남긴다.
@@ -5435,16 +5431,10 @@ if (applied) this.playPlayerHit(
         boss.applyCounterStrategy(this.bossResistance.counterStrategy);
       }
       this.bossPatternController?.setCounterStrategy(this.bossResistance.counterStrategy);
-      const resistanceLabel = this.bossResistance.resistedElement
-        ? `${ELEMENT_LABELS[this.bossResistance.resistedElement]} 내성 · `
-        : '';
-      const counterLabel = this.bossResistance.counterStrategy === 'rush'
-        ? '원거리 영창 대응: 돌진 강화'
-        : this.bossResistance.counterStrategy === 'ranged'
-          ? '근거리 영창 대응: 탄막·장판 강화'
-          : '기억 부족: 혼합 패턴 유지';
       this.announceSystemMessage(
-        `기억 적응 · ${resistanceLabel}${counterLabel}`,
+        this.bossResistance.resistedElement
+          ? `기억 적응 · ${ELEMENT_LABELS[this.bossResistance.resistedElement]} 내성`
+          : '기억 적응',
         '#d0a8ff',
         2800,
       );
@@ -9305,10 +9295,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     }
   }
 
-  /** 보스 체력바(위쪽)를 가리지 않도록 반대편 아래에 전용 정보를 붙인다. */
+  /** 보스 이름·체력·활성 원소 저항을 상단의 한 정보 계층에 모은다. */
   private updateBossCombatInfo(): void {
     if (!this.isBossEncounter()) {
-      this.bossCombatInfoHud.hide();
       this.bossHealthBarHud.hide();
       return;
     }
@@ -9316,7 +9305,6 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       (enemy): enemy is BossEnemy => enemy instanceof BossEnemy && enemy.alive,
     );
     if (!boss) {
-      this.bossCombatInfoHud.hide();
       this.bossHealthBarHud.hide();
       return;
     }
@@ -9334,11 +9322,8 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       hp: boss.hp,
       maxHp: boss.maxHp,
       phase: boss.phase,
+      resistances: bossResistanceBadges(resistance),
     });
-    this.bossCombatInfoHud.update(boss.x, boss.y + 72, bossCombatInfoLines({
-      counterStrategy: this.bossResistance.counterStrategy,
-      resistance,
-    }));
   }
 
   private affinityFor(element: SpellElement): number {
