@@ -886,6 +886,7 @@ export class ProtoScene extends Phaser.Scene {
   private roomClearPending = false;
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private statusText!: Phaser.GameObjects.Text;
+  private judgeOfflineText!: Phaser.GameObjects.Text;
   private hpText!: Phaser.GameObjects.Text;
   private manaText!: Phaser.GameObjects.Text;
   private shieldText!: Phaser.GameObjects.Text;
@@ -2832,6 +2833,7 @@ export class ProtoScene extends Phaser.Scene {
    * restartRun(런 중 재시작)과 달리 offerLegacy/prepareEscalation은 create가 따로 한다.
    */
   private resetForNewRun(): void {
+    this.judge.resetRun?.();
     this.deathHandled = false;
     this.demoRun = false;
     this.practiceRun = false;
@@ -2874,6 +2876,7 @@ export class ProtoScene extends Phaser.Scene {
   }
 
   private restartRun(): void {
+    this.judge.resetRun?.();
     this.deathHandled = false;
     this.demoRun = false;
     this.practiceRun = false;
@@ -3484,6 +3487,17 @@ export class ProtoScene extends Phaser.Scene {
       fontStyle: 'bold',
       color: UI_SEMANTIC.ok,
     }).setScrollFactor(0).setDepth(100);
+    this.judgeOfflineText = this.add.text(
+      AFFINITY_HUD.x + 92,
+      AFFINITY_HUD.y + 1,
+      '● 오프라인 판정 · 연결 확인 중',
+      {
+        fontFamily: '"Noto Serif KR", "Malgun Gothic", sans-serif',
+        fontSize: '11px',
+        fontStyle: 'bold',
+        color: '#ffd166',
+      },
+    ).setScrollFactor(0).setDepth(100).setVisible(false);
     // 정적 라벨 — 값이 안 바뀌므로 한 번만 만든다
     (['HP', 'MANA', 'SHIELD'] as const).forEach((label, index) => {
       this.add.text(vital.x + VITAL_HUD.labelX, vitalRowY(vital.y, index), label, {
@@ -8440,6 +8454,9 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
               ? '#ffb86b'
               : '#72f1b8';
     this.statusText.setText(`● ${actionState}`).setColor(statusColor);
+    this.judgeOfflineText
+      .setX(this.statusText.x + this.statusText.displayWidth + 10)
+      .setVisible(this.judge.offlineMode === true);
     const heatwaveDamaging = this.activeRoomCurse?.kind === 'heatwave'
       && isHeatwaveDamaging({
         graceRemaining: this.heatwaveGraceRemaining,
