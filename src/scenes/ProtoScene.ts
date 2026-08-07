@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { createSpriteLayers } from '../render/spriteLayers';
+import { createSpriteLayers, weakTint } from '../render/spriteLayers';
 import { playHitReact, playImpactSquash } from '../combat-core/enemies/enemyJuice';
 import type { SpellJudge } from '../spell/judge';
 import { createJudge } from '../spell/createJudge';
@@ -772,6 +772,7 @@ export class ProtoScene extends Phaser.Scene {
   private playerGlowPulse: Phaser.Tweens.Tween | null = null;
   /** 피격 플래시 대상 — 적과 같은 playHitReact를 쓴다. */
   private playerBody!: Phaser.GameObjects.Image | Phaser.GameObjects.Arc;
+  private playerBodyLayers: Array<Phaser.GameObjects.Image | Phaser.GameObjects.Arc> = [];
   /** 최근 이동 방향 — 돌진(dash) 방향 결정에 쓴다. */
   private readonly lastMoveDir = new Phaser.Math.Vector2(0, 0);
   /** 회복·보호막·자기 강화의 상태 동기화형 연출. */
@@ -1256,6 +1257,8 @@ export class ProtoScene extends Phaser.Scene {
   private floorHazardViews = new Map<FloorHazardKind, Phaser.GameObjects.Graphics>();
   /** 잔류 도트·면역·정화 횟수 — 방마다 초기화 (floorHazardState) */
   private floorHazardPlayer = createFloorHazardPlayerState();
+  /** 독 잔류를 플레이어 몸에 붙여 장판 밖에서도 피해 원인을 읽게 한다. */
+  private floorHazardPoisonAura: Phaser.GameObjects.Container | null = null;
   /** 스케일된 게임 시간 기준 지형 틱 쿨다운. */
   private floorHazardTickCooldown = 0;
   /**
@@ -2054,7 +2057,9 @@ export class ProtoScene extends Phaser.Scene {
     if (result.shieldDamage > 0) {
       this.supportSpellVfx?.playShieldHit(result.shieldDamage, this.playerState.shield <= 0);
     }
-    if (result.hpDamage > 0) this.audio.playSfx('player-hit');
+    // 타격음은 'hit'에만. 장판을 밟고 서 있는 동안 틱마다 울리면 소리가 도배돼,
+    // 정작 적에게 맞은 순간을 못 듣는다 — 장판은 자기 피드백을 따로 갖는다.
+    if (channel === 'hit' && result.hpDamage > 0) this.audio.playSfx('player-hit');
     return result;
   }
 
@@ -3901,6 +3906,7 @@ export class ProtoScene extends Phaser.Scene {
     const bodyLayers = this.textures.exists('player-invoker')
       ? createSpriteLayers(this, 'player-invoker', 40, 0x8fa4ff)
       : [this.add.circle(0, 0, 14, 0x8fa4ff).setBlendMode(Phaser.BlendModes.ADD)];
+    this.playerBodyLayers = bodyLayers;
     [this.playerBody] = bodyLayers;
     // 이미지 자체에 셰이더 발광을 건다. 주변 링만 돌면 정작 인물은 굳은 채로 남는다.
     // preFX는 GameObject 전용이라 Container(this.player)가 아니라 스프라이트에 건다.
@@ -4825,6 +4831,7 @@ export class ProtoScene extends Phaser.Scene {
     for (const view of this.floorHazardViews.values()) view.destroy();
     this.floorHazardViews.clear();
     this.floorHazards = [];
+    this.clearFloorHazardPoisonAura();
     // 잔류·면역·정화 횟수는 **방마다 초기화** — 정화 1회는 방당 예산이다
     this.floorHazardPlayer = createFloorHazardPlayerState();
   }
@@ -4954,6 +4961,7 @@ export class ProtoScene extends Phaser.Scene {
     this.floorHazardPlayer = advanceFloorHazardTimers(this.floorHazardPlayer, deltaSeconds);
     this.renderFloorHazardViews();
     this.syncFloorHazardImmunityView();
+    this.syncFloorHazardPlayerStatusView();
     this.floorHazardTickCooldown = Math.max(0, this.floorHazardTickCooldown - deltaSeconds);
     if (this.floorHazardTickCooldown > 0) return;
     this.tickFloorHazards();
@@ -5032,9 +5040,95 @@ export class ProtoScene extends Phaser.Scene {
     ));
     const { kinds, state } = floorHazardTickKinds(this.floorHazardPlayer, insideKinds);
     this.floorHazardPlayer = state;
+    this.syncFloorHazardPlayerStatusView();
     // 바닥 지형은 **무적을 무시하는 지속 피해**다 — 밟고 서 있으면 계속 아파야
     // 장판이 "피할 곳"으로 성립한다. 타격 무적과 채널을 분리한다.
-    for (const kind of kinds) this.damagePlayer(floorHazardTickDamage(kind), 'tick');
+    for (const kind of kinds) {
+      const applied = this.damagePlayer(floorHazardTickDamage(kind), 'tick');
+      if (applied.hpDamage <= 0 && applied.shieldDamage <= 0) continue;
+      this.playFloorHazardDamageFeedback(kind);
+    }
+  }
+
+  /** 용암은 순간 열충격, 독은 표준 피격 반응과 잔류 오라로 구분한다. */
+  private playFloorHazardDamageFeedback(kind: FloorHazardKind): void {
+    this.audio.playFloorHazardTick(kind);
+    if (kind === 'lava') playHitReact(this, this.player, this.playerBody, 0x8fa4ff);
+    else playHitReact(this, this.player, this.playerBody, 0x5abf68);
+    const color = kind === 'lava' ? 0xff8b28 : 0x79d65b;
+    const ring = this.add.circle(this.player.x, this.player.y, 18, color, 0.08)
+      .setStrokeStyle(kind === 'lava' ? 3 : 2.5, color, kind === 'lava' ? 0.85 : 0.78)
+      .setDepth(this.player.depth - 0.1);
+    this.tweens.add({
+      targets: ring,
+      scale: kind === 'lava' ? 1.9 : 1.7,
+      alpha: 0,
+      duration: kind === 'lava' ? 260 : 380,
+      ease: 'Cubic.easeOut',
+      onComplete: () => ring.destroy(),
+    });
+  }
+
+  /** 독 장판을 벗어나도 linger가 남은 동안 포자 오라를 유지한다. */
+  private syncFloorHazardPlayerStatusView(): void {
+    const poisoned = this.floorHazardPlayer.linger.poison > 0
+      && !isFloorHazardImmune(this.floorHazardPlayer, 'poison');
+    if (!poisoned) {
+      this.clearFloorHazardPoisonAura();
+      return;
+    }
+    if (this.floorHazardPoisonAura?.active) return;
+
+    const ring = this.add.circle(0, 0, 25, 0x1d6f36, 0.12)
+      .setStrokeStyle(2, 0x9be36f, 0.5);
+    const motes = [
+      this.add.circle(-18, 7, 3, 0xc9ff88, 0.72),
+      this.add.circle(14, -12, 2.5, 0x79d65b, 0.68),
+      this.add.circle(20, 13, 2, 0xc9ff88, 0.58),
+      this.add.circle(-8, -20, 2, 0x79d65b, 0.62),
+    ];
+    const aura = this.add.container(0, 0, [ring, ...motes]);
+    this.player.addAt(aura, 0);
+    this.floorHazardPoisonAura = aura;
+    this.setPlayerPoisonTint(true);
+    this.tweens.add({
+      targets: ring,
+      scale: { from: 0.92, to: 1.16 },
+      alpha: { from: 0.42, to: 0.12 },
+      duration: 720,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+    this.tweens.add({
+      targets: aura,
+      angle: 360,
+      duration: 3200,
+      repeat: -1,
+      ease: 'Linear',
+    });
+  }
+
+  private clearFloorHazardPoisonAura(): void {
+    const aura = this.floorHazardPoisonAura;
+    if (!aura) return;
+    this.tweens.killTweensOf(aura);
+    for (const child of aura.list) this.tweens.killTweensOf(child);
+    aura.destroy(true);
+    this.floorHazardPoisonAura = null;
+    this.setPlayerPoisonTint(false);
+  }
+
+  private setPlayerPoisonTint(active: boolean): void {
+    const baseColor = active ? 0x5abf68 : 0x8fa4ff;
+    this.playerBodyLayers.forEach((layer, index) => {
+      if (layer instanceof Phaser.GameObjects.Image) {
+        layer.setTint(index === 0 ? weakTint(baseColor) : baseColor);
+      } else {
+        layer.setFillStyle(baseColor);
+      }
+    });
+    if (this.playerGlowFx) this.playerGlowFx.color = baseColor;
   }
 
   /**
@@ -5055,6 +5149,7 @@ export class ProtoScene extends Phaser.Scene {
     if (cleansed.length === 0) return;
     this.floorHazardPlayer = state;
     this.syncFloorHazardImmunityView();
+    this.syncFloorHazardPlayerStatusView();
     const labels = cleansed.map((kind) => (kind === 'lava' ? '용암' : '독지대')).join('·');
     this.announceBanner({
       title: `${labels} 정화 — ${FLOOR_HAZARD_CONFIG.immunitySeconds}초 면역`,
