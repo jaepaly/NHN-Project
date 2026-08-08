@@ -9149,6 +9149,17 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
    * 들어가고, 중앙 메뉴가 칩 검사를 가리지 않는다.
    */
   private createPauseMenu(width: number, height: number): void {
+    // ProtoScene 인스턴스는 런 재시작 뒤에도 재사용될 수 있다. 이전 Scene 종료 때
+    // 파괴된 카드/설정 객체를 배열에 남겨 두면 다음 런의 첫 카드에서 렌더링이
+    // 예외로 중단되므로, push 기반 객체 풀은 매 생성마다 반드시 새로 시작한다.
+    this.pauseBuildCardTexts = [];
+    this.pauseBuildCardGlyphs = [];
+    this.pauseBuildCardFormIcons = [];
+    this.pauseBuildCardZones = [];
+    this.pauseSettingsLabelTexts = [];
+    this.pauseSettingsValueTexts = [];
+    this.pauseSettingsSliders = [];
+
     // 밝기 막 — 깊이 98(월드·암막 위, HUD 아래)이라 어둡게 해도 HUD·칩은 읽힌다
     this.brightnessVeil = this.add.graphics().setScrollFactor(0).setDepth(98).setVisible(false);
     this.pauseDim = this.add.graphics().setScrollFactor(0).setDepth(97).setVisible(false);
@@ -9176,7 +9187,7 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
     // Phaser Text는 한 문장 중 일부에만 색을 넣는 rich text를 제공하지 않는다.
     // 상세 줄을 작은 조각으로 나눠 그려, 기존 본문 서체·간격은 유지하면서
     // 빙결/광휘/질풍 같은 원소명만 HUD와 같은 색으로 보이게 한다.
-    this.pauseBuildDetailTexts = Array.from({ length: 48 }, () => this.add.text(0, 0, '', {
+    this.pauseBuildDetailTexts = Array.from({ length: 72 }, () => this.add.text(0, 0, '', {
       fontFamily: '"Noto Serif KR", Consolas, monospace',
       fontSize: '12px',
       color: UI_COLOR.text,
@@ -9709,16 +9720,42 @@ if (applied) this.playPlayerHit(projectile.hitShakeTier);
       }
       let cursorX = x;
       for (const part of pauseBuildDetailParts(line)) {
-        if (!part.text) continue;
-        const text = this.pauseBuildDetailTexts[textIndex++];
-        if (!text) return;
-        text.setText(part.text).setColor(part.color ?? UI_COLOR.text).setVisible(true);
-        if (cursorX > x && cursorX + text.width > x + width) {
+        let remaining = part.text;
+        while (remaining.length > 0) {
+          const text = this.pauseBuildDetailTexts[textIndex];
+          if (!text) return;
+          text.setColor(part.color ?? UI_COLOR.text).setText(remaining);
+
+          const availableWidth = x + width - cursorX;
+          if (text.width <= availableWidth) {
+            text.setPosition(cursorX, cursorY).setVisible(true);
+            cursorX += text.width;
+            textIndex += 1;
+            break;
+          }
+
+          // 앞 조각 뒤에 남은 폭이 좁다면 다음 줄에서 같은 조각을 다시 잰다.
+          if (cursorX > x) {
+            cursorX = x;
+            cursorY += 19;
+            continue;
+          }
+
+          // 공백 없는 긴 한국어 문장도 패널을 넘지 않게 글자 단위로 가장 긴
+          // 접두사를 찾는다. 색상 조각은 그대로 유지돼 원소명 강조도 보존된다.
+          let fittingLength = 1;
+          for (let length = 2; length <= remaining.length; length += 1) {
+            text.setText(remaining.slice(0, length));
+            if (text.width > width) break;
+            fittingLength = length;
+          }
+          const chunk = remaining.slice(0, fittingLength);
+          text.setText(chunk).setPosition(x, cursorY).setVisible(true);
+          textIndex += 1;
+          remaining = remaining.slice(fittingLength).replace(/^\s+/, '');
           cursorX = x;
           cursorY += 19;
         }
-        text.setPosition(cursorX, cursorY);
-        cursorX += text.width;
       }
       cursorY += 20;
     }
