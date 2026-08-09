@@ -185,6 +185,9 @@ LLM(Gemini)이 의미·창의성을 실시간 판정해 원소·형태·위력�
 | **소스 저장소** | https://github.com/jaepaly/NHN-Project (public) |
 | **플레이 영상** | <!-- TODO(8/9): 촬영 후 YouTube 링크로 교체. 이 자리가 비면 제출 불가 -->(촬영 후 기입) |
 
+> 영상은 **정지 화면이 담지 못하는 것**을 맡는다 — 한 문장이 `form → wait → form`으로
+> 박자를 갖고 풀리는 시간축 시퀀스, 그리고 자기 강화가 걸리기 전후의 차이.
+
 ### 웹 데모 (권장)
 브라우저로 https://jaepaly.github.io/NHN-Project/ 접속 — 설치 불필요. 기본값으로 실제 Gemini 판정.
 
@@ -202,6 +205,10 @@ npm run dev     # http://localhost:5173/NHN-Project/
 
 > 전부 **프로덕션 빌드**(`vite preview`) 1920×1080 실플레이 촬영. DEV 명령·fixture·화면
 > 합성·AI 이미지 생성을 쓰지 않았다. 촬영 조건 상세는 `docs/submission-screenshots/README.md`.
+>
+> **정지 화면이 실제로 담을 수 있는 것만 싣는다.** 시간축 시퀀스(박자와 간격)와 자기 강화
+> (걸리기 전후의 차이)는 본질적으로 *시간에 걸친* 현상이라 한 프레임으로는 증명되지 않는다 —
+> 그 둘은 **플레이 영상**(§4)이 맡는다.
 
 ### ① 영창 모드 — 슬로모션 속에서 문장을 짓는다
 
@@ -214,20 +221,7 @@ npm run dev     # http://localhost:5173/NHN-Project/
 
 ![창의 주문](submission-screenshots/02-creative-spell.png)
 
-### ③ 자기 강화 — 말이 나를 바꾼다
-
-![자기 강화](submission-screenshots/03-self-buff.png)
-
-`질풍의 가호` — 보호막 36/60 · 가속 +16% · 잔여 시간이 상태창에 표시된다.
-
-### ④ `form/wait` 시퀀스 — LLM이 시간축을 설계한다 *(핵심 컷)*
-
-![시퀀스](submission-screenshots/04-form-wait-sequence.png)
-
-한 문장(`화염과 얼음의 연쇄`)이 **박자를 갖고 여러 단계로** 나간다. 좌상단 `SEQUENCE`,
-하단의 단계 진행 표시(`화염 투사체 · 연계 3`)가 그 구조를 드러낸다.
-
-### ⑤ 기억 보스 — 지난 런을 인용해 도발한다
+### ③ 기억 보스 — 지난 런을 인용해 도발한다
 
 ![기억 보스](submission-screenshots/05-memory-boss.png)
 
@@ -235,11 +229,9 @@ npm run dev     # http://localhost:5173/NHN-Project/
 **"불꽃을 품고도 11번이나 타죽었군, 그 장난감 주문으론 내게 닿기도 전에 재가 될 뿐이다."**
 저항 수치·안내·대사가 한 화면에서 같은 사실을 말한다.
 
-### ⑥ 보상 3택 — 빌드가 갈리는 자리
+### ④ 보상 3택 — 빌드가 갈리는 자리
 
 ![보상 3택](submission-screenshots/06-reward-three-choice.png)
-
-> ⑦ 친화 격상 비교 컷(같은 주문의 1단계 vs 3단계)은 선택 항목이라 제출본에서 생략했다.
 
 <!-- pdf:skip -->
 ### 문서 확정 전 검증 *(팀 작업용 — PDF 제외)*
