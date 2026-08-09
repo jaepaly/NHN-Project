@@ -67,7 +67,7 @@ assert.doesNotMatch(titleSettingsPanel, /input\.on\('pointerout'/,
   '타이틀 설정도 포인터가 화면 밖으로 나갔다고 드래그를 해제하면 안 된다');
 
 const pauseMenuAt = scene.indexOf('private createPauseMenu(');
-const pauseMenu = scene.slice(pauseMenuAt, pauseMenuAt + 8_000);
+const pauseMenu = scene.slice(pauseMenuAt, pauseMenuAt + 18_000);
 assert.doesNotMatch(pauseMenu, /\.on\('pointerover',[\s\S]{0,140}selectPauseTab/, '마우스 hover로 탭이 바뀌면 안 된다');
 assert.match(pauseMenu, /\.on\('pointerdown',[\s\S]{0,220}selectPauseTab/, '탭은 클릭으로 전환해야 한다');
 assert.doesNotMatch(pauseMenu, /drawTitleSigil\(/, '일시정지 제목의 시길은 제목 글자와 겹치지 않게 제거한다');
@@ -75,6 +75,20 @@ assert.match(scene, /titleY: 122/,
   'ESC 큰 제목은 콘텐츠 패널 위쪽 테두리에서 조금 내려와야 한다');
 assert.match(scene, /this\.pauseContentTitle\.setPosition\(contentX \+ contentWidth \/ 2, PAUSE_LAYOUT\.titleY\)/,
   '모든 ESC 탭의 큰 제목은 콘텐츠 상단 중앙에 있어야 한다');
+for (const collection of [
+  'pauseBuildCardTexts',
+  'pauseBuildCardGlyphs',
+  'pauseBuildCardFormIcons',
+  'pauseBuildCardZones',
+  'pauseSettingsLabelTexts',
+  'pauseSettingsValueTexts',
+  'pauseSettingsSliders',
+]) {
+  const resetAt = pauseMenu.indexOf(`this.${collection} = []`);
+  const appendAt = pauseMenu.indexOf(`this.${collection}.push`);
+  assert.ok(resetAt >= 0 && appendAt > resetAt,
+    `${collection}은 새 런에서 파괴된 UI 객체를 재사용하지 않게 먼저 초기화해야 한다`);
+}
 
 const quitAt = scene.indexOf('if (this.quitArmed) {', scene.indexOf('private renderPauseContent('));
 const quitContent = scene.slice(quitAt, quitAt + 3_200);
@@ -105,6 +119,12 @@ assert.match(scene, /paletteColorToCss\(ELEMENT_PALETTES\[next\.element\]\.core\
   'Element labels reuse the shared combat HUD palette');
 assert.match(buildRender, /this\.renderPauseBuildDetail\(/,
   'Build panel uses the colored detail renderer');
+const detailRenderAt = scene.indexOf('private renderPauseBuildDetail(');
+const detailRender = scene.slice(detailRenderAt, detailRenderAt + 3_000);
+assert.match(detailRender, /remaining\.slice\(0, fittingLength\)/,
+  '긴 상세 문구는 패널 폭 안에서 글자 단위로 나눠야 한다');
+assert.doesNotMatch(detailRender, /cursorX > x && cursorX \+ text\.width > x \+ width/,
+  '첫 텍스트 조각이 패널보다 길 때 줄바꿈을 건너뛰면 안 된다');
 assert.match(content, /formGlyph: entry\.spell\.form/,
   '주문 각인 카드는 실제 주문 form을 아이콘 원천으로 사용해야 한다');
 assert.match(scene, /function shortBuildName\(/,
