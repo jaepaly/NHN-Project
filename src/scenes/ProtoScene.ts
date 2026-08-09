@@ -143,6 +143,7 @@ import { formatRunElapsed } from '../combat-core/run/runTimer';
 import { flooredResistMultiplier } from '../combat-core/combat/debuffFloor';
 import { showBossChoice, showDemoCompletionChoice } from '../ui/bossChoiceOverlay';
 import { showSystemBanner } from '../render/systemBanner';
+import { showBossDialogue } from '../render/bossDialogueOverlay';
 import { bossResistanceReadout } from '../render/bossResistanceReadout';
 import { playAwakeningBrandMark, playAwakeningSigil } from '../render/awakeningSigil';
 import { SupportSpellVfx } from '../render/supportSpellVfx';
@@ -3405,9 +3406,13 @@ export class ProtoScene extends Phaser.Scene {
           });
         }
         if (!isCurrentBossRoom()) return;
-        this.time.delayedCall(500, () => {
+        this.time.delayedCall(380, () => {
           if (!isCurrentBossRoom()) return;
-          this.announceSystemMessage(`"${line.text}"`, '#d0a8ff', 2800);
+          showBossDialogue(this, {
+            speaker: '기억의 주인',
+            line: line.text,
+            color: 0xd0a8ff,
+          });
         });
       });
     }
