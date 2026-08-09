@@ -47,9 +47,25 @@ function inline(s) {
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
 }
 
+/**
+ * 내부 전용 구간 제거.
+ *
+ * md는 팀 작업 문서라 버전 이력·갱신분·확정 전 체크리스트를 안고 있다. 그건 우리가
+ * 읽는 것이지 심사위원이 읽을 것이 아니다. `<!-- pdf:skip -->` ~ `<!-- /pdf:skip -->`
+ * 사이를 통째로 걷어내 **한 파일로 작업본과 제출본을 동시에** 유지한다.
+ * (문서를 둘로 쪼개면 반드시 한쪽만 갱신되는 날이 온다)
+ */
+function stripInternal(md) {
+  return md
+    .replace(/<!--\s*pdf:skip\s*-->[\s\S]*?<!--\s*\/pdf:skip\s*-->\n?/g, '')
+    // 남은 HTML 주석(작업 TODO 등)도 걷어낸다 — escapeHtml이 `<!--`를 `&lt;!--`로
+    // 바꿔 버려서, 안 지우면 주석이 본문에 그대로 인쇄된다.
+    .replace(/<!--[\s\S]*?-->/g, '');
+}
+
 // ── 블록 변환 ────────────────────────────────────────────────────────
 function mdToHtml(md) {
-  const lines = md.replaceAll('\r\n', '\n').split('\n');
+  const lines = stripInternal(md).replaceAll('\r\n', '\n').split('\n');
   const out = [];
   let i = 0;
   const listStack = [];   // 중첩 목록 깊이 추적
