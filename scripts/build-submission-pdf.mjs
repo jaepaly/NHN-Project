@@ -41,6 +41,9 @@ function inline(s) {
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    // 이미지가 링크보다 **먼저** — `!` 접두를 못 보면 `[alt](src)`로 잡혀 링크가 된다.
+    // src는 md 파일 기준 상대 경로다(HTML을 같은 디렉터리에 쓰므로 그대로 동작).
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
 }
 
@@ -146,6 +149,10 @@ const CSS = `
   li { margin: 2.5px 0; }
   hr { border: none; border-top: 1px solid #c9c9d9; margin: 14px 0; }
   a { color: #3d5af1; text-decoration: none; }
+  /* 스크린샷 — 페이지 폭에 맞추고 쪽 경계에서 잘리지 않게 한다.
+     1920×1080 원본이라 폭을 안 잡으면 인쇄 폭을 넘겨 잘린다. */
+  img { display: block; width: 100%; height: auto; margin: 10px auto 6px;
+        border: 1px solid #b9bccc; border-radius: 4px; page-break-inside: avoid; }
 `;
 
 const md = readFileSync(srcPath, 'utf8');
