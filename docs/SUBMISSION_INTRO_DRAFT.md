@@ -203,10 +203,8 @@ npm run dev     # http://localhost:5173/NHN-Project/
 
 ## 5. 스크린샷
 
-> 1920×1080 실플레이 촬영. DEV 명령·fixture·화면 합성·AI 이미지 생성을 쓰지 않았다.
-> ①③④는 프로덕션 빌드(`vite preview`), ②는 개발 서버(`npm run dev`)에서 찍었다 —
-> 둘 다 같은 번들·같은 판정 경로를 쓴다. 촬영 조건 상세는
-> `docs/submission-screenshots/README.md`.
+> 전부 **실제 플레이 화면**이다. DEV 명령·fixture·화면 합성·AI 이미지 생성을 쓰지 않았다.
+> 촬영 조건 상세는 `docs/submission-screenshots/README.md`.
 >
 > **정지 화면이 실제로 담을 수 있는 것만 싣는다.** 시간축 시퀀스(박자와 간격)와 자기 강화
 > (걸리기 전후의 차이)는 본질적으로 *시간에 걸친* 현상이라 한 프레임으로는 증명되지 않는다 —
