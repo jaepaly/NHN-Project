@@ -171,7 +171,36 @@ const CSS = `
         border: 1px solid #b9bccc; border-radius: 4px; page-break-inside: avoid; }
 `;
 
+/**
+ * 강조 짝이 안 맞는 줄을 경고한다.
+ *
+ * `inline()`은 **줄 단위**로 돌고 `[^*]+`로 안쪽을 잡는다. 그래서 두 경우가 조용히 깨진다:
+ *   ① `**굵게\n줄바꿈**` — 여는 짝과 닫는 짝이 다른 줄에 있어 매칭 실패
+ *   ② `**A *B* C**`      — 중첩 강조. 안쪽 `*` 때문에 바깥 `**`가 매칭 실패
+ * 둘 다 **별표가 본문에 그대로 인쇄된다.** 제출본에서 실제로 두 번 났고, PDF를 열어보기
+ * 전에는 아무도 모른다 — 그래서 변환 시점에 짚는다.
+ */
+function warnUnbalancedEmphasis(md) {
+  let inFence = false;
+  let hits = 0;
+  stripInternal(md).replaceAll('\r\n', '\n').split('\n').forEach((line, i) => {
+    if (line.startsWith('```')) { inFence = !inFence; return; }
+    if (inFence) return;
+    // 개수를 세지 않고 **실제 변환 결과**를 본다. 중첩 강조(`**A *B* C**`)는 별표 개수가
+    // 짝이 맞아서 산술 검사로는 안 잡힌다 — 돌연변이 시험으로 확인했다.
+    // 코드 스팬 안의 별표는 원래 리터럴이므로 걷어내고 본다.
+    const rendered = inline(line).replace(/<code>[\s\S]*?<\/code>/g, '');
+    if (rendered.includes('*')) {
+      hits += 1;
+      console.warn(`  ⚠ ${i + 1}행: 강조가 변환되지 않는다 — 별표가 그대로 인쇄된다`);
+      console.warn(`     ${line.trim().slice(0, 90)}`);
+    }
+  });
+  if (hits) console.warn(`  ⚠ 총 ${hits}행 — 줄바꿈을 넘는 강조나 중첩 강조(**A *B***)를 확인하라\n`);
+}
+
 const md = readFileSync(srcPath, 'utf8');
+warnUnbalancedEmphasis(md);
 const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <title>${basename(srcPath)}</title><style>${CSS}</style></head>
 <body>${mdToHtml(md)}</body></html>`;
