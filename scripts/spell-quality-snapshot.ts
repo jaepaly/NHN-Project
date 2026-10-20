@@ -9,7 +9,7 @@ import { writeFileSync } from 'node:fs';
 import { validateJudgement } from '../src/spell/validate';
 import type { SpellJudgement } from '../src/spell/types';
 
-const PROXY_URL = 'https://incant-judge-proxy.diawodbsdot.workers.dev';
+const PROXY_URL = 'https://incant-judge-proxy.jaepaly.workers.dev';
 const PACING_MS = 4500; // RPM 15 여유 (약 13/min)
 
 type Tier = '걸작' | '평범' | '주제밖' | '불발' | '금칙' | '다국어';

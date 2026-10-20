@@ -15,7 +15,7 @@ import { validateSpellPlan } from '../src/spell/spellPlanValidate';
  * 실행: npm run audit:judge   (PROXY_URL로 다른 프록시 지정 가능)
  */
 
-const PROXY = process.env.PROXY_URL || 'https://incant-judge-proxy.diawodbsdot.workers.dev';
+const PROXY = process.env.PROXY_URL || 'https://incant-judge-proxy.jaepaly.workers.dev';
 const GAP_MS = 4300; // 15 RPM 준수
 const TIMEOUT_MS = 12000;
 

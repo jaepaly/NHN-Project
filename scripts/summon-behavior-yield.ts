@@ -12,7 +12,7 @@ import { validateSummonBehavior } from '../src/spell/summonBehavior';
  * 실행: PROXY_URL 환경변수 또는 기본 배포 URL. 레이트리밋(20/분) 회피 위해 간격 둠.
  */
 
-const PROXY = process.env.PROXY_URL || 'https://incant-judge-proxy.diawodbsdot.workers.dev';
+const PROXY = process.env.PROXY_URL || 'https://incant-judge-proxy.jaepaly.workers.dev';
 const GAP_MS = 3500;   // 20/분 한도 회피
 const TIMEOUT_MS = 12000;
 

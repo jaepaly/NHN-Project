@@ -5,6 +5,7 @@ import { CACHE_SEED } from './cacheSeed.generated';
 import { LoggingJudge } from './loggingJudge';
 import { RunRecoveryJudge } from './runRecoveryJudge';
 import { DebugRecoveryRemoteJudge } from './debugRecoveryJudge';
+import { DEFAULT_PROXY_URL } from './proxyUrl';
 
 /**
  * 판정기를 선택한다 — GDD §3.5 판정기 추상화.
@@ -16,7 +17,6 @@ import { DebugRecoveryRemoteJudge } from './debugRecoveryJudge';
  * GeminiJudge 내부에서 실패·타임아웃 시 MockJudge로 자동 폴백하므로 게임은 항상 동작한다.
  * (프록시 URL은 비밀 아님 — 실제 API 키는 Cloudflare secret에만 존재)
  */
-const DEFAULT_PROXY_URL = 'https://incant-judge-proxy.diawodbsdot.workers.dev';
 
 export function createJudge(): SpellJudge {
   if (import.meta.env.VITE_JUDGE_MOCK === '1') {
