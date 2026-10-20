@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { GeminiJudge, judgeTimeoutMs } from '../src/spell/geminiJudge';
+import { DEFAULT_JUDGE_REQUEST_POLICY, GeminiJudge, judgeTimeoutMs } from '../src/spell/geminiJudge';
 import { MockJudge } from '../src/spell/mockJudge';
 import type { SpellJudgement } from '../src/spell/types';
 
@@ -51,7 +51,16 @@ function waitForAbort(signal: AbortSignal | null | undefined): Promise<Response>
 }
 
 try {
-  assert.equal(judgeTimeoutMs('아무 주문'), 5000, '총 대기 예산은 5초다');
+  // 기본 정책 — 업스트림이 느려진 뒤(2026-10-20 실측 4.7~10.3초) 2.5초 상한은 판정을 한 건도
+  // 게임에 들이지 못했다. 상한을 실측 최댓값 아래로 되돌리면 다시 전부 Mock으로 떨어진다.
+  assert.equal(DEFAULT_JUDGE_REQUEST_POLICY.maxAttempts, 1,
+    '느린 업스트림에 재시도는 시계를 0부터 다시 돌리고 쿼터만 두 배로 쓴다');
+  assert.ok(DEFAULT_JUDGE_REQUEST_POLICY.attemptTimeoutMs >= 12000,
+    `시도 상한 ${DEFAULT_JUDGE_REQUEST_POLICY.attemptTimeoutMs}ms — 실측 필살영창 10.3초를 못 기다린다`);
+  assert.equal(judgeTimeoutMs('아무 주문'), DEFAULT_JUDGE_REQUEST_POLICY.attemptTimeoutMs,
+    '총 대기 예산은 한 번의 시도 상한과 같다');
+
+  // ── 아래는 주입한 빠른 정책으로 재시도 **메커니즘** 자체를 지킨다 ──
 
   // 첫 요청만 장기 지연이면 즉시 두 번째 요청으로 회복한다.
   storage.clear();
@@ -124,4 +133,4 @@ try {
   globalThis.fetch = originalFetch;
 }
 
-console.log('Gemini timeout retry regression: timeout 1회 재시도·5초 총 예산·확정 오류 비재시도 통과');
+console.log('Gemini timeout retry regression: 기본 1회·15초 상한, 주입 정책의 timeout 재시도·확정 오류 비재시도 통과');

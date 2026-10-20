@@ -19,15 +19,28 @@ import { MockJudge, precheckText } from './mockJudge';
 export const JUDGE_SCHEMA_VERSION = 2;
 export const JUDGE_PROMPT_VERSION = 'meaning-v2.31-ultimate-resonance-echo';
 const CACHE_PREFIX = `incant:judge:v${JUDGE_SCHEMA_VERSION}:${JUDGE_PROMPT_VERSION}:`;
-const JUDGE_ATTEMPT_TIMEOUT_MS = 2500;
-const JUDGE_MAX_ATTEMPTS = 2;
+/**
+ * 원격 판정 대기 상한 — 한 번만, 넉넉하게.
+ *
+ * 대회 기간엔 Gemini 응답이 p50 1.4초라 "2.5초에 끊고 새 요청으로 한 번 더"가 맞았다.
+ * 2026-10-20 실측에선 업스트림 자체가 느려져(Server-Timing `gemini;dur`) 일반 영창
+ * 4.7~8.8초, 필살영창 7.6~10.3초였고, 2.5초 상한으로는 **한 건도 게임에 닿지 못했다**.
+ * 판정은 서버에서 멀쩡히 나오는데 클라가 먼저 포기해 전부 Mock으로 떨어지고, 연속 2회
+ * 실패로 오프라인 모드에 들어간 뒤엔 복구 확인도 같은 상한이라 런 끝까지 돌아오지 못했다.
+ *
+ * 느린 원인이 업스트림이면 재시도는 시계를 0부터 다시 돌릴 뿐이고, 끊긴 요청도 서버에선
+ * 끝까지 돌아 쿼터만 두 배로 쓴다. 그래서 재시도 없이 한 번을 길게 기다린다. 대기 중엔
+ * 슬로모션(0.15배)이 적·장판·타이머 전부에 걸려 있어 기다리는 동안 맞아 죽지 않는다.
+ */
+const JUDGE_ATTEMPT_TIMEOUT_MS = 15000;
+const JUDGE_MAX_ATTEMPTS = 1;
 
 interface JudgeRequestPolicy {
   attemptTimeoutMs: number;
   maxAttempts: number;
 }
 
-const DEFAULT_JUDGE_REQUEST_POLICY: JudgeRequestPolicy = {
+export const DEFAULT_JUDGE_REQUEST_POLICY: Readonly<JudgeRequestPolicy> = {
   attemptTimeoutMs: JUDGE_ATTEMPT_TIMEOUT_MS,
   maxAttempts: JUDGE_MAX_ATTEMPTS,
 };
@@ -67,7 +80,7 @@ function fallbackReasonFromError(error: unknown): JudgeFallbackReason {
   if (error instanceof SyntaxError) return 'invalid_response';
   return 'network_error';
 }
-/** 정상 원격 판정의 총 대기 예산(2.5초 timeout 재시도 1회). 인자는 기존 호출 계약 호환용이다. */
+/** 정상 원격 판정의 총 대기 예산(시도별 상한 × 시도 수). 인자는 기존 호출 계약 호환용이다. */
 export function judgeTimeoutMs(_text: string): number {
   return JUDGE_ATTEMPT_TIMEOUT_MS * JUDGE_MAX_ATTEMPTS;
 }
@@ -154,7 +167,7 @@ export class GeminiJudge implements SpellJudge {
     }
   }
 
-  /** timeout일 때만 즉시 한 번 새 요청으로 전환한다. */
+  /** timeout이고 정책이 시도를 더 허용할 때만 새 요청으로 전환한다(기본 정책은 1회). */
   private async fetchWithFastRetry(
     text: string,
     castMode: 'normal' | 'ultimate',
@@ -179,7 +192,7 @@ export class GeminiJudge implements SpellJudge {
     throw lastError;
   }
 
-  /** 프록시에 POST하고 시도별 2.5초 상한을 넘기면 abort. */
+  /** 프록시에 POST하고 시도별 상한(`attemptTimeoutMs`)을 넘기면 abort. */
   private async fetchWithTimeout(
     text: string,
     castMode: 'normal' | 'ultimate',
