@@ -20,10 +20,44 @@ import {
   promoteCastSpellToAtomicPlan,
 } from './judge-output.js';
 
-const GEMINI_URL =
-  // 모델 핀 고정(2026-07-22): `-latest` 자동 갱신으로 요청 규격이 바뀌는 문제 방지.
-  // Gemini 3.5부터 temperature/thinkingBudget가 폐기되어 아래 요청에서도 제거했다.
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent';
+// 모델은 설정값(`GEMINI_MODEL`)으로 고른다. 코드 수정 없이
+// `wrangler deploy --var GEMINI_MODEL:<id>`로 바꿔 지연·품질을 실측하기 위해서다.
+// 기본값은 대회 기간 핀(2026-07-22) — `-latest` 별칭은 자동 갱신으로 요청 규격이 바뀌어 쓰지 않는다.
+// Gemini 3.5부터 temperature/thinkingBudget가 폐기되어 아래 요청에서도 제거했다.
+const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+
+// 실측용 모델 교체 — 이 후보 안에서만 요청 헤더 `X-Incant-Model`로 고를 수 있다.
+// 게임 클라이언트는 이 헤더를 보내지 않는다. 후보를 Flash 계열로만 묶어 임의 모델 지정은 막는다.
+// 재배포 없이 한 번에 여러 모델의 지연·판정 품질을 같은 프롬프트로 비교하기 위해 둔다.
+const GEMINI_MODEL_CANDIDATES = new Set([
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash',
+  'gemini-3.8-flash',
+]);
+
+function geminiModel(env, request) {
+  const requested = request?.headers?.get('X-Incant-Model')?.trim();
+  if (requested && GEMINI_MODEL_CANDIDATES.has(requested)) return requested;
+  const configured = typeof env.GEMINI_MODEL === 'string' ? env.GEMINI_MODEL.trim() : '';
+  // URL 경로에 그대로 들어가므로 모델 ID 모양만 허용한다.
+  return /^[a-z0-9][a-z0-9.-]{0,63}$/.test(configured) ? configured : DEFAULT_GEMINI_MODEL;
+}
+
+// 키는 주소(`?key=`)가 아니라 헤더로 보낸다. AI Studio가 지금 발급하는 `AQ.` 형식 키도,
+// 예전 `AIza` 키도 같은 방식으로 받는다. 주소에 넣으면 접속 로그에 키가 남고, 키에 섞인
+// 문자가 쿼리 문법으로 해석될 수 있다. 붙여넣기로 따라 들어온 앞뒤 공백·줄바꿈은 걷어낸다.
+function geminiKey(env) {
+  return typeof env.GEMINI_API_KEY === 'string' ? env.GEMINI_API_KEY.trim() : '';
+}
+
+function geminiHeaders(env) {
+  return { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey(env) };
+}
+
+function geminiUrl(env, request) {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel(env, request)}:generateContent`;
+}
 
 // 공급자 프로젝트 할당량과 별개인 앱 자체 간이 보호막.
 // IP별·Worker 인스턴스별 인메모리 제한이므로 프로젝트 전체 쿼터를 보장하지는 않는다.
@@ -284,7 +318,7 @@ function rateLimited(ip) {
  * 클라이언트는 실패 시 템플릿 폴백하므로, 여기선 순수 대사만 { text } 로 반환한다.
  */
 async function bossLine(request, env, cors) {
-  if (!env.GEMINI_API_KEY) {
+  if (!geminiKey(env)) {
     return new Response(JSON.stringify({ error: 'no_api_key_bound' }), { status: 500, headers: cors });
   }
   let summary;
@@ -294,9 +328,9 @@ async function bossLine(request, env, cors) {
     return new Response(JSON.stringify({ error: 'bad json' }), { status: 400, headers: cors });
   }
 
-  const geminiRes = await fetch(`${GEMINI_URL}?key=${env.GEMINI_API_KEY}`, {
+  const geminiRes = await fetch(geminiUrl(env, request), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: geminiHeaders(env),
     body: JSON.stringify({
       contents: [{ parts: [{ text: `${BOSS_LINE_PROMPT}\n${JSON.stringify(summary).slice(0, 300)}` }] }],
       generationConfig: {
@@ -338,7 +372,7 @@ const EVOLVE_NAME_PROMPT = `당신은 로그라이크 게임 INCANT의 작명가
  * 클라이언트는 실패 시 템플릿 폴백하므로, 여기선 순수 이름만 { name } 으로 반환한다.
  */
 async function evolveName(request, env, cors) {
-  if (!env.GEMINI_API_KEY) {
+  if (!geminiKey(env)) {
     return new Response(JSON.stringify({ error: 'no_api_key_bound' }), { status: 500, headers: cors });
   }
   let req;
@@ -348,9 +382,9 @@ async function evolveName(request, env, cors) {
     return new Response(JSON.stringify({ error: 'bad json' }), { status: 400, headers: cors });
   }
 
-  const geminiRes = await fetch(`${GEMINI_URL}?key=${env.GEMINI_API_KEY}`, {
+  const geminiRes = await fetch(geminiUrl(env, request), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: geminiHeaders(env),
     body: JSON.stringify({
       contents: [{ parts: [{ text: `${EVOLVE_NAME_PROMPT}\n${JSON.stringify(req).slice(0, 200)}` }] }],
       generationConfig: {
@@ -429,9 +463,9 @@ export default {
     }
 
     // [진단용] 시크릿 바인딩 확인 — 값은 노출하지 않고 존재·길이만
-    if (!env.GEMINI_API_KEY) {
+    if (!geminiKey(env)) {
       return new Response(
-        JSON.stringify({ error: 'no_api_key_bound', keyLen: (env.GEMINI_API_KEY || '').length }),
+        JSON.stringify({ error: 'no_api_key_bound', keyLen: geminiKey(env).length }),
         { status: 500, headers: cors },
       );
     }
@@ -446,9 +480,9 @@ export default {
       geminiAttempts += 1;
       const startedAt = performance.now();
       try {
-        return await fetch(`${GEMINI_URL}?key=${env.GEMINI_API_KEY}`, {
+        return await fetch(geminiUrl(env, request), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: geminiHeaders(env),
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
@@ -469,7 +503,7 @@ export default {
     };
     const diagnosticHeaders = () => ({
       ...cors,
-      'Server-Timing': `gemini;dur=${geminiElapsedMs.toFixed(1)}`,
+      'Server-Timing': `gemini;desc="${geminiModel(env, request)}";dur=${geminiElapsedMs.toFixed(1)}`,
       'X-Incant-Judge-Attempts': String(geminiAttempts),
       'X-Incant-Prompt-Tokens': String(promptTokens),
       'X-Incant-Output-Tokens': String(outputTokens),
