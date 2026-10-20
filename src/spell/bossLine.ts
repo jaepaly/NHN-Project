@@ -1,5 +1,6 @@
 import type { SpellElement } from './types';
 import type { RunMemory } from './runMemory';
+import { DEFAULT_PROXY_URL } from './proxyUrl';
 
 /**
  * 보스 대사 생성 (Phase 3 R2, 트랙 2 ③).
@@ -8,7 +9,6 @@ import type { RunMemory } from './runMemory';
  * — 프록시가 죽어도 보스는 반드시 말한다. 대사는 검증·길이 제한한다.
  */
 
-const DEFAULT_PROXY_URL = 'https://incant-judge-proxy.diawodbsdot.workers.dev';
 const BOSS_LINE_PATH = '/boss-line';
 const TIMEOUT_MS = 2500;
 const MAX_LEN = 80;

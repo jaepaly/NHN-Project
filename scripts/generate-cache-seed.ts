@@ -17,7 +17,7 @@ import { JUDGE_PROMPT_VERSION, JUDGE_SCHEMA_VERSION } from '../src/spell/geminiJ
 import { DEMO_SAMPLE_INCANTATIONS } from '../src/run/demoLoadout';
 
 const WORKER_URL =
-  process.env.WORKER_URL || 'https://incant-judge-proxy.diawodbsdot.workers.dev';
+  process.env.WORKER_URL || 'https://incant-judge-proxy.jaepaly.workers.dev';
 const ORIGIN = 'https://jaepaly.github.io';
 
 // 심사위원이 즉흥으로 칠 법한 기본형 자유 영창 몇 종 (입구 예시 다음으로 흔한 입력).

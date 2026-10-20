@@ -30,7 +30,7 @@
  */
 
 const WORKER_URL =
-  process.env.WORKER_URL || 'https://incant-judge-proxy.diawodbsdot.workers.dev';
+  process.env.WORKER_URL || 'https://incant-judge-proxy.jaepaly.workers.dev';
 const ORIGIN = 'https://jaepaly.github.io';
 const PACING_MS = 3500;
 

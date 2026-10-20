@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const WORKER_URL =
-  process.env.WORKER_URL || 'https://incant-judge-proxy.diawodbsdot.workers.dev';
+  process.env.WORKER_URL || 'https://incant-judge-proxy.jaepaly.workers.dev';
 const ORIGIN = 'https://jaepaly.github.io';
 const PACING_MS = 3500; // 워커 15/분 IP 리미터 아래로 (지연 ~1.2s + 3.5s = ~13/분)
 

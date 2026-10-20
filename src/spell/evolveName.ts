@@ -1,4 +1,5 @@
 import type { SpellElement } from './types';
+import { DEFAULT_PROXY_URL } from './proxyUrl';
 
 /**
  * 진화·융합 작명 (Phase 3.5 R2 ⑤).
@@ -19,7 +20,6 @@ export interface EvolveNameRequest {
 }
 
 const MAX_NAME_LEN = 12;
-const DEFAULT_PROXY_URL = 'https://incant-judge-proxy.diawodbsdot.workers.dev';
 const EVOLVE_NAME_PATH = '/evolve-name';
 const TIMEOUT_MS = 2500;
 
