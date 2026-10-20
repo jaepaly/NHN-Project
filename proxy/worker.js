@@ -44,6 +44,17 @@ function geminiModel(env, request) {
   return /^[a-z0-9][a-z0-9.-]{0,63}$/.test(configured) ? configured : DEFAULT_GEMINI_MODEL;
 }
 
+// 키는 주소(`?key=`)가 아니라 헤더로 보낸다. AI Studio가 지금 발급하는 `AQ.` 형식 키도,
+// 예전 `AIza` 키도 같은 방식으로 받는다. 주소에 넣으면 접속 로그에 키가 남고, 키에 섞인
+// 문자가 쿼리 문법으로 해석될 수 있다. 붙여넣기로 따라 들어온 앞뒤 공백·줄바꿈은 걷어낸다.
+function geminiKey(env) {
+  return typeof env.GEMINI_API_KEY === 'string' ? env.GEMINI_API_KEY.trim() : '';
+}
+
+function geminiHeaders(env) {
+  return { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey(env) };
+}
+
 function geminiUrl(env, request) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel(env, request)}:generateContent`;
 }
@@ -307,7 +318,7 @@ function rateLimited(ip) {
  * 클라이언트는 실패 시 템플릿 폴백하므로, 여기선 순수 대사만 { text } 로 반환한다.
  */
 async function bossLine(request, env, cors) {
-  if (!env.GEMINI_API_KEY) {
+  if (!geminiKey(env)) {
     return new Response(JSON.stringify({ error: 'no_api_key_bound' }), { status: 500, headers: cors });
   }
   let summary;
@@ -317,9 +328,9 @@ async function bossLine(request, env, cors) {
     return new Response(JSON.stringify({ error: 'bad json' }), { status: 400, headers: cors });
   }
 
-  const geminiRes = await fetch(`${geminiUrl(env, request)}?key=${env.GEMINI_API_KEY}`, {
+  const geminiRes = await fetch(geminiUrl(env, request), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: geminiHeaders(env),
     body: JSON.stringify({
       contents: [{ parts: [{ text: `${BOSS_LINE_PROMPT}\n${JSON.stringify(summary).slice(0, 300)}` }] }],
       generationConfig: {
@@ -361,7 +372,7 @@ const EVOLVE_NAME_PROMPT = `당신은 로그라이크 게임 INCANT의 작명가
  * 클라이언트는 실패 시 템플릿 폴백하므로, 여기선 순수 이름만 { name } 으로 반환한다.
  */
 async function evolveName(request, env, cors) {
-  if (!env.GEMINI_API_KEY) {
+  if (!geminiKey(env)) {
     return new Response(JSON.stringify({ error: 'no_api_key_bound' }), { status: 500, headers: cors });
   }
   let req;
@@ -371,9 +382,9 @@ async function evolveName(request, env, cors) {
     return new Response(JSON.stringify({ error: 'bad json' }), { status: 400, headers: cors });
   }
 
-  const geminiRes = await fetch(`${geminiUrl(env, request)}?key=${env.GEMINI_API_KEY}`, {
+  const geminiRes = await fetch(geminiUrl(env, request), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: geminiHeaders(env),
     body: JSON.stringify({
       contents: [{ parts: [{ text: `${EVOLVE_NAME_PROMPT}\n${JSON.stringify(req).slice(0, 200)}` }] }],
       generationConfig: {
@@ -452,9 +463,9 @@ export default {
     }
 
     // [진단용] 시크릿 바인딩 확인 — 값은 노출하지 않고 존재·길이만
-    if (!env.GEMINI_API_KEY) {
+    if (!geminiKey(env)) {
       return new Response(
-        JSON.stringify({ error: 'no_api_key_bound', keyLen: (env.GEMINI_API_KEY || '').length }),
+        JSON.stringify({ error: 'no_api_key_bound', keyLen: geminiKey(env).length }),
         { status: 500, headers: cors },
       );
     }
@@ -469,9 +480,9 @@ export default {
       geminiAttempts += 1;
       const startedAt = performance.now();
       try {
-        return await fetch(`${geminiUrl(env, request)}?key=${env.GEMINI_API_KEY}`, {
+        return await fetch(geminiUrl(env, request), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: geminiHeaders(env),
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
